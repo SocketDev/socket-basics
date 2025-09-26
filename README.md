@@ -1,6 +1,6 @@
-# Security Wrapper — socket-basics
+# Socket Basics
 
-Security Wrapper is a small, extensible CLI tool that orchestrates multiple security scanners (SAST, secret scanning, container scanning), normalizes their outputs into a single consolidated Socket facts JSON format, and delivers results to configured notifiers (console, Slack, Jira, webhooks, Sumo Logic, MS Sentinel, etc.).
+Socket Basics is a small, extensible CLI tool that orchestrates multiple security scanners (SAST, secret scanning, container scanning), normalizes their outputs into a single consolidated Socket facts JSON format, and delivers results to configured notifiers (console, Slack, Jira, webhooks, Sumo Logic, MS Sentinel, etc.).
 
 This README is a first-time, clean-slate guide to installing, running, configuring, and extending the tool.
 
@@ -22,7 +22,7 @@ This README is a first-time, clean-slate guide to installing, running, configuri
 
 ## Overview
 
-Security Wrapper provides:
+Socket Basics provides:
 
 - A unified CLI: `socket-basics`
 - A plugin-style connector system for integrating scanners (OpenGrep, Trivy, TruffleHog, etc.)
@@ -87,13 +87,11 @@ INPUT_CONSOLE_ENABLED=true
 INPUT_SOCKET_CONSOLE_MODE=tabular
 ```
 
-3) Run the container mounting the current directory into `/workspace` and pass the CLI flags you provided. This example runs secrets scanning, JavaScript SAST, requests Socket tier1 reporting, and scans the `trickyhu/sigsci-rule-editor` container image:
+3) Run the container mounting the current directory into `/workspace` and pass the CLI flags you provided. As long as it is a git repo it'll automatically pick up the repo and branch information for the scan. This example runs secrets scanning, JavaScript SAST, requests Socket tier1 reporting, and scans the `trickyhu/sigsci-rule-editor` container image:
 
 ```sh
 docker run --rm -v "$PWD:/workspace" --env-file .env socket-basics \
 	--workspace /workspace \
-	--repo node_goat_17 \
-	--branch main \
 	--secrets \
 	--console-tabular-enabled \
 	--javascript \
@@ -360,7 +358,7 @@ jobs:
 		runs-on: ubuntu-latest
 		steps:
 			- uses: actions/checkout@v4
-			- name: Run security wrapper
+			- name: Run Socket Basics
 				uses: ./  # when running from the same repo; replace with org/repo@vX for published action
 				with:
 					github_token: ${{ secrets.GITHUB_TOKEN }}

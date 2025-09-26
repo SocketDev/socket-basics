@@ -104,7 +104,7 @@ def main():
     
     # Ensure versions are synced
     current_version = check_version_sync()
-    previous_version = read_version_from_git("src/version.py")
+    previous_version = read_version_from_git("socket_basics/version.py")
 
     print(f"Current: {current_version}, Previous: {previous_version}")
 
