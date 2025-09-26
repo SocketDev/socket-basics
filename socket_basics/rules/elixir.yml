@@ -1,0 +1,317 @@
+rules:
+  # ===== ELIXIR SECURITY RULES =====
+
+  # === Critical Severity Rules ===
+
+  # Code injection
+  - id: elixir-code-injection
+    message: "Code injection vulnerability detected"
+    severity: CRITICAL
+    languages: [elixir]
+    pattern-either:
+      - pattern: Code.eval_string($USER_INPUT)
+      - pattern: Code.eval_string($USER_INPUT, ...)
+      - pattern: Code.compile_string($USER_INPUT)
+      - pattern: Code.compile_string($USER_INPUT, ...)
+    metadata:
+      category: security
+      cwe: CWE-94
+      confidence: high
+
+  # SQL injection
+  - id: elixir-sql-injection
+    message: "SQL injection vulnerability detected"
+    severity: CRITICAL
+    languages: [elixir]
+    pattern-either:
+      - pattern: Ecto.Adapters.SQL.query($REPO, $QUERY <> $USER_INPUT, [])
+      - pattern: "\"SELECT * FROM users WHERE id = #{$USER_INPUT}\""
+      - pattern: fragment($QUERY <> $USER_INPUT)
+      - pattern: Repo.query($QUERY <> $USER_INPUT)
+    metadata:
+      category: security
+      cwe: CWE-89
+      confidence: medium
+
+  # Command injection
+  - id: elixir-command-injection
+    message: "Command injection vulnerability detected"
+    severity: CRITICAL
+    languages: [elixir]
+    pattern-either:
+      - pattern: System.cmd($CMD, [$USER_INPUT])
+      - pattern: System.cmd($USER_INPUT, ...)
+      - pattern: "Port.open({:spawn, $USER_INPUT}, [])"
+      - pattern: "Port.open({:spawn_executable, $USER_INPUT}, [])"
+    metadata:
+      category: security
+      cwe: CWE-78
+      confidence: medium
+
+  # Unsafe deserialization
+  - id: elixir-unsafe-deserialization
+    message: "Unsafe deserialization detected"
+    severity: CRITICAL
+    languages: [elixir]
+    pattern-either:
+      - pattern: ":erlang.binary_to_term($USER_INPUT)"
+      - pattern: Plug.Crypto.MessageVerifier.verify($TOKEN, $USER_INPUT)
+    pattern-not-inside:
+      pattern: ":erlang.binary_to_term($USER_INPUT, [:safe])"
+    metadata:
+      category: security
+      cwe: CWE-502
+      confidence: high
+
+  # === High Severity Rules ===
+
+  # Hardcoded secrets
+  - id: elixir-hardcoded-secrets
+    message: "Hardcoded secrets detected"
+    severity: HIGH
+    languages: [elixir]
+    pattern-either:
+      - pattern: '@password "..."'
+      - pattern: '@secret "..."'
+      - pattern: '@api_key "..."'
+      - pattern: '[password: "..."]'
+      - pattern: '[secret: "..."]'
+      - pattern: '[api_key: "..."]'
+    metadata:
+      category: security
+      cwe: CWE-798
+      confidence: medium
+
+  # Weak cryptography
+  - id: elixir-weak-crypto
+    message: "Use of weak cryptographic function"
+    severity: HIGH
+    languages: [elixir]
+    pattern-either:
+      - pattern: ":crypto.hash(:md5, $DATA)"
+      - pattern: ":crypto.hash(:sha, $DATA)"
+      - pattern: "Base.encode16(:crypto.hash(:md5, $DATA))"
+      - pattern: "Base.encode16(:crypto.hash(:sha, $DATA))"
+    metadata:
+      category: security
+      cwe: CWE-327
+      confidence: high
+
+  # Path traversal
+  - id: elixir-path-traversal
+    message: "Path traversal vulnerability detected"
+    severity: HIGH
+    languages: [elixir]
+    pattern-either:
+      - pattern: File.read($PATH <> $USER_INPUT)
+      - pattern: File.write($PATH <> $USER_INPUT, ...)
+      - pattern: File.open($PATH <> $USER_INPUT, ...)
+      - pattern: Path.join($BASE, $USER_INPUT)
+    metadata:
+      category: security
+      cwe: CWE-22
+      confidence: medium
+
+  # XSS vulnerabilities
+  - id: elixir-xss
+    message: "XSS vulnerability detected"
+    severity: HIGH
+    languages: [elixir]
+    pattern-either:
+      - pattern: raw($USER_INPUT)
+      - pattern: Phoenix.HTML.raw($USER_INPUT)
+      - pattern: html_escape($USER_INPUT)
+    metadata:
+      category: security
+      cwe: CWE-79
+      confidence: low
+
+  # Open redirect
+  - id: elixir-open-redirect
+    message: "Open redirect vulnerability detected"
+    severity: HIGH
+    languages: [elixir]
+    pattern-either:
+      - pattern: "redirect(conn, external: $USER_INPUT)"
+      - pattern: "Phoenix.Controller.redirect(conn, external: $USER_INPUT)"
+    metadata:
+      category: security
+      cwe: CWE-601
+      confidence: medium
+
+  # === Medium Severity Rules ===
+
+  # Insecure random
+  - id: elixir-insecure-random
+    message: "Use of insecure random number generator"
+    severity: MEDIUM
+    languages: [elixir]
+    pattern-either:
+      - pattern: ":rand.uniform()"
+      - pattern: ":rand.uniform($N)"
+      - pattern: ":random.uniform()"
+      - pattern: Enum.random($LIST)
+    metadata:
+      category: security
+      cwe: CWE-338
+      confidence: low
+
+  # HTTP instead of HTTPS
+  - id: elixir-insecure-http
+    message: "Use of HTTP instead of HTTPS"
+    severity: MEDIUM
+    languages: [elixir]
+    pattern-either:
+      - pattern: HTTPoison.get("http://...")
+      - pattern: Tesla.get("http://...")
+      - pattern: HTTPoison.post("http://...", ...)
+      - pattern: Tesla.post("http://...", ...)
+    metadata:
+      category: security
+      cwe: CWE-319
+      confidence: low
+
+  # Weak session configuration
+  - id: elixir-weak-session
+    message: "Weak session configuration detected"
+    severity: MEDIUM
+    languages: [elixir]
+    pattern-either:
+      - pattern: |
+          plug Plug.Session,
+            store: :cookie,
+            key: "_app_session",
+            secure: false
+      - pattern: |
+          plug Plug.Session,
+            store: :cookie,
+            key: "_app_session",
+            http_only: false
+    metadata:
+      category: security
+      cwe: CWE-614
+      confidence: medium
+
+  # CSRF protection bypass
+  - id: elixir-csrf-bypass
+    message: "CSRF protection bypassed"
+    severity: MEDIUM
+    languages: [elixir]
+    pattern-either:
+      - pattern: "protect_from_forgery with: :null_session"
+      - pattern: skip_csrf_protection
+    metadata:
+      category: security
+      cwe: CWE-352
+      confidence: medium
+
+  # === Low Severity Rules ===
+
+  # Debug information disclosure
+  - id: elixir-debug-info-disclosure
+    message: "Debug information disclosure detected"
+    severity: LOW
+    languages: [elixir]
+    pattern-either:
+      - pattern: IO.puts($USER_INPUT)
+      - pattern: IO.inspect($USER_INPUT)
+      - pattern: Logger.debug($USER_INPUT)
+      - pattern: Logger.info($USER_INPUT)
+    where:
+      - metavariable-regex:
+          metavariable: $USER_INPUT
+          regex: (?i).*(password|token|secret|key|credential).*
+    metadata:
+      category: security
+      cwe: CWE-532
+      confidence: low
+
+  # Hardcoded IP addresses
+  - id: elixir-hardcoded-ip
+    message: "Hardcoded IP address detected"
+    severity: LOW
+    languages: [elixir]
+    pattern-either:
+      - pattern: '"192.168.$X.$Y"'
+      - pattern: '"10.$X.$Y.$Z"'
+      - pattern: '"172.16.$X.$Y"'
+      - pattern: '"127.0.0.1"'
+      - pattern: '"localhost"'
+    metadata:
+      category: security
+      cwe: CWE-798
+      confidence: low
+
+  # === Phoenix Framework Rules ===
+
+  # Phoenix XSS
+  - id: elixir-phoenix-xss
+    message: "Phoenix XSS vulnerability detected"
+    severity: HIGH
+    languages: [elixir]
+    pattern-either:
+      - pattern: 'raw($USER_INPUT)'
+      - pattern: 'content_tag(:div, $USER_INPUT, class: "content")'
+      - pattern: 'Phoenix.HTML.raw($USER_INPUT)'
+    metadata:
+      category: security
+      framework: phoenix
+      cwe: CWE-79
+      confidence: low
+
+  # Phoenix SQL injection in Ecto
+  - id: elixir-phoenix-ecto-injection
+    message: "Phoenix Ecto SQL injection vulnerability"
+    severity: CRITICAL
+    languages: [elixir]
+    pattern-either:
+      - pattern: 'fragment("... #{$USER_INPUT} ...")'
+      - pattern: 'Repo.query("... #{$USER_INPUT} ...")'
+      - pattern: 'Ecto.Adapters.SQL.query!($REPO, "... #{$USER_INPUT} ...")'
+    metadata:
+      category: security
+      framework: phoenix
+      cwe: CWE-89
+      confidence: high
+
+  # Phoenix insecure routes
+  - id: elixir-phoenix-insecure-routes
+    message: "Phoenix insecure route configuration"
+    severity: MEDIUM
+    languages: [elixir]
+    pattern-either:
+      - pattern: |
+          scope "/admin" do
+            pipe_through :browser
+            # No authentication pipeline
+          end
+      - pattern: |
+          get "/api/admin/:id", AdminController, :show
+    metadata:
+      category: security
+      framework: phoenix
+      cwe: CWE-862
+      confidence: low
+
+  # Phoenix file upload without validation
+  - id: elixir-phoenix-file-upload
+    message: "Phoenix file upload without proper validation"
+    severity: HIGH
+    languages: [elixir]
+    pattern-either:
+      - pattern: |
+          def upload(conn, %{"file" => file}) do
+            File.copy(file.path, "/uploads/" <> file.filename)
+          end
+    pattern-not-inside:
+      pattern: |
+        ...
+        if file.content_type in @allowed_types do
+          ...
+        end
+        ...
+    metadata:
+      category: security
+      framework: phoenix
+      cwe: CWE-434
+      confidence: low

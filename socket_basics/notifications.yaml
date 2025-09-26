@@ -1,0 +1,105 @@
+notifiers:
+  # Notifications YAML should declare available notifier plugins and their
+  # parameter mapping (CLI option / environment variable). Enablement is
+  # determined at runtime from CLI args or environment variables; this file
+  # only describes availability and the parameter mapping.
+
+  console:
+    module_path: "socket_basics.core.notification.console"
+    class: "ConsoleNotifier"
+    # Console notifier doesn't require external parameters; availability only
+    parameters: []
+
+  json:
+    module_path: "socket_basics.core.notification.json_notifier"
+    class: "JsonNotifier"
+    parameters: []
+
+  slack:
+    module_path: "socket_basics.core.notification.slack_notifier"
+    class: "SlackNotifier"
+    parameters:
+      - name: slack_webhook_url
+        option: --slack-webhook-url
+        env_variable: INPUT_SLACK_WEBHOOK_URL
+        type: str
+        description: "Slack webhook URL (also reads SLACK_WEBHOOK_URL or INPUT_SLACK_WEBHOOK_URL)"
+
+  webhook:
+    module_path: "socket_basics.core.notification.webhook_notifier"
+    class: "WebhookNotifier"
+    parameters:
+      - name: webhook_url
+        option: --webhook-url
+        env_variable: INPUT_WEBHOOK_URL
+        type: str
+        description: "Generic webhook URL for WebhookNotifier"
+
+  ms_sentinel:
+    module_path: "socket_basics.core.notification.ms_sentinel_notifier"
+    class: "MSSentinelNotifier"
+    parameters:
+      - name: ms_sentinel_workspace_id
+        option: --ms-sentinel-workspace-id
+        env_variable: INPUT_MS_SENTINEL_WORKSPACE_ID
+        type: str
+      - name: ms_sentinel_key
+        option: --ms-sentinel-key
+        env_variable: INPUT_MS_SENTINEL_KEY
+        type: str
+
+  sumologic:
+    module_path: "socket_basics.core.notification.sumologic_notifier"
+    class: "SumoLogicNotifier"
+    parameters:
+      - name: sumologic_endpoint
+        option: --sumologic-endpoint
+        env_variable: INPUT_SUMOLOGIC_ENDPOINT
+        type: str
+
+  jira:
+    module_path: "socket_basics.core.notification.jira_notifier"
+    class: "JiraNotifier"
+    parameters:
+      - name: server
+        option: --jira-url
+        env_variable: INPUT_JIRA_URL
+        type: str
+      - name: project
+        option: --jira-project
+        env_variable: INPUT_JIRA_PROJECT
+        type: str
+      - name: jira_email
+        option: --jira-email
+        env_variable: INPUT_JIRA_EMAIL
+        type: str
+      - name: jira_api_token
+        option: --jira-api-token
+        env_variable: INPUT_JIRA_API_TOKEN
+        type: str
+
+  github_pr:
+    module_path: "socket_basics.core.notification.github_pr_notifier"
+    class: "GithubPRNotifier"
+    parameters:
+      - name: github_token
+        option: --github-token
+        env_variable: GITHUB_TOKEN
+        type: str
+      - name: GITHUB_API_URL
+        option: --github-api-url
+        env_variable: GITHUB_API_URL
+        type: str
+
+  msteams:
+    module_path: "socket_basics.core.notification.ms_teams_notifier"
+    class: "MSTeamsNotifier"
+    parameters:
+      - name: msteams_webhook_url
+        option: --msteams-webhook-url
+        env_variable: INPUT_MSTEAMS_WEBHOOK_URL
+        type: str
+        description: "MS Teams incoming webhook URL (also reads MSTEAMS_WEBHOOK_URL or INPUT_MSTEAMS_WEBHOOK_URL)"
+  # Title is derived automatically from repository, branch, and total alerts
+
+

@@ -1,0 +1,678 @@
+rules:
+  # === Critical Severity Rules ===
+
+  # SQL injection
+  - id: dotnet-sql-injection
+    message: "SQL injection vulnerability detected"
+    severity: CRITICAL
+    languages: [csharp]
+    pattern-either:
+      # C#
+      - pattern: $CMD.CommandText = $QUERY + $USER_INPUT
+      - pattern: new SqlCommand($QUERY + $USER_INPUT, ...)
+      - pattern: $CMD.ExecuteQuery($QUERY + $USER_INPUT)
+      - pattern: string.Format($SQL, $USER_INPUT)
+      - pattern: $"...{$USER_INPUT}..."
+    metadata:
+      category: security
+      cwe: CWE-89
+      confidence: high
+
+  # Command injection
+  - id: dotnet-command-injection
+    message: "Command injection vulnerability detected"
+    severity: CRITICAL
+    languages: [csharp]
+    pattern-either:
+      # C#
+      - pattern: Process.Start($CMD + $USER_INPUT)
+      - pattern: new Process().StartInfo.FileName = $CMD + $USER_INPUT
+      - pattern: ProcessStartInfo($CMD + $USER_INPUT, ...)
+    metadata:
+      category: security
+      cwe: CWE-78
+      confidence: high
+
+  # Code injection via compilation
+  - id: dotnet-code-injection
+    message: "Code injection via dynamic compilation detected"
+    severity: CRITICAL
+    languages: [csharp]
+    pattern-either:
+      - pattern: CSharpCodeProvider().CompileAssemblyFromSource(..., $USER_INPUT)
+      - pattern: VBCodeProvider().CompileAssemblyFromSource(..., $USER_INPUT)
+      - pattern: CodeDomProvider.CreateProvider(...).CompileAssemblyFromSource(..., $USER_INPUT)
+      - pattern: Assembly.Load($USER_INPUT)
+      - pattern: Activator.CreateInstance($USER_INPUT, ...)
+    metadata:
+      category: security
+      cwe: CWE-94
+      confidence: high
+
+  # Deserialization vulnerabilities
+  - id: dotnet-unsafe-deserialization
+    message: "Unsafe deserialization detected"
+    severity: CRITICAL
+    languages: [csharp]
+    pattern-either:
+      - pattern: BinaryFormatter.Deserialize($STREAM)
+      - pattern: new BinaryFormatter().Deserialize($STREAM)
+      - pattern: NetDataContractSerializer.Deserialize($STREAM)
+      - pattern: JavaScriptSerializer.Deserialize($JSON)
+      - pattern: JsonConvert.DeserializeObject($JSON)
+    metadata:
+      category: security
+      cwe: CWE-502
+      confidence: high
+
+  # LDAP injection
+  - id: dotnet-ldap-injection
+    message: "LDAP injection vulnerability detected"
+    severity: CRITICAL
+    languages: [csharp]
+    pattern-either:
+      - pattern: new DirectorySearcher($FILTER + $USER_INPUT)
+      - pattern: $SEARCHER.Filter = $FILTER + $USER_INPUT
+      - pattern: DirectoryEntry.Path = $PATH + $USER_INPUT
+    metadata:
+      category: security
+      cwe: CWE-90
+      confidence: medium
+
+  # === High Severity Rules ===
+
+  # Hardcoded credentials
+  - id: dotnet-hardcoded-credentials
+    message: "Hardcoded credentials detected"
+    severity: HIGH
+    languages: [csharp]
+    pattern-either:
+      # C#
+      - pattern: |
+          private const string $VAR = "...";
+      - pattern: |
+          public const string $VAR = "...";
+      - pattern: |
+          string $VAR = "...";
+    where:
+      - metavariable-regex:
+          metavariable: $VAR
+          regex: (?i).*(password|passwd|pwd|secret|token|key|api_key|connection_string).*
+    metadata:
+      category: security
+      cwe: CWE-798
+      confidence: medium
+
+  # Weak cryptography - MD5
+  - id: dotnet-weak-crypto-md5
+    message: "Use of weak MD5 hash algorithm"
+    severity: HIGH
+    languages: [csharp]
+    pattern-either:
+      - pattern: MD5.Create()
+      - pattern: new MD5CryptoServiceProvider()
+      - pattern: MD5CryptoServiceProvider.ComputeHash(...)
+      - pattern: System.Security.Cryptography.MD5.Create()
+    metadata:
+      category: security
+      cwe: CWE-327
+      confidence: high
+
+  # Weak cryptography - SHA1
+  - id: dotnet-weak-crypto-sha1
+    message: "Use of weak SHA1 hash algorithm"
+    severity: HIGH
+    languages: [csharp]
+    pattern-either:
+      - pattern: SHA1.Create()
+      - pattern: new SHA1CryptoServiceProvider()
+      - pattern: SHA1CryptoServiceProvider.ComputeHash(...)
+      - pattern: System.Security.Cryptography.SHA1.Create()
+    metadata:
+      category: security
+      cwe: CWE-327
+      confidence: high
+
+  # SSL/TLS certificate bypass
+  - id: dotnet-ssl-bypass
+    message: "SSL/TLS certificate validation bypassed"
+    severity: HIGH
+    languages: [csharp]
+    pattern-either:
+      - pattern: ServicePointManager.ServerCertificateValidationCallback = ($SENDER, $CERT, $CHAIN, $ERRORS) => true
+      - pattern: ServicePointManager.ServerCertificateValidationCallback = delegate { return true; }
+      - pattern: HttpClientHandler.ServerCertificateCustomValidationCallback = ($REQ, $CERT, $CHAIN, $ERRORS) => true
+    metadata:
+      category: security
+      cwe: CWE-295
+      confidence: high
+
+  # XSS vulnerabilities
+  - id: dotnet-xss-response-write
+    message: "XSS vulnerability via Response.Write"
+    severity: HIGH
+    languages: [csharp]
+    pattern-either:
+      - pattern: Response.Write($USER_INPUT)
+      - pattern: $RESPONSE.Write($USER_INPUT)
+      - pattern: HttpContext.Response.Write($USER_INPUT)
+    metadata:
+      category: security
+      cwe: CWE-79
+      confidence: medium
+
+  # Path traversal
+  - id: dotnet-path-traversal
+    message: "Path traversal vulnerability detected"
+    severity: HIGH
+    languages: [csharp]
+    pattern-either:
+      - pattern: File.ReadAllText($PATH + $USER_INPUT)
+      - pattern: File.ReadAllBytes($PATH + $USER_INPUT)
+      - pattern: File.WriteAllText($PATH + $USER_INPUT, ...)
+      - pattern: new FileStream($PATH + $USER_INPUT, ...)
+      - pattern: Path.Combine($BASE, $USER_INPUT)
+    metadata:
+      category: security
+      cwe: CWE-22
+      confidence: medium
+
+  # Insecure random
+  - id: dotnet-insecure-random
+    message: "Use of insecure Random class for cryptographic purposes"
+    severity: HIGH
+    languages: [csharp]
+    pattern-either:
+      - pattern: new Random()
+      - pattern: new Random($SEED)
+      - pattern: Random.Next()
+      - pattern: Random.NextBytes(...)
+    metadata:
+      category: security
+      cwe: CWE-338
+      confidence: medium
+
+  # XXE vulnerabilities
+  - id: dotnet-xxe-vulnerability
+    message: "XML parsing vulnerable to XXE attacks"
+    severity: HIGH
+    languages: [csharp]
+    pattern-either:
+      - pattern: XmlDocument.Load($XML)
+      - pattern: XmlDocument.LoadXml($XML)
+      - pattern: XmlReader.Create($XML)
+      - pattern: XDocument.Load($XML)
+      - pattern: XDocument.Parse($XML)
+    pattern-not-inside:
+      pattern: |
+        ...
+        $XML_SETTINGS.DtdProcessing = DtdProcessing.Prohibit;
+        ...
+    metadata:
+      category: security
+      cwe: CWE-611
+      confidence: medium
+
+  # === Medium Severity Rules ===
+
+  # Weak cipher algorithms
+  - id: dotnet-weak-cipher
+    message: "Use of weak cipher algorithm"
+    severity: MEDIUM
+    languages: [csharp]
+    pattern-either:
+      - pattern: DESCryptoServiceProvider()
+      - pattern: RC2CryptoServiceProvider()
+      - pattern: SymmetricAlgorithm.Create("DES")
+      - pattern: SymmetricAlgorithm.Create("RC2")
+      - pattern: SymmetricAlgorithm.Create("3DES")
+    metadata:
+      category: security
+      cwe: CWE-327
+      confidence: high
+
+  # HTTP instead of HTTPS
+  - id: dotnet-insecure-http
+    message: "Use of HTTP instead of HTTPS"
+    severity: MEDIUM
+    languages: [csharp]
+    pattern-either:
+      - pattern: 'new Uri("http://$URL")'
+      - pattern: '"http://$URL"'
+      - pattern: '"http://$URL"'
+      - pattern: 'HttpClient.GetAsync("http://$URL")'
+      - pattern: 'WebRequest.Create("http://$URL")'
+    metadata:
+      category: security
+      cwe: CWE-319
+      confidence: low
+
+  # Weak key sizes
+  - id: dotnet-weak-key-size
+    message: "Weak cryptographic key size detected"
+    severity: MEDIUM
+    languages: [csharp]
+    pattern-either:
+      - pattern: RSACryptoServiceProvider($SIZE)
+      - pattern: RSA.Create($SIZE)
+      - pattern: DSACryptoServiceProvider($SIZE)
+    where:
+      - metavariable-comparison:
+          metavariable: $SIZE
+          comparison: int($SIZE) < 2048
+    metadata:
+      category: security
+      cwe: CWE-310
+      confidence: medium
+
+  # Cookie security issues
+  - id: dotnet-insecure-cookie
+    message: "Cookie without secure flags"
+    severity: MEDIUM
+    languages: [csharp]
+    pattern-either:
+      - pattern: |
+          new HttpCookie($NAME, $VALUE) { 
+            Secure = false 
+          }
+      - pattern: |
+          new HttpCookie($NAME, $VALUE) { 
+            HttpOnly = false 
+          }
+      - pattern: Response.Cookies.Add(new HttpCookie($NAME, $VALUE))
+    pattern-not-inside:
+      pattern: |
+        ...
+        Secure = true
+        ...
+    metadata:
+      category: security
+      cwe: CWE-614
+      confidence: low
+
+  # Open redirect
+  - id: dotnet-open-redirect
+    message: "Open redirect vulnerability detected"
+    severity: MEDIUM
+    languages: [csharp]
+    pattern-either:
+      - pattern: Response.Redirect($USER_INPUT)
+      - pattern: RedirectToAction($USER_INPUT)
+      - pattern: Redirect($USER_INPUT)
+      - pattern: LocalRedirect($USER_INPUT)
+    metadata:
+      category: security
+      cwe: CWE-601
+      confidence: low
+
+  # === Low Severity Rules ===
+
+  # Debug information disclosure
+  - id: dotnet-debug-info-disclosure
+    message: "Debug information disclosure detected"
+    severity: LOW
+    languages: [csharp]
+    pattern-either:
+      - pattern: Console.WriteLine($USER_INPUT)
+      - pattern: Debug.WriteLine($USER_INPUT)
+      - pattern: Trace.WriteLine($USER_INPUT)
+      - pattern: System.Diagnostics.Debug.Write($USER_INPUT)
+    where:
+      - metavariable-regex:
+          metavariable: $USER_INPUT
+          regex: (?i).*(password|token|secret|key|credential).*
+    metadata:
+      category: security
+      cwe: CWE-532
+      confidence: low
+
+  # Empty catch blocks
+  - id: dotnet-empty-catch-block
+    message: "Empty catch block detected - exceptions should be handled"
+    severity: LOW
+    languages: [csharp]
+    pattern-either:
+      # C#
+      - pattern: |
+          try {
+            ...
+          } catch ($EXCEPTION $VAR) {
+          }
+      - pattern: |
+          try {
+            ...
+          } catch {
+          }
+    metadata:
+      category: security
+      cwe: CWE-703
+      confidence: high
+
+  # Hardcoded IP addresses
+  - id: dotnet-hardcoded-ip
+    message: "Hardcoded IP address detected"
+    severity: LOW
+    languages: [csharp]
+    pattern-either:
+      - pattern: '"192.168.$IP"'
+      - pattern: '"10.$IP"'
+      - pattern: '"172.16.$IP"'
+      - pattern: '"127.0.0.1"'
+      - pattern: '"localhost"'
+    metadata:
+      category: security
+      cwe: CWE-798
+      confidence: low
+
+  # === Framework-specific Rules ===
+
+  # ASP.NET specific vulnerabilities
+  - id: dotnet-aspnet-validaterequest-false
+    message: "ValidateRequest disabled - potential XSS vulnerability"
+    severity: HIGH
+    languages: [csharp]
+    pattern-either:
+      - pattern: ValidateRequest = false
+      - pattern: ValidateRequestMode.Disabled
+      - pattern: '[ValidateInput(false)]'
+    metadata:
+      category: security
+      framework: aspnet
+      cwe: CWE-79
+      confidence: medium
+
+  # ASP.NET viewstate MAC disabled
+  - id: dotnet-aspnet-viewstate-mac-disabled
+    message: "ViewState MAC verification disabled"
+    severity: HIGH
+    languages: [csharp]
+    pattern-either:
+      - pattern: EnableViewStateMac = false
+      - pattern: ViewStateEncryptionMode.Never
+    metadata:
+      category: security
+      framework: aspnet
+      cwe: CWE-345
+      confidence: high
+
+  # ASP.NET Core authorization bypass
+  - id: dotnet-aspnetcore-auth-bypass
+    message: "ASP.NET Core authorization potentially bypassed"
+    severity: HIGH
+    languages: [csharp]
+    pattern-either:
+      - pattern: '[AllowAnonymous]'
+      - pattern: options.RequireAuthenticatedUser = false
+      - pattern: services.AddAuthorization(options => { })
+    metadata:
+      category: security
+      framework: aspnetcore
+      cwe: CWE-862
+      confidence: low
+
+  # Entity Framework SQL injection
+  - id: dotnet-ef-sql-injection
+    message: "Entity Framework SQL injection vulnerability"
+    severity: CRITICAL
+    languages: [csharp]
+    pattern-either:
+      - pattern: context.Database.ExecuteSqlRaw($SQL + $USER_INPUT)
+      - pattern: context.Database.ExecuteSqlCommand($SQL + $USER_INPUT)
+      - pattern: FromSqlRaw($SQL + $USER_INPUT)
+      - pattern: FromSql($SQL + $USER_INPUT)
+    metadata:
+      category: security
+      framework: entityframework
+      cwe: CWE-89
+      confidence: high
+
+  # WCF security issues
+  - id: dotnet-wcf-insecure-binding
+    message: "WCF insecure binding configuration"
+    severity: MEDIUM
+    languages: [csharp]
+    pattern-either:
+      - pattern: BasicHttpBinding()
+      - pattern: new NetTcpBinding(SecurityMode.None)
+      - pattern: new WSHttpBinding(SecurityMode.None)
+    metadata:
+      category: security
+      framework: wcf
+      cwe: CWE-319
+      confidence: medium
+
+  # JWT vulnerabilities
+  - id: dotnet-jwt-no-verification
+    message: "JWT token used without proper verification"
+    severity: MEDIUM
+    languages: [csharp]
+    pattern-either:
+      - pattern: JwtSecurityTokenHandler().ReadJwtToken($TOKEN)
+      - pattern: new JwtSecurityToken($TOKEN)
+      - pattern: new TokenValidationParameters { ValidateIssuer = false }
+      - pattern: new TokenValidationParameters { ValidateAudience = false }
+    metadata:
+      category: security
+      cwe: CWE-347
+      confidence: medium
+
+  # OWASP Top 10 related rules
+
+  # A01: Broken Access Control
+  - id: dotnet-broken-access-control
+    message: "Potential broken access control"
+    severity: HIGH
+    languages: [csharp]
+    pattern-either:
+      - pattern: |
+          [HttpGet]
+          public ActionResult $METHOD() {
+            // No authorization check
+            ...
+          }
+      - pattern: User.IsInRole($USER_INPUT)
+    metadata:
+      category: security
+      owasp: A01
+      cwe: CWE-863
+      confidence: low
+
+  # A02: Cryptographic Failures
+  - id: dotnet-crypto-failures
+    message: "Cryptographic implementation issues"
+    severity: HIGH
+    languages: [csharp]
+    pattern-either:
+      - pattern: Encoding.UTF8.GetBytes($PASSWORD)
+      - pattern: Convert.ToBase64String(Encoding.UTF8.GetBytes($SECRET))
+      - pattern: new RijndaelManaged() { Key = Encoding.UTF8.GetBytes($KEY) }
+    metadata:
+      category: security
+      owasp: A02
+      cwe: CWE-327
+      confidence: medium
+
+  # A03: Injection (additional patterns)
+  - id: dotnet-xpath-injection
+    message: "XPath injection vulnerability detected"
+    severity: CRITICAL
+    languages: [csharp]
+    pattern-either:
+      - pattern: $XML.SelectNodes($XPATH + $USER_INPUT)
+      - pattern: $XML.SelectSingleNode($XPATH + $USER_INPUT)
+      - pattern: XPathExpression.Compile($XPATH + $USER_INPUT)
+    metadata:
+      category: security
+      owasp: A03
+      cwe: CWE-91
+      confidence: high
+
+  # A04: Insecure Design
+  - id: dotnet-insecure-design-session
+    message: "Insecure session management design"
+    severity: MEDIUM
+    languages: [csharp]
+    pattern-either:
+      - pattern: Session[$KEY] = $SENSITIVE_DATA
+      - pattern: HttpContext.Session.SetString($KEY, $SENSITIVE_DATA)
+    where:
+      - metavariable-regex:
+          metavariable: $SENSITIVE_DATA
+          regex: (?i).*(password|credit_card|ssn|social_security).*
+    metadata:
+      category: security
+      owasp: A04
+      cwe: CWE-522
+      confidence: low
+
+  # A05: Security Misconfiguration
+  - id: dotnet-security-misconfiguration
+    message: "Security misconfiguration detected"
+    severity: MEDIUM
+    languages: [csharp]
+    pattern-either:
+      - pattern: app.UseDeveloperExceptionPage()
+      - pattern: services.AddAuthentication().AddCookie(options => { options.Cookie.SecurePolicy = CookieSecurePolicy.None; })
+    metadata:
+      category: security
+      owasp: A05
+      cwe: CWE-16
+      confidence: high
+
+  # A06: Vulnerable and Outdated Components
+  - id: dotnet-vulnerable-components
+    message: "Usage of potentially vulnerable components"
+    severity: MEDIUM
+    languages: [csharp]
+    pattern-either:
+      - pattern: using Newtonsoft.Json;
+      - pattern: using System.Web.Script.Serialization;
+      - pattern: JavaScriptSerializer
+    metadata:
+      category: security
+      owasp: A06
+      cwe: CWE-1104
+      confidence: low
+
+  # A07: Identification and Authentication Failures
+  - id: dotnet-auth-failures
+    message: "Authentication implementation issues"
+    severity: HIGH
+    languages: [csharp]
+    pattern-either:
+      - pattern: FormsAuthentication.SetAuthCookie($USER, true)
+      - pattern: GenericPrincipal($IDENTITY, null)
+      - pattern: Thread.CurrentPrincipal = new GenericPrincipal($IDENTITY, $ROLES)
+    metadata:
+      category: security
+      owasp: A07
+      cwe: CWE-287
+      confidence: low
+
+  # A08: Software and Data Integrity Failures
+  - id: dotnet-integrity-failures
+    message: "Software and data integrity issues"
+    severity: HIGH
+    languages: [csharp]
+    pattern-either:
+      - pattern: Assembly.LoadFrom($USER_INPUT)
+      - pattern: Assembly.LoadFile($USER_INPUT)
+      - pattern: Assembly.UnsafeLoadFrom($USER_INPUT)
+    metadata:
+      category: security
+      owasp: A08
+      cwe: CWE-494
+      confidence: medium
+
+  # A09: Security Logging and Monitoring Failures
+  - id: dotnet-logging-failures
+    message: "Security logging and monitoring issues"
+    severity: LOW
+    languages: [csharp]
+    pattern-either:
+      - pattern: |
+          try {
+            // Authentication logic
+            ...
+          } catch {
+            // No logging of failed authentication
+          }
+      - pattern: |
+          if (!User.Identity.IsAuthenticated) {
+            // No security logging
+            return;
+          }
+    metadata:
+      category: security
+      owasp: A09
+      cwe: CWE-778
+      confidence: low
+
+  # A10: Server-Side Request Forgery (SSRF)
+  - id: dotnet-ssrf
+    message: "Server-Side Request Forgery vulnerability"
+    severity: HIGH
+    languages: [csharp]
+    pattern-either:
+      - pattern: HttpClient.GetAsync($USER_INPUT)
+      - pattern: WebRequest.Create($USER_INPUT)
+      - pattern: new WebClient().DownloadString($USER_INPUT)
+      - pattern: RestClient.Get($USER_INPUT)
+    metadata:
+      category: security
+      owasp: A10
+      cwe: CWE-918
+      confidence: low
+
+  # Additional .NET specific security issues
+
+  # Unsafe code usage
+  - id: dotnet-unsafe-code
+    message: "Unsafe code usage detected"
+    severity: HIGH
+    languages: [csharp]
+    pattern-either:
+      - pattern: |
+          unsafe {
+            ...
+          }
+      - pattern: fixed ($TYPE* $VAR = $EXPR)
+      - pattern: Marshal.PtrToStringAnsi($PTR)
+      - pattern: Marshal.Copy($PTR, ...)
+    metadata:
+      category: security
+      cwe: CWE-119
+      confidence: medium
+
+  # Double check locking anti-pattern
+  - id: dotnet-double-check-locking
+    message: "Double-checked locking anti-pattern detected"
+    severity: MEDIUM
+    languages: [csharp]
+    pattern: |
+      if ($INSTANCE == null) {
+        lock ($LOCK) {
+          if ($INSTANCE == null) {
+            $INSTANCE = new $TYPE();
+          }
+        }
+      }
+    metadata:
+      category: security
+      cwe: CWE-667
+      confidence: medium
+
+  # Reflection security issues
+  - id: dotnet-reflection-security
+    message: "Potentially dangerous reflection usage"
+    severity: MEDIUM
+    languages: [csharp]
+    pattern-either:
+      - pattern: Type.GetType($USER_INPUT)
+      - pattern: Assembly.GetType($USER_INPUT)
+      - pattern: $TYPE.InvokeMember($USER_INPUT, ...)
+      - pattern: MethodInfo.Invoke($OBJ, new object[] { $USER_INPUT })
+    metadata:
+      category: security
+      cwe: CWE-470
+      confidence: low

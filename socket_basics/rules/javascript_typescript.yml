@@ -1,0 +1,433 @@
+rules:
+  # === Critical Severity Rules ===
+  
+  # Code injection via eval
+  - id: js-eval-usage
+    message: "Use of eval() detected. This can execute arbitrary code and is extremely dangerous"
+    severity: CRITICAL
+    languages: [javascript, typescript]
+    pattern-either:
+      - pattern: eval($EXPR)
+      - pattern: Function($ARGS)
+      - pattern: setTimeout($CODE, ...)
+      - pattern: setInterval($CODE, ...)
+    where:
+      - metavariable-pattern:
+          metavariable: $CODE
+          pattern: "..."
+    metadata:
+      category: security
+      cwe: CWE-94
+      confidence: high
+
+  # SQL injection
+  - id: js-sql-injection
+    message: "Possible SQL injection via string concatenation or template literals"
+    severity: CRITICAL
+    languages: [javascript, typescript]
+    pattern-either:
+      - pattern: $DB.query("..." + $VAR + "...")
+      - pattern: $DB.execute("..." + $VAR + "...")
+      - pattern: $DB.raw("..." + $VAR + "...")
+      - pattern: $DB.query(`...${$VAR}...`)
+      - pattern: $DB.execute(`...${$VAR}...`)
+    metadata:
+      category: security
+      cwe: CWE-89
+      confidence: high
+
+  # Command injection
+  - id: js-command-injection
+    message: "Command injection detected via child_process functions"
+    severity: CRITICAL
+    languages: [javascript, typescript]
+    pattern-either:
+      - pattern: child_process.exec($CMD + $VAR)
+      - pattern: child_process.spawn($CMD, [$ARGS, ..., $VAR, ...])
+      - pattern: require('child_process').exec($CMD + $VAR)
+      - pattern: exec($CMD + $VAR)
+    metadata:
+      category: security
+      cwe: CWE-78
+      confidence: high
+
+  # Prototype pollution
+  - id: js-prototype-pollution
+    message: "Potential prototype pollution vulnerability"
+    severity: CRITICAL
+    languages: [javascript, typescript]
+    pattern-either:
+      - pattern: $OBJ["__proto__"] = $VAL
+      - pattern: $OBJ.__proto__ = $VAL
+      - pattern: $OBJ["constructor"] = $VAL
+      - pattern: $OBJ.constructor = $VAL
+      - pattern: Object.setPrototypeOf($OBJ, $PROTO)
+    metadata:
+      category: security
+      cwe: CWE-1321
+      confidence: medium
+
+  # === High Severity Rules ===
+
+  # XSS via innerHTML
+  - id: js-xss-innerhtml
+    message: "XSS vulnerability via innerHTML with unsanitized data"
+    severity: HIGH
+    languages: [javascript, typescript]
+    pattern-either:
+      - pattern: $ELEMENT.innerHTML = $VAR
+      - pattern: $ELEMENT.outerHTML = $VAR
+      - pattern: document.write($VAR)
+      - pattern: document.writeln($VAR)
+    where:
+      - metavariable-pattern:
+          metavariable: $VAR
+          pattern: $USER_INPUT
+    metadata:
+      category: security
+      cwe: CWE-79
+      confidence: medium
+
+  # Hardcoded secrets
+  - id: js-hardcoded-secrets
+    message: "Hardcoded secret or API key detected"
+    severity: HIGH
+    languages: [javascript, typescript]
+    pattern-either:
+      - pattern: const $VAR = "..."
+      - pattern: let $VAR = "..."
+      - pattern: var $VAR = "..."
+      - pattern: $OBJ.$PROP = "..."
+    where:
+      - metavariable-regex:
+          metavariable: $VAR
+          regex: (?i).*(api_key|apikey|secret|token|password|passwd|pwd|private_key|access_token).*
+      - metavariable-regex:
+          metavariable: $PROP
+          regex: (?i).*(api_key|apikey|secret|token|password|passwd|pwd|private_key|access_token).*
+    metadata:
+      category: security
+      cwe: CWE-798
+      confidence: medium
+
+  # Path traversal
+  - id: js-path-traversal
+    message: "Path traversal vulnerability detected"
+    severity: HIGH
+    languages: [javascript, typescript]
+    pattern-either:
+      - pattern: fs.readFile($PATH + $USER_INPUT)
+      - pattern: fs.readFileSync($PATH + $USER_INPUT)
+      - pattern: fs.writeFile($PATH + $USER_INPUT, ...)
+      - pattern: fs.createReadStream($PATH + $USER_INPUT)
+      - pattern: path.join($BASE, $USER_INPUT)
+    metadata:
+      category: security
+      cwe: CWE-22
+      confidence: medium
+
+  # Insecure random
+  - id: js-insecure-random
+    message: "Math.random() is not cryptographically secure"
+    severity: HIGH
+    languages: [javascript, typescript]
+    pattern: Math.random()
+    metadata:
+      category: security
+      cwe: CWE-338
+      confidence: high
+
+  # TLS/SSL bypass
+  - id: js-tls-reject-unauthorized-false
+    message: "TLS certificate validation disabled"
+    severity: HIGH
+    languages: [javascript, typescript]
+    pattern-either:
+      - pattern: process.env.NODE_TLS_REJECT_UNAUTHORIZED = "0"
+      - pattern: process.env["NODE_TLS_REJECT_UNAUTHORIZED"] = "0"
+      - pattern: $AGENT.options.rejectUnauthorized = false
+    metadata:
+      category: security
+      cwe: CWE-295
+      confidence: high
+
+  # === Medium Severity Rules ===
+
+  # Weak crypto algorithms
+  - id: js-weak-crypto-md5
+    message: "Use of weak MD5 hash algorithm"
+    severity: MEDIUM
+    languages: [javascript, typescript]
+    pattern-either:
+      - pattern: crypto.createHash("md5")
+      - pattern: crypto.createHash('md5')
+      - pattern: require('md5')($DATA)
+      - pattern: md5($DATA)
+    metadata:
+      category: security
+      cwe: CWE-327
+      confidence: high
+
+  - id: js-weak-crypto-sha1
+    message: "Use of weak SHA1 hash algorithm"
+    severity: MEDIUM
+    languages: [javascript, typescript]
+    pattern-either:
+      - pattern: crypto.createHash("sha1")
+      - pattern: crypto.createHash('sha1')
+      - pattern: require('sha1')($DATA)
+      - pattern: sha1($DATA)
+    metadata:
+      category: security
+      cwe: CWE-327
+      confidence: high
+
+  # Insecure HTTP
+  - id: js-insecure-http-usage
+    message: "Use of HTTP instead of HTTPS detected"
+    severity: MEDIUM
+    languages: [javascript, typescript]
+    pattern-either:
+      - pattern: 'new URL("http://...")'
+      - pattern: 'fetch("http://...")'
+      - pattern: 'axios.get("http://...")'
+      - pattern: '"http://..."'
+    metadata:
+      category: security
+      cwe: CWE-319
+      confidence: low
+
+  # Regular expression DoS
+  - id: js-regex-dos
+    message: "Potential ReDoS (Regular Expression Denial of Service) vulnerability"
+    severity: MEDIUM
+    languages: [javascript, typescript]
+    pattern-either:
+      - pattern: new RegExp($PATTERN + $USER_INPUT)
+      - pattern: $STR.match($PATTERN + $USER_INPUT)
+      - pattern: $STR.replace($PATTERN + $USER_INPUT, ...)
+    metadata:
+      category: security
+      cwe: CWE-1333
+      confidence: low
+
+  # DOM XSS sinks
+  - id: js-dom-xss-sinks
+    message: "Potential DOM XSS sink detected"
+    severity: MEDIUM
+    languages: [javascript, typescript]
+    pattern-either:
+      - pattern: $ELEMENT.setAttribute($ATTR, $USER_INPUT)
+      - pattern: $ELEMENT.src = $USER_INPUT
+      - pattern: $ELEMENT.href = $USER_INPUT
+      - pattern: location.href = $USER_INPUT
+      - pattern: window.location = $USER_INPUT
+    metadata:
+      category: security
+      cwe: CWE-79
+      confidence: low
+
+  # JWT without verification
+  - id: js-jwt-no-verify
+    message: "JWT token used without proper verification"
+    severity: MEDIUM
+    languages: [javascript, typescript]
+    pattern-either:
+      - pattern: jwt.decode($TOKEN)
+      - pattern: jsonwebtoken.decode($TOKEN)
+      - pattern: "jwt.verify($TOKEN, { verify: false })"
+    metadata:
+      category: security
+      cwe: CWE-347
+      confidence: medium
+
+  # === Low Severity Rules ===
+
+  # Console logging sensitive data
+  - id: js-console-log-sensitive
+    message: "Potentially sensitive data logged to console"
+    severity: LOW
+    languages: [javascript, typescript]
+    pattern-either:
+      - pattern: console.log(..., $VAR, ...)
+      - pattern: console.error(..., $VAR, ...)
+      - pattern: console.warn(..., $VAR, ...)
+      - pattern: console.info(..., $VAR, ...)
+    where:
+      - metavariable-regex:
+          metavariable: $VAR
+          regex: (?i).*(password|token|secret|key|credential).*
+    metadata:
+      category: security
+      cwe: CWE-532
+      confidence: low
+
+  # Debugger statements
+  - id: js-debugger-statement
+    message: "Debugger statement found - should not be in production code"
+    severity: LOW
+    languages: [javascript, typescript]
+    pattern: debugger
+    metadata:
+      category: security
+      cwe: CWE-489
+      confidence: high
+
+  # Alert/confirm/prompt usage
+  - id: js-browser-dialogs
+    message: "Browser dialog functions can be annoying and are often blocked"
+    severity: LOW
+    languages: [javascript, typescript]
+    pattern-either:
+      - pattern: alert($MSG)
+      - pattern: confirm($MSG)
+      - pattern: prompt($MSG)
+    metadata:
+      category: security
+      cwe: CWE-200
+      confidence: low
+
+  # Unvalidated redirects
+  - id: js-unvalidated-redirect
+    message: "Unvalidated redirect detected"
+    severity: LOW
+    languages: [javascript, typescript]
+    pattern-either:
+      - pattern: res.redirect($USER_INPUT)
+      - pattern: response.redirect($USER_INPUT)
+      - pattern: window.location.href = $USER_INPUT
+      - pattern: document.location = $USER_INPUT
+    metadata:
+      category: security
+      cwe: CWE-601
+      confidence: low
+
+  # === Framework-specific Rules ===
+
+  # Express.js security issues
+  - id: js-express-no-helmet
+    message: "Express app without helmet security middleware"
+    severity: MEDIUM
+    languages: [javascript, typescript]
+    pattern-either:
+      - pattern: |
+          const app = express()
+          ...
+      - pattern: |
+          var app = express()
+          ...
+    pattern-not-inside:
+      pattern: |
+        ...
+        app.use(helmet(...))
+        ...
+    metadata:
+      category: security
+      framework: express
+      cwe: CWE-200
+
+  # React dangerous props
+  - id: js-react-dangerous-html
+    message: "React dangerouslySetInnerHTML usage detected"
+    severity: HIGH
+    languages: [javascript, typescript, js, ts]
+    pattern: 'dangerouslySetInnerHTML: { __html: $HTML }'
+    metadata:
+      category: security
+      framework: react
+      cwe: CWE-79
+      confidence: medium
+
+  # Node.js specific
+  - id: js-node-buffer-alloc-unsafe
+    message: "Unsafe Buffer allocation detected"
+    severity: MEDIUM
+    languages: [javascript, typescript]
+    pattern-either:
+      - pattern: new Buffer($SIZE)
+      - pattern: Buffer($SIZE)
+      - pattern: Buffer.allocUnsafe($SIZE)
+    metadata:
+      category: security
+      runtime: nodejs
+      cwe: CWE-119
+
+  # MongoDB injection
+  - id: js-mongodb-injection
+    message: "Potential MongoDB injection via object construction"
+    severity: HIGH
+    languages: [javascript, typescript]
+    pattern-either:
+      - pattern: $COLLECTION.find($USER_INPUT)
+      - pattern: $COLLECTION.findOne($USER_INPUT)
+      - pattern: $COLLECTION.update($USER_INPUT, ...)
+      - pattern: $COLLECTION.remove($USER_INPUT)
+    where:
+      - metavariable-pattern:
+          metavariable: $USER_INPUT
+          pattern: $OBJ
+    metadata:
+      category: security
+      cwe: CWE-943
+      confidence: low
+
+  # LDAP injection
+  - id: js-ldap-injection
+    message: "Potential LDAP injection via string concatenation"
+    severity: HIGH
+    languages: [javascript, typescript]
+    pattern-either:
+      - pattern: $CLIENT.search($FILTER + $USER_INPUT)
+      - pattern: $CLIENT.bind($DN + $USER_INPUT, ...)
+    metadata:
+      category: security
+      cwe: CWE-90
+      confidence: medium
+
+  # XXE (XML External Entity)
+  - id: js-xxe-vulnerability
+    message: "Potential XXE vulnerability in XML parsing"
+    severity: HIGH
+    languages: [javascript, typescript]
+    pattern-either:
+      - pattern: new DOMParser().parseFromString($XML, "text/xml")
+      - pattern: libxmljs.parseXml($XML)
+      - pattern: xml2js.parseString($XML, ...)
+    pattern-not-inside:
+      pattern: |
+        ...
+        noent: false
+        ...
+    metadata:
+      category: security
+      cwe: CWE-611
+      confidence: low
+
+  # Weak session configuration
+  - id: js-weak-session-config
+    message: "Weak session configuration detected"
+    severity: MEDIUM
+    languages: [javascript, typescript]
+    pattern-either:
+      - pattern: |
+          session({
+            ...,
+            secure: false,
+            ...
+          })
+      - pattern: |
+          session({
+            ...,
+            httpOnly: false,
+            ...
+          })
+      - pattern: |
+          session({
+            ...,
+            sameSite: false,
+            ...
+          })
+    metadata:
+      category: security
+      cwe: CWE-614
+      confidence: medium

@@ -1,0 +1,561 @@
+rules:
+  # === Critical Severity Rules ===
+
+  # Code injection
+  - id: php-code-injection
+    message: "Code injection vulnerability detected"
+    severity: CRITICAL
+    languages: [php]
+    pattern-either:
+      - pattern: eval($USER_INPUT)
+      - pattern: assert($USER_INPUT)
+      - pattern: preg_replace($PATTERN, $USER_INPUT, $SUBJECT)
+      - pattern: create_function($ARGS, $USER_INPUT)
+      - pattern: $USER_INPUT($ARGS)
+    where:
+      - metavariable-pattern:
+          metavariable: $USER_INPUT
+          pattern: $_GET[...]
+      - metavariable-pattern:
+          metavariable: $USER_INPUT
+          pattern: $_POST[...]
+      - metavariable-pattern:
+          metavariable: $USER_INPUT
+          pattern: $_REQUEST[...]
+    metadata:
+      category: security
+      cwe: CWE-94
+      confidence: high
+
+  # SQL injection
+  - id: php-sql-injection
+    message: "SQL injection vulnerability detected"
+    severity: CRITICAL
+    languages: [php]
+    pattern-either:
+      - pattern: mysql_query($QUERY . $USER_INPUT)
+      - pattern: mysqli_query($CONN, $QUERY . $USER_INPUT)
+      - pattern: $PDO->query($QUERY . $USER_INPUT)
+      - pattern: $PDO->exec($QUERY . $USER_INPUT)
+      - pattern: '"SELECT * FROM users WHERE id = " . $USER_INPUT'
+      - pattern: |
+          "SELECT * FROM users WHERE id = '$USER_INPUT'"
+    metadata:
+      category: security
+      cwe: CWE-89
+      confidence: high
+
+  # Command injection
+  - id: php-command-injection
+    message: "Command injection vulnerability detected"
+    severity: CRITICAL
+    languages: [php]
+    pattern-either:
+      - pattern: system($USER_INPUT)
+      - pattern: exec($USER_INPUT)
+      - pattern: shell_exec($USER_INPUT)
+      - pattern: passthru($USER_INPUT)
+      - pattern: '`$USER_INPUT`'
+      - pattern: popen($USER_INPUT, $...ARGS)
+      - pattern: proc_open($USER_INPUT, $...ARGS)
+    metadata:
+      category: security
+      cwe: CWE-78
+      confidence: high
+
+  # Unsafe deserialization
+  - id: php-unsafe-deserialization
+    message: "Unsafe deserialization detected"
+    severity: CRITICAL
+    languages: [php]
+    pattern-either:
+      - pattern: unserialize($USER_INPUT)
+      - pattern: serialize($USER_INPUT)
+    where:
+      - metavariable-pattern:
+          metavariable: $USER_INPUT
+          pattern: $_GET[...]
+      - metavariable-pattern:
+          metavariable: $USER_INPUT
+          pattern: $_POST[...]
+    metadata:
+      category: security
+      cwe: CWE-502
+      confidence: high
+
+  # LDAP injection
+  - id: php-ldap-injection
+    message: "LDAP injection vulnerability detected"
+    severity: CRITICAL
+    languages: [php]
+    pattern-either:
+      - pattern: ldap_search($CONN, $DN, $FILTER . $USER_INPUT)
+      - pattern: ldap_list($CONN, $DN, $FILTER . $USER_INPUT)
+      - pattern: ldap_read($CONN, $DN, $FILTER . $USER_INPUT)
+    metadata:
+      category: security
+      cwe: CWE-90
+      confidence: medium
+
+  # === High Severity Rules ===
+
+  # File inclusion vulnerabilities
+  - id: php-file-inclusion
+    message: "File inclusion vulnerability detected"
+    severity: HIGH
+    languages: [php]
+    pattern-either:
+      - pattern: include($USER_INPUT)
+      - pattern: include_once($USER_INPUT)
+      - pattern: require($USER_INPUT)
+      - pattern: require_once($USER_INPUT)
+      - pattern: file_get_contents($USER_INPUT)
+      - pattern: readfile($USER_INPUT)
+      - pattern: fopen($USER_INPUT, ...)
+    metadata:
+      category: security
+      cwe: CWE-98
+      confidence: medium
+
+  # XSS vulnerabilities
+  - id: php-xss
+    message: "XSS vulnerability detected"
+    severity: HIGH
+    languages: [php]
+    pattern-either:
+      - pattern: echo $USER_INPUT;
+      - pattern: print $USER_INPUT;
+      - pattern: printf($USER_INPUT, $...ARGS);
+      - pattern: "'<div>' . $USER_INPUT . '</div>'"
+      - pattern: print_r($USER_INPUT)
+    metadata:
+      category: security
+      cwe: CWE-79
+      confidence: low
+
+  # Hardcoded secrets
+  - id: php-hardcoded-secrets
+    message: "Hardcoded secrets detected"
+    severity: HIGH
+    languages: [php]
+    pattern-either:
+      - pattern: $password = "...";
+      - pattern: $secret = "...";
+      - pattern: $api_key = "...";
+      - pattern: define('PASSWORD', '...');
+      - pattern: define('API_KEY', '...');
+      - pattern: define('SECRET', '...');
+    metadata:
+      category: security
+      cwe: CWE-798
+      confidence: medium
+
+  # Path traversal
+  - id: php-path-traversal
+    message: "Path traversal vulnerability detected"
+    severity: HIGH
+    languages: [php]
+    pattern-either:
+      - pattern: file_get_contents($PATH . $USER_INPUT)
+      - pattern: fopen($PATH . $USER_INPUT, ...)
+      - pattern: include($PATH . $USER_INPUT)
+      - pattern: readfile($PATH . $USER_INPUT)
+      - pattern: unlink($PATH . $USER_INPUT)
+    metadata:
+      category: security
+      cwe: CWE-22
+      confidence: medium
+
+  # Open redirect
+  - id: php-open-redirect
+    message: "Open redirect vulnerability detected"
+    severity: HIGH
+    languages: [php]
+    pattern-either:
+      - pattern: "header('Location: ' . $USER_INPUT)"
+      - pattern: 'header("Location: $USER_INPUT")'
+      - pattern: "header('Location: ' . $_GET[$PARAM])"
+      - pattern: "header('Location: ' . $_POST[$PARAM])"
+    metadata:
+      category: security
+      cwe: CWE-601
+      confidence: medium
+
+  # XXE vulnerabilities
+  - id: php-xxe-vulnerability
+    message: "XML parsing vulnerable to XXE attacks"
+    severity: HIGH
+    languages: [php]
+    pattern-either:
+      - pattern: simplexml_load_string($XML)
+      - pattern: simplexml_load_file($XML)
+      - pattern: DOMDocument::loadXML($XML)
+      - pattern: XMLReader::XML($XML)
+    pattern-not-inside:
+      pattern: |
+        ...
+        libxml_disable_entity_loader(true);
+        ...
+    metadata:
+      category: security
+      cwe: CWE-611
+      confidence: medium
+
+  # === Medium Severity Rules ===
+
+  # Weak cryptographic functions
+  - id: php-weak-crypto
+    message: "Use of weak cryptographic function"
+    severity: MEDIUM
+    languages: [php]
+    pattern-either:
+      - pattern: md5($DATA)
+      - pattern: sha1($DATA)
+      - pattern: crypt($DATA, $SALT)
+      - pattern: hash('md5', $DATA)
+      - pattern: hash('sha1', $DATA)
+      - pattern: mcrypt_encrypt(MCRYPT_DES, ...)
+    metadata:
+      category: security
+      cwe: CWE-327
+      confidence: high
+
+  # Insecure file permissions
+  - id: php-insecure-file-permissions
+    message: "Insecure file permissions detected"
+    severity: MEDIUM
+    languages: [php]
+    pattern-either:
+      - pattern: chmod($FILE, 0777)
+      - pattern: chmod($FILE, 0666)
+      - pattern: fopen($FILE, 'w+', 0777)
+      - pattern: mkdir($DIR, 0777)
+    metadata:
+      category: security
+      cwe: CWE-732
+      confidence: high
+
+  # Session security issues
+  - id: php-session-security
+    message: "Session security issue detected"
+    severity: MEDIUM
+    languages: [php]
+    pattern-either:
+      - pattern: session_start()
+      - pattern: $_SESSION[$KEY] = $USER_INPUT
+    pattern-not-inside:
+      pattern: |
+        ...
+        session_regenerate_id(true);
+        ...
+    metadata:
+      category: security
+      cwe: CWE-384
+      confidence: low
+
+  # CSRF vulnerabilities
+  - id: php-csrf-vulnerability
+    message: "CSRF vulnerability detected"
+    severity: MEDIUM
+    languages: [php]
+    pattern-either:
+      - pattern: |
+          if ($_POST[$PARAM]) {
+            $CRITICAL_ACTION;
+          }
+      - pattern: |
+          if ($_GET[$PARAM]) {
+            $CRITICAL_ACTION;
+          }
+    metadata:
+      category: security
+      cwe: CWE-352
+      confidence: low
+
+  # HTTP instead of HTTPS
+  - id: php-insecure-http
+    message: "Use of HTTP instead of HTTPS"
+    severity: MEDIUM
+    languages: [php]
+    pattern: $URL
+    metavariable-regex:
+      metavariable: $URL
+      regex: "http://.*"
+    metadata:
+      category: security
+      cwe: CWE-319
+      confidence: low
+
+  # Insecure random number generation
+  - id: php-insecure-random
+    message: "Use of insecure random number generator"
+    severity: MEDIUM
+    languages: [php]
+    pattern-either:
+      - pattern: rand()
+      - pattern: mt_rand()
+      - pattern: srand($SEED)
+      - pattern: mt_srand($SEED)
+    metadata:
+      category: security
+      cwe: CWE-338
+      confidence: medium
+
+  # === Low Severity Rules ===
+
+  # Debug information disclosure
+  - id: php-debug-info-disclosure
+    message: "Debug information disclosure detected"
+    severity: LOW
+    languages: [php]
+    pattern-either:
+      - pattern: var_dump($USER_INPUT)
+      - pattern: print_r($USER_INPUT)
+      - pattern: error_reporting(E_ALL)
+      - pattern: ini_set('display_errors', 1)
+      - pattern: phpinfo()
+    where:
+      - metavariable-regex:
+          metavariable: $USER_INPUT
+          regex: (?i).*(password|token|secret|key|credential).*
+    metadata:
+      category: security
+      cwe: CWE-532
+      confidence: low
+
+  # Hardcoded IP addresses
+  - id: php-hardcoded-ip
+    message: "Hardcoded IP address detected"
+    severity: LOW
+    languages: [php]
+    pattern: $IP_ADDRESS
+    metavariable-regex:
+      metavariable: $IP_ADDRESS
+      regex: "(192\\.168\\.\\d{1,3}\\.\\d{1,3})|(10\\.\\d{1,3}\\.\\d{1,3}\\.\\d{1,3})|(172\\.16\\.\\d{1,3}\\.\\d{1,3})|127\\.0\\.0\\.1|localhost"
+    metadata:
+      category: security
+      cwe: CWE-798
+      confidence: low
+
+  # Error suppression
+  - id: php-error-suppression
+    message: "Error suppression detected - may hide security issues"
+    severity: LOW
+    languages: [php]
+    pattern-either:
+      - pattern: '@$FUNCTION($...ARGS)'
+      - pattern: error_reporting(0)
+      - pattern: "ini_set('display_errors', 0)"
+    metadata:
+      category: security
+      cwe: CWE-755
+      confidence: low
+
+  # === Framework-specific Rules ===
+
+  # Laravel security issues
+  - id: php-laravel-security
+    message: "Laravel security configuration issue"
+    severity: HIGH
+    languages: [php]
+    pattern-either:
+      - pattern: Route::get($PATH, $CALLBACK)->middleware('web')
+      - pattern: DB::raw($QUERY . $USER_INPUT)
+      - pattern: \Illuminate\Support\Facades\DB::raw($QUERY . $USER_INPUT)
+      - pattern: $MODEL::whereRaw($QUERY . $USER_INPUT)
+    metadata:
+      category: security
+      framework: laravel
+      cwe: CWE-89
+      confidence: medium
+
+  # Symfony security issues
+  - id: php-symfony-security
+    message: "Symfony security configuration issue"
+    severity: MEDIUM
+    languages: [php]
+    pattern-either:
+      - pattern: |
+          /**
+           * @Route("/admin")
+           */
+          public function adminAction() {
+            // No security annotation
+          }
+      - pattern: $this->getDoctrine()->getManager()->createQuery($QUERY . $USER_INPUT)
+    metadata:
+      category: security
+      framework: symfony
+      cwe: CWE-862
+      confidence: low
+
+  # WordPress security issues
+  - id: php-wordpress-security
+    message: "WordPress security issue detected"
+    severity: HIGH
+    languages: [php]
+    pattern-either:
+      - pattern: $wpdb->query($QUERY . $USER_INPUT)
+      - pattern: wp_remote_get($URL . $USER_INPUT)
+      - pattern: file_get_contents($USER_INPUT)
+      - pattern: eval($_GET[$PARAM])
+    metadata:
+      category: security
+      framework: wordpress
+      cwe: CWE-89
+      confidence: medium
+
+  # CodeIgniter security issues
+  - id: php-codeigniter-security
+    message: "CodeIgniter security issue detected"
+    severity: HIGH
+    languages: [php]
+    pattern-either:
+      - pattern: $this->db->query($QUERY . $USER_INPUT)
+      - pattern: $this->input->get($PARAM, true)
+      - pattern: $this->load->view($VIEW, $DATA, true)
+    metadata:
+      category: security
+      framework: codeigniter
+      cwe: CWE-89
+      confidence: low
+
+  # === Additional Security Rules ===
+
+  # File upload vulnerabilities
+  - id: php-file-upload-vulnerability
+    message: "File upload vulnerability detected"
+    severity: HIGH
+    languages: [php]
+    pattern-either:
+      - pattern: |
+          move_uploaded_file($_FILES[$KEY]['tmp_name'], $DEST);
+      - pattern: |
+          copy($_FILES[$KEY]['tmp_name'], $DEST);
+    pattern-not-inside:
+      pattern: |
+        ...
+        if (in_array($_FILES[$KEY]['type'], $ALLOWED_TYPES)) {
+          ...
+        }
+        ...
+    metadata:
+      category: security
+      cwe: CWE-434
+      confidence: low
+
+  # Email injection
+  - id: php-email-injection
+    message: "Email injection vulnerability detected"
+    severity: MEDIUM
+    languages: [php]
+    pattern-either:
+      - pattern: mail($TO . $USER_INPUT, $SUBJECT, $MESSAGE)
+      - pattern: mail($TO, $SUBJECT . $USER_INPUT, $MESSAGE)
+      - pattern: mail($TO, $SUBJECT, $MESSAGE . $USER_INPUT)
+    metadata:
+      category: security
+      cwe: CWE-117
+      confidence: medium
+
+  # Type juggling vulnerabilities
+  - id: php-type-juggling
+    message: "Type juggling vulnerability detected"
+    severity: MEDIUM
+    languages: [php]
+    pattern-either:
+      - pattern: $USER_INPUT == $HASH
+      - pattern: in_array($USER_INPUT, $ARRAY)
+      - pattern: array_search($USER_INPUT, $ARRAY)
+    pattern-not-inside:
+      pattern: |
+        ...
+        $USER_INPUT === $HASH
+        ...
+    metadata:
+      category: security
+      cwe: CWE-697
+      confidence: low
+
+  # Insecure direct object references
+  - id: php-insecure-direct-object-reference
+    message: "Insecure direct object reference detected"
+    severity: HIGH
+    languages: [php]
+    pattern-either:
+      - pattern: |
+          $id = $_GET['id'];
+          $query = "SELECT * FROM users WHERE id = $id";
+      - pattern: |
+          $file = $_GET['file'];
+          include($file);
+      - pattern: |
+          $user_id = $_POST['user_id'];
+          // Direct use without authorization check
+    metadata:
+      category: security
+      cwe: CWE-639
+      confidence: low
+
+  # SQL injection in prepared statements
+  - id: php-prepared-statement-injection
+    message: "SQL injection in prepared statement detected"
+    severity: CRITICAL
+    languages: [php]
+    pattern-either:
+      - pattern: $stmt->prepare($QUERY . $USER_INPUT)
+      - pattern: $pdo->prepare($QUERY . $USER_INPUT)
+      - pattern: $stmt->execute(array($USER_INPUT))
+    metadata:
+      category: security
+      cwe: CWE-89
+      confidence: medium
+
+  # Regex injection (ReDoS)
+  - id: php-regex-injection
+    message: "Regular expression injection (ReDoS) detected"
+    severity: MEDIUM
+    languages: [php]
+    pattern-either:
+      - pattern: preg_match($USER_INPUT, $STRING)
+      - pattern: preg_replace($USER_INPUT, $REPLACEMENT, $STRING)
+      - pattern: preg_split($USER_INPUT, $STRING)
+    metadata:
+      category: security
+      cwe: CWE-1333
+      confidence: low
+
+  # Insecure cookie settings
+  - id: php-insecure-cookie
+    message: "Insecure cookie configuration detected"
+    severity: MEDIUM
+    languages: [php]
+    pattern-either:
+      - pattern: setcookie($NAME, $VALUE)
+      - pattern: setcookie($NAME, $VALUE, $EXPIRE, $PATH, $DOMAIN, false)
+      - pattern: setcookie($NAME, $VALUE, $EXPIRE, $PATH, $DOMAIN, $SECURE, false)
+    metadata:
+      category: security
+      cwe: CWE-614
+      confidence: medium
+
+  # Information disclosure through errors
+  - id: php-information-disclosure-errors
+    message: "Information disclosure through error messages"
+    severity: LOW
+    languages: [php]
+    pattern-either:
+      - pattern: |
+          try {
+            ...
+          } catch (Exception $e) {
+            echo $e->getMessage();
+          }
+      - pattern: |
+          mysql_query($QUERY) or die(mysql_error());
+      - pattern: |
+          mysqli_query($CONN, $QUERY) or die(mysqli_error($CONN));
+    metadata:
+      category: security
+      cwe: CWE-209
+      confidence: low

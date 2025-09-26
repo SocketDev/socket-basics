@@ -1,0 +1,419 @@
+name: "Security Scan and Comment Action"
+description: "Runs various open source security tools and then comments on PRs with results."
+author: "Douglas Coburn"
+runs:
+  using: "docker"
+  image: "Dockerfile"
+
+inputs:
+  github_token:
+    description: "GitHub token to post comments on PRs"
+    required: true
+
+  # PR / API overrides
+  pr_number:
+    description: "Optional PR number to post comments to (overrides auto-discovery)"
+    required: false
+    default: ""
+
+  github_api_url:
+    description: "Optional GitHub API base URL (useful for GitHub Enterprise). Maps to INPUT_GITHUB_API_URL environment variable when set."
+    required: false
+    default: ""
+
+  # Enable Settings
+  python_sast_enabled:
+    description: "Enable Python SAST analysis"
+    required: false
+    default: "false"
+
+  golang_sast_enabled:
+    description: "Enable Golang SAST analysis"
+    required: false
+    default: "false"
+
+  javascript_sast_enabled:
+    description: "Enable JavaScript SAST analysis"
+    required: false
+    default: "false"
+
+  dockerfile_enabled:
+    description: "Enable Dockerfile analysis"
+    required: false
+    default: "false"
+
+  image_enabled:
+    description: "Enable image scanning"
+    required: false
+    default: "false"
+
+  secret_scanning_enabled:
+    description: "Enable secret scanning"
+    required: false
+    default: "false"
+
+  socket_scanning_enabled:
+    description: "Enable Socket reachability scanning"
+    required: false
+    default: "false"
+
+  socket_sca_enabled:
+    description: "Enable Socket SCA (Software Composition Analysis) scanning"
+    required: false
+    default: "false"
+
+  # Docker Configuration
+  docker_images:
+    description: "Comma-separated list of Docker images to scan"
+    required: false
+    default: ""
+  dockerfiles:
+    description: "Comma-separated list of Dockerfiles to scan"
+    required: false
+    default: ""
+
+  # Trufflehog Configuration
+  trufflehog_exclude_dir:
+    description: "Comma-separated list of directories to exclude in Trufflehog"
+    required: false
+    default: ""
+  trufflehog_rules:
+    description: "Rules to enable in Trufflehog"
+    required: false
+    default: ""
+  trufflehog_show_unverified:
+    description: "Show unverified secrets in Trufflehog results"
+    required: false
+    default: "false"
+
+  # Socket Configuration
+  socket_org:
+    description: "Socket organization for reachability scanning (required if socket_scanning_enabled is true)"
+    required: false
+    default: ""
+  socket_api_key:
+    description: "Socket API key for authentication"
+    required: false
+    default: ""
+  socket_security_api_key:
+    description: "Socket Security API key for SCA scanning (required if socket_sca_enabled is true)"
+    required: false
+    default: ""
+  socket_sca_files:
+    description: "Comma-separated list of manifest files to scan (e.g., package.json,requirements.txt,go.mod)"
+    required: false
+    default: ""
+
+  # SAST configuration
+  all_languages_enabled:
+    description: "Enable SAST for all supported languages"
+    required: false
+    default: "false"
+  all_rules_enabled:
+    description: "Run all bundled SAST rules regardless of language filters"
+    required: false
+    default: "false"
+  # Per-language SAST enable flags
+  python_sast_enabled:
+    description: "Enable Python SAST scanning"
+    required: false
+    default: "false"
+  javascript_sast_enabled:
+    description: "Enable JavaScript/TypeScript SAST scanning"
+    required: false
+    default: "false"
+  typescript_sast_enabled:
+    description: "Enable TypeScript SAST scanning"
+    required: false
+    default: "false"
+  go_sast_enabled:
+    description: "Enable Go SAST scanning"
+    required: false
+    default: "false"
+  golang_sast_enabled:
+    description: "Enable Golang SAST scanning"
+    required: false
+    default: "false"
+  java_sast_enabled:
+    description: "Enable Java SAST scanning"
+    required: false
+    default: "false"
+  php_sast_enabled:
+    description: "Enable PHP SAST scanning"
+    required: false
+    default: "false"
+  ruby_sast_enabled:
+    description: "Enable Ruby SAST scanning"
+    required: false
+    default: "false"
+  csharp_sast_enabled:
+    description: "Enable C# SAST scanning"
+    required: false
+    default: "false"
+  dotnet_sast_enabled:
+    description: "Enable .NET SAST scanning"
+    required: false
+    default: "false"
+  c_sast_enabled:
+    description: "Enable C SAST scanning"
+    required: false
+    default: "false"
+  cpp_sast_enabled:
+    description: "Enable C++ SAST scanning"
+    required: false
+    default: "false"
+  kotlin_sast_enabled:
+    description: "Enable Kotlin SAST scanning"
+    required: false
+    default: "false"
+  scala_sast_enabled:
+    description: "Enable Scala SAST scanning"
+    required: false
+    default: "false"
+  swift_sast_enabled:
+    description: "Enable Swift SAST scanning"
+    required: false
+    default: "false"
+  rust_sast_enabled:
+    description: "Enable Rust SAST scanning"
+    required: false
+    default: "false"
+  elixir_sast_enabled:
+    description: "Enable Elixir SAST scanning"
+    required: false
+    default: "false"
+
+  # Per-language rule overrides
+  python_enabled_rules:
+    description: "Comma-separated list of Python SAST rules to enable"
+    required: false
+    default: ""
+  python_disabled_rules:
+    description: "Comma-separated list of Python SAST rules to disable"
+    required: false
+    default: ""
+  javascript_enabled_rules:
+    description: "Comma-separated list of JavaScript/TypeScript SAST rules to enable"
+    required: false
+    default: ""
+  javascript_disabled_rules:
+    description: "Comma-separated list of JavaScript/TypeScript SAST rules to disable"
+    required: false
+    default: ""
+  go_enabled_rules:
+    description: "Comma-separated list of Go SAST rules to enable"
+    required: false
+    default: ""
+  go_disabled_rules:
+    description: "Comma-separated list of Go SAST rules to disable"
+    required: false
+    default: ""
+  java_enabled_rules:
+    description: "Comma-separated list of Java SAST rules to enable"
+    required: false
+    default: ""
+  java_disabled_rules:
+    description: "Comma-separated list of Java SAST rules to disable"
+    required: false
+    default: ""
+  php_enabled_rules:
+    description: "Comma-separated list of PHP SAST rules to enable"
+    required: false
+    default: ""
+  php_disabled_rules:
+    description: "Comma-separated list of PHP SAST rules to disable"
+    required: false
+    default: ""
+  ruby_enabled_rules:
+    description: "Comma-separated list of Ruby SAST rules to enable"
+    required: false
+    default: ""
+  ruby_disabled_rules:
+    description: "Comma-separated list of Ruby SAST rules to disable"
+    required: false
+    default: ""
+  csharp_enabled_rules:
+    description: "Comma-separated list of C# SAST rules to enable"
+    required: false
+    default: ""
+  csharp_disabled_rules:
+    description: "Comma-separated list of C# SAST rules to disable"
+    required: false
+    default: ""
+  dotnet_enabled_rules:
+    description: "Comma-separated list of .NET SAST rules to enable"
+    required: false
+    default: ""
+  dotnet_disabled_rules:
+    description: "Comma-separated list of .NET SAST rules to disable"
+    required: false
+    default: ""
+  c_enabled_rules:
+    description: "Comma-separated list of C SAST rules to enable"
+    required: false
+    default: ""
+  c_disabled_rules:
+    description: "Comma-separated list of C SAST rules to disable"
+    required: false
+    default: ""
+  cpp_enabled_rules:
+    description: "Comma-separated list of C++ SAST rules to enable"
+    required: false
+    default: ""
+  cpp_disabled_rules:
+    description: "Comma-separated list of C++ SAST rules to disable"
+    required: false
+    default: ""
+  kotlin_enabled_rules:
+    description: "Comma-separated list of Kotlin SAST rules to enable"
+    required: false
+    default: ""
+  kotlin_disabled_rules:
+    description: "Comma-separated list of Kotlin SAST rules to disable"
+    required: false
+    default: ""
+  scala_enabled_rules:
+    description: "Comma-separated list of Scala SAST rules to enable"
+    required: false
+    default: ""
+  scala_disabled_rules:
+    description: "Comma-separated list of Scala SAST rules to disable"
+    required: false
+    default: ""
+  swift_enabled_rules:
+    description: "Comma-separated list of Swift SAST rules to enable"
+    required: false
+    default: ""
+  swift_disabled_rules:
+    description: "Comma-separated list of Swift SAST rules to disable"
+    required: false
+    default: ""
+  rust_enabled_rules:
+    description: "Comma-separated list of Rust SAST rules to enable"
+    required: false
+    default: ""
+  rust_disabled_rules:
+    description: "Comma-separated list of Rust SAST rules to disable"
+    required: false
+    default: ""
+  elixir_enabled_rules:
+    description: "Comma-separated list of Elixir SAST rules to enable"
+    required: false
+    default: ""
+  elixir_disabled_rules:
+    description: "Comma-separated list of Elixir SAST rules to disable"
+    required: false
+    default: ""
+
+  # Trivy Configuration
+  trivy_exclude_dir:
+    description: "Comma-separated list of directories to exclude in Trivy"
+    required: false
+    default: ""
+  trivy_rules:
+    description: "Rules to enable in Trivy"
+    required: false
+    default: ""
+  trivy_disabled_rules:
+    description: "Comma-separated list of Trivy rules to disable"
+    required: false
+    default: ""
+  trivy_image_scanning_disabled:
+    description: "Disable Trivy image scanning"
+    required: false
+    default: "false"
+
+
+  # Log Forwarding Configuration
+  sumo_logic_enabled:
+    description: "Enable Sumo Logic log forwarding"
+    required: false
+    default: "false"
+  sumo_logic_http_source_url:
+    description: "HTTP source URL for Sumo Logic"
+    required: false
+    default: ""
+
+  # Microsoft Sentinel Configuration
+  ms_sentinel_enabled:
+    description: "Enable Microsoft Sentinel log forwarding"
+    required: false
+    default: "false"
+  ms_sentinel_workspace_id:
+    description: "Workspace ID for Microsoft Sentinel"
+    required: false
+    default: "REPLACE_ME"
+  ms_sentinel_shared_key:
+    description: "Shared key for Microsoft Sentinel"
+    required: false
+    default: "REPLACE_ME"
+
+  # Jira Configuration
+  jira_enabled:
+    description: "Enable Jira ticket creation"
+    required: false
+    default: "false"
+  jira_url:
+    description: "Jira instance URL"
+    required: false
+    default: ""
+  jira_email:
+    description: "Jira user email"
+    required: false
+    default: ""
+  jira_api_token:
+    description: "Jira API token"
+    required: false
+    default: ""
+  jira_project:
+    description: "Jira project key"
+    required: false
+    default: ""
+
+  # Slack Configuration
+  slack_enabled:
+    description: "Enable Slack notifications"
+    required: false
+    default: "false"
+  slack_webhook_url:
+    description: "Slack webhook URL"
+    required: false
+    default: ""
+
+  # Teams Configuration
+  teams_enabled:
+    description: "Enable Microsoft Teams notifications"
+    required: false
+    default: "false"
+  teams_webhook_url:
+    description: "Teams webhook URL"
+    required: false
+    default: ""
+
+  # Webhook Configuration
+  webhook_enabled:
+    description: "Enable generic webhook notifications"
+    required: false
+    default: "false"
+  webhook_url:
+    description: "Webhook URL"
+    required: false
+    default: ""
+  webhook_headers:
+    description: "Custom webhook headers as JSON string"
+    required: false
+    default: ""
+
+  # Scan Scope Configuration
+  scan_all:
+    description: "If true, always scan the whole directory regardless of git or file list."
+    required: false
+    default: "false"
+  scan_files:
+    description: "Comma-separated list of files to scan. If not set, will use git diff or scan all."
+    required: false
+    default: ""
+
+branding:
+  icon: "shield"
+  color: "blue"

@@ -1,0 +1,482 @@
+rules:
+  # === Critical Severity Rules ===
+
+  # SQL injection
+  - id: swift-sql-injection
+    message: "SQL injection vulnerability detected"
+    severity: CRITICAL
+    languages: [swift]
+    pattern-either:
+      - pattern: $DB.execute($QUERY + $USER_INPUT)
+      - pattern: sqlite3_exec($DB, $QUERY + $USER_INPUT, ...)
+      - pattern: "$QUERY + $USER_INPUT"
+    metadata:
+      category: security
+      cwe: CWE-89
+      confidence: medium
+
+  # Code injection via NSTask/Process
+  - id: swift-command-injection
+    message: "Command injection vulnerability detected"
+    severity: CRITICAL
+    languages: [swift]
+    pattern-either:
+      - pattern: NSTask().launchPath = $USER_INPUT
+      - pattern: "Process().executableURL = URL(fileURLWithPath: $USER_INPUT)"
+      - pattern: system($USER_INPUT)
+    metadata:
+      category: security
+      cwe: CWE-78
+      confidence: high
+
+  # Unsafe deserialization
+  - id: swift-unsafe-deserialization
+    message: "Unsafe deserialization detected"
+    severity: CRITICAL
+    languages: [swift]
+    pattern-either:
+      - pattern: 'NSKeyedUnarchiver.unarchiveObject(with: $USER_INPUT)'
+      - pattern: 'NSKeyedUnarchiver.unarchivedObject(ofClass: $...ARGS, from: $USER_INPUT)'
+      - pattern: 'PropertyListSerialization.propertyList(from: $USER_INPUT, $...ARGS)'
+    metadata:
+      category: security
+      cwe: CWE-502
+      confidence: high
+
+  # === High Severity Rules ===
+
+  # Hardcoded secrets
+  - id: swift-hardcoded-secrets
+    message: "Hardcoded secrets detected"
+    severity: HIGH
+    languages: [swift]
+    pattern-either:
+      - pattern: |
+          let $VAR = "..."
+      - pattern: |
+          var $VAR = "..."
+      - pattern: |
+          private let $VAR = "..."
+      - pattern: |
+          static let $VAR = "..."
+    where:
+      - metavariable-regex:
+          metavariable: $VAR
+          regex: (?i).*(password|secret|token|key|apiKey|api_key|privateKey|private_key|auth|credential).*
+    metadata:
+      category: security
+      cwe: CWE-798
+      confidence: medium
+
+  # Weak cryptography - MD5
+  - id: swift-weak-crypto-md5
+    message: "Use of weak MD5 hash algorithm"
+    severity: HIGH
+    languages: [swift]
+    pattern-either:
+      - pattern: CC_MD5($DATA, ...)
+      - pattern: Insecure.MD5.hash(...)
+      - pattern: CryptoKit.Insecure.MD5.hash(...)
+    metadata:
+      category: security
+      cwe: CWE-327
+      confidence: high
+
+  # Weak cryptography - SHA1
+  - id: swift-weak-crypto-sha1
+    message: "Use of weak SHA1 hash algorithm"
+    severity: HIGH
+    languages: [swift]
+    pattern-either:
+      - pattern: CC_SHA1($DATA, ...)
+      - pattern: Insecure.SHA1.hash(...)
+      - pattern: CryptoKit.Insecure.SHA1.hash(...)
+    metadata:
+      category: security
+      cwe: CWE-327
+      confidence: high
+
+  # SSL/TLS bypass
+  - id: swift-ssl-bypass
+    message: "SSL/TLS certificate validation bypassed"
+    severity: HIGH
+    languages: [swift]
+    pattern-either:
+      - pattern: |
+          func urlSession(_ session: URLSession, didReceive challenge: URLAuthenticationChallenge, completionHandler: @escaping (URLSession.AuthChallengeDisposition, URLCredential?) -> Void) {
+            completionHandler(.useCredential, URLCredential(trust: challenge.protectionSpace.serverTrust!))
+          }
+      - pattern: URLSessionConfiguration.default.tlsMinimumSupportedProtocolVersion = .tlsProtocol10
+    metadata:
+      category: security
+      cwe: CWE-295
+      confidence: high
+
+  # Path traversal
+  - id: swift-path-traversal
+    message: "Path traversal vulnerability detected"
+    severity: HIGH
+    languages: [swift]
+    pattern-either:
+      - pattern: 'FileManager.default.contents(atPath: $PATH + $USER_INPUT)'
+      - pattern: 'Data(contentsOf: URL(fileURLWithPath: $PATH + $USER_INPUT))'
+      - pattern: 'String(contentsOfFile: $PATH + $USER_INPUT)'
+      - pattern: 'NSData(contentsOfFile: $PATH + $USER_INPUT)'
+    metadata:
+      category: security
+      cwe: CWE-22
+      confidence: medium
+
+  # XSS in WebView
+  - id: swift-webview-xss
+    message: "XSS vulnerability in WebView"
+    severity: HIGH
+    languages: [swift]
+    pattern-either:
+      - pattern: 'webView.loadHTMLString($USER_INPUT, baseURL: nil)'
+      - pattern: 'WKWebView().loadHTMLString($USER_INPUT, baseURL: nil)'
+      - pattern: webView.evaluateJavaScript($USER_INPUT)
+    metadata:
+      category: security
+      cwe: CWE-79
+      confidence: medium
+
+  # === Medium Severity Rules ===
+
+  # Insecure random number generation
+  - id: swift-insecure-random
+    message: "Use of insecure random number generator"
+    severity: MEDIUM
+    languages: [swift]
+    pattern-either:
+      - pattern: arc4random()
+      - pattern: drand48()
+      - pattern: random()
+      - pattern: 'Int.random(in: $...RANGE)'
+    metadata:
+      category: security
+      cwe: CWE-338
+      confidence: low
+
+  # HTTP instead of HTTPS
+  - id: swift-insecure-http
+    message: "Use of HTTP instead of HTTPS"
+    severity: MEDIUM
+    languages: [swift]
+    pattern: $URL
+    metavariable-regex:
+      metavariable: $URL
+      regex: "http://.*"
+    metadata:
+      category: security
+      cwe: CWE-319
+      confidence: low
+
+  # Open redirect
+  - id: swift-open-redirect
+    message: "Open redirect vulnerability detected"
+    severity: MEDIUM
+    languages: [swift]
+    pattern-either:
+      - pattern: 'UIApplication.shared.open(URL(string: $USER_INPUT)!)'
+      - pattern: 'UIApplication.shared.openURL(URL(string: $USER_INPUT)!)'
+    metadata:
+      category: security
+      cwe: CWE-601
+      confidence: low
+
+  # Weak cipher algorithms
+  - id: swift-weak-cipher
+    message: "Use of weak cipher algorithm"
+    severity: MEDIUM
+    languages: [swift]
+    pattern-either:
+      - pattern: kCCAlgorithmDES
+      - pattern: kCCAlgorithmRC4
+      - pattern: kCCAlgorithm3DES
+      - pattern: CCCrypt(..., kCCAlgorithmDES, ...)
+    metadata:
+      category: security
+      cwe: CWE-327
+      confidence: high
+
+  # Keychain without proper security
+  - id: swift-keychain-insecure
+    message: "Keychain usage without proper security attributes"
+    severity: MEDIUM
+    languages: [swift]
+    pattern-either:
+      - pattern: |
+          SecItemAdd([
+            kSecClass: kSecClassGenericPassword,
+            kSecAttrAccount: $ACCOUNT,
+            kSecValueData: $DATA
+          ] as CFDictionary, nil)
+    pattern-not-inside:
+      pattern: |
+        ...
+        kSecAttrAccessible: kSecAttrAccessibleWhenUnlockedThisDeviceOnly
+        ...
+    metadata:
+      category: security
+      cwe: CWE-732
+      confidence: low
+
+  # === Low Severity Rules ===
+
+  # Debug information disclosure
+  - id: swift-debug-info-disclosure
+    message: "Debug information disclosure detected"
+    severity: LOW
+    languages: [swift]
+    pattern-either:
+      - pattern: print($USER_INPUT)
+      - pattern: NSLog($USER_INPUT)
+      - pattern: os_log($USER_INPUT, ...)
+      - pattern: debugPrint($USER_INPUT)
+    where:
+      - metavariable-regex:
+          metavariable: $USER_INPUT
+          regex: (?i).*(password|token|secret|key|credential).*
+    metadata:
+      category: security
+      cwe: CWE-532
+      confidence: low
+
+  # Hardcoded IP addresses
+  - id: swift-hardcoded-ip
+    message: "Hardcoded IP address detected"
+    severity: LOW
+    languages: [swift]
+    pattern: $IP_ADDRESS
+    metavariable-regex:
+      metavariable: $IP_ADDRESS
+      regex: "(192\\.168\\.\\d{1,3}\\.\\d{1,3})|(10\\.\\d{1,3}\\.\\d{1,3}\\.\\d{1,3})|(172\\.16\\.\\d{1,3}\\.\\d{1,3})|127\\.0\\.0\\.1|localhost"
+    metadata:
+      category: security
+      cwe: CWE-798
+      confidence: low
+
+  # Force unwrapping
+  - id: swift-force-unwrapping
+    message: "Force unwrapping detected - may cause crashes"
+    severity: LOW
+    languages: [swift]
+    pattern-either:
+      - pattern: $VAR!
+      - pattern: $OPTIONAL!.$PROPERTY
+      - pattern: try! $EXPRESSION
+    metadata:
+      category: security
+      cwe: CWE-248
+      confidence: low
+
+  # === iOS-specific Rules ===
+
+  # App Transport Security bypass
+  - id: swift-ios-ats-bypass
+    message: "App Transport Security bypassed"
+    severity: MEDIUM
+    languages: [swift]
+    pattern-either:
+      - pattern: NSAllowsArbitraryLoads = true
+      - pattern: NSExceptionAllowsInsecureHTTPLoads = true
+      - pattern: NSAllowsLocalNetworking = true
+    metadata:
+      category: security
+      platform: ios
+      cwe: CWE-319
+      confidence: medium
+
+  # Insecure data storage
+  - id: swift-ios-insecure-storage
+    message: "Insecure data storage detected"
+    severity: HIGH
+    languages: [swift]
+    pattern-either:
+      - pattern: 'UserDefaults.standard.set($SENSITIVE_DATA, forKey: $...KEY)'
+      - pattern: 'NSUserDefaults.standard.set($SENSITIVE_DATA, forKey: $...KEY)'
+      - pattern: '$SENSITIVE_DATA.write(to: URL($...ARGS), atomically: true)'
+    where:
+      - metavariable-regex:
+          metavariable: $SENSITIVE_DATA
+          regex: (?i).*(password|token|secret|key|credential|credit_card|ssn).*
+    metadata:
+      category: security
+      platform: ios
+      cwe: CWE-312
+      confidence: low
+
+  # Jailbreak detection bypass
+  - id: swift-ios-jailbreak-detection
+    message: "Jailbreak detection implementation detected"
+    severity: MEDIUM
+    languages: [swift]
+    pattern-either:
+      - pattern: 'FileManager.default.fileExists(atPath: "/Applications/Cydia.app")'
+      - pattern: 'fopen("/bin/bash", "r")'
+      - pattern: 'system("ls")'
+    metadata:
+      category: security
+      platform: ios
+      cwe: CWE-489
+      confidence: low
+
+  # URL scheme handling
+  - id: swift-ios-url-scheme
+    message: "URL scheme handling without validation"
+    severity: MEDIUM
+    languages: [swift]
+    pattern-either:
+      - pattern: |
+          func application(_ app: UIApplication, open url: URL, options: [UIApplication.OpenURLOptionsKey : Any] = [:]) -> Bool {
+            // No URL validation
+            ...
+          }
+      - pattern: UIApplication.shared.open(url)
+    metadata:
+      category: security
+      platform: ios
+      cwe: CWE-20
+      confidence: low
+
+  # Biometric authentication bypass
+  - id: swift-ios-biometric-bypass
+    message: "Biometric authentication implementation issue"
+    severity: MEDIUM
+    languages: [swift]
+    pattern-either:
+      - pattern: LAContext().evaluatePolicy(.deviceOwnerAuthentication, ...)
+      - pattern: LAContext().evaluatePolicy(.deviceOwnerAuthenticationWithBiometrics, ...)
+    pattern-not-inside:
+      pattern: |
+        ...
+        .deviceOwnerAuthenticationWithBiometrics
+        ...
+    metadata:
+      category: security
+      platform: ios
+      cwe: CWE-287
+      confidence: low
+
+  # === macOS-specific Rules ===
+
+  # Privilege escalation
+  - id: swift-macos-privilege-escalation
+    message: "Potential privilege escalation detected"
+    severity: HIGH
+    languages: [swift]
+    pattern-either:
+      - pattern: AuthorizationCreate(nil, nil, [], &$AUTH)
+      - pattern: AuthorizationExecuteWithPrivileges($AUTH, ...)
+      - pattern: STPrivilegedTask()
+    metadata:
+      category: security
+      platform: macos
+      cwe: CWE-250
+      confidence: medium
+
+  # Code signing bypass
+  - id: swift-macos-code-signing
+    message: "Code signing verification issue"
+    severity: HIGH
+    languages: [swift]
+    pattern-either:
+      - pattern: SecCodeCheckValidity($CODE, kSecCSDefaultFlags, nil)
+      - pattern: SecStaticCodeCheckValidity($STATIC_CODE, kSecCSDefaultFlags, nil)
+    pattern-not-inside:
+      pattern: |
+        ...
+        kSecCSCheckAllArchitectures
+        ...
+    metadata:
+      category: security
+      platform: macos
+      cwe: CWE-347
+      confidence: low
+
+  # === Network Security Rules ===
+
+  # Insecure URLSession configuration
+  - id: swift-insecure-urlsession
+    message: "Insecure URLSession configuration"
+    severity: MEDIUM
+    languages: [swift]
+    pattern-either:
+      - pattern: |
+          let config = URLSessionConfiguration.default
+          config.tlsMinimumSupportedProtocolVersion = .tlsProtocol10
+      - pattern: |
+          URLSessionConfiguration.default.urlCache = nil
+      - pattern: |
+          URLSessionConfiguration.default.requestCachePolicy = .reloadIgnoringLocalCacheData
+    metadata:
+      category: security
+      cwe: CWE-326
+      confidence: medium
+
+  # Certificate pinning bypass
+  - id: swift-certificate-pinning-bypass
+    message: "Certificate pinning bypassed or missing"
+    severity: HIGH
+    languages: [swift]
+    pattern-either:
+      - pattern: |
+          func urlSession(_ session: URLSession, didReceive challenge: URLAuthenticationChallenge, completionHandler: @escaping (URLSession.AuthChallengeDisposition, URLCredential?) -> Void) {
+            completionHandler(.performDefaultHandling, nil)
+          }
+    pattern-not-inside:
+      pattern: |
+        ...
+        let serverTrust = challenge.protectionSpace.serverTrust
+        let policy = SecPolicyCreateSSL(true, serverHostname as CFString)
+        ...
+    metadata:
+      category: security
+      cwe: CWE-295
+      confidence: low
+
+  # === Framework-specific Rules ===
+
+  # Core Data injection
+  - id: swift-core-data-injection
+    message: "Core Data injection vulnerability"
+    severity: HIGH
+    languages: [swift]
+    pattern-either:
+      - pattern: 'NSFetchRequest<$ENTITY>(entityName: $USER_INPUT)'
+      - pattern: '$CONTEXT.fetch(NSFetchRequest<$ENTITY>(entityName: $USER_INPUT))'
+      - pattern: 'NSPredicate(format: $FORMAT + $USER_INPUT)'
+    metadata:
+      category: security
+      framework: coredata
+      cwe: CWE-943
+      confidence: medium
+
+  # SwiftUI security issues
+  - id: swift-swiftui-security
+    message: "SwiftUI security issue detected"
+    severity: MEDIUM
+    languages: [swift]
+    pattern-either:
+      - pattern: 'WebView(url: URL(string: $USER_INPUT)!)'
+      - pattern: 'Link($TITLE, destination: URL(string: $USER_INPUT)!)'
+    metadata:
+      category: security
+      framework: swiftui
+      cwe: CWE-601
+      confidence: low
+
+  # Alamofire security issues
+  - id: swift-alamofire-security
+    message: "Alamofire security configuration issue"
+    severity: MEDIUM
+    languages: [swift]
+    pattern-either:
+      - pattern: 'let manager = ServerTrustManager(evaluators: [$HOST: DisabledTrustEvaluator()])'
+      - pattern: 'AF.request($URL).validate(statusCode: 200..<600)'
+    metadata:
+      category: security
+      framework: alamofire
+      cwe: CWE-295
+      confidence: medium

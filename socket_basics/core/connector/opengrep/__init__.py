@@ -1,0 +1,468 @@
+#!/usr/bin/env python3
+"""
+OpenGrep SAST Scanner Connector
+
+This connector composes a single OpenGrep command that includes full
+language rule files and appends --exclude-rule flags for any rules that
+should be skipped. It intentionally does not attempt per-rule fallbacks.
+"""
+
+import json
+import logging
+import os
+import subprocess
+import tempfile
+import yaml
+from pathlib import Path
+from typing import Dict, Any, List
+
+from ..base import BaseConnector
+# Opengrep produces canonical components/notifications directly
+
+logger = logging.getLogger(__name__)
+
+
+class OpenGrepScanner(BaseConnector):
+	def __init__(self, config):
+		super().__init__(config)
+
+	def scan(self) -> Dict[str, Any]:
+		# Determine enabled rule files
+		try:
+			rule_files = self.config.build_opengrep_rules() or []
+		except Exception:
+			rule_files = []
+
+		# If no languages selected and not explicitly allowing all, skip
+		if not rule_files and not self.config.get('all_languages_enabled', False):
+			logger.debug('No SAST languages enabled; skipping OpenGrep')
+			return {}
+
+		targets = self.config.get_scan_targets()
+
+		# Locate rules directory
+		module_dir = Path(__file__).resolve().parents[3]
+		bundled_rules_dir = module_dir / 'rules'
+		rules_dir = self.config.get('opengrep_rules_dir') or (str(bundled_rules_dir) if bundled_rules_dir.exists() else None)
+		if not rules_dir:
+			logger.error('No rules directory found')
+			return {}
+
+		# Read filtered rule definitions if available
+		try:
+			filtered = self.config.build_filtered_opengrep_rules() or {}
+		except Exception:
+			filtered = {}
+
+		# Debugging: log computed rule files and filtered rules for diagnosis
+		try:
+			logger.debug('Computed rule_files for OpenGrep: %s', rule_files)
+			logger.debug('Computed filtered rule mapping: %s', filtered)
+		except Exception:
+			pass
+
+		if self.config.get('all_rules_enabled', False):
+			filtered = {}
+
+		config_args: List[str] = []
+		if filtered:
+			for rf, enabled_ids in filtered.items():
+				p = Path(rules_dir) / rf
+				if not p.exists():
+					logger.debug('Rule file missing: %s', p)
+					continue
+				try:
+					with open(p, 'r') as fh:
+						data = yaml.safe_load(fh) or {}
+					all_ids = [r.get('id') for r in (data.get('rules') or []) if r.get('id')]
+					to_exclude = [rid for rid in all_ids if rid not in (enabled_ids or [])]
+					config_args.extend(['--config', str(p)])
+					for ex in to_exclude:
+						config_args.extend(['--exclude-rule', ex])
+				except Exception:
+					logger.debug('Failed reading/parsing rule file %s', p, exc_info=True)
+		else:
+			for rf in rule_files:
+				p = Path(rules_dir) / rf
+				if p.exists():
+					config_args.extend(['--config', str(p)])
+
+		# If nothing selected, only include all bundled rule files when the
+		# caller explicitly requested all languages or all rules. Otherwise
+		# skip scanning to avoid running unrelated language rules.
+		if not config_args:
+			# If all_rules_enabled is set, include all rule files for the
+			# languages that the config reports as enabled (build_opengrep_rules).
+			# Only when all_languages_enabled is True should we include every
+			# bundled rule file regardless of language flags.
+			if self.config.get('all_rules_enabled', False):
+				try:
+					rule_files = self.config.build_opengrep_rules() or []
+					for rf in rule_files:
+						p = Path(rules_dir) / rf
+						if p.exists():
+							config_args.extend(['--config', str(p)])
+				except Exception:
+					logger.debug('Failed expanding all_rules into specific rule files', exc_info=True)
+
+			if not config_args and self.config.get('all_languages_enabled', False):
+				try:
+					for p in Path(rules_dir).glob('*.yml'):
+						config_args.extend(['--config', str(p)])
+				except Exception:
+					pass
+
+			if not config_args:
+				logger.debug('No rule files selected and not configured to include all; skipping OpenGrep')
+				return {}
+
+		if not config_args:
+			logger.error('No valid rule files found')
+			return {}
+
+		# Run combined OpenGrep once
+		with tempfile.NamedTemporaryFile(mode='w', suffix='.json', delete=False) as tf:
+			out_file = tf.name
+
+		cmd = ['opengrep', '--json', '--output', out_file]
+		verbose = self.config.get('verbose', False)
+		cmd.append('--verbose' if verbose else '--quiet')
+
+		try:
+			ws = Path(self.config.workspace)
+			if not (ws / '.git').exists():
+				cmd.append('-a')
+				cmd.append('--no-git-ignore')
+		except Exception:
+			pass
+
+		cmd.extend(config_args + targets)
+		logger.info('Running OpenGrep: %s', ' '.join(cmd))
+
+		try:
+			result = subprocess.run(cmd, capture_output=True, text=True)
+		except FileNotFoundError:
+			logger.error('OpenGrep binary not found')
+			try:
+				os.unlink(out_file)
+			except Exception:
+				pass
+			return {}
+
+		if verbose and result.stdout:
+			logger.debug('OpenGrep stdout: %s', result.stdout)
+		if verbose and result.stderr:
+			logger.debug('OpenGrep stderr: %s', result.stderr)
+
+		if os.path.exists(out_file) and os.path.getsize(out_file) > 0:
+			try:
+				with open(out_file, 'r') as fh:
+					raw = fh.read()
+					data = json.loads(raw)
+			except Exception:
+				logger.debug('Failed to parse OpenGrep JSON output', exc_info=True)
+				data = {}
+		else:
+			logger.warning('OpenGrep produced no output (combined run)')
+			data = {}
+
+		try:
+			os.unlink(out_file)
+		except Exception:
+			pass
+
+		try:
+			raw_processed = self._convert_to_socket_facts(data or {})
+			# Convert mapping -> canonical wrapper if needed
+			if isinstance(raw_processed, dict) and raw_processed and 'components' not in raw_processed and all(isinstance(v, dict) for v in raw_processed.values()):
+				raw_processed = {'components': list(raw_processed.values())}
+			# raw_processed is now canonical; build socket_facts from it
+			socket_facts = raw_processed if isinstance(raw_processed, dict) and isinstance(raw_processed.get('components'), list) else {'components': []}
+			notifications = []
+			# Build per-subtype notification tables (e.g. 'sast-python',
+			# 'sast-golang', 'sast-typescript'). For each subtype present in
+			# the alerts, create a table with title=subtype and rows similar
+			# to the old notification_rows format.
+			wrapper = {'components': socket_facts.get('components', [])}
+			try:
+				comps_map: Dict[str, Dict[str, Any]] = {c.get('id') or c.get('name'): c for c in socket_facts.get('components', [])}
+				tables: List[Dict[str, Any]] = []
+				groups: Dict[str, List[Dict[str, Any]]] = {}
+				# Group all alerts by their subType
+				for c in comps_map.values():
+					comp_name = c.get('name') or c.get('id') or ''
+					for a in c.get('alerts', []):
+						st = a.get('subType') or a.get('subtype') or 'sast-generic'
+						groups.setdefault(st, []).append({'component': c, 'alert': a})
+
+				for subtype, items in groups.items():
+					rows: List[List[str]] = []
+					for it in items:
+						c = it['component']
+						a = it['alert']
+						props = a.get('props', {}) or {}
+						full_path = props.get('filePath', a.get('location', {}).get('path')) or '-'
+						try:
+							from pathlib import Path as _P
+							file_name = _P(full_path).name
+						except Exception:
+							file_name = full_path
+						# include severity as second column so notifiers (Jira) can display it
+						rows.append([
+							props.get('ruleId', a.get('title', '')),
+							a.get('severity', ''),
+							file_name,
+							full_path,
+							f"{props.get('startLine','')}-{props.get('endLine','')}",
+							props.get('codeSnippet','') or ''
+						])
+					# Provide headers so downstream notifiers preserve column names
+					headers = ['Rule', 'Severity', 'File', 'Path', 'Lines', 'Code']
+					tables.append({'title': subtype, 'headers': headers, 'rows': rows})
+
+				if tables:
+					wrapper['notifications'] = tables
+				elif notifications:
+					# adopt normalize_components notifications into canonical tables
+					wrapper['notifications'] = [{'title': 'results', 'rows': notifications}]
+			except Exception:
+				# if grouping fails, fall back to raw notifications
+				if notifications:
+					# fallback: attach as canonical notifications list
+					wrapper['notifications'] = [{'title': 'results', 'rows': notifications}]
+
+			return {'components': wrapper.get('components', []), 'notifications': wrapper.get('notifications', [])}
+		except Exception:
+			logger.exception('Processing OpenGrep results failed')
+			return {'components': [], 'notifications': []}
+
+	def _convert_to_socket_facts(self, raw_results: Any) -> Dict[str, Any]:
+		"""Convert OpenGrep JSON output into a mapping of component_id -> component.
+
+		Expected output for the manager is a dict where each value is a component
+		dict containing an 'alerts' list. If no alerts are present we return an
+		empty dict so the manager treats this as no results.
+		"""
+		if not raw_results:
+			return {}
+
+		# Common shapes: {'components': [ {...}, ... ]} or {'results': [...]}
+		out: Dict[str, Any] = {}
+
+		# If opengrep produces a 'results' list (common), convert each finding into
+		# a component with a single alert. Group alerts by path so each file is a
+		# component that contains its alerts.
+		if isinstance(raw_results, dict):
+			results = raw_results.get('results') if isinstance(raw_results.get('results'), list) else None
+			if isinstance(results, list):
+				# group alerts by file path
+				comps: Dict[str, Dict[str, Any]] = {}
+				for r in results:
+					try:
+						path = r.get('path') or (r.get('extra', {}) or {}).get('file') or 'unknown'
+						# Preserve original identifier so we can annotate generatedBy when
+						# the rule comes from the bundled socket_basics ruleset
+						original_check_id = r.get('check_id') or (r.get('extra') or {}).get('rule_id') or ''
+						check_id = original_check_id
+						# Remove internal namespace prefix if present; connectors own
+						# their emitted identifiers and must not expose internal pkg IDs
+						try:
+							if isinstance(check_id, str) and check_id.startswith('socket_basics.rules.'):
+								check_id = check_id.replace('socket_basics.rules.', '', 1)
+						except Exception:
+							pass
+						severity = ((r.get('extra') or {}).get('severity') or r.get('severity') or '')
+						severity_norm = str(severity).lower() if severity is not None else ''
+						message = (r.get('extra') or {}).get('message') or r.get('message') or ''
+						start = (r.get('start') or {}).get('line')
+						end = (r.get('end') or {}).get('line')
+
+						# Normalize severity to one of low/medium/high/critical
+						if severity_norm in ('critical', 'error', 'err'):
+							sev_label = 'critical'
+						elif severity_norm in ('high',):
+							sev_label = 'high'
+						elif severity_norm in ('medium', 'moderate'):
+							sev_label = 'medium'
+						elif severity_norm in ('low', 'warning'):
+							sev_label = 'low'
+						else:
+							# default if unknown
+							sev_label = 'medium'
+
+						alert = {
+							'title': check_id,
+							'description': message,
+							'severity': sev_label,
+							'type': 'generic',
+							# Keep location focused on line information only; do NOT
+							# include the path here so callers rely on props['filePath']
+							# for the file path (schema requirement).
+							'location': {
+								'start': start,
+								'end': end
+							},
+							'props': {
+								'ruleId': check_id,
+								'confidence': (r.get('extra') or {}).get('metadata', {}).get('confidence', ''),
+								'fingerprint': (r.get('extra') or {}).get('fingerprint') or '',
+								# Fill commonly-consumed fields so notifiers can format Location/Lines
+								'filePath': path,
+								'startLine': start,
+								'endLine': end,
+								'codeSnippet': (r.get('extra') or {}).get('lines') or (r.get('extra') or {}).get('snippet') or ''
+							}
+						}
+
+						# Determine a more specific subtype when possible.
+						# Prefer file extension, then check_id naming conventions.
+						detected_subtype = None
+						try:
+							from pathlib import Path as _P
+							ext = (_P(path).suffix or '').lower()
+							if ext == '.py' or (isinstance(check_id, str) and check_id.startswith('python-')):
+								detected_subtype = 'sast-python'
+							elif ext in ('.js', '.ts') or (isinstance(check_id, str) and check_id.startswith('js-')):
+								detected_subtype = 'sast-javascript'
+							elif ext in ('.go',) or (isinstance(check_id, str) and check_id.startswith('go-')):
+								detected_subtype = 'sast-golang'
+						except Exception:
+							detected_subtype = None
+
+						# Provide required top-level classification fields
+						# SAST findings should be classified as vulnerabilities by default
+						alert.setdefault('category', 'vulnerability')
+						# Ensure generatedBy indicates the originating opengrep flavor
+						try:
+							# detected_subtype may be like 'sast-python' or 'sast-javascript'
+							if detected_subtype:
+								# Map 'sast-python' -> 'opengrep-python'
+								gen = detected_subtype.replace('sast-', 'opengrep-')
+							else:
+								gen = 'sast-generic'
+							# Force the generatedBy to the opengrep flavor so
+							# notifiers can attribute findings correctly.
+							alert['generatedBy'] = gen
+						except Exception:
+							alert['generatedBy'] = 'opengrep'
+						if detected_subtype:
+							alert['subType'] = detected_subtype
+						else:
+							alert.setdefault('subType', 'sast-generic')
+
+						# Normalize path and strip workspace prefix if present so component
+						# names are stable and do not include the workspace folder.
+						try:
+							from pathlib import Path as _P
+							import hashlib as _hash
+							p = _P(path)
+							# Resolve relative to workspace when present so paths are stable
+							try:
+								ws = getattr(self.config, 'workspace', None)
+								ws_root = getattr(ws, 'path', None) or getattr(ws, 'root', None) or ws
+								if ws_root:
+									# If path is absolute and inside workspace, make it relative
+									if p.is_absolute():
+										try:
+											if str(p).startswith(str(ws_root)):
+												p = _P(os.path.relpath(str(p), str(ws_root)))
+										except Exception:
+											pass
+									else:
+										# Remove leading workspace folder components like "../NodeGoat" or "NodeGoat"
+										parts = str(p).split(os.sep)
+										ws_name = os.path.basename(str(ws_root))
+										if parts and (parts[0] == ws_name or (len(parts) >= 2 and parts[0] in ('.', '..') and parts[1] == ws_name)):
+											# find index after workspace name
+											if parts[0] == ws_name:
+												parts = parts[1:]
+											else:
+												parts = parts[2:]
+										p = _P(os.path.join(*parts)) if parts else _P('')
+							except Exception:
+								pass
+							# Build a normalized identifier from path and filename
+							norm = str(p.as_posix())
+							comp_id = _hash.sha256(norm.encode('utf-8')).hexdigest()
+						except Exception:
+							comp_id = path
+
+						if comp_id not in comps:
+							# initialize component with qualifiers; connectors may populate
+							# a component-level 'type' qualifier to mirror alert subType
+							comps[comp_id] = {
+								'id': comp_id,
+								# Use generic top-level type (keep specific scanner type in qualifiers)
+								'type': 'generic',
+								'name': path,
+								"internal": True,
+								'alerts': [],
+								'qualifiers': {
+									'scanner': 'opengrep'
+								}
+							}
+						comps[comp_id]['alerts'].append(alert)
+					except Exception:
+						logger.debug('Failed to convert single opengrep result to alert', exc_info=True)
+
+				# Filter out components with no alerts (shouldn't happen) and return
+				for k, v in comps.items():
+					# set component-level qualifier 'type' from the first alert subType if present
+					alerts = v.get('alerts') or []
+					if not alerts:
+						continue
+					first_sub = alerts[0].get('subType') or alerts[0].get('subtype')
+					if first_sub:
+						try:
+							v.setdefault('qualifiers', {})
+							v['qualifiers']['type'] = first_sub
+						except Exception:
+							pass
+					out[k] = v
+				return out
+
+			# If it's already a mapping of component_id -> component, filter empty alerts
+			if all(isinstance(v, dict) for v in raw_results.values()):
+				for k, v in raw_results.items():
+					alerts = v.get('alerts') or []
+					if alerts:
+						out[k] = v
+				return out
+
+		return {}
+
+	def notification_rows(self, processed_results: Dict[str, Any]) -> List[List[str]]:
+		# Build canonical list-of-table dicts grouped by filename or rule
+		tables: List[Dict[str, Any]] = []
+		if not processed_results:
+			return tables
+		groups: Dict[str, List[List[str]]] = {}
+		headers = ['Rule', 'Severity', 'File', 'Path', 'Lines', 'Code']
+		for comp in processed_results.values():
+			for a in comp.get('alerts', []):
+				props = a.get('props', {}) or {}
+				severity = a.get('severity', 'low')
+				full_path = props.get('filePath', a.get('location', {}).get('path')) or '-'
+				try:
+					from pathlib import Path
+
+					file_name = Path(full_path).name
+				except Exception:
+					file_name = full_path
+
+				row = [
+					props.get('ruleId', a.get('title', '')),
+					severity,
+					file_name,
+					full_path,
+					f"{props.get('startLine','')}-{props.get('endLine','')}",
+					props.get('codeSnippet','') or ''
+				]
+				group_key = props.get('ruleId') or file_name
+				groups.setdefault(group_key, []).append(row)
+
+		for title, rows in groups.items():
+			tables.append({'title': title, 'headers': headers, 'rows': rows})
+
+		return tables
+

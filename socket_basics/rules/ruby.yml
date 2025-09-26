@@ -1,0 +1,399 @@
+rules:
+  # === Critical Severity Rules ===
+
+  # Code injection via eval - keep generic
+  - id: ruby-eval-injection
+    message: "Code injection via eval, instance_eval, or class_eval"
+    severity: CRITICAL
+    languages: [ruby]
+    pattern-either:
+      - pattern: eval($USER_INPUT)
+      - pattern: instance_eval($USER_INPUT)
+      - pattern: class_eval($USER_INPUT)
+      - pattern: module_eval($USER_INPUT)
+      - pattern: binding.eval($USER_INPUT)
+    metadata:
+      category: security
+      cwe: CWE-94
+      confidence: high
+
+  # Command injection - generic patterns
+  - id: ruby-command-injection
+    message: "Command injection vulnerability detected"
+    severity: CRITICAL
+    languages: [ruby]
+    pattern-either:
+      - pattern: system($USER_INPUT)
+      - pattern: exec($USER_INPUT)
+      - pattern: spawn($USER_INPUT)
+      - pattern: IO.popen($USER_INPUT)
+      - pattern: Kernel.system($USER_INPUT)
+      # String concatenation patterns
+      - pattern: system($CMD + $VAR)
+      - pattern: system($CMD << $VAR)
+      - pattern: exec($CMD + $VAR)
+      # Backtick patterns (simplified)
+      - pattern: '$VAR'
+    metadata:
+      category: security
+      cwe: CWE-78
+      confidence: high
+
+  # SQL injection - broad patterns that catch real cases
+  - id: ruby-sql-injection
+    message: "SQL injection vulnerability detected"
+    severity: CRITICAL
+    languages: [ruby]
+    pattern-either:
+      # String concatenation (most common)
+      - pattern: $MODEL.where($QUERY + $VAR)
+      - pattern: $MODEL.find_by_sql($QUERY + $VAR)
+      - pattern: ActiveRecord::Base.connection.execute($QUERY + $VAR)
+      - pattern: $DB.query($QUERY + $VAR)
+      # String interpolation (catch variables that might contain interpolation)
+      - pattern: $MODEL.where($VAR)
+      - pattern: $MODEL.find_by_sql($VAR)
+      # Format string patterns
+      - pattern: $MODEL.where($QUERY % $VAR)
+      - pattern: $MODEL.where(sprintf($QUERY, $VAR))
+    metadata:
+      category: security
+      cwe: CWE-89
+      confidence: high
+
+  # Unsafe deserialization
+  - id: ruby-unsafe-deserialization
+    message: "Unsafe deserialization detected"
+    severity: CRITICAL
+    languages: [ruby]
+    pattern-either:
+      - pattern: Marshal.load($USER_INPUT)
+      - pattern: Marshal.restore($USER_INPUT)
+      - pattern: YAML.load($USER_INPUT)
+      - pattern: YAML.unsafe_load($USER_INPUT)
+    metadata:
+      category: security
+      cwe: CWE-502
+      confidence: high
+
+  # Dynamic method definition - simplified
+  - id: ruby-dynamic-method-definition
+    message: "Dynamic method definition with user input"
+    severity: CRITICAL
+    languages: [ruby]
+    pattern-either:
+      - pattern: define_method($USER_INPUT)
+      - pattern: define_method($USER_INPUT, $BLOCK)
+      - pattern: send($USER_INPUT)
+      - pattern: send($USER_INPUT, $ARGS)
+      - pattern: $OBJ.send($USER_INPUT)
+      - pattern: public_send($USER_INPUT)
+    metadata:
+      category: security
+      cwe: CWE-94
+      confidence: medium
+
+  # === High Severity Rules ===
+
+  # Hardcoded secrets - using regex on the variable name
+  - id: ruby-hardcoded-secrets
+    message: "Hardcoded secret or credential detected"
+    severity: HIGH
+    languages: [ruby]
+    patterns:
+      - pattern-either:
+          - pattern: $VAR = $VALUE
+          - pattern: $CONST = $VALUE
+      - metavariable-regex:
+          metavariable: $VAR
+          regex: (?i).*(password|passwd|pwd|secret|token|key|api_key|private_key).*
+      - metavariable-pattern:
+          metavariable: $VALUE
+          pattern: '"..."'
+    metadata:
+      category: security
+      cwe: CWE-798
+      confidence: medium
+
+  # File path traversal - generic patterns
+  - id: ruby-path-traversal
+    message: "Path traversal vulnerability detected"
+    severity: HIGH
+    languages: [ruby]
+    pattern-either:
+      - pattern: File.open($PATH + $USER_INPUT)
+      - pattern: File.read($PATH + $USER_INPUT)
+      - pattern: File.write($PATH + $USER_INPUT, $DATA)
+      - pattern: IO.read($PATH + $USER_INPUT)
+      - pattern: Pathname.new($PATH + $USER_INPUT)
+      - pattern: Dir.glob($PATH + $USER_INPUT)
+      # Also catch direct user input
+      - pattern: File.open($USER_INPUT)
+      - pattern: File.read($USER_INPUT)
+    metadata:
+      category: security
+      cwe: CWE-22
+      confidence: medium
+
+  # Open redirect - Rails patterns
+  - id: ruby-open-redirect
+    message: "Open redirect vulnerability detected"
+    severity: HIGH
+    languages: [ruby]
+    pattern-either:
+      - pattern: redirect_to($USER_INPUT)
+      - pattern: redirect_to(params[$PARAM])
+    metadata:
+      category: security
+      cwe: CWE-601
+      confidence: medium
+
+  # XSS vulnerabilities - Rails specific
+  - id: ruby-xss-raw-output
+    message: "XSS vulnerability via raw HTML output"
+    severity: HIGH
+    languages: [ruby]
+    pattern-either:
+      - pattern: raw($USER_INPUT)
+      - pattern: $VAR.html_safe
+    metadata:
+      category: security
+      cwe: CWE-79
+      confidence: medium
+
+  # SSL/TLS verification bypass
+  - id: ruby-ssl-verification-bypass
+    message: "SSL/TLS certificate verification disabled"
+    severity: HIGH
+    languages: [ruby]
+    pattern-either:
+      - pattern: OpenSSL::SSL::VERIFY_NONE
+      - pattern: $HTTP.verify_mode = OpenSSL::SSL::VERIFY_NONE
+    metadata:
+      category: security
+      cwe: CWE-295
+      confidence: high
+
+  # Weak cryptographic hash
+  - id: ruby-weak-crypto
+    message: "Use of weak hash algorithm (MD5 or SHA1)"
+    severity: HIGH
+    languages: [ruby]
+    pattern-either:
+      # MD5
+      - pattern: Digest::MD5.hexdigest($DATA)
+      - pattern: Digest::MD5.digest($DATA)
+      - pattern: Digest::MD5.new
+      - pattern: OpenSSL::Digest::MD5.new
+      # SHA1
+      - pattern: Digest::SHA1.hexdigest($DATA)
+      - pattern: Digest::SHA1.digest($DATA)
+      - pattern: Digest::SHA1.new
+      - pattern: OpenSSL::Digest::SHA1.new
+    metadata:
+      category: security
+      cwe: CWE-327
+      confidence: high
+
+  # === Medium Severity Rules ===
+
+  # Insecure random number generation
+  - id: ruby-insecure-random
+    message: "Use of insecure random number generator"
+    severity: MEDIUM
+    languages: [ruby]
+    pattern-either:
+      - pattern: rand()
+      - pattern: rand($MAX)
+      - pattern: Random.rand()
+      - pattern: Kernel.rand()
+      - pattern: srand($SEED)
+    metadata:
+      category: security
+      cwe: CWE-338
+      confidence: medium
+
+  # Weak cipher algorithms
+  - id: ruby-weak-cipher
+    message: "Use of weak cipher algorithm"
+    severity: MEDIUM
+    languages: [ruby]
+    pattern-either:
+      - pattern: OpenSSL::Cipher.new("DES")
+      - pattern: OpenSSL::Cipher.new("RC4")
+      - pattern: OpenSSL::Cipher.new("RC2")
+      - pattern: OpenSSL::Cipher::DES.new
+      - pattern: OpenSSL::Cipher::RC4.new
+    metadata:
+      category: security
+      cwe: CWE-327
+      confidence: high
+
+  # Mass assignment vulnerability - Rails
+  - id: ruby-mass-assignment
+    message: "Mass assignment vulnerability detected"
+    severity: MEDIUM
+    languages: [ruby]
+    pattern-either:
+      - pattern: $MODEL.new(params)
+      - pattern: $MODEL.create(params)
+      - pattern: $MODEL.update(params)
+      - pattern: $MODEL.update_attributes(params)
+      - pattern: $MODEL.assign_attributes(params)
+    metadata:
+      category: security
+      framework: rails
+      cwe: CWE-915
+      confidence: low
+
+  # CSRF protection bypass
+  - id: ruby-csrf-bypass
+    message: "CSRF protection potentially bypassed"
+    severity: MEDIUM
+    languages: [ruby]
+    pattern-either:
+      - pattern: skip_before_action :verify_authenticity_token
+      - pattern: skip_forgery_protection
+    metadata:
+      category: security
+      framework: rails
+      cwe: CWE-352
+      confidence: medium
+
+  # HTTP instead of HTTPS - catch any HTTP URL
+  - id: ruby-insecure-http
+    message: "Use of HTTP instead of HTTPS"
+    severity: MEDIUM
+    languages: [ruby]
+    pattern-regex: "http://[a-zA-Z0-9.-]+[a-zA-Z0-9/._-]*"
+    metadata:
+      category: security
+      cwe: CWE-319
+      confidence: low
+
+  # === Low Severity Rules ===
+
+  # Debug information disclosure
+  - id: ruby-debug-info-disclosure
+    message: "Debug information disclosure detected"
+    severity: LOW
+    languages: [ruby]
+    patterns:
+      - pattern-either:
+          - pattern: puts $USER_INPUT
+          - pattern: p $USER_INPUT
+          - pattern: pp $USER_INPUT
+          - pattern: print $USER_INPUT
+          - pattern: Rails.logger.debug $USER_INPUT
+      - metavariable-regex:
+          metavariable: $USER_INPUT
+          regex: (?i).*(password|token|secret|key|credential).*
+    metadata:
+      category: security
+      cwe: CWE-532
+      confidence: low
+
+  # Hardcoded IP addresses
+  - id: ruby-hardcoded-ip
+    message: "Hardcoded IP address detected"
+    severity: LOW
+    languages: [ruby]
+    pattern-regex: "(192\\.168\\.|10\\.|172\\.16\\.|127\\.0\\.0\\.1)"
+    metadata:
+      category: security
+      cwe: CWE-798
+      confidence: low
+
+  # Empty rescue blocks
+  - id: ruby-empty-rescue
+    message: "Empty rescue block detected - exceptions should be handled"
+    severity: LOW
+    languages: [ruby]
+    pattern: |
+      begin
+        $...BODY
+      rescue
+      end
+    metadata:
+      category: security
+      cwe: CWE-703
+      confidence: high
+
+  # === Framework-specific Rules (Rails) ===
+
+  # Rails find_by_sql injection - catch any variable usage
+  - id: ruby-rails-find-by-sql-injection
+    message: "Potential SQL injection in find_by_sql method"
+    severity: CRITICAL
+    languages: [ruby]
+    pattern-either:
+      - pattern: $MODEL.find_by_sql($VAR)
+      - pattern: $MODEL.find_by_sql($QUERY + $VAR)
+      - pattern: $MODEL.find_by_sql($QUERY % $VAR)
+    metadata:
+      category: security
+      framework: rails
+      cwe: CWE-89
+      confidence: medium
+
+  # Rails where clause injection
+  - id: ruby-rails-where-injection
+    message: "Potential SQL injection in where clause"
+    severity: CRITICAL
+    languages: [ruby]
+    pattern-either:
+      - pattern: $MODEL.where($VAR)
+      - pattern: $MODEL.where($QUERY + $VAR)
+      - pattern: $MODEL.where($QUERY % $VAR)
+    metadata:
+      category: security
+      framework: rails
+      cwe: CWE-89
+      confidence: medium
+
+  # Template injection - generic
+  - id: ruby-template-injection
+    message: "Template injection vulnerability detected"
+    severity: HIGH
+    languages: [ruby]
+    pattern-either:
+      - pattern: ERB.new($USER_INPUT).result
+      - pattern: Liquid::Template.parse($USER_INPUT)
+      - pattern: Mustache.render($USER_INPUT, $DATA)
+    metadata:
+      category: security
+      cwe: CWE-94
+      confidence: medium
+
+  # File upload without validation - Rails pattern
+  - id: ruby-file-upload-no-validation
+    message: "File upload without proper validation"
+    severity: MEDIUM
+    languages: [ruby]
+    pattern-either:
+      - pattern: |
+          def upload
+            $...BODY
+            File.open($PATH, $MODE) { |f| f.write(file.read) }
+            $...BODY
+          end
+      - pattern: params[$PARAM].read
+    metadata:
+      category: security
+      cwe: CWE-434
+      confidence: low
+
+  # Dangerous file permissions
+  - id: ruby-dangerous-file-permissions
+    message: "Dangerous file permissions detected"
+    severity: MEDIUM
+    languages: [ruby]
+    pattern-either:
+      - pattern: File.chmod(0777, $FILE)
+      - pattern: File.chmod(0666, $FILE)
+      - pattern: FileUtils.chmod(0777, $FILE)
+      - pattern: FileUtils.chmod(0666, $FILE)
+    metadata:
+      category: security
+      cwe: CWE-732
+      confidence: high

@@ -1,0 +1,720 @@
+rules:
+  # ===== ELIXIR SECURITY RULES =====
+
+  # === Critical Severity Rules ===
+
+  # Code injection
+  - id: elixir-code-injection
+    message: "Code injection vulnerability detected"
+    severity: CRITICAL
+    languages: [elixir]
+    pattern-either:
+      - pattern: Code.eval_string($USER_INPUT)
+      - pattern: Code.eval_string($USER_INPUT, ...)
+      - pattern: Code.compile_string($USER_INPUT)
+      - pattern: Code.compile_string($USER_INPUT, ...)
+    metadata:
+      category: security
+      cwe: CWE-94
+      confidence: high
+
+  # SQL injection
+  - id: elixir-sql-injection
+    message: "SQL injection vulnerability detected"
+    severity: CRITICAL
+    languages: [elixir]
+    pattern-either:
+      - pattern: Ecto.Adapters.SQL.query($REPO, $QUERY <> $USER_INPUT, [])
+      - pattern: "SELECT * FROM users WHERE id = #{$USER_INPUT}"
+      - pattern: fragment($QUERY <> $USER_INPUT)
+      - pattern: Repo.query($QUERY <> $USER_INPUT)
+    metadata:
+      category: security
+      cwe: CWE-89
+      confidence: medium
+
+  # Command injection
+  - id: elixir-command-injection
+    message: "Command injection vulnerability detected"
+    severity: CRITICAL
+    languages: [elixir]
+    pattern-either:
+      - pattern: System.cmd($CMD, [$USER_INPUT])
+      - pattern: System.cmd($USER_INPUT, ...)
+      - pattern: "Port.open({:spawn, $USER_INPUT}, [])"
+      - pattern: "Port.open({:spawn_executable, $USER_INPUT}, [])"
+    metadata:
+      category: security
+      cwe: CWE-78
+      confidence: medium
+
+  # Unsafe deserialization
+  - id: elixir-unsafe-deserialization
+    message: "Unsafe deserialization detected"
+    severity: CRITICAL
+    languages: [elixir]
+    pattern-either:
+      - pattern: ":erlang.binary_to_term($USER_INPUT)"
+      - pattern: Plug.Crypto.MessageVerifier.verify($TOKEN, $USER_INPUT)
+    pattern-not-inside:
+      pattern: ":erlang.binary_to_term($USER_INPUT, [:safe])"
+    metadata:
+      category: security
+      cwe: CWE-502
+      confidence: high
+
+  # === High Severity Rules ===
+
+  # Hardcoded secrets
+  - id: elixir-hardcoded-secrets
+    message: "Hardcoded secrets detected"
+    severity: HIGH
+    languages: [elixir]
+    pattern-either:
+      - pattern: |
+          @password "..."
+      - pattern: |
+          @secret "..."
+      - pattern: |
+          @api_key "..."
+      - pattern: |
+          password: "..."
+      - pattern: |
+          secret: "..."
+      - pattern: |
+          api_key: "..."
+    metadata:
+      category: security
+      cwe: CWE-798
+      confidence: medium
+
+  # Weak cryptography
+  - id: elixir-weak-crypto
+    message: "Use of weak cryptographic function"
+    severity: HIGH
+    languages: [elixir]
+    pattern-either:
+      - pattern: ":crypto.hash(:md5, $DATA)"
+      - pattern: ":crypto.hash(:sha, $DATA)"
+      - pattern: "Base.encode16(:crypto.hash(:md5, $DATA))"
+      - pattern: "Base.encode16(:crypto.hash(:sha, $DATA))"
+    metadata:
+      category: security
+      cwe: CWE-327
+      confidence: high
+
+  # Path traversal
+  - id: elixir-path-traversal
+    message: "Path traversal vulnerability detected"
+    severity: HIGH
+    languages: [elixir]
+    pattern-either:
+      - pattern: File.read($PATH <> $USER_INPUT)
+      - pattern: File.write($PATH <> $USER_INPUT, ...)
+      - pattern: File.open($PATH <> $USER_INPUT, ...)
+      - pattern: Path.join($BASE, $USER_INPUT)
+    metadata:
+      category: security
+      cwe: CWE-22
+      confidence: medium
+
+  # XSS vulnerabilities
+  - id: elixir-xss
+    message: "XSS vulnerability detected"
+    severity: HIGH
+    languages: [elixir]
+    pattern-either:
+      - pattern: raw($USER_INPUT)
+      - pattern: Phoenix.HTML.raw($USER_INPUT)
+      - pattern: html_escape($USER_INPUT)
+    metadata:
+      category: security
+      cwe: CWE-79
+      confidence: low
+
+  # Open redirect
+  - id: elixir-open-redirect
+    message: "Open redirect vulnerability detected"
+    severity: HIGH
+    languages: [elixir]
+    pattern-either:
+      - pattern: "redirect(conn, external: $USER_INPUT)"
+      - pattern: "Phoenix.Controller.redirect(conn, external: $USER_INPUT)"
+    metadata:
+      category: security
+      cwe: CWE-601
+      confidence: medium
+
+  # === Medium Severity Rules ===
+
+  # Insecure random
+  - id: elixir-insecure-random
+    message: "Use of insecure random number generator"
+    severity: MEDIUM
+    languages: [elixir]
+    pattern-either:
+      - pattern: ":rand.uniform()"
+      - pattern: ":rand.uniform($N)"
+      - pattern: ":random.uniform()"
+      - pattern: Enum.random($LIST)
+    metadata:
+      category: security
+      cwe: CWE-338
+      confidence: low
+
+  # HTTP instead of HTTPS
+  - id: elixir-insecure-http
+    message: "Use of HTTP instead of HTTPS"
+    severity: MEDIUM
+    languages: [elixir]
+    pattern-either:
+      - pattern: "http://..."
+      - pattern: "'http://...'"
+      - pattern: HTTPoison.get("http://...")
+      - pattern: Tesla.get("http://...")
+    metadata:
+      category: security
+      cwe: CWE-319
+      confidence: low
+
+  # Weak session configuration
+  - id: elixir-weak-session
+    message: "Weak session configuration detected"
+    severity: MEDIUM
+    languages: [elixir]
+    pattern-either:
+      - pattern: |
+          plug Plug.Session,
+            store: :cookie,
+            key: "_app_session",
+            secure: false
+      - pattern: |
+          plug Plug.Session,
+            store: :cookie,
+            key: "_app_session",
+            http_only: false
+    metadata:
+      category: security
+      cwe: CWE-614
+      confidence: medium
+
+  # CSRF protection bypass
+  - id: elixir-csrf-bypass
+    message: "CSRF protection bypassed"
+    severity: MEDIUM
+    languages: [elixir]
+    pattern-either:
+      - pattern: "protect_from_forgery with: :null_session"
+      - pattern: skip_csrf_protection
+    metadata:
+      category: security
+      cwe: CWE-352
+      confidence: medium
+
+  # === Low Severity Rules ===
+
+  # Debug information disclosure
+  - id: elixir-debug-info-disclosure
+    message: "Debug information disclosure detected"
+    severity: LOW
+    languages: [elixir]
+    pattern-either:
+      - pattern: IO.puts($USER_INPUT)
+      - pattern: IO.inspect($USER_INPUT)
+      - pattern: Logger.debug($USER_INPUT)
+      - pattern: Logger.info($USER_INPUT)
+    where:
+      - metavariable-regex:
+          metavariable: $USER_INPUT
+          regex: (?i).*(password|token|secret|key|credential).*
+    metadata:
+      category: security
+      cwe: CWE-532
+      confidence: low
+
+  # Hardcoded IP addresses
+  - id: elixir-hardcoded-ip
+    message: "Hardcoded IP address detected"
+    severity: LOW
+    languages: [elixir]
+    pattern-either:
+      - pattern: "192.168...."
+      - pattern: "10...."
+      - pattern: "172.16...."
+      - pattern: "127.0.0.1"
+      - pattern: 'localhost'
+    metadata:
+      category: security
+      cwe: CWE-798
+      confidence: low
+
+  # === Phoenix Framework Rules ===
+
+  # Phoenix XSS
+  - id: elixir-phoenix-xss
+    message: "Phoenix XSS vulnerability detected"
+    severity: HIGH
+    languages: [elixir]
+    pattern-either:
+      - pattern: |
+          <%= $USER_INPUT %>
+      - pattern: |
+          <%= raw $USER_INPUT %>
+      - pattern: 'content_tag(:div, $USER_INPUT, class: "content")'
+    metadata:
+      category: security
+      framework: phoenix
+      cwe: CWE-79
+      confidence: low
+
+  # Phoenix SQL injection in Ecto
+  - id: elixir-phoenix-ecto-injection
+    message: "Phoenix Ecto SQL injection vulnerability"
+    severity: CRITICAL
+    languages: [elixir]
+    pattern-either:
+      - pattern: |
+          from u in User,
+          where: fragment("name = #{$USER_INPUT}")
+      - pattern: Repo.query("SELECT * FROM users WHERE id = #{$USER_INPUT}")
+    metadata:
+      category: security
+      framework: phoenix
+      cwe: CWE-89
+      confidence: high
+
+  # Phoenix insecure routes
+  - id: elixir-phoenix-insecure-routes
+    message: "Phoenix insecure route configuration"
+    severity: MEDIUM
+    languages: [elixir]
+    pattern-either:
+      - pattern: |
+          scope "/admin" do
+            pipe_through :browser
+            # No authentication pipeline
+          end
+      - pattern: |
+          get "/api/admin/:id", AdminController, :show
+    metadata:
+      category: security
+      framework: phoenix
+      cwe: CWE-862
+      confidence: low
+
+  # Phoenix file upload without validation
+  - id: elixir-phoenix-file-upload
+    message: "Phoenix file upload without proper validation"
+    severity: HIGH
+    languages: [elixir]
+    pattern-either:
+      - pattern: |
+          def upload(conn, %{"file" => file}) do
+            File.copy(file.path, "/uploads/" <> file.filename)
+          end
+    pattern-not-inside:
+      pattern: |
+        ...
+        if file.content_type in @allowed_types do
+          ...
+        end
+        ...
+    metadata:
+      category: security
+      framework: phoenix
+      cwe: CWE-434
+      confidence: low
+
+  # ===== ERLANG SECURITY RULES =====
+
+  # === Critical Severity Rules ===
+
+  # Code injection
+  - id: erlang-code-injection
+    message: "Code injection vulnerability detected"
+    severity: CRITICAL
+    languages: [erlang]
+    pattern-either:
+      - pattern: "erl_eval:expr($USER_INPUT, [])"
+      - pattern: "erl_scan:string($USER_INPUT)"
+      - pattern: "erl_parse:parse_exprs($USER_INPUT)"
+      - pattern: eval($USER_INPUT)
+    metadata:
+      category: security
+      cwe: CWE-94
+      confidence: high
+
+  # Command injection
+  - id: erlang-command-injection
+    message: "Command injection vulnerability detected"
+    severity: CRITICAL
+    languages: [erlang]
+    pattern-either:
+      - pattern: "os:cmd($USER_INPUT)"
+      - pattern: "erlang:open_port({spawn, $USER_INPUT}, [])"
+      - pattern: "erlang:open_port({spawn_executable, $USER_INPUT}, [])"
+    metadata:
+      category: security
+      cwe: CWE-78
+      confidence: high
+
+  # Unsafe deserialization
+  - id: erlang-unsafe-deserialization
+    message: "Unsafe deserialization detected"
+    severity: CRITICAL
+    languages: [erlang]
+    pattern-either:
+      - pattern: "erlang:binary_to_term($USER_INPUT)"
+      - pattern: "erlang:binary_to_term($USER_INPUT, [])"
+    pattern-not-inside:
+      pattern: "erlang:binary_to_term($USER_INPUT, [safe])"
+    metadata:
+      category: security
+      cwe: CWE-502
+      confidence: high
+
+  # === High Severity Rules ===
+
+  # Hardcoded secrets
+  - id: erlang-hardcoded-secrets
+    message: "Hardcoded secrets detected"
+    severity: HIGH
+    languages: [erlang]
+    pattern-either:
+      - pattern: |
+          Password = "...",
+      - pattern: |
+          Secret = "...",
+      - pattern: |
+          ApiKey = "...",
+      - pattern: |
+          -define(PASSWORD, "...").
+      - pattern: |
+          -define(SECRET, "...").
+    metadata:
+      category: security
+      cwe: CWE-798
+      confidence: medium
+
+  # Weak cryptography
+  - id: erlang-weak-crypto
+    message: "Use of weak cryptographic function"
+    severity: HIGH
+    languages: [erlang]
+    pattern-either:
+      - pattern: "crypto:hash(md5, $DATA)"
+      - pattern: "crypto:hash(sha, $DATA)"
+      - pattern: "erlang:md5($DATA)"
+      - pattern: "crypto:md5($DATA)"
+    metadata:
+      category: security
+      cwe: CWE-327
+      confidence: high
+
+  # Path traversal
+  - id: erlang-path-traversal
+    message: "Path traversal vulnerability detected"
+    severity: HIGH
+    languages: [erlang]
+    pattern-either:
+      - pattern: "file:read_file($PATH ++ $USER_INPUT)"
+      - pattern: "file:write_file($PATH ++ $USER_INPUT, $DATA)"
+      - pattern: "file:open($PATH ++ $USER_INPUT, ...)"
+    metadata:
+      category: security
+      cwe: CWE-22
+      confidence: medium
+
+  # === Medium Severity Rules ===
+
+  # Insecure random
+  - id: erlang-insecure-random
+    message: "Use of insecure random number generator"
+    severity: MEDIUM
+    languages: [erlang]
+    pattern-either:
+      - pattern: "random:uniform()"
+      - pattern: "random:uniform($N)"
+      - pattern: "rand:uniform()"
+      - pattern: "rand:uniform($N)"
+    metadata:
+      category: security
+      cwe: CWE-338
+      confidence: low
+
+  # HTTP instead of HTTPS
+  - id: erlang-insecure-http
+    message: "Use of HTTP instead of HTTPS"
+    severity: MEDIUM
+    languages: [erlang]
+    pattern-either:
+      - pattern: "http://..."
+      - pattern: "'http://...'"
+      - pattern: httpc:request("http://...")
+      - pattern: inets:start(httpc, "http://...")
+    metadata:
+      category: security
+      cwe: CWE-319
+      confidence: low
+
+  # SSL/TLS configuration issues
+  - id: erlang-ssl-insecure
+    message: "Insecure SSL/TLS configuration"
+    severity: MEDIUM
+    languages: [erlang]
+    pattern-either:
+      - pattern: "ssl:connect($HOST, $PORT, [{verify, verify_none}])"
+      - pattern: "ssl:connect($HOST, $PORT, [{fail_if_no_peer_cert, false}])"
+      - pattern: "ssl:listen($PORT, [{verify, verify_none}])"
+    metadata:
+      category: security
+      cwe: CWE-295
+      confidence: high
+
+  # === Low Severity Rules ===
+
+  # Debug information disclosure
+  - id: erlang-debug-info-disclosure
+    message: "Debug information disclosure detected"
+    severity: LOW
+    languages: [erlang]
+    pattern-either:
+      - pattern: io:format("~p~n", [$USER_INPUT])
+      - pattern: "error_logger:info_msg($USER_INPUT)"
+      - pattern: "lager:debug($USER_INPUT)"
+    where:
+      - metavariable-regex:
+          metavariable: $USER_INPUT
+          regex: (?i).*(password|token|secret|key|credential).*
+    metadata:
+      category: security
+      cwe: CWE-532
+      confidence: low
+
+  # Hardcoded IP addresses
+  - id: erlang-hardcoded-ip
+    message: "Hardcoded IP address detected"
+    severity: LOW
+    languages: [erlang]
+    pattern-either:
+      - pattern: "192.168...."
+      - pattern: "10...."
+      - pattern: "172.16...."
+      - pattern: "127.0.0.1"
+      - pattern: 'localhost'
+    metadata:
+      category: security
+      cwe: CWE-798
+      confidence: low
+
+  # === OTP/GenServer Security Rules ===
+
+  # Unprotected GenServer calls
+  - id: erlang-genserver-unprotected
+    message: "Unprotected GenServer call detected"
+    severity: MEDIUM
+    languages: [erlang]
+    pattern-either:
+      - pattern: |
+          handle_call($REQUEST, _From, State) ->
+            % No authorization check
+            {reply, ok, State}.
+      - pattern: |
+          handle_cast($REQUEST, State) ->
+            % No validation
+            {noreply, State}.
+    metadata:
+      category: security
+      framework: otp
+      cwe: CWE-862
+      confidence: low
+
+  # Supervisor restart strategy issues
+  - id: erlang-supervisor-restart
+    message: "Potentially insecure supervisor restart strategy"
+    severity: LOW
+    languages: [erlang]
+    pattern-either:
+      - pattern: |
+          init([]) ->
+            {ok, {{one_for_all, 0, 1}, []}}.
+      - pattern: |
+          {ok, {{rest_for_one, 1000, 1}, []}}.
+    metadata:
+      category: security
+      framework: otp
+      cwe: CWE-400
+      confidence: low
+
+  # === Cowboy/Web Framework Rules ===
+
+  # Cowboy route without authentication
+  - id: erlang-cowboy-no-auth
+    message: "Cowboy route without authentication"
+    severity: MEDIUM
+    languages: [erlang]
+    pattern-either:
+      - pattern: |
+          init(Req, State) ->
+            % Direct processing without auth
+            {ok, Req, State}.
+      - pattern: |
+          {'_', '/admin/[...]', handler_module, []}
+    metadata:
+      category: security
+      framework: cowboy
+      cwe: CWE-862
+      confidence: low
+
+  # Cowboy XSS vulnerability
+  - id: erlang-cowboy-xss
+    message: "Cowboy XSS vulnerability detected"
+    severity: HIGH
+    languages: [erlang]
+    pattern-either:
+      - pattern: "cowboy_req:reply(200, #{}, $USER_INPUT, Req)"
+      - pattern: |
+          Body = <<"<html><body>", $USER_INPUT/binary, "</body></html>">>,
+          cowboy_req:reply(200, #{}, Body, Req)
+    metadata:
+      category: security
+      framework: cowboy
+      cwe: CWE-79
+      confidence: medium
+
+  # === Database Security Rules ===
+
+  # Mnesia security issues
+  - id: erlang-mnesia-security
+    message: "Mnesia security configuration issue"
+    severity: MEDIUM
+    languages: [erlang]
+    pattern-either:
+      - pattern: "mnesia:create_table($TABLE, [{access_mode, read_write}, {type, set}])"
+      - pattern: "mnesia:dirty_read($TABLE, $KEY)"
+      - pattern: "mnesia:dirty_write($RECORD)"
+    pattern-not-inside:
+      pattern: |
+        ...
+        mnesia:activity(transaction, ...)
+        ...
+    metadata:
+      category: security
+      framework: mnesia
+      cwe: CWE-362
+      confidence: low
+
+  # === Additional Erlang Security Rules ===
+
+  # Format string vulnerabilities
+  - id: erlang-format-string
+    message: "Format string vulnerability detected"
+    severity: HIGH
+    languages: [erlang]
+    pattern-either:
+      - pattern: "io:format($USER_INPUT)"
+      - pattern: "io:fwrite($USER_INPUT)"
+      - pattern: "error_logger:info_msg($USER_INPUT)"
+    metadata:
+      category: security
+      cwe: CWE-134
+      confidence: medium
+
+  # Race conditions in file operations
+  - id: erlang-race-condition
+    message: "Race condition in file operations"
+    severity: MEDIUM
+    languages: [erlang]
+    pattern-either:
+      - pattern: |
+          case file:read_file_info($PATH) of
+            {ok, _} ->
+              file:read_file($PATH)
+          end
+      - pattern: |
+          filelib:is_file($PATH),
+          file:open($PATH, [read])
+    metadata:
+      category: security
+      cwe: CWE-367
+      confidence: low
+
+  # Atom exhaustion
+  - id: erlang-atom-exhaustion
+    message: "Potential atom table exhaustion"
+    severity: MEDIUM
+    languages: [erlang]
+    pattern-either:
+      - pattern: list_to_atom($USER_INPUT)
+      - pattern: binary_to_atom($USER_INPUT, utf8)
+    where:
+      - metavariable-pattern:
+          metavariable: $USER_INPUT
+          pattern: $VAR
+    metadata:
+      category: security
+      cwe: CWE-400
+      confidence: low
+
+  # Process dictionary misuse
+  - id: erlang-process-dictionary
+    message: "Process dictionary usage detected - consider alternatives"
+    severity: LOW
+    languages: [erlang]
+    pattern-either:
+      - pattern: put($KEY, $VALUE)
+      - pattern: get($KEY)
+      - pattern: erase($KEY)
+    metadata:
+      category: security
+      cwe: CWE-362
+      confidence: low
+
+  # ETS table security
+  - id: erlang-ets-security
+    message: "ETS table security issue"
+    severity: MEDIUM
+    languages: [erlang]
+    pattern-either:
+      - pattern: "ets:new($TABLE, [public])"
+      - pattern: "ets:new($TABLE, [public, named_table])"
+    pattern-not-inside:
+      pattern: |
+        ...
+        {heir, $PID, $DATA}
+        ...
+    metadata:
+      category: security
+      cwe: CWE-200
+      confidence: low
+
+  # === Cross-Language Generic Rules ===
+
+  # Generic hardcoded localhost
+  - id: generic-elixir-erlang-localhost
+    message: "Hardcoded localhost/loopback address detected"
+    severity: LOW
+    languages: [elixir, erlang]
+    pattern-either:
+      - pattern: "127.0.0.1"
+      - pattern: "localhost"
+      - pattern: "::1"
+      - pattern: "0.0.0.0"
+    metadata:
+      category: security
+      cwe: CWE-798
+      confidence: low
+
+  # Generic TODO/FIXME security comments
+  - id: generic-elixir-erlang-todo
+    message: "TODO/FIXME comments may indicate incomplete security implementations"
+    severity: LOW
+    languages: [elixir, erlang]
+    pattern-either:
+      - pattern-regex: "(?i).*TODO.*security.*"
+      - pattern-regex: "(?i).*FIXME.*security.*"
+      - pattern-regex: "(?i).*HACK.*security.*"
+    metadata:
+      category: security
+      cwe: CWE-1059
+      confidence: low

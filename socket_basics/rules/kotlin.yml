@@ -1,0 +1,466 @@
+rules:
+  # === Critical Severity Rules ===
+
+  # SQL injection
+  - id: kotlin-sql-injection
+    message: "SQL injection vulnerability detected"
+    severity: CRITICAL
+    languages: [kotlin]
+    pattern-either:
+      - pattern: $DB.execSQL($QUERY + $USER_INPUT)
+      - pattern: $DB.rawQuery($QUERY + $USER_INPUT, ...)
+      - pattern: "$QUERY + $USER_INPUT"
+      - pattern: $STATEMENT.executeQuery($QUERY + $USER_INPUT)
+      - pattern: $CURSOR.rawQuery($QUERY + $USER_INPUT, ...)
+    metadata:
+      category: security
+      cwe: CWE-89
+      confidence: high
+
+  # Command injection
+  - id: kotlin-command-injection
+    message: "Command injection vulnerability detected"
+    severity: CRITICAL
+    languages: [kotlin]
+    pattern-either:
+      - pattern: Runtime.getRuntime().exec($CMD + $USER_INPUT)
+      - pattern: ProcessBuilder($CMD + $USER_INPUT)
+      - pattern: ProcessBuilder().command($CMD, $USER_INPUT)
+      - pattern: '"sh -c $USER_INPUT".runCommand()'
+    metadata:
+      category: security
+      cwe: CWE-78
+      confidence: high
+
+  # Code injection
+  - id: kotlin-code-injection
+    message: "Code injection vulnerability detected"
+    severity: CRITICAL
+    languages: [kotlin]
+    pattern-either:
+      - pattern: ScriptEngineManager().getEngineByName("kotlin").eval($USER_INPUT)
+      - pattern: $ENGINE.eval($USER_INPUT)
+      - pattern: Class.forName($USER_INPUT)
+    metadata:
+      category: security
+      cwe: CWE-94
+      confidence: high
+
+  # Deserialization vulnerabilities
+  - id: kotlin-unsafe-deserialization
+    message: "Unsafe deserialization detected"
+    severity: CRITICAL
+    languages: [kotlin]
+    pattern-either:
+      - pattern: ObjectInputStream($STREAM).readObject()
+      - pattern: $OIS.readObject()
+      - pattern: Gson().fromJson($JSON, $USER_INPUT::class.java)
+    metadata:
+      category: security
+      cwe: CWE-502
+      confidence: high
+
+  # === High Severity Rules ===
+
+  # Hardcoded secrets
+  - id: kotlin-hardcoded-secrets
+    message: "Hardcoded secrets detected"
+    severity: HIGH
+    languages: [kotlin]
+    pattern-either:
+      - pattern: |
+          val $VAR = "..."
+      - pattern: |
+          var $VAR = "..."
+      - pattern: |
+          const val $VAR = "..."
+      - pattern: |
+          private val $VAR = "..."
+    where:
+      - metavariable-regex:
+          metavariable: $VAR
+          regex: (?i).*(password|secret|token|key|api_key|apikey|private_key|auth|credential).*
+    metadata:
+      category: security
+      cwe: CWE-798
+      confidence: medium
+
+  # Weak cryptography - MD5
+  - id: kotlin-weak-crypto-md5
+    message: "Use of weak MD5 hash algorithm"
+    severity: HIGH
+    languages: [kotlin]
+    pattern-either:
+      - pattern: MessageDigest.getInstance("MD5")
+      - pattern: MessageDigest.getInstance("md5")
+      - pattern: DigestUtils.md5($DATA)
+    metadata:
+      category: security
+      cwe: CWE-327
+      confidence: high
+
+  # Weak cryptography - SHA1
+  - id: kotlin-weak-crypto-sha1
+    message: "Use of weak SHA1 hash algorithm"
+    severity: HIGH
+    languages: [kotlin]
+    pattern-either:
+      - pattern: MessageDigest.getInstance("SHA1")
+      - pattern: MessageDigest.getInstance("SHA-1")
+      - pattern: MessageDigest.getInstance("sha1")
+      - pattern: DigestUtils.sha1($DATA)
+    metadata:
+      category: security
+      cwe: CWE-327
+      confidence: high
+
+  # SSL/TLS bypass
+  - id: kotlin-ssl-bypass
+    message: "SSL/TLS certificate validation bypassed"
+    severity: HIGH
+    languages: [kotlin]
+    pattern-either:
+      - pattern: |
+          object : X509TrustManager {
+            override fun checkClientTrusted(chain: Array<X509Certificate>, authType: String) {}
+            override fun checkServerTrusted(chain: Array<X509Certificate>, authType: String) {}
+            override fun getAcceptedIssuers(): Array<X509Certificate> = arrayOf()
+          }
+      - pattern: HttpsURLConnection.setDefaultHostnameVerifier { _, _ -> true }
+    metadata:
+      category: security
+      cwe: CWE-295
+      confidence: high
+
+  # Path traversal
+  - id: kotlin-path-traversal
+    message: "Path traversal vulnerability detected"
+    severity: HIGH
+    languages: [kotlin]
+    pattern-either:
+      - pattern: File($PATH + $USER_INPUT)
+      - pattern: FileInputStream($PATH + $USER_INPUT)
+      - pattern: FileOutputStream($PATH + $USER_INPUT)
+      - pattern: File($USER_INPUT)
+    metadata:
+      category: security
+      cwe: CWE-22
+      confidence: medium
+
+  # XSS vulnerabilities
+  - id: kotlin-xss
+    message: "XSS vulnerability detected"
+    severity: HIGH
+    languages: [kotlin]
+    pattern-either:
+      - pattern: $WEBVIEW.loadData($USER_INPUT, "text/html", ...)
+      - pattern: $WEBVIEW.loadDataWithBaseURL(..., $USER_INPUT, ...)
+      - pattern: Html.fromHtml($USER_INPUT)
+    metadata:
+      category: security
+      cwe: CWE-79
+      confidence: medium
+
+  # === Medium Severity Rules ===
+
+  # Insecure random
+  - id: kotlin-insecure-random
+    message: "Use of insecure Random class for cryptographic purposes"
+    severity: MEDIUM
+    languages: [kotlin]
+    pattern-either:
+      - pattern: Random()
+      - pattern: kotlin.random.Random
+      - pattern: java.util.Random()
+      - pattern: Math.random()
+    metadata:
+      category: security
+      cwe: CWE-338
+      confidence: medium
+
+  # HTTP instead of HTTPS
+  - id: kotlin-insecure-http
+    message: "Use of HTTP instead of HTTPS"
+    severity: MEDIUM
+    languages: [kotlin]
+    pattern-either:
+      - pattern: URL("http://localhost")
+      - pattern: HttpURLConnection.openConnection("http://localhost")
+    metadata:
+      category: security
+      cwe: CWE-319
+      confidence: low
+
+  # Open redirect
+  - id: kotlin-open-redirect
+    message: "Open redirect vulnerability detected"
+    severity: MEDIUM
+    languages: [kotlin]
+    pattern-either:
+      - pattern: response.sendRedirect($USER_INPUT)
+      - pattern: Intent(Intent.ACTION_VIEW, Uri.parse($USER_INPUT))
+    metadata:
+      category: security
+      cwe: CWE-601
+      confidence: low
+
+  # Weak cipher algorithms
+  - id: kotlin-weak-cipher
+    message: "Use of weak cipher algorithm"
+    severity: MEDIUM
+    languages: [kotlin]
+    pattern-either:
+      - pattern: Cipher.getInstance("DES")
+      - pattern: Cipher.getInstance("RC4")
+      - pattern: Cipher.getInstance("RC2")
+      - pattern: Cipher.getInstance("3DES")
+    metadata:
+      category: security
+      cwe: CWE-327
+      confidence: high
+
+  # === Low Severity Rules ===
+
+  # Debug information disclosure
+  - id: kotlin-debug-info-disclosure
+    message: "Debug information disclosure detected"
+    severity: LOW
+    languages: [kotlin]
+    pattern-either:
+      - pattern: println($USER_INPUT)
+      - pattern: print($USER_INPUT)
+      - pattern: Log.d($TAG, $USER_INPUT)
+      - pattern: System.out.println($USER_INPUT)
+    where:
+      - metavariable-regex:
+          metavariable: $USER_INPUT
+          regex: (?i).*(password|token|secret|key|credential).*
+    metadata:
+      category: security
+      cwe: CWE-532
+      confidence: low
+
+  # Hardcoded IP addresses
+  - id: kotlin-hardcoded-ip
+    message: "Hardcoded IP address detected"
+    severity: LOW
+    languages: [kotlin]
+    pattern: $IP_ADDRESS
+    metavariable-regex:
+      metavariable: $IP_ADDRESS
+      regex: "(192\\.168\\.\\d{1,3}\\.\\d{1,3})|(10\\.\\d{1,3}\\.\\d{1,3}\\.\\d{1,3})|(172\\.16\\.\\d{1,3}\\.\\d{1,3})|127\\.0\\.0\\.1|localhost"
+    metadata:
+      category: security
+      cwe: CWE-798
+      confidence: low
+
+  # === Android-specific Rules ===
+
+  # WebView with JavaScript enabled
+  - id: kotlin-android-webview-js
+    message: "WebView with JavaScript enabled - potential XSS"
+    severity: MEDIUM
+    languages: [kotlin]
+    pattern-either:
+      - pattern: $WEBVIEW.settings.javaScriptEnabled = true
+      - pattern: $WEBVIEW.getSettings().setJavaScriptEnabled(true)
+    metadata:
+      category: security
+      platform: android
+      cwe: CWE-79
+      confidence: medium
+
+  # External storage usage
+  - id: kotlin-android-external-storage
+    message: "Use of external storage - data may be readable by other apps"
+    severity: LOW
+    languages: [kotlin]
+    pattern-either:
+      - pattern: Environment.getExternalStorageDirectory()
+      - pattern: getExternalFilesDir(...)
+      - pattern: openFileOutput($NAME, Context.MODE_WORLD_READABLE)
+    metadata:
+      category: security
+      platform: android
+      cwe: CWE-200
+      confidence: medium
+
+  # Intent with user input
+  - id: kotlin-android-intent-user-input
+    message: "Intent created with user input - potential intent injection"
+    severity: HIGH
+    languages: [kotlin]
+    pattern-either:
+      - pattern: Intent($USER_INPUT)
+      - pattern: Intent().setAction($USER_INPUT)
+      - pattern: Intent().setData(Uri.parse($USER_INPUT))
+    metadata:
+      category: security
+      platform: android
+      cwe: CWE-926
+      confidence: low
+
+  # Exported components without permission
+  - id: kotlin-android-exported-component
+    message: "Component exported without proper permission checks"
+    severity: MEDIUM
+    languages: [kotlin]
+    pattern-either:
+      - pattern: |
+          class $COMPONENT : BroadcastReceiver() {
+            override fun onReceive(context: Context, intent: Intent) {
+              // No permission check
+              ...
+            }
+          }
+      - pattern: |
+          class $COMPONENT : Service() {
+            override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
+              // No permission check  
+              ...
+            }
+          }
+    metadata:
+      category: security
+      platform: android
+      cwe: CWE-862
+      confidence: low
+
+  # Insecure permissions
+  - id: kotlin-android-dangerous-permissions
+    message: "Request for dangerous Android permissions"
+    severity: MEDIUM
+    languages: [kotlin]
+    pattern-either:
+      - pattern: Manifest.permission.READ_EXTERNAL_STORAGE
+      - pattern: Manifest.permission.WRITE_EXTERNAL_STORAGE
+      - pattern: Manifest.permission.ACCESS_FINE_LOCATION
+      - pattern: Manifest.permission.CAMERA
+      - pattern: Manifest.permission.RECORD_AUDIO
+    metadata:
+      category: security
+      platform: android
+      cwe: CWE-250
+      confidence: low
+
+  # === Spring/Web Framework Rules ===
+
+  # Spring Security bypass
+  - id: kotlin-spring-security-bypass
+    message: "Spring Security potentially bypassed"
+    severity: HIGH
+    languages: [kotlin]
+    pattern-either:
+      - pattern: |
+          override fun configure(http: HttpSecurity) {
+            http.csrf().disable()
+          }
+      - pattern: http.authorizeRequests().anyRequest().permitAll()
+    metadata:
+      category: security
+      framework: spring
+      cwe: CWE-352
+      confidence: medium
+
+  # JPA/Hibernate query injection
+  - id: kotlin-jpa-query-injection
+    message: "JPA/Hibernate query injection vulnerability"
+    severity: CRITICAL
+    languages: [kotlin]
+    pattern-either:
+      - pattern: entityManager.createQuery($QUERY + $USER_INPUT)
+      - pattern: session.createQuery($QUERY + $USER_INPUT)
+      - pattern: entityManager.createNativeQuery($QUERY + $USER_INPUT)
+    metadata:
+      category: security
+      framework: jpa
+      cwe: CWE-89
+      confidence: high
+
+  # JWT without verification
+  - id: kotlin-jwt-no-verification
+    message: "JWT token used without proper verification"
+    severity: MEDIUM
+    languages: [kotlin]
+    pattern-either:
+      - pattern: Jwts.parser().parse($TOKEN)
+      - pattern: JWT.decode($TOKEN)
+    pattern-not-inside:
+      pattern: |
+        ...
+        .setSigningKey($SECRET)
+        ...
+    metadata:
+      category: security
+      cwe: CWE-347
+      confidence: medium
+
+  # Template injection
+  - id: kotlin-template-injection
+    message: "Template injection vulnerability detected"
+    severity: HIGH
+    languages: [kotlin]
+    pattern-either:
+      - pattern: Template($USER_INPUT).make()
+      - pattern: VelocityEngine().evaluate($USER_INPUT, ...)
+      - pattern: $ENGINE.process($USER_INPUT, ...)
+    metadata:
+      category: security
+      cwe: CWE-94
+      confidence: medium
+
+  # LDAP injection
+  - id: kotlin-ldap-injection
+    message: "LDAP injection vulnerability detected"
+    severity: CRITICAL
+    languages: [kotlin]
+    pattern-either:
+      - pattern: $CTX.search($FILTER + $USER_INPUT, ...)
+      - pattern: InitialDirContext().search($FILTER + $USER_INPUT, ...)
+    metadata:
+      category: security
+      cwe: CWE-90
+      confidence: medium
+
+  # File upload without validation
+  - id: kotlin-file-upload-no-validation
+    message: "File upload without proper validation"
+    severity: HIGH
+    languages: [kotlin]
+    pattern-either:
+      - pattern: |
+          @PostMapping("/upload")
+          fun upload(@RequestParam("file") file: MultipartFile): String {
+            file.transferTo(File($PATH))
+            return "success"
+          }
+    pattern-not-inside:
+      pattern: |
+        ...
+        if (file.contentType?.startsWith("image/") == true) {
+          ...
+        }
+        ...
+    metadata:
+      category: security
+      cwe: CWE-434
+      confidence: low
+
+  # XXE vulnerability
+  - id: kotlin-xxe-vulnerability
+    message: "XML parsing vulnerable to XXE attacks"
+    severity: HIGH
+    languages: [kotlin]
+    pattern-either:
+      - pattern: DocumentBuilderFactory.newInstance().newDocumentBuilder().parse($XML)
+      - pattern: SAXParserFactory.newInstance().newSAXParser().parse($XML, ...)
+      - pattern: XMLInputFactory.newInstance().createXMLStreamReader($XML)
+    pattern-not-inside:
+      pattern: |
+        ...
+        factory.setFeature("http://apache.org/xml/features/disallow-doctype-decl", true)
+        ...
+    metadata:
+      category: security
+      cwe: CWE-611
+      confidence: medium

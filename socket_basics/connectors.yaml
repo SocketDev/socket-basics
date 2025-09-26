@@ -1,0 +1,547 @@
+# Socket Security Basics - Connector Configuration
+# This file defines available security scanning connectors and their configuration
+
+connectors:
+  opengrep:
+    class: OpenGrepScanner
+    notification_processor: "notification_rows"
+    scan_method: scan
+    process_results_method: _process_results
+    description: "SAST scanning using OpenGrep/Semgrep"
+    module_path: "socket_basics.core.connector.opengrep"
+    enabled_by_default: false
+    parameters:
+      - name: all_languages_enabled
+        option: --all-languages
+        description: "Enable SAST for all supported languages"
+        env_variable: INPUT_ALL_LANGUAGES_ENABLED
+        type: bool
+        default: false
+        enables:
+          - python_sast_enabled
+          - javascript_sast_enabled
+          - typescript_sast_enabled
+          - go_sast_enabled
+          - golang_sast_enabled
+          - java_sast_enabled
+          - php_sast_enabled
+          - ruby_sast_enabled
+          - csharp_sast_enabled
+          - dotnet_sast_enabled
+          - c_sast_enabled
+          - cpp_sast_enabled
+          - kotlin_sast_enabled
+          - scala_sast_enabled
+          - swift_sast_enabled
+          - rust_sast_enabled
+          - elixir_sast_enabled
+      - name: all_rules_enabled
+        option: --all-rules
+        description: "Run all bundled SAST rules regardless of language filters"
+        env_variable: INPUT_ALL_RULES_ENABLED
+        type: bool
+        default: false
+      - name: python_sast_enabled
+        option: --python
+        description: "Enable Python SAST scanning"
+        env_variable: INPUT_PYTHON_SAST_ENABLED
+        type: bool
+        default: false
+        group: "SAST Python"
+      - name: javascript_sast_enabled
+        option: --javascript
+        description: "Enable JavaScript/TypeScript SAST scanning"
+        env_variable: INPUT_JAVASCRIPT_SAST_ENABLED
+        type: bool
+        default: false
+        group: "SAST Javascript"
+      - name: typescript_sast_enabled
+        option: --typescript
+        description: "Enable TypeScript SAST scanning"
+        env_variable: INPUT_TYPESCRIPT_SAST_ENABLED
+        type: bool
+        default: false
+      - name: go_sast_enabled
+        option: --go
+        description: "Enable Go SAST scanning"
+        env_variable: INPUT_GO_SAST_ENABLED
+        type: bool
+        default: false
+      - name: golang_sast_enabled
+        option: --golang
+        description: "Enable Golang SAST scanning"
+        env_variable: INPUT_GOLANG_SAST_ENABLED
+        type: bool
+        default: false
+      - name: java_sast_enabled
+        option: --java
+        description: "Enable Java SAST scanning"
+        env_variable: INPUT_JAVA_SAST_ENABLED
+        type: bool
+        default: false
+      - name: php_sast_enabled
+        option: --php
+        description: "Enable PHP SAST scanning"
+        env_variable: INPUT_PHP_SAST_ENABLED
+        type: bool
+        default: false
+      - name: ruby_sast_enabled
+        option: --ruby
+        description: "Enable Ruby SAST scanning"
+        env_variable: INPUT_RUBY_SAST_ENABLED
+        type: bool
+        default: false
+      - name: csharp_sast_enabled
+        option: --csharp
+        description: "Enable C# SAST scanning"
+        env_variable: INPUT_CSHARP_SAST_ENABLED
+        type: bool
+        default: false
+      - name: dotnet_sast_enabled
+        option: --dotnet
+        description: "Enable .NET SAST scanning"
+        env_variable: INPUT_DOTNET_SAST_ENABLED
+        type: bool
+        default: false
+      - name: c_sast_enabled
+        option: --c
+        description: "Enable C SAST scanning"
+        env_variable: INPUT_C_SAST_ENABLED
+        type: bool
+        default: false
+      - name: cpp_sast_enabled
+        option: --cpp
+        description: "Enable C++ SAST scanning"
+        env_variable: INPUT_CPP_SAST_ENABLED
+        type: bool
+        default: false
+      - name: kotlin_sast_enabled
+        option: --kotlin
+        description: "Enable Kotlin SAST scanning"
+        env_variable: INPUT_KOTLIN_SAST_ENABLED
+        type: bool
+        default: false
+      - name: scala_sast_enabled
+        option: --scala
+        description: "Enable Scala SAST scanning"
+        env_variable: INPUT_SCALA_SAST_ENABLED
+        type: bool
+        default: false
+      - name: swift_sast_enabled
+        option: --swift
+        description: "Enable Swift SAST scanning"
+        env_variable: INPUT_SWIFT_SAST_ENABLED
+        type: bool
+        default: false
+      - name: rust_sast_enabled
+        option: --rust
+        description: "Enable Rust SAST scanning"
+        env_variable: INPUT_RUST_SAST_ENABLED
+        type: bool
+        default: false
+      - name: elixir_sast_enabled
+        option: --elixir
+        description: "Enable Elixir SAST scanning"
+        env_variable: INPUT_ELIXIR_SAST_ENABLED
+        type: bool
+        default: false
+      - name: notification_method
+        option: --opengrep-notify
+        description: "Notification method for OpenGrep (e.g., console, slack)"
+        env_variable: INPUT_OPENGREP_NOTIFICATION_METHOD
+        type: str
+        default: ""
+
+      # Python rule configuration
+      - name: python_enabled_rules
+        option: --python-enabled-rules
+        description: "Comma-separated list of Python SAST rules to enable (default: high-confidence rules)"
+        env_variable: INPUT_PYTHON_ENABLED_RULES
+        type: str
+        default: "python-exec-used,python-bad-file-permissions,python-hardcoded-password-string,python-eval-usage,python-request-without-cert-validation,python-ssl-bad-version,python-subprocess-shell-true,python-start-process-with-shell,python-sql-injection-format,python-flask-debug-true,python-jinja2-autoescape-false"
+      - name: python_disabled_rules
+        option: --python-disabled-rules
+        description: "Comma-separated list of Python SAST rules to disable"
+        env_variable: INPUT_PYTHON_DISABLED_RULES
+        type: str
+        default: ""
+
+      # JavaScript/TypeScript rule configuration
+      - name: javascript_enabled_rules
+        option: --javascript-enabled-rules
+        description: "Comma-separated list of JavaScript/TypeScript SAST rules to enable (default: high-confidence rules)"
+        env_variable: INPUT_JAVASCRIPT_ENABLED_RULES
+        type: str
+        default: "js-eval-usage,js-sql-injection,js-command-injection,js-prototype-pollution,js-xss-innerhtml,js-hardcoded-secrets,js-path-traversal,js-tls-reject-unauthorized-false,js-weak-crypto-md5"
+      - name: javascript_disabled_rules
+        option: --javascript-disabled-rules
+        description: "Comma-separated list of JavaScript/TypeScript SAST rules to disable"
+        env_variable: INPUT_JAVASCRIPT_DISABLED_RULES
+        type: str
+        default: ""
+
+      # Go rule configuration
+      - name: go_enabled_rules
+        option: --go-enabled-rules
+        description: "Comma-separated list of Go SAST rules to enable (default: high-confidence rules)"
+        env_variable: INPUT_GO_ENABLED_RULES
+        type: str
+        default: "go-hardcoded-credentials,go-bind-all-interfaces,go-unsafe-usage,go-ssh-insecure-ignore-host-key,go-profiling-endpoint-exposed,go-decompression-bomb,go-sql-format-string"
+      - name: go_disabled_rules
+        option: --go-disabled-rules
+        description: "Comma-separated list of Go SAST rules to disable"
+        env_variable: INPUT_GO_DISABLED_RULES
+        type: str
+        default: ""
+
+      # Java rule configuration  
+      - name: java_enabled_rules
+        option: --java-enabled-rules
+        description: "Comma-separated list of Java SAST rules to enable (default: high-confidence rules)"
+        env_variable: INPUT_JAVA_ENABLED_RULES
+        type: str
+        default: "java-sql-injection,java-unsafe-deserialization,java-command-injection,java-ldap-injection,java-hardcoded-credentials,java-weak-crypto-md5,java-weak-crypto-sha1,java-xxe-vulnerability,java-ssl-bypass,java-weak-ssl-version,java-jndi-injection,java-el-injection"
+      - name: java_disabled_rules
+        option: --java-disabled-rules
+        description: "Comma-separated list of Java SAST rules to disable"
+        env_variable: INPUT_JAVA_DISABLED_RULES
+        type: str
+        default: ""
+
+      # PHP rule configuration
+      - name: php_enabled_rules
+        option: --php-enabled-rules
+        description: "Comma-separated list of PHP SAST rules to enable (default: high-confidence rules)"
+        env_variable: INPUT_PHP_ENABLED_RULES
+        type: str
+        default: "php-code-injection,php-sql-injection,php-command-injection,php-unsafe-deserialization,php-ldap-injection,php-file-inclusion,php-xxe-vulnerability,php-hardcoded-secrets,php-path-traversal"
+      - name: php_disabled_rules
+        option: --php-disabled-rules
+        description: "Comma-separated list of PHP SAST rules to disable"
+        env_variable: INPUT_PHP_DISABLED_RULES
+        type: str
+        default: ""
+
+      # Ruby rule configuration
+      - name: ruby_enabled_rules
+        option: --ruby-enabled-rules
+        description: "Comma-separated list of Ruby SAST rules to enable (default: high-confidence rules)"
+        env_variable: INPUT_RUBY_ENABLED_RULES
+        type: str
+        default: "ruby-eval-injection,ruby-command-injection,ruby-sql-injection,ruby-unsafe-deserialization,ruby-hardcoded-secrets,ruby-ssl-verification-bypass,ruby-rails-find-by-sql-injection,ruby-rails-unsafe-constantize,ruby-xxe-vulnerability"
+      - name: ruby_disabled_rules
+        option: --ruby-disabled-rules
+        description: "Comma-separated list of Ruby SAST rules to disable"
+        env_variable: INPUT_RUBY_DISABLED_RULES
+        type: str
+        default: ""
+
+      # C# rule configuration
+      - name: csharp_enabled_rules
+        option: --csharp-enabled-rules
+        description: "Comma-separated list of C# SAST rules to enable (default: high-confidence rules)"
+        env_variable: INPUT_CSHARP_ENABLED_RULES
+        type: str
+        default: "dotnet-sql-injection,dotnet-command-injection,dotnet-code-injection,dotnet-unsafe-deserialization,dotnet-ldap-injection,dotnet-hardcoded-credentials,dotnet-ssl-bypass,dotnet-xxe-vulnerability,dotnet-xpath-injection"
+      - name: csharp_disabled_rules
+        option: --csharp-disabled-rules
+        description: "Comma-separated list of C# SAST rules to disable"
+        env_variable: INPUT_CSHARP_DISABLED_RULES
+        type: str
+        default: ""
+
+      # .NET rule configuration
+      - name: dotnet_enabled_rules
+        option: --dotnet-enabled-rules
+        description: "Comma-separated list of .NET SAST rules to enable (default: high-confidence rules)"
+        env_variable: INPUT_DOTNET_ENABLED_RULES
+        type: str
+        default: "dotnet-sql-injection,dotnet-command-injection,dotnet-code-injection,dotnet-unsafe-deserialization,dotnet-ldap-injection,dotnet-hardcoded-credentials,dotnet-ssl-bypass,dotnet-xxe-vulnerability,dotnet-xpath-injection"
+      - name: dotnet_disabled_rules
+        option: --dotnet-disabled-rules
+        description: "Comma-separated list of .NET SAST rules to disable"
+        env_variable: INPUT_DOTNET_DISABLED_RULES
+        type: str
+        default: ""
+
+      # C rule configuration
+      - name: c_enabled_rules
+        option: --c-enabled-rules
+        description: "Comma-separated list of C SAST rules to enable (default: high-confidence rules)"
+        env_variable: INPUT_C_ENABLED_RULES
+        type: str
+        default: "c-buffer-overflow,c-format-string-vulnerability,c-command-injection,c-sql-injection,c-use-after-free,c-hardcoded-secrets,c-weak-crypto,c-ssl-issues"
+      - name: c_disabled_rules
+        option: --c-disabled-rules
+        description: "Comma-separated list of C SAST rules to disable"
+        env_variable: INPUT_C_DISABLED_RULES
+        type: str
+        default: ""
+
+      # C++ rule configuration
+      - name: cpp_enabled_rules
+        option: --cpp-enabled-rules
+        description: "Comma-separated list of C++ SAST rules to enable (default: high-confidence rules)"
+        env_variable: INPUT_CPP_ENABLED_RULES
+        type: str
+        default: "c-buffer-overflow,c-format-string-vulnerability,c-command-injection,c-sql-injection,c-use-after-free,c-hardcoded-secrets,c-weak-crypto,c-ssl-issues,cpp-unsafe-cast,cpp-memory-management"
+      - name: cpp_disabled_rules
+        option: --cpp-disabled-rules
+        description: "Comma-separated list of C++ SAST rules to disable"
+        env_variable: INPUT_CPP_DISABLED_RULES
+        type: str
+        default: ""
+
+      # Kotlin rule configuration
+      - name: kotlin_enabled_rules
+        option: --kotlin-enabled-rules
+        description: "Comma-separated list of Kotlin SAST rules to enable (default: high-confidence rules)"
+        env_variable: INPUT_KOTLIN_ENABLED_RULES
+        type: str
+        default: "kotlin-sql-injection,kotlin-command-injection,kotlin-code-injection,kotlin-unsafe-deserialization,kotlin-hardcoded-secrets,kotlin-ssl-bypass,kotlin-xxe-vulnerability,kotlin-ldap-injection"
+      - name: kotlin_disabled_rules
+        option: --kotlin-disabled-rules
+        description: "Comma-separated list of Kotlin SAST rules to disable"
+        env_variable: INPUT_KOTLIN_DISABLED_RULES
+        type: str
+        default: ""
+
+      # Scala rule configuration
+      - name: scala_enabled_rules
+        option: --scala-enabled-rules
+        description: "Comma-separated list of Scala SAST rules to enable (default: high-confidence rules)"
+        env_variable: INPUT_SCALA_ENABLED_RULES
+        type: str
+        default: "scala-sql-injection,scala-code-injection,scala-command-injection,scala-unsafe-deserialization,scala-hardcoded-secrets,scala-ssl-bypass,scala-slick-sql-injection"
+      - name: scala_disabled_rules
+        option: --scala-disabled-rules
+        description: "Comma-separated list of Scala SAST rules to disable"
+        env_variable: INPUT_SCALA_DISABLED_RULES
+        type: str
+        default: ""
+
+      # Swift rule configuration
+      - name: swift_enabled_rules
+        option: --swift-enabled-rules
+        description: "Comma-separated list of Swift SAST rules to enable (default: high-confidence rules)"
+        env_variable: INPUT_SWIFT_ENABLED_RULES
+        type: str
+        default: "swift-sql-injection,swift-command-injection,swift-unsafe-deserialization,swift-hardcoded-secrets,swift-ssl-bypass,swift-insecure-urlsession,swift-certificate-pinning-bypass"
+      - name: swift_disabled_rules
+        option: --swift-disabled-rules
+        description: "Comma-separated list of Swift SAST rules to disable"
+        env_variable: INPUT_SWIFT_DISABLED_RULES
+        type: str
+        default: ""
+
+      # Rust rule configuration
+      - name: rust_enabled_rules
+        option: --rust-enabled-rules
+        description: "Comma-separated list of Rust SAST rules to enable (default: high-confidence rules)"
+        env_variable: INPUT_RUST_ENABLED_RULES
+        type: str
+        default: "rust-command-injection,rust-unsafe-deserialization,rust-sql-injection,rust-hardcoded-secrets,rust-insecure-tls,rust-buffer-overflow-potential"
+      - name: rust_disabled_rules
+        option: --rust-disabled-rules
+        description: "Comma-separated list of Rust SAST rules to disable"
+        env_variable: INPUT_RUST_DISABLED_RULES
+        type: str
+        default: ""
+
+      # Elixir rule configuration
+      - name: elixir_enabled_rules
+        option: --elixir-enabled-rules
+        description: "Comma-separated list of Elixir SAST rules to enable (default: high-confidence rules)"
+        env_variable: INPUT_ELIXIR_ENABLED_RULES
+        type: str
+        default: "elixir-code-injection,elixir-sql-injection,elixir-command-injection,elixir-unsafe-deserialization,elixir-hardcoded-secrets,elixir-phoenix-ecto-injection"
+      - name: elixir_disabled_rules
+        option: --elixir-disabled-rules
+        description: "Comma-separated list of Elixir SAST rules to disable"
+        env_variable: INPUT_ELIXIR_DISABLED_RULES
+        type: str
+        default: ""
+
+  trufflehog:
+    class: TruffleHogScanner
+    notification_processor: "notification_rows"
+    scan_method: scan
+    process_results_method: _process_results
+    description: "Secret scanning using TruffleHog"
+    module_path: "socket_basics.core.connector.trufflehog"
+    enabled_by_default: false
+    parameters:
+      - name: secret_scanning_enabled
+        option: --secrets
+        description: "Enable secret scanning"
+        env_variable: INPUT_SECRET_SCANNING_ENABLED
+        type: bool
+        default: false
+      - name: disable_all_secrets
+        option: --disable-secrets
+        description: "Disable all secret scanning features"
+        env_variable: INPUT_DISABLE_ALL_SECRETS
+        type: bool
+        default: false
+        disables:
+          - secret_scanning_enabled
+          - trufflehog_show_unverified
+      - name: trufflehog_exclude_dir
+        option: --exclude-dir
+        description: "Comma-separated list of directories to exclude from secret scanning"
+        env_variable: INPUT_TRUFFLEHOG_EXCLUDE_DIR
+        type: str
+        default: ""
+      - name: notification_method
+        option: --trufflehog-notify
+        description: "Notification method for TruffleHog (e.g., console, slack)"
+        env_variable: INPUT_TRUFFLEHOG_NOTIFICATION_METHOD
+        type: str
+        default: ""
+
+  socket_tier1:
+    class: SocketTier1Scanner
+    notification_processor: "notification_rows"
+    scan_method: scan
+    process_results_method: _process_results
+    description: "Optional Socket Security Tier 1 Reachability analysis using the Socket CLI"
+    module_path: "socket_basics.core.connector.socket_tier1"
+    enabled_by_default: false
+    parameters:
+      - name: socket_tier_1_enabled
+        option: --socket-tier1
+        description: "Enable Socket Tier 1 reachability analysis"
+        env_variable: SOCKET_TIER_1_ENABLED
+        type: bool
+        default: false
+      - name: socket_org
+        option: --socket-org
+        description: "Socket organization slug used for reachability scan"
+        env_variable: SOCKET_ORG
+        type: str
+        default: ""
+      - name: socket_api_key
+        option: --socket-security-api-key
+        description: "Socket security API key or token"
+        env_variable: SOCKET_SECURITY_API_KEY
+        type: str
+        default: ""
+      - name: socket_api_token
+        option: --socket-security-api-token
+        description: "Alternative name for Socket security API token"
+        env_variable: SOCKET_SECURITY_API_TOKEN
+        type: str
+        default: ""
+      - name: socket_additional_params
+        option: --socket-additional-params
+        description: "Additional CLI params for 'socket scan reach' (comma or space separated). Also reads SOCKET_ADDITIONAL_PARAMS"
+        env_variable: SOCKET_ADDITIONAL_PARAMS
+        type: str
+        default: ""
+        group: "Secret Scanning"
+      - name: trufflehog_show_unverified
+        option: --show-unverified
+        description: "Show unverified secrets in TruffleHog results"
+        env_variable: INPUT_TRUFFLEHOG_SHOW_UNVERIFIED
+        type: bool
+        default: false
+
+
+  trivy:
+    class: TrivyScanner
+    notification_processor: "notification_rows"
+    scan_method: scan
+    process_results_method: _process_results
+    description: "Container and Dockerfile scanning using Trivy"
+    module_path: "socket_basics.core.connector.trivy"
+    enabled_by_default: false
+    parameters:
+      - name: dockerfile_scanning_enabled
+        option: --dockerfile
+        description: "Enable Dockerfile scanning"
+        env_variable: INPUT_DOCKERFILE_SCANNING_ENABLED
+        type: bool
+        default: false
+        group: "Dockerfile Scanning"
+      - name: container_image_scanning_enabled
+        option: --container-images
+        description: "Enable container image scanning"
+        env_variable: INPUT_CONTAINER_IMAGE_SCANNING_ENABLED
+        type: bool
+        default: false
+        group: "Container Image Scanning"
+      - name: container_images_to_scan
+        option: --images
+        description: "Comma-separated list of container images to scan"
+        env_variable: INPUT_CONTAINER_IMAGES_TO_SCAN
+        type: str
+        default: ""
+        group: "Container Image Scanning"
+      - name: dockerfile_enabled
+        option: --dockerfile-legacy
+        description: "Enable Dockerfile scanning (legacy parameter)"
+        env_variable: INPUT_DOCKERFILE_ENABLED
+        type: bool
+        default: false
+        group: "Dockerfile Scanning"
+      - name: dockerfiles
+        option: --dockerfiles
+        description: "Comma-separated list of Dockerfiles to scan"
+        env_variable: INPUT_DOCKERFILES
+        type: str
+        default: ""
+        group: "Dockerfile Scanning"
+      - name: image_enabled
+        option: --image-enabled
+        description: "Enable container image scanning (legacy parameter)"
+        env_variable: INPUT_IMAGE_ENABLED
+        type: bool
+        default: false
+        group: "Container Image Scanning"
+      - name: docker_images
+        option: --docker-images
+        description: "Comma-separated list of Docker images to scan (legacy parameter)"
+        env_variable: INPUT_DOCKER_IMAGES
+        type: str
+        default: ""
+        group: "Container Image Scanning"
+      - name: notification_method
+        option: --trivy-notify
+        description: "Notification method for Trivy (e.g., console, slack)"
+        env_variable: INPUT_TRIVY_NOTIFICATION_METHOD
+        type: str
+        default: ""
+        group: "Container Image Scanning"
+      - name: trivy_disabled_rules
+        option: --trivy-disabled-rules
+        description: "Comma-separated list of Trivy rules to disable"
+        env_variable: INPUT_TRIVY_DISABLED_RULES
+        type: str
+        default: ""
+      - name: trivy_image_scanning_disabled
+        option: --trivy-image-scanning-disabled
+        description: "Disable Trivy image scanning"
+        env_variable: INPUT_TRIVY_IMAGE_SCANNING_DISABLED
+        type: bool
+        default: false
+        disables:
+          - container_image_scanning_enabled
+          - image_enabled
+
+# Global connector settings
+settings:
+  # Environment variable to control which connectors are enabled
+  # Format: "connector1,connector2" or "all" or "none"
+  enabled_connectors_env: INPUT_ENABLED_CONNECTORS
+  
+  # Default connectors when no specific configuration is provided
+  default_enabled:
+    opengrep:
+      class: OpenGrepScanner
+      notification_processor: "notification_rows"
+      scan_method: scan
+      process_results_method: _process_results
+      description: "SAST scanning using OpenGrep/Semgrep"
+      module_path: "socket_basics.core.connector.opengrep"
+      enabled_by_default: true
+  fail_fast: false

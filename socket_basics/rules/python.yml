@@ -1,0 +1,338 @@
+rules:
+  # === Bandit B101: Assert statements ===
+  - id: python-assert-used
+    message: "Use of assert detected. Assert statements are removed when compiling to optimized bytecode"
+    severity: WARNING
+    languages: [python]
+    pattern: assert $CONDITION
+    metadata:
+      category: security
+      bandit_equivalent: B101
+      cwe: CWE-703
+      confidence: high
+
+  # === Bandit B102: Exec used ===
+  - id: python-exec-used
+    message: "Use of exec detected. This can be dangerous if used with untrusted input"
+    severity: ERROR
+    languages: [python]
+    pattern-either:
+      - pattern: exec($EXPR)
+      - pattern: exec($EXPR, ...)
+    metadata:
+      category: security
+      bandit_equivalent: B102
+      cwe: CWE-94
+      confidence: high
+
+  # === Bandit B103: File permissions ===
+  - id: python-bad-file-permissions
+    message: "File created with potentially unsafe permissions"
+    severity: ERROR
+    languages: [python]
+    pattern-either:
+      - pattern: os.chmod($PATH, $PERMS)
+      - pattern: os.fchmod($FD, $PERMS)
+      - pattern: os.lchmod($PATH, $PERMS)
+    where:
+      # Check for overly permissive permissions (world writable)
+      - metavariable-pattern:
+          metavariable: $PERMS
+          pattern-either:
+            - pattern: 0o777
+            - pattern: 0o666
+            - pattern: 0o644
+            - pattern: 511  # 0o777 in decimal
+            - pattern: 438  # 0o666 in decimal
+    metadata:
+      category: security
+      bandit_equivalent: B103
+      cwe: CWE-732
+
+  # === Bandit B104: Hardcoded bind all interfaces ===
+  - id: python-hardcoded-bind-all-interfaces
+    message: "Possible binding to all interfaces. Consider using localhost"
+    severity: WARNING
+    languages: [python]
+    pattern-either:
+      - pattern: $SOCK.bind(("0.0.0.0", $PORT))
+      - pattern: $SOCK.bind(('0.0.0.0', $PORT))
+      - pattern: $SERVER.serve_forever(host="0.0.0.0")
+      - pattern: $SERVER.serve_forever(host='0.0.0.0')
+    metadata:
+      category: security
+      bandit_equivalent: B104
+      cwe: CWE-200
+
+  # === Bandit B105: Hardcoded password string ===
+  - id: python-hardcoded-password-string
+    message: "Possible hardcoded password detected"
+    severity: ERROR
+    languages: [python]
+    pattern-either:
+      - pattern: $VAR = "$VALUE"
+    where:
+      # Match variable names that are likely intended to be secrets.
+      # Require word boundaries or common separators to avoid matching names like PYPI_API or API_KEY_VERSION.
+      - metavariable-regex:
+          metavariable: $VAR
+          # match whole word or common snake/camel variants, case-insensitive
+          regex: (?i)^(?:.*\b(password|passwd|pwd|secret|token|key|api_key)\b.*|.*(?:_password|_passwd|_pwd|_secret|_token|_key|_api_key)$|^(?:password|passwd|pwd|secret|token|key|api_key)$)
+    metadata:
+      category: security
+      bandit_equivalent: B105
+      cwe: CWE-259
+
+  # === Bandit B106: Hardcoded password function argument ===
+  - id: python-hardcoded-password-funcarg
+    message: "Possible hardcoded password in function argument"
+    severity: WARNING
+    languages: [python]
+    pattern-either:
+      - pattern: $FUNC(..., password="...", ...)
+      - pattern: $FUNC(..., passwd="...", ...)
+      - pattern: $FUNC(..., secret="...", ...)
+      - pattern: $FUNC(..., token="...", ...)
+      - pattern: $FUNC(..., api_key="...", ...)
+    metadata:
+      category: security
+      bandit_equivalent: B106
+      cwe: CWE-259
+
+  # === Bandit B107: Hardcoded password default ===
+  - id: python-hardcoded-password-default
+    message: "Possible hardcoded password in function default"
+    severity: WARNING
+    languages: [python]
+    pattern-either:
+      - pattern: |
+          def $FUNC(..., password="...", ...):
+            ...
+      - pattern: |
+          def $FUNC(..., passwd="...", ...):
+            ...
+      - pattern: |
+          def $FUNC(..., secret="...", ...):
+            ...
+    metadata:
+      category: security
+      bandit_equivalent: B107
+      cwe: CWE-259
+
+  # === Bandit B301: Pickle usage ===
+  - id: python-pickle-usage
+    message: "Pickle usage detected. Pickle can be unsafe when loading untrusted data"
+    severity: ERROR
+    languages: [python]
+    pattern-either:
+      - pattern: pickle.loads($DATA)
+      - pattern: pickle.load($FILE)
+      - pattern: cPickle.loads($DATA)
+      - pattern: cPickle.load($FILE)
+      - pattern: dill.loads($DATA)
+      - pattern: dill.load($FILE)
+    metadata:
+      category: security
+      bandit_equivalent: B301
+      cwe: CWE-502
+      confidence: high
+
+  # === Bandit B303: MD5 hash usage ===
+  - id: python-md5-usage
+    message: "Use of insecure MD5 hash function detected"
+    severity: WARNING
+    languages: [python]
+    pattern-either:
+      - pattern: hashlib.md5(...)
+      - pattern: hashlib.new("md5", ...)
+      - pattern: hashlib.new('md5', ...)
+      - pattern: Crypto.Hash.MD5.new(...)
+    metadata:
+      category: security
+      bandit_equivalent: B303
+      cwe: CWE-327
+
+  # === Bandit B304: SHA1 hash usage ===
+  - id: python-sha1-usage
+    message: "Use of insecure SHA1 hash function detected"
+    severity: WARNING
+    languages: [python]
+    pattern-either:
+      - pattern: hashlib.sha1(...)
+      - pattern: hashlib.new("sha1", ...)
+      - pattern: hashlib.new('sha1', ...)
+      - pattern: Crypto.Hash.SHA1.new(...)
+    metadata:
+      category: security
+      bandit_equivalent: B304
+      cwe: CWE-327
+
+  # === Bandit B307: Eval usage ===
+  - id: python-eval-usage
+    message: "Use of eval() detected. This can execute arbitrary code"
+    severity: ERROR
+    languages: [python]
+    pattern: eval($EXPR)
+    metadata:
+      category: security
+      bandit_equivalent: B307
+      cwe: CWE-94
+      confidence: high
+
+  # === Bandit B501: Request without cert validation ===
+  - id: python-request-without-cert-validation
+    message: "Request made without certificate verification"
+    severity: ERROR
+    languages: [python]
+    pattern-either:
+      - pattern: requests.get(..., verify=False, ...)
+      - pattern: requests.post(..., verify=False, ...)
+      - pattern: requests.put(..., verify=False, ...)
+      - pattern: requests.delete(..., verify=False, ...)
+      - pattern: requests.request(..., verify=False, ...)
+      - pattern: urllib3.disable_warnings(...)
+    metadata:
+      category: security
+      bandit_equivalent: B501
+      cwe: CWE-295
+
+  # === Bandit B502: SSL with bad version ===
+  - id: python-ssl-bad-version
+    message: "Use of insecure SSL/TLS version detected"
+    severity: ERROR
+    languages: [python]
+    pattern-either:
+      - pattern: ssl.PROTOCOL_SSLv2
+      - pattern: ssl.PROTOCOL_SSLv3
+      - pattern: ssl.PROTOCOL_TLSv1
+      - pattern: ssl.SSLContext(ssl.PROTOCOL_SSLv2)
+      - pattern: ssl.SSLContext(ssl.PROTOCOL_SSLv3)
+      - pattern: ssl.SSLContext(ssl.PROTOCOL_TLSv1)
+    metadata:
+      category: security
+      bandit_equivalent: B502
+      cwe: CWE-327
+
+  # === Bandit B601: Paramiko calls ===
+  - id: python-paramiko-calls
+    message: "Paramiko call detected. Ensure proper key verification"
+    severity: WARNING
+    languages: [python]
+    pattern-either:
+      - pattern: paramiko.SSHClient().set_missing_host_key_policy(paramiko.AutoAddPolicy())
+      - pattern: $CLIENT.set_missing_host_key_policy(paramiko.AutoAddPolicy())
+    metadata:
+      category: security
+      bandit_equivalent: B601
+      cwe: CWE-322
+
+  # === Bandit B602: Subprocess with shell=True ===
+  - id: python-subprocess-shell-true
+    message: "Subprocess call with shell=True detected. This can be dangerous with user input"
+    severity: ERROR
+    languages: [python]
+    pattern-either:
+      - pattern: subprocess.call(..., shell=True, ...)
+      - pattern: subprocess.check_call(..., shell=True, ...)
+      - pattern: subprocess.check_output(..., shell=True, ...)
+      - pattern: subprocess.run(..., shell=True, ...)
+      - pattern: subprocess.Popen(..., shell=True, ...)
+      - pattern: os.system($CMD)
+      - pattern: os.popen($CMD)
+    metadata:
+      category: security
+      bandit_equivalent: B602
+      cwe: CWE-78
+      confidence: high
+
+  # === Bandit B605: Start process with shell ===
+  - id: python-start-process-with-shell
+    message: "Starting a process with a shell, possible injection detected"
+    severity: ERROR
+    languages: [python]
+    pattern-either:
+      - pattern: os.system($CMD)
+      - pattern: os.popen($CMD)
+      - pattern: os.popen2($CMD)
+      - pattern: os.popen3($CMD)
+      - pattern: os.popen4($CMD)
+      - pattern: commands.getoutput($CMD)
+      - pattern: commands.getstatusoutput($CMD)
+    metadata:
+      category: security
+      bandit_equivalent: B605
+      cwe: CWE-78
+
+  # === Bandit B608: SQL injection ===
+  - id: python-sql-injection-format
+    message: "Possible SQL injection vector through string formatting"
+    severity: ERROR
+    languages: [python]
+    pattern-either:
+      - pattern: $CURSOR.execute("..." % ...)
+      - pattern: $CURSOR.execute('...' % ...)
+      - pattern: $CURSOR.execute("...".format(...))
+      - pattern: $CURSOR.execute('...'.format(...))
+      - pattern: $CURSOR.execute(f"...{$VAR}...")
+      - pattern: $CURSOR.execute(f'...{$VAR}...')
+    metadata:
+      category: security
+      bandit_equivalent: B608
+      cwe: CWE-89
+      confidence: medium
+
+  # === Flask debug mode ===
+  - id: python-flask-debug-true
+    message: "Flask app with debug=True detected. This should not be used in production"
+    severity: WARNING
+    languages: [python]
+    pattern-either:
+      - pattern: $APP.run(debug=True, ...)
+      - pattern: $APP.run(..., debug=True, ...)
+      - pattern: app.config['DEBUG'] = True
+    metadata:
+      category: security
+      bandit_equivalent: B201
+      cwe: CWE-489
+
+  # === Jinja2 autoescape false ===
+  - id: python-jinja2-autoescape-false
+    message: "Jinja2 autoescape is set to false. This can lead to XSS vulnerabilities"
+    severity: ERROR
+    languages: [python]
+    pattern-either:
+      - pattern: jinja2.Environment(autoescape=False, ...)
+      - pattern: jinja2.Environment(..., autoescape=False, ...)
+    metadata:
+      category: security
+      bandit_equivalent: B701
+      cwe: CWE-79
+
+  # === Weak random ===
+  - id: python-weak-random
+    message: "Use of insecure random number generator. Consider using secrets module"
+    severity: WARNING
+    languages: [python]
+    pattern-either:
+      - pattern: random.random()
+      - pattern: random.randint(...)
+      - pattern: random.choice(...)
+      - pattern: random.randrange(...)
+      - pattern: random.uniform(...)
+    metadata:
+      category: security
+      cwe: CWE-338
+      confidence: high
+
+  # === Temporary file creation ===
+  - id: python-insecure-temp-file
+    message: "Insecure temporary file creation detected"
+    severity: WARNING
+    languages: [python]
+    pattern-either:
+      - pattern: tempfile.mktemp(...)
+      - pattern: os.tempnam(...)
+      - pattern: os.tmpnam(...)
+    metadata:
+      category: security
+      cwe: CWE-377

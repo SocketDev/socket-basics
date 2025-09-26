@@ -1,0 +1,8 @@
+[project]
+name = "app-tests-python-vulnerable"
+version = "0.0.0"
+description = "Python test app for app_tests"
+requires-python = ">=3.9"
+
+[tool.uv]
+dev-dependencies = []

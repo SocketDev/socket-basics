@@ -1,0 +1,343 @@
+rules:
+  # === Critical Severity Rules ===
+  
+  # SQL injection
+  - id: scala-sql-injection
+    message: "SQL injection vulnerability detected"
+    severity: CRITICAL
+    languages: [scala]
+    pattern-either:
+      - pattern: SQL($QUERY + $USER_INPUT)
+      - pattern: sql"$QUERY$USER_INPUT"
+      - pattern: $STATEMENT.executeQuery($QUERY + $USER_INPUT)
+      - pattern: s"$QUERY$USER_INPUT"
+    metadata:
+      category: security
+      cwe: CWE-89
+      confidence: high
+
+  # Code injection via eval or compilation
+  - id: scala-code-injection
+    message: "Code injection via eval or compilation"
+    severity: CRITICAL
+    languages: [scala]
+    pattern-either:
+      - pattern: scala.tools.nsc.interpreter.IMain($USER_INPUT)
+      - pattern: $INTERPRETER.interpret($USER_INPUT)
+      - pattern: scala.reflect.runtime.universe.reify($USER_INPUT)
+      - pattern: toolbox.eval($USER_INPUT)
+    metadata:
+      category: security
+      cwe: CWE-94
+      confidence: high
+
+  # Command injection
+  - id: scala-command-injection
+    message: "Command injection vulnerability detected"
+    severity: CRITICAL
+    languages: [scala]
+    pattern-either:
+      - pattern: Runtime.getRuntime().exec($CMD + $USER_INPUT)
+      - pattern: ProcessBuilder($CMD + $USER_INPUT)
+      - pattern: sys.process.Process($CMD + $USER_INPUT)
+      - pattern: $CMD.!($USER_INPUT)
+    metadata:
+      category: security
+      cwe: CWE-78
+      confidence: high
+
+  # Deserialization vulnerabilities
+  - id: scala-unsafe-deserialization
+    message: "Unsafe deserialization detected"
+    severity: CRITICAL
+    languages: [scala]
+    pattern-either:
+      - pattern: ObjectInputStream.readObject()
+      - pattern: $STREAM.readObject()
+      - pattern: java.io.ObjectInputStream($STREAM).readObject()
+    metadata:
+      category: security
+      cwe: CWE-502
+      confidence: high
+
+  # === High Severity Rules ===
+
+  # Hardcoded secrets
+  - id: scala-hardcoded-secrets
+    message: "Hardcoded secrets detected"
+    severity: HIGH
+    languages: [scala]
+    pattern-either:
+      - pattern: |
+          val $VAR = "..."
+      - pattern: |
+          var $VAR = "..."
+      - pattern: |
+          final val $VAR = "..."
+      - pattern: |
+          private val $VAR = "..."
+    where:
+      - metavariable-regex:
+          metavariable: $VAR
+          regex: (?i).*(password|secret|token|key|api_key|apikey|private_key|auth).*
+    metadata:
+      category: security
+      cwe: CWE-798
+      confidence: medium
+
+  # Weak cryptography - MD5
+  - id: scala-weak-crypto-md5
+    message: "Use of weak MD5 hash algorithm"
+    severity: HIGH
+    languages: [scala]
+    pattern-either:
+      - pattern: MessageDigest.getInstance("MD5")
+      - pattern: MessageDigest.getInstance("md5")
+      - pattern: java.security.MessageDigest.getInstance("MD5")
+      - pattern: DigestUtils.md5($DATA)
+    metadata:
+      category: security
+      cwe: CWE-327
+      confidence: high
+
+  # Weak cryptography - SHA1
+  - id: scala-weak-crypto-sha1
+    message: "Use of weak SHA1 hash algorithm"
+    severity: HIGH
+    languages: [scala]
+    pattern-either:
+      - pattern: MessageDigest.getInstance("SHA1")
+      - pattern: MessageDigest.getInstance("SHA-1")
+      - pattern: MessageDigest.getInstance("sha1")
+      - pattern: DigestUtils.sha1($DATA)
+    metadata:
+      category: security
+      cwe: CWE-327
+      confidence: high
+
+  # SSL/TLS bypass
+  - id: scala-ssl-bypass
+    message: "SSL/TLS certificate validation bypassed"
+    severity: HIGH
+    languages: [scala]
+    pattern-either:
+      - pattern: HttpsURLConnection.setDefaultHostnameVerifier(($HOSTNAME, $SESSION) => true)
+      - pattern: SSLContext.getInstance("SSL")
+      - pattern: TrustManager.checkServerTrusted(...)
+    metadata:
+      category: security
+      cwe: CWE-295
+      confidence: medium
+
+  # Path traversal
+  - id: scala-path-traversal
+    message: "Path traversal vulnerability detected"
+    severity: HIGH
+    languages: [scala]
+    pattern-either:
+      - pattern: new File($PATH + $USER_INPUT)
+      - pattern: Files.readAllLines(Paths.get($PATH + $USER_INPUT))
+      - pattern: Source.fromFile($PATH + $USER_INPUT)
+      - pattern: scala.io.Source.fromFile($PATH + $USER_INPUT)
+    metadata:
+      category: security
+      cwe: CWE-22
+      confidence: medium
+
+  # XSS in templates
+  - id: scala-xss-template
+    message: "XSS vulnerability in template rendering"
+    severity: HIGH
+    languages: [scala]
+    pattern-either:
+      - pattern: Html($USER_INPUT)
+      - pattern: views.html.$TEMPLATE($USER_INPUT)
+      - pattern: play.twirl.api.Html($USER_INPUT)
+    metadata:
+      category: security
+      framework: play
+      cwe: CWE-79
+      confidence: medium
+
+  # === Medium Severity Rules ===
+
+  # Insecure random
+  - id: scala-insecure-random
+    message: "Use of insecure Random class for cryptographic purposes"
+    severity: MEDIUM
+    languages: [scala]
+    pattern-either:
+      - pattern: new Random()
+      - pattern: scala.util.Random
+      - pattern: Math.random()
+      - pattern: Random.nextInt()
+    metadata:
+      category: security
+      cwe: CWE-338
+      confidence: medium
+
+  # HTTP instead of HTTPS
+  - id: scala-insecure-http
+    message: "Use of HTTP instead of HTTPS"
+    severity: MEDIUM
+    languages: [scala]
+    pattern-either:
+      - pattern: "http://..."
+      - pattern: new URL("http://...")
+      - pattern: Http().singleRequest(HttpRequest(uri = "http://..."))
+    metadata:
+      category: security
+      cwe: CWE-319
+      confidence: low
+
+  # Open redirect
+  - id: scala-open-redirect
+    message: "Open redirect vulnerability detected"
+    severity: MEDIUM
+    languages: [scala]
+    pattern-either:
+      - pattern: Redirect($USER_INPUT)
+      - pattern: Found($USER_INPUT)
+      - pattern: SeeOther($USER_INPUT)
+    metadata:
+      category: security
+      framework: play
+      cwe: CWE-601
+      confidence: low
+
+  # Weak cipher algorithms
+  - id: scala-weak-cipher
+    message: "Use of weak cipher algorithm"
+    severity: MEDIUM
+    languages: [scala]
+    pattern-either:
+      - pattern: Cipher.getInstance("DES")
+      - pattern: Cipher.getInstance("RC4")
+      - pattern: Cipher.getInstance("RC2")
+      - pattern: Cipher.getInstance("3DES")
+    metadata:
+      category: security
+      cwe: CWE-327
+      confidence: high
+
+  # === Low Severity Rules ===
+
+  # Debug information disclosure
+  - id: scala-debug-info-disclosure
+    message: "Debug information disclosure detected"
+    severity: LOW
+    languages: [scala]
+    pattern-either:
+      - pattern: println($USER_INPUT)
+      - pattern: print($USER_INPUT)
+      - pattern: Console.println($USER_INPUT)
+      - pattern: System.out.println($USER_INPUT)
+    where:
+      - metavariable-regex:
+          metavariable: $USER_INPUT
+          regex: (?i).*(password|token|secret|key|credential).*
+    metadata:
+      category: security
+      cwe: CWE-532
+      confidence: low
+
+  # Hardcoded IP addresses
+  - id: scala-hardcoded-ip
+    message: "Hardcoded IP address detected"
+    severity: LOW
+    languages: [scala]
+    pattern-either:
+      - pattern: "192.168.$X.$Y"
+      - pattern: "10.$X.$Y.$Z"
+      - pattern: "172.16.$X.$Y"
+      - pattern: '"127.0.0.1"'
+      - pattern: 'localhost'
+    metadata:
+      category: security
+      cwe: CWE-798
+      confidence: low
+
+  # === Framework-specific Rules ===
+
+  # Play Framework CSRF bypass
+  - id: scala-play-csrf-bypass
+    message: "Play Framework CSRF protection bypassed"
+    severity: MEDIUM
+    languages: [scala]
+    pattern-either:
+      - pattern: NoCSRFCheck
+      - pattern: csrf.check = false
+      - pattern: play.filters.csrf.CSRFFilter.Disabled
+    metadata:
+      category: security
+      framework: play
+      cwe: CWE-352
+      confidence: medium
+
+  # Akka HTTP security issues
+  - id: scala-akka-http-security
+    message: "Akka HTTP security configuration issue"
+    severity: MEDIUM
+    languages: [scala]
+    pattern-either:
+      - pattern: akka.http.server.parsing.max-content-length = infinite
+      - pattern: Http().bindAndHandle(..., interface = "0.0.0.0")
+      - pattern: ServerSettings().withVerboseErrorMessages(true)
+    metadata:
+      category: security
+      framework: akka
+      cwe: CWE-400
+      confidence: low
+
+  # Slick SQL injection
+  - id: scala-slick-sql-injection
+    message: "Slick SQL injection vulnerability"
+    severity: CRITICAL
+    languages: [scala]
+    pattern-either:
+      - pattern: $TABLE.filter($CONDITION + $USER_INPUT)
+      - pattern: $DB.withConnection($QUERY + $USER_INPUT)
+      - pattern: $TABLE.filter(_.column === $USER_INPUT)
+    metadata:
+      category: security
+      framework: slick
+      cwe: CWE-89
+      confidence: medium
+
+  # JSON injection
+  - id: scala-json-injection
+    message: "JSON injection vulnerability detected"
+    severity: HIGH
+    languages: [scala]
+    pattern-either:
+      - pattern: Json.parse($USER_INPUT)
+      - pattern: play.api.libs.json.Json.parse($USER_INPUT)
+      - pattern: $JSON_STRING + $USER_INPUT + $JSON_STRING
+    metadata:
+      category: security
+      cwe: CWE-94
+      confidence: low
+
+  # File upload without validation
+  - id: scala-file-upload-no-validation
+    message: "File upload without proper validation"
+    severity: HIGH
+    languages: [scala]
+    pattern-either:
+      - pattern: |
+          def upload = Action(parse.multipartFormData) { request =>
+            val file = request.body.file("picture").get
+            file.ref.moveTo(...)
+          }
+    pattern-not-inside:
+      pattern: |
+        ...
+        if (file.contentType.contains("image")) {
+          ...
+        }
+        ...
+    metadata:
+      category: security
+      framework: play
+      cwe: CWE-434
+      confidence: low

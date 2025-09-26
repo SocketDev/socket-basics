@@ -1,0 +1,531 @@
+rules:
+  # === Critical Severity Rules ===
+
+  # Format string vulnerabilities
+  - id: objc-format-string-vulnerability
+    message: "Format string vulnerability detected"
+    severity: CRITICAL
+    languages: [objective-c]
+    pattern-either:
+      - pattern: NSLog($USER_INPUT)
+      - pattern: printf($USER_INPUT)
+      - pattern: sprintf($BUF, $USER_INPUT)
+      - pattern: fprintf($FILE, $USER_INPUT)
+      - pattern: NSString stringWithFormat:$USER_INPUT
+    metadata:
+      category: security
+      cwe: CWE-134
+      confidence: high
+
+  # SQL injection
+  - id: objc-sql-injection
+    message: "SQL injection vulnerability detected"
+    severity: CRITICAL
+    languages: [objective-c]
+    pattern-either:
+      - pattern: sqlite3_exec($DB, [$QUERY stringByAppendingString:$USER_INPUT], ...)
+      - pattern: |
+          NSString *query = [NSString stringWithFormat:@"SELECT * FROM users WHERE id = %@", $USER_INPUT];
+      - pattern: executeQuery:[$QUERY stringByAppendingString:$USER_INPUT]
+    metadata:
+      category: security
+      cwe: CWE-89
+      confidence: high
+
+  # Command injection
+  - id: objc-command-injection
+    message: "Command injection vulnerability detected"
+    severity: CRITICAL
+    languages: [objective-c]
+    pattern-either:
+      - pattern: system([$USER_INPUT UTF8String])
+      - pattern: NSTask.launchPath = $USER_INPUT
+      - pattern: |
+          NSTask *task = [[NSTask alloc] init];
+          [task setLaunchPath:$USER_INPUT];
+    metadata:
+      category: security
+      cwe: CWE-78
+      confidence: high
+
+  # Unsafe deserialization
+  - id: objc-unsafe-deserialization
+    message: "Unsafe deserialization detected"
+    severity: CRITICAL
+    languages: [objective-c]
+    pattern-either:
+      - pattern: NSKeyedUnarchiver unarchiveObjectWithData:$USER_INPUT
+      - pattern: NSKeyedUnarchiver unarchivedObjectOfClass:$CLASS fromData:$USER_INPUT error:nil
+      - pattern: NSPropertyListSerialization propertyListWithData:$USER_INPUT ...
+    metadata:
+      category: security
+      cwe: CWE-502
+      confidence: high
+
+  # === High Severity Rules ===
+
+  # Hardcoded secrets
+  - id: objc-hardcoded-secrets
+    message: "Hardcoded secrets detected"
+    severity: HIGH
+    languages: [objective-c]
+    pattern-either:
+      - pattern: NSString *password = @"...";
+      - pattern: NSString *apiKey = @"...";
+      - pattern: NSString *secret = @"...";
+      - pattern: '#define PASSWORD @"..."'
+      - pattern: '#define API_KEY @"..."'
+      - pattern: static NSString * const kPassword = @"...";
+    metadata:
+      category: security
+      cwe: CWE-798
+      confidence: medium
+
+  # Weak cryptography - MD5
+  - id: objc-weak-crypto-md5
+    message: "Use of weak MD5 hash algorithm"
+    severity: HIGH
+    languages: [objective-c]
+    pattern-either:
+      - pattern: CC_MD5($DATA, ...)
+      - pattern: CC_MD5_Init(...)
+      - pattern: SecDigestGetData(kSecDigestMD5, ...)
+    metadata:
+      category: security
+      cwe: CWE-327
+      confidence: high
+
+  # Weak cryptography - SHA1
+  - id: objc-weak-crypto-sha1
+    message: "Use of weak SHA1 hash algorithm"
+    severity: HIGH
+    languages: [objective-c]
+    pattern-either:
+      - pattern: CC_SHA1($DATA, ...)
+      - pattern: CC_SHA1_Init(...)
+      - pattern: SecDigestGetData(kSecDigestSHA1, ...)
+    metadata:
+      category: security
+      cwe: CWE-327
+      confidence: high
+
+  # SSL/TLS bypass
+  - id: objc-ssl-bypass
+    message: "SSL/TLS certificate validation bypassed"
+    severity: HIGH
+    languages: [objective-c]
+    pattern-either:
+      - pattern: setAllowsAnyHTTPSCertificate:YES
+      - pattern: continueWithoutCredentialForAuthenticationChallenge
+      - pattern: |
+          - (BOOL)connection:(NSURLConnection *)connection canAuthenticateAgainstProtectionSpace:(NSURLProtectionSpace *)protectionSpace {
+            return YES;
+          }
+    metadata:
+      category: security
+      cwe: CWE-295
+      confidence: high
+
+  # Path traversal
+  - id: objc-path-traversal
+    message: "Path traversal vulnerability detected"
+    severity: HIGH
+    languages: [objective-c]
+    pattern-either:
+      - pattern: NSData dataWithContentsOfFile:[$PATH stringByAppendingString:$USER_INPUT]
+      - pattern: NSString stringWithContentsOfFile:[$PATH stringByAppendingString:$USER_INPUT] ...
+      - pattern: NSFileManager defaultManager] createFileAtPath:[$PATH stringByAppendingString:$USER_INPUT] ...
+    metadata:
+      category: security
+      cwe: CWE-22
+      confidence: medium
+
+  # XSS in WebView
+  - id: objc-webview-xss
+    message: "XSS vulnerability in WebView"
+    severity: HIGH
+    languages: [objective-c]
+    pattern-either:
+      - pattern: loadHTMLString:$USER_INPUT baseURL:nil
+      - pattern: stringByEvaluatingJavaScriptFromString:$USER_INPUT
+      - pattern: WKWebView loadHTMLString:$USER_INPUT baseURL:nil
+    metadata:
+      category: security
+      cwe: CWE-79
+      confidence: medium
+
+  # === Medium Severity Rules ===
+
+  # Insecure random number generation
+  - id: objc-insecure-random
+    message: "Use of insecure random number generator"
+    severity: MEDIUM
+    languages: [objective-c]
+    pattern-either:
+      - pattern: arc4random()
+      - pattern: rand()
+      - pattern: random()
+      - pattern: drand48()
+    metadata:
+      category: security
+      cwe: CWE-338
+      confidence: medium
+
+  # HTTP instead of HTTPS
+  - id: objc-insecure-http
+    message: "Use of HTTP instead of HTTPS"
+    severity: MEDIUM
+    languages: [objective-c]
+    pattern-either:
+      - pattern: '@"http://$URL"'
+      - pattern: '"http://$URL"'
+      - pattern: 'NSURL URLWithString:@"http://$URL"'
+      - pattern: 'NSURLRequest requestWithURL:[NSURL URLWithString:@"http://$URL"]'
+    metadata:
+      category: security
+      cwe: CWE-319
+      confidence: low
+
+  # Open redirect
+  - id: objc-open-redirect
+    message: "Open redirect vulnerability detected"
+    severity: MEDIUM
+    languages: [objective-c]
+    pattern-either:
+      - pattern: UIApplication.sharedApplication openURL:[NSURL URLWithString:$USER_INPUT]
+      - pattern: '[UIApplication.sharedApplication openURL:$USER_INPUT options:@{} completionHandler:nil]'
+    metadata:
+      category: security
+      cwe: CWE-601
+      confidence: low
+
+  # Weak cipher algorithms
+  - id: objc-weak-cipher
+    message: "Use of weak cipher algorithm"
+    severity: MEDIUM
+    languages: [objective-c]
+    pattern-either:
+      - pattern: kCCAlgorithmDES
+      - pattern: kCCAlgorithmRC4
+      - pattern: kCCAlgorithm3DES
+      - pattern: CCCrypt(..., kCCAlgorithmDES, ...)
+    metadata:
+      category: security
+      cwe: CWE-327
+      confidence: high
+
+  # Keychain without proper security
+  - id: objc-keychain-insecure
+    message: "Keychain usage without proper security attributes"
+    severity: MEDIUM
+    languages: [objective-c]
+    pattern-either:
+      - pattern: |
+          NSDictionary *query = @{
+            (__bridge id)kSecClass: (__bridge id)kSecClassGenericPassword,
+            (__bridge id)kSecAttrAccount: $ACCOUNT,
+            (__bridge id)kSecValueData: $DATA
+          };
+    pattern-not-inside:
+      pattern: |
+        ...
+        (__bridge id)kSecAttrAccessible: (__bridge id)kSecAttrAccessibleWhenUnlockedThisDeviceOnly
+        ...
+    metadata:
+      category: security
+      cwe: CWE-732
+      confidence: low
+
+  # === Low Severity Rules ===
+
+  # Debug information disclosure
+  - id: objc-debug-info-disclosure
+    message: "Debug information disclosure detected"
+    severity: LOW
+    languages: [objective-c]
+    pattern-either:
+      - pattern: NSLog(@"%@", $USER_INPUT)
+      - pattern: printf("%s", [$USER_INPUT UTF8String])
+      - pattern: os_log(OS_LOG_DEFAULT, "%@", $USER_INPUT)
+    where:
+      - metavariable-regex:
+          metavariable: $USER_INPUT
+          regex: (?i).*(password|token|secret|key|credential).*
+    metadata:
+      category: security
+      cwe: CWE-532
+      confidence: low
+
+  # Hardcoded IP addresses
+  - id: objc-hardcoded-ip
+    message: "Hardcoded IP address detected"
+    severity: LOW
+    languages: [objective-c]
+    pattern-either:
+      - pattern: '@"192.168.$...ADDR"'
+      - pattern: '@"10.$...ADDR"'
+      - pattern: '@"172.16.$...ADDR"'
+      - pattern: '@"127.0.0.1"'
+      - pattern: '@"localhost"'
+    metadata:
+      category: security
+      cwe: CWE-798
+      confidence: low
+
+  # Memory management issues
+  - id: objc-memory-management
+    message: "Memory management issue detected"
+    severity: MEDIUM
+    languages: [objective-c]
+    pattern-either:
+      - pattern: |
+          [obj release];
+          [obj release];
+      - pattern: |
+          free(ptr);
+          free(ptr);
+      - pattern: |
+          NSObject *obj = [[NSObject alloc] init];
+          return result;
+    pattern-not-inside:
+      pattern: |
+        ...
+        [obj release];
+        ...
+    metadata:
+      category: security
+      cwe: CWE-415
+      confidence: medium
+
+  # === iOS-specific Rules ===
+
+  # App Transport Security bypass
+  - id: objc-ios-ats-bypass
+    message: "App Transport Security bypassed"
+    severity: MEDIUM
+    languages: [objective-c]
+    pattern-either:
+      - pattern: NSAllowsArbitraryLoads = @YES
+      - pattern: NSExceptionAllowsInsecureHTTPLoads = @YES
+      - pattern: NSAllowsLocalNetworking = @YES
+    metadata:
+      category: security
+      platform: ios
+      cwe: CWE-319
+      confidence: medium
+
+  # Insecure data storage
+  - id: objc-ios-insecure-storage
+    message: "Insecure data storage detected"
+    severity: HIGH
+    languages: [objective-c]
+    pattern-either:
+      - pattern: NSUserDefaults.standardUserDefaults setObject:$SENSITIVE_DATA forKey:$KEY
+      - pattern: '[NSUserDefaults.standardUserDefaults setObject:$SENSITIVE_DATA forKey:$KEY]'
+      - pattern: '[fileData writeToFile:$PATH atomically:YES]'
+    where:
+      - metavariable-regex:
+          metavariable: $SENSITIVE_DATA
+          regex: (?i).*(password|token|secret|key|credential|credit_card|ssn).*
+    metadata:
+      category: security
+      platform: ios
+      cwe: CWE-312
+      confidence: low
+
+  # URL scheme handling
+  - id: objc-ios-url-scheme
+    message: "URL scheme handling without validation"
+    severity: MEDIUM
+    languages: [objective-c]
+    pattern-either:
+      - pattern: |
+          - (BOOL)application:(UIApplication *)application openURL:(NSURL *)url sourceApplication:(NSString *)sourceApplication annotation:(id)annotation {
+            // No URL validation
+            return YES;
+          }
+      - pattern: '[UIApplication.sharedApplication openURL:url]'
+    metadata:
+      category: security
+      platform: ios
+      cwe: CWE-20
+      confidence: low
+
+  # Jailbreak detection bypass
+  - id: objc-ios-jailbreak-detection
+    message: "Jailbreak detection implementation detected"
+    severity: MEDIUM
+    languages: [objective-c]
+    pattern-either:
+      - pattern: NSFileManager.defaultManager fileExistsAtPath:@"/Applications/Cydia.app"
+      - pattern: fopen("/bin/bash", "r")
+      - pattern: system("ls")
+    metadata:
+      category: security
+      platform: ios
+      cwe: CWE-489
+      confidence: low
+
+  # Biometric authentication bypass
+  - id: objc-ios-biometric-bypass
+    message: "Biometric authentication implementation issue"
+    severity: MEDIUM
+    languages: [objective-c]
+    pattern-either:
+      - pattern: '[context evaluatePolicy:LAPolicyDeviceOwnerAuthentication ...]'
+      - pattern: '[context evaluatePolicy:LAPolicyDeviceOwnerAuthenticationWithBiometrics ...]'
+    pattern-not-inside:
+      pattern: |
+        ...
+        LAPolicyDeviceOwnerAuthenticationWithBiometrics
+        ...
+    metadata:
+      category: security
+      platform: ios
+      cwe: CWE-287
+      confidence: low
+
+  # === macOS-specific Rules ===
+
+  # Privilege escalation
+  - id: objc-macos-privilege-escalation
+    message: "Potential privilege escalation detected"
+    severity: HIGH
+    languages: [objective-c]
+    pattern-either:
+      - pattern: AuthorizationCreate(NULL, kAuthorizationEmptyEnvironment, kAuthorizationFlagDefaults, &authRef)
+      - pattern: AuthorizationExecuteWithPrivileges(authRef, ...)
+      - pattern: STPrivilegedTask
+    metadata:
+      category: security
+      platform: macos
+      cwe: CWE-250
+      confidence: medium
+
+  # Code signing bypass
+  - id: objc-macos-code-signing
+    message: "Code signing verification issue"
+    severity: HIGH
+    languages: [objective-c]
+    pattern-either:
+      - pattern: SecCodeCheckValidity(code, kSecCSDefaultFlags, NULL)
+      - pattern: SecStaticCodeCheckValidity(staticCode, kSecCSDefaultFlags, NULL)
+    pattern-not-inside:
+      pattern: |
+        ...
+        kSecCSCheckAllArchitectures
+        ...
+    metadata:
+      category: security
+      platform: macos
+      cwe: CWE-347
+      confidence: low
+
+  # === Network Security Rules ===
+
+  # Insecure NSURLSession configuration
+  - id: objc-insecure-nsurlsession
+    message: "Insecure NSURLSession configuration"
+    severity: MEDIUM
+    languages: [objective-c]
+    pattern-either:
+      - pattern: |
+          NSURLSessionConfiguration *config = [NSURLSessionConfiguration defaultSessionConfiguration];
+          config.TLSMinimumSupportedProtocol = kTLSProtocol1;
+      - pattern: |
+          config.URLCache = nil;
+      - pattern: |
+          config.requestCachePolicy = NSURLRequestReloadIgnoringLocalCacheData;
+    metadata:
+      category: security
+      cwe: CWE-326
+      confidence: medium
+
+  # Certificate pinning bypass
+  - id: objc-certificate-pinning-bypass
+    message: "Certificate pinning bypassed or missing"
+    severity: HIGH
+    languages: [objective-c]
+    pattern-either:
+      - pattern: |
+          - (void)URLSession:(NSURLSession *)session didReceiveChallenge:(NSURLAuthenticationChallenge *)challenge completionHandler:(void (^)(NSURLSessionAuthChallengeDisposition, NSURLCredential *))completionHandler {
+            completionHandler(NSURLSessionAuthChallengePerformDefaultHandling, nil);
+          }
+    pattern-not-inside:
+      pattern: |
+        ...
+        SecTrustRef serverTrust = challenge.protectionSpace.serverTrust;
+        SecPolicyRef policy = SecPolicyCreateSSL(true, (__bridge CFStringRef)serverHostname);
+        ...
+    metadata:
+      category: security
+      cwe: CWE-295
+      confidence: low
+
+  # === Framework-specific Rules ===
+
+  # Core Data injection
+  - id: objc-core-data-injection
+    message: "Core Data injection vulnerability"
+    severity: HIGH
+    languages: [objective-c]
+    pattern-either:
+      - pattern: NSFetchRequest *request = [NSFetchRequest fetchRequestWithEntityName:$USER_INPUT]
+      - pattern: NSPredicate predicateWithFormat:[$FORMAT stringByAppendingString:$USER_INPUT]
+      - pattern: '[context executeFetchRequest:request error:nil]'
+    metadata:
+      category: security
+      framework: coredata
+      cwe: CWE-943
+      confidence: medium
+
+  # AFNetworking security issues
+  - id: objc-afnetworking-security
+    message: "AFNetworking security configuration issue"
+    severity: MEDIUM
+    languages: [objective-c]
+    pattern-either:
+      - pattern: |
+          AFSecurityPolicy *securityPolicy = [AFSecurityPolicy defaultPolicy];
+          securityPolicy.allowInvalidCertificates = YES;
+      - pattern: |
+          manager.securityPolicy.validatesDomainName = NO;
+    metadata:
+      category: security
+      framework: afnetworking
+      cwe: CWE-295
+      confidence: medium
+
+  # Buffer overflow vulnerabilities
+  - id: objc-buffer-overflow
+    message: "Buffer overflow vulnerability detected"
+    severity: CRITICAL
+    languages: [objective-c]
+    pattern-either:
+      - pattern: strcpy($DEST, [$SRC UTF8String])
+      - pattern: strcat($DEST, [$SRC UTF8String])
+      - pattern: sprintf($BUF, "%s", [$SRC UTF8String])
+      - pattern: gets($BUF)
+    metadata:
+      category: security
+      cwe: CWE-120
+      confidence: high
+
+  # Race conditions
+  - id: objc-race-condition
+    message: "Race condition detected - check file operations"
+    severity: MEDIUM
+    languages: [objective-c]
+    pattern-either:
+      - pattern: |
+          [NSFileManager.defaultManager fileExistsAtPath:$PATH];
+          // ... other code ...
+          [NSData.dataWithContentsOfFile:$PATH];
+      - pattern: |
+          access([$PATH UTF8String], F_OK);
+          // ... other code ...
+          fopen([$PATH UTF8String], "r");
+    metadata:
+      category: security
+      cwe: CWE-367
+      confidence: low

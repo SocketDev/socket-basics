@@ -1,0 +1,491 @@
+rules:
+  # === Gosec G101: Hardcoded credentials ===
+  - id: go-hardcoded-credentials
+    message: "Potential hardcoded credentials detected"
+    severity: ERROR
+    languages: [go]
+    pattern-either:
+      - pattern: |
+          const $VAR = "..."
+      - pattern: |
+          var $VAR = "..."
+      - pattern: |
+          $VAR := "..."
+    where:
+      - metavariable-regex:
+          metavariable: $VAR
+          regex: (?i).*(password|passwd|pwd|secret|token|key|api_key|auth).*
+    metadata:
+      category: security
+      gosec_equivalent: G101
+      cwe: CWE-798
+      confidence: medium
+
+  # === Gosec G102: Bind to all interfaces ===
+  - id: go-bind-all-interfaces
+    message: "Binding to all network interfaces. Consider binding to localhost"
+    severity: WARNING
+    languages: [go]
+    pattern-either:
+      - pattern: net.Listen("tcp", "0.0.0.0:$PORT")
+      - pattern: net.Listen("tcp", ":$PORT")
+      - pattern: http.ListenAndServe("0.0.0.0:$PORT", ...)
+      - pattern: http.ListenAndServe(":$PORT", ...)
+    metadata:
+      category: security
+      gosec_equivalent: G102
+      cwe: CWE-200
+
+  # === Gosec G103: Unsafe block usage ===
+  - id: go-unsafe-usage
+    message: "Use of unsafe package detected"
+    severity: WARNING
+    languages: [go]
+    pattern-either:
+      - pattern: unsafe.Pointer($EXPR)
+      - pattern: unsafe.Sizeof($EXPR)
+      - pattern: unsafe.Offsetof($EXPR)
+      - pattern: unsafe.Alignof($EXPR)
+    metadata:
+      category: security
+      gosec_equivalent: G103
+      cwe: CWE-242
+
+  # === Gosec G104: Errors not checked ===
+  - id: go-error-not-checked
+    message: "Error return value not checked"
+    severity: WARNING
+    languages: [go]
+    patterns:
+      - pattern-either:
+        # Function calls that return error as last value
+        - pattern: $FUNC(...)
+        - pattern: $VAR, $ERR := $FUNC(...)
+      - pattern-not-inside:
+          pattern: |
+            if $ERR != nil {
+              ...
+            }
+      - pattern-not-inside:
+          pattern: |
+            if $VAR, $ERR := $FUNC(...); $ERR != nil {
+              ...
+            }
+    where:
+      # Common functions that return errors
+      - metavariable-regex:
+          metavariable: $FUNC
+          regex: (os\..*|io\..*|json\..*|fmt\..*|ioutil\..*|http\..*|database\/sql\..*)
+    metadata:
+      category: security
+      gosec_equivalent: G104
+      cwe: CWE-703
+      confidence: low
+
+  # === Gosec G106: SSH InsecureIgnoreHostKey ===
+  - id: go-ssh-insecure-ignore-host-key
+    message: "Use of ssh.InsecureIgnoreHostKey detected"
+    severity: ERROR
+    languages: [go]
+    pattern: ssh.InsecureIgnoreHostKey()
+    metadata:
+      category: security
+      gosec_equivalent: G106
+      cwe: CWE-322
+
+  # === Gosec G107: URL taint input ===
+  - id: go-url-taint-input
+    message: "URL provided as taint input to HTTP request"
+    severity: WARNING
+    languages: [go]
+    pattern-either:
+      - pattern: http.Get($URL)
+      - pattern: http.Post($URL, ...)
+      - pattern: http.Head($URL)
+      - pattern: http.PostForm($URL, ...)
+    where:
+      - metavariable-pattern:
+          metavariable: $URL
+          pattern: $VAR
+    metadata:
+      category: security
+      gosec_equivalent: G107
+      cwe: CWE-88
+
+  # === Gosec G108: Profiling endpoint exposed ===
+  - id: go-profiling-endpoint-exposed
+    message: "Profiling endpoint automatically exposed on /debug/pprof"
+    severity: WARNING
+    languages: [go]
+    pattern: |
+      import _ "net/http/pprof"
+    metadata:
+      category: security
+      gosec_equivalent: G108
+      cwe: CWE-489
+
+  # === Gosec G109: Integer overflow ===
+  - id: go-integer-overflow-strconv
+    message: "Potential integer overflow from strconv.Atoi result"
+    severity: WARNING
+    languages: [go]
+    pattern-either:
+      - pattern: int16(strconv.Atoi($STR))
+      - pattern: int32(strconv.Atoi($STR))
+    metadata:
+      category: security
+      gosec_equivalent: G109
+      cwe: CWE-190
+
+  # === Gosec G110: Decompression bomb ===
+  - id: go-decompression-bomb
+    message: "Potential DoS vulnerability via decompression bomb"
+    severity: WARNING
+    languages: [go]
+    pattern-either:
+      - pattern: gzip.NewReader($READER)
+      - pattern: zlib.NewReader($READER)
+      - pattern: flate.NewReader($READER)
+    metadata:
+      category: security
+      gosec_equivalent: G110
+      cwe: CWE-409
+
+  # === Gosec G201: SQL query format string ===
+  - id: go-sql-format-string
+    message: "SQL query construction using format string"
+    severity: ERROR
+    languages: [go]
+    pattern-either:
+      - pattern: $DB.Query(fmt.Sprintf($QUERY, ...))
+      - pattern: $DB.Exec(fmt.Sprintf($QUERY, ...))
+      - pattern: $DB.QueryRow(fmt.Sprintf($QUERY, ...))
+    metadata:
+      category: security
+      gosec_equivalent: G201
+      cwe: CWE-89
+
+  # === Gosec G202: SQL query string concatenation ===
+  - id: go-sql-string-concat
+    message: "SQL query construction using string concatenation"
+    severity: ERROR
+    languages: [go]
+    pattern-either:
+      - pattern: $DB.Query($QUERY + $VAR)
+      - pattern: $DB.Exec($QUERY + $VAR)
+      - pattern: $DB.QueryRow($QUERY + $VAR)
+    metadata:
+      category: security
+      gosec_equivalent: G202
+      cwe: CWE-89
+
+  # === Gosec G203: HTML template without escaping ===
+  - id: go-html-template-no-escape
+    message: "Use of unescaped data in HTML templates"
+    severity: WARNING
+    languages: [go]
+    pattern-either:
+      - pattern: template.HTML($DATA)
+      - pattern: template.HTMLAttr($DATA)
+      - pattern: template.JS($DATA)
+      - pattern: template.CSS($DATA)
+    metadata:
+      category: security
+      gosec_equivalent: G203
+      cwe: CWE-79
+
+  # === Gosec G204: Command execution ===
+  - id: go-command-execution
+    message: "Audit use of command execution"
+    severity: ERROR
+    languages: [go]
+    pattern-either:
+      - pattern: exec.Command($CMD, ...)
+      - pattern: exec.CommandContext($CTX, $CMD, ...)
+    where:
+      - metavariable-pattern:
+          metavariable: $CMD
+          pattern: $VAR
+    metadata:
+      category: security
+      gosec_equivalent: G204
+      cwe: CWE-78
+
+  # === Gosec G301: Poor file permissions (mkdir) ===
+  - id: go-poor-mkdir-permissions
+    message: "Poor file permissions used when creating a directory"
+    severity: WARNING
+    languages: [go]
+    pattern-either:
+      - pattern: os.Mkdir($PATH, $PERM)
+      - pattern: os.MkdirAll($PATH, $PERM)
+    where:
+      - metavariable-comparison:
+          metavariable: $PERM
+          comparison: |
+            import re
+            # Check for overly permissive permissions
+            perm_str = str($PERM)
+            if re.match(r'0o?7[7-9][7-9]', perm_str) or perm_str in ['0777', '511']:
+                True
+            else:
+                False
+    metadata:
+      category: security
+      gosec_equivalent: G301
+      cwe: CWE-276
+
+  # === Gosec G302: Poor file permissions (chmod) ===
+  - id: go-poor-chmod-permissions
+    message: "Poor file permissions used with chmod"
+    severity: WARNING
+    languages: [go]
+    pattern: os.Chmod($PATH, $PERM)
+    where:
+      - metavariable-comparison:
+          metavariable: $PERM
+          comparison: |
+            import re
+            perm_str = str($PERM)
+            if re.match(r'0o?7[7-9][7-9]', perm_str) or perm_str in ['0777', '511']:
+                True
+            else:
+                False
+    metadata:
+      category: security
+      gosec_equivalent: G302
+      cwe: CWE-276
+
+  # === Gosec G303: Predictable temp file ===
+  - id: go-predictable-temp-file
+    message: "Creating tempfile using a predictable path"
+    severity: WARNING
+    languages: [go]
+    pattern-either:
+      - pattern: ioutil.TempFile("/tmp", ...)
+      - pattern: os.CreateTemp("/tmp", ...)
+      - pattern: os.Create("/tmp/" + $FILENAME)
+    metadata:
+      category: security
+      gosec_equivalent: G303
+      cwe: CWE-377
+
+  # === Gosec G304: File path traversal ===
+  - id: go-file-path-traversal
+    message: "File path provided as taint input"
+    severity: ERROR
+    languages: [go]
+    pattern-either:
+      - pattern: os.Open($PATH)
+      - pattern: ioutil.ReadFile($PATH)
+      - pattern: os.ReadFile($PATH)
+      - pattern: os.OpenFile($PATH, ...)
+    where:
+      - metavariable-pattern:
+          metavariable: $PATH
+          pattern: $VAR
+    metadata:
+      category: security
+      gosec_equivalent: G304
+      cwe: CWE-22
+
+  # === Gosec G305: Zip archive traversal ===
+  - id: go-zip-traversal
+    message: "File path traversal when extracting zip archive"
+    severity: ERROR
+    languages: [go]
+    pattern: |
+      for _, $FILE := range $READER.File {
+        ...
+        $DEST := filepath.Join($DIR, $FILE.Name)
+        ...
+      }
+    pattern-not-inside: |
+      for _, $FILE := range $READER.File {
+        ...
+        if strings.Contains($FILE.Name, "..") {
+          ...
+        }
+        ...
+      }
+    metadata:
+      category: security
+      gosec_equivalent: G305
+      cwe: CWE-22
+
+  # === Gosec G401: Weak cryptography (MD5/SHA1) ===
+  - id: go-weak-crypto-hash
+    message: "Detect the usage of MD5 or SHA1"
+    severity: WARNING
+    languages: [go]
+    pattern-either:
+      - pattern: md5.New()
+      - pattern: md5.Sum(...)
+      - pattern: sha1.New()
+      - pattern: sha1.Sum(...)
+      - pattern: crypto.MD5.New()
+      - pattern: crypto.SHA1.New()
+    metadata:
+      category: security
+      gosec_equivalent: G401
+      cwe: CWE-326
+
+  # === Gosec G402: Bad TLS connection ===
+  - id: go-bad-tls-connection
+    message: "TLS connection with InsecureSkipVerify set to true"
+    severity: ERROR
+    languages: [go]
+    pattern-either:
+      - pattern: |
+          &tls.Config{
+            ...,
+            InsecureSkipVerify: true,
+            ...
+          }
+      - pattern: |
+          tls.Config{
+            ...,
+            InsecureSkipVerify: true,
+            ...
+          }
+    metadata:
+      category: security
+      gosec_equivalent: G402
+      cwe: CWE-295
+
+  # === Gosec G403: Weak RSA key ===
+  - id: go-weak-rsa-key
+    message: "RSA key length should be at least 2048 bits"
+    severity: WARNING
+    languages: [go]
+    pattern: rsa.GenerateKey($RAND, $BITS)
+    where:
+      - metavariable-comparison:
+          metavariable: $BITS
+          comparison: int($BITS) < 2048
+    metadata:
+      category: security
+      gosec_equivalent: G403
+      cwe: CWE-310
+
+  # === Gosec G404: Weak random ===
+  - id: go-weak-random
+    message: "Insecure random number source (rand)"
+    severity: WARNING
+    languages: [go]
+    pattern-either:
+      - pattern: rand.Int()
+      - pattern: rand.Intn(...)
+      - pattern: rand.Float32()
+      - pattern: rand.Float64()
+      - pattern: rand.Read(...)
+    metadata:
+      category: security
+      gosec_equivalent: G404
+      cwe: CWE-338
+
+  # === Gosec G501: Import of MD5 ===
+  - id: go-import-md5
+    message: "Blocklisted import: crypto/md5"
+    severity: WARNING
+    languages: [go]
+    pattern: |
+      import "crypto/md5"
+    metadata:
+      category: security
+      gosec_equivalent: G501
+      cwe: CWE-327
+
+  # === Gosec G502: Import of DES ===
+  - id: go-import-des
+    message: "Blocklisted import: crypto/des"
+    severity: ERROR
+    languages: [go]
+    pattern: |
+      import "crypto/des"
+    metadata:
+      category: security
+      gosec_equivalent: G502
+      cwe: CWE-327
+
+  # === Gosec G503: Import of RC4 ===
+  - id: go-import-rc4
+    message: "Blocklisted import: crypto/rc4"
+    severity: ERROR
+    languages: [go]
+    pattern: |
+      import "crypto/rc4"
+    metadata:
+      category: security
+      gosec_equivalent: G503
+      cwe: CWE-327
+
+  # === Gosec G504: Import of CGI ===
+  - id: go-import-cgi
+    message: "Blocklisted import: net/http/cgi"
+    severity: WARNING
+    languages: [go]
+    pattern: |
+      import "net/http/cgi"
+    metadata:
+      category: security
+      gosec_equivalent: G504
+      cwe: CWE-489
+
+  # === Gosec G505: Import of SHA1 ===
+  - id: go-import-sha1
+    message: "Blocklisted import: crypto/sha1"
+    severity: WARNING
+    languages: [go]
+    pattern: |
+      import "crypto/sha1"
+    metadata:
+      category: security
+      gosec_equivalent: G505
+      cwe: CWE-327
+
+  # === Additional Go security patterns ===
+  - id: go-empty-password
+    message: "Empty password detected"
+    severity: ERROR
+    languages: [go]
+    pattern-either:
+      - pattern: |
+          password := ""
+      - pattern: |
+          const password = ""
+      - pattern: |
+          var password = ""
+    metadata:
+      category: security
+      cwe: CWE-521
+
+  # === SQL injection via direct concatenation ===
+  - id: go-sql-direct-concat
+    message: "SQL injection via direct string concatenation"
+    severity: ERROR
+    languages: [go]
+    pattern-either:
+      - pattern: |
+          $QUERY := "..." + $USER_INPUT + "..."
+          $DB.Query($QUERY)
+      - pattern: |
+          $QUERY := fmt.Sprintf("...%s...", $USER_INPUT)
+          $DB.Query($QUERY)
+    metadata:
+      category: security
+      cwe: CWE-89
+
+  # === Path traversal via filepath.Join ===
+  - id: go-path-traversal-join
+    message: "Potential path traversal via filepath.Join with user input"
+    severity: WARNING
+    languages: [go]
+    pattern: filepath.Join($BASE, $USER_INPUT)
+    where:
+      - metavariable-pattern:
+          metavariable: $USER_INPUT
+          pattern: $VAR
+    metadata:
+      category: security
+      cwe: CWE-22

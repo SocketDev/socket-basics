@@ -1,0 +1,479 @@
+rules:
+  # === Critical Severity Rules ===
+
+  # Buffer overflow vulnerabilities
+  - id: c-buffer-overflow
+    message: "Buffer overflow vulnerability detected"
+    severity: CRITICAL
+    languages: [c, cpp]
+    pattern-either:
+      - pattern: strcpy($DEST, $SRC)
+      - pattern: strcat($DEST, $SRC)
+      - pattern: sprintf($BUF, $FMT, ...)
+      - pattern: vsprintf($BUF, $FMT, ...)
+      - pattern: gets($BUF)
+      - pattern: scanf("%s", $BUF)
+      - pattern: fscanf($FILE, "%s", $BUF)
+    metadata:
+      category: security
+      cwe: CWE-120
+      confidence: high
+
+  # Format string vulnerabilities
+  - id: c-format-string-vulnerability
+    message: "Format string vulnerability detected"
+    severity: CRITICAL
+    languages: [c, cpp]
+    pattern-either:
+      - pattern: printf($USER_INPUT)
+      - pattern: fprintf($FILE, $USER_INPUT)
+      - pattern: sprintf($BUF, $USER_INPUT)
+      - pattern: snprintf($BUF, $SIZE, $USER_INPUT)
+      - pattern: syslog($PRIORITY, $USER_INPUT)
+      - pattern: err($EVAL, $USER_INPUT)
+    metadata:
+      category: security
+      cwe: CWE-134
+      confidence: high
+
+  # Command injection
+  - id: c-command-injection
+    message: "Command injection vulnerability detected"
+    severity: CRITICAL
+    languages: [c, cpp]
+    pattern-either:
+      - pattern: system($USER_INPUT)
+      - pattern: popen($USER_INPUT, ...)
+      - pattern: execl($USER_INPUT, ...)
+      - pattern: execlp($USER_INPUT, ...)
+      - pattern: execv($USER_INPUT, ...)
+      - pattern: execvp($USER_INPUT, ...)
+    metadata:
+      category: security
+      cwe: CWE-78
+      confidence: high
+
+  # SQL injection (for C programs using database libraries)
+  - id: c-sql-injection
+    message: "SQL injection vulnerability detected"
+    severity: CRITICAL
+    languages: [c, cpp]
+    pattern-either:
+      - pattern: mysql_query($CONN, $QUERY + $USER_INPUT)
+      - pattern: sqlite3_exec($DB, $QUERY + $USER_INPUT, ...)
+      - pattern: PQexec($CONN, $QUERY + $USER_INPUT)
+      - pattern: sprintf($BUF, "SELECT * FROM users WHERE id = %s", $USER_INPUT)
+    metadata:
+      category: security
+      cwe: CWE-89
+      confidence: high
+
+  # === High Severity Rules ===
+
+  # Memory management issues
+  - id: c-memory-management
+    message: "Memory management issue detected"
+    severity: HIGH
+    languages: [c, cpp]
+    pattern-either:
+      - pattern: free($PTR); ... free($PTR);
+      - pattern: malloc(0)
+      - pattern: calloc(0, ...)
+      - pattern: realloc($PTR, 0)
+      - pattern: $PTR = malloc($SIZE); ... return $RET;
+    pattern-not-inside:
+      pattern: |
+        ...
+        free($PTR);
+        ...
+    metadata:
+      category: security
+      cwe: CWE-415
+      confidence: medium
+
+  # Use after free
+  - id: c-use-after-free
+    message: "Use after free vulnerability detected"
+    severity: HIGH
+    languages: [c, cpp]
+    pattern: |
+      free($PTR);
+      ...
+      *$PTR = $VAL;
+    metadata:
+      category: security
+      cwe: CWE-416
+      confidence: medium
+
+  # Integer overflow
+  - id: c-integer-overflow
+    message: "Integer overflow vulnerability detected"
+    severity: HIGH
+    languages: [c, cpp]
+    pattern-either:
+      - pattern: malloc($SIZE * $COUNT)
+      - pattern: calloc($SIZE, $COUNT)
+      - pattern: $BUF[$INDEX + $OFFSET]
+    where:
+      - metavariable-pattern:
+          metavariable: $SIZE
+          pattern: $VAR
+      - metavariable-pattern:
+          metavariable: $COUNT
+          pattern: $VAR
+    metadata:
+      category: security
+      cwe: CWE-190
+      confidence: low
+
+  # Null pointer dereference
+  - id: c-null-pointer-dereference
+    message: "Null pointer dereference detected"
+    severity: HIGH
+    languages: [c, cpp]
+    pattern-either:
+      - pattern: |
+          $PTR = malloc($SIZE);
+          *$PTR = $VAL;
+      - pattern: |
+          $PTR = NULL;
+          ...
+          *$PTR = $VAL;
+    pattern-not-inside:
+      pattern: |
+        ...
+        if ($PTR != NULL) {
+          ...
+        }
+        ...
+    metadata:
+      category: security
+      cwe: CWE-476
+      confidence: low
+
+  # Hardcoded secrets
+  - id: c-hardcoded-secrets
+    message: "Hardcoded secrets detected"
+    severity: HIGH
+    languages: [c, cpp]
+    pattern-either:
+      - pattern: |
+          char password[] = "...";
+      - pattern: |
+          const char* password = "...";
+      - pattern: |
+          #define PASSWORD "..."
+      - pattern: |
+          #define API_KEY "..."
+    metadata:
+      category: security
+      cwe: CWE-798
+      confidence: medium
+
+  # Race conditions
+  - id: c-race-condition
+    message: "Race condition detected - check file operations"
+    severity: HIGH
+    languages: [c, cpp]
+    pattern-either:
+      - pattern: |
+          access($PATH, F_OK);
+          ...
+          fopen($PATH, ...);
+      - pattern: |
+          stat($PATH, ...);
+          ...
+          open($PATH, ...);
+    metadata:
+      category: security
+      cwe: CWE-367
+      confidence: low
+
+  # === Medium Severity Rules ===
+
+  # Weak random number generation
+  - id: c-weak-random
+    message: "Use of weak random number generator"
+    severity: MEDIUM
+    languages: [c, cpp]
+    pattern-either:
+      - pattern: rand()
+      - pattern: srand($SEED)
+      - pattern: random()
+      - pattern: srandom($SEED)
+    metadata:
+      category: security
+      cwe: CWE-338
+      confidence: medium
+
+  # Insecure file permissions
+  - id: c-insecure-file-permissions
+    message: "Insecure file permissions detected"
+    severity: MEDIUM
+    languages: [c, cpp]
+    pattern-either:
+      - pattern: open($PATH, $FLAGS, 0777)
+      - pattern: creat($PATH, 0777)
+      - pattern: chmod($PATH, 0777)
+      - pattern: fchmod($FD, 0777)
+      - pattern: mkdir($PATH, 0777)
+    metadata:
+      category: security
+      cwe: CWE-732
+      confidence: high
+
+  # Temporary file creation
+  - id: c-insecure-temp-file
+    message: "Insecure temporary file creation"
+    severity: MEDIUM
+    languages: [c, cpp]
+    pattern-either:
+      - pattern: tmpnam($BUF)
+      - pattern: tempnam($DIR, $PREFIX)
+      - pattern: mktemp($TEMPLATE)
+      - pattern: gets($BUF)
+    metadata:
+      category: security
+      cwe: CWE-377
+      confidence: high
+
+  # Signal handling issues
+  - id: c-signal-handling
+    message: "Signal handling issue detected"
+    severity: MEDIUM
+    languages: [c, cpp]
+    pattern-either:
+      - pattern: |
+          void signal_handler(int sig) {
+            printf(...);  // Non-async-signal-safe
+          }
+      - pattern: |
+          void signal_handler(int sig) {
+            malloc(...);  // Non-async-signal-safe
+          }
+      - pattern: |
+          void signal_handler(int sig) {
+            free(...);    // Non-async-signal-safe
+          }
+    metadata:
+      category: security
+      cwe: CWE-479
+      confidence: low
+
+  # === Low Severity Rules ===
+
+  # Hardcoded IP addresses
+  - id: c-hardcoded-ip
+    message: "Hardcoded IP address detected"
+    severity: LOW
+    languages: [c, cpp]
+    pattern-either:
+      - pattern: '"192.168.$IP"'
+      - pattern: '"10.$IP"'
+      - pattern: '"172.16.$IP"'
+      - pattern: '"127.0.0.1"'
+      - pattern: '"localhost"'
+    metadata:
+      category: security
+      cwe: CWE-798
+      confidence: low
+
+  # Debug information
+  - id: c-debug-info
+    message: "Debug information in production code"
+    severity: LOW
+    languages: [c, cpp]
+    pattern-either:
+      - pattern: |
+          #ifdef DEBUG
+          printf(...);
+          #endif
+      - pattern: assert($COND)
+      - pattern: abort()
+    metadata:
+      category: security
+      cwe: CWE-489
+      confidence: low
+
+  # === C++ Specific Rules ===
+
+  # Unsafe casts
+  - id: cpp-unsafe-cast
+    message: "Unsafe cast detected"
+    severity: HIGH
+    languages: [cpp]
+    pattern-either:
+      - pattern: reinterpret_cast<$TYPE>($VAR)
+      - pattern: const_cast<$TYPE>($VAR)
+      - pattern: (($TYPE)$VAR)
+      - pattern: static_cast<$TYPE*>($VAR)
+    metadata:
+      category: security
+      cwe: CWE-704
+      confidence: low
+
+  # Memory management in C++
+  - id: cpp-memory-management
+    message: "C++ memory management issue"
+    severity: HIGH
+    languages: [cpp]
+    pattern-either:
+      - pattern: delete $PTR; ... delete $PTR;
+      - pattern: delete[] $PTR; ... delete[] $PTR;
+      - pattern: new $TYPE[$SIZE]; ... delete $PTR;
+      - pattern: new $TYPE; ... delete[] $PTR;
+    metadata:
+      category: security
+      cwe: CWE-415
+      confidence: medium
+
+  # Exception safety
+  - id: cpp-exception-safety
+    message: "Exception safety issue detected"
+    severity: MEDIUM
+    languages: [cpp]
+    pattern-either:
+      - pattern: |
+          try {
+            $PTR = new $TYPE;
+            ...
+          } catch (...) {
+            // No cleanup
+          }
+      - pattern: |
+          $PTR = new $TYPE;
+          // Potential exception before delete
+          ...
+    metadata:
+      category: security
+      cwe: CWE-401
+      confidence: low
+
+  # STL iterator invalidation
+  - id: cpp-iterator-invalidation
+    message: "STL iterator invalidation detected"
+    severity: MEDIUM
+    languages: [cpp]
+    pattern-either:
+      - pattern: |
+          for (auto it = $CONTAINER.begin(); it != $CONTAINER.end(); ++it) {
+            $CONTAINER.erase(it);
+          }
+      - pattern: |
+          auto it = $CONTAINER.begin();
+          $CONTAINER.push_back(...);
+          *it = ...;
+    metadata:
+      category: security
+      cwe: CWE-416
+      confidence: low
+
+  # Resource leaks
+  - id: cpp-resource-leak
+    message: "Resource leak detected"
+    severity: MEDIUM
+    languages: [cpp]
+    pattern-either:
+      - pattern: |
+          FILE* $F = fopen(...);
+          return $RET;
+      - pattern: |
+          int $FD = open(...);
+          return $RET;
+      - pattern: |
+          $PTR = malloc(...);
+          return $RET;
+    pattern-not-inside:
+      pattern: |
+        ...
+        fclose($F);
+        ...
+    metadata:
+      category: security
+      cwe: CWE-401
+      confidence: low
+
+  # === OpenSSL/Crypto Related Rules ===
+
+  # Weak cryptographic algorithms
+  - id: c-weak-crypto
+    message: "Use of weak cryptographic algorithm"
+    severity: HIGH
+    languages: [c, cpp]
+    pattern-either:
+      - pattern: EVP_md5()
+      - pattern: EVP_sha1()
+      - pattern: EVP_des_ecb()
+      - pattern: EVP_rc4()
+      - pattern: DES_set_key(...)
+    metadata:
+      category: security
+      cwe: CWE-327
+      confidence: high
+
+  # SSL/TLS issues
+  - id: c-ssl-issues
+    message: "SSL/TLS security issue detected"
+    severity: HIGH
+    languages: [c, cpp]
+    pattern-either:
+      - pattern: SSL_CTX_set_verify($CTX, SSL_VERIFY_NONE, ...)
+      - pattern: SSL_set_verify($SSL, SSL_VERIFY_NONE, ...)
+      - pattern: SSL_CTX_set_cipher_list($CTX, "ALL")
+    metadata:
+      category: security
+      cwe: CWE-295
+      confidence: high
+
+  # === Network Security Rules ===
+
+  # Socket security issues
+  - id: c-socket-security
+    message: "Socket security issue detected"
+    severity: MEDIUM
+    languages: [c, cpp]
+    pattern-either:
+      - pattern: bind($SOCK, $ADDR, sizeof($ADDR))
+      - pattern: connect($SOCK, $ADDR, sizeof($ADDR))
+    where:
+      - metavariable-pattern:
+          metavariable: $ADDR
+          pattern: $VAR
+    metadata:
+      category: security
+      cwe: CWE-200
+      confidence: low
+
+  # Buffer size issues
+  - id: c-buffer-size
+    message: "Buffer size calculation issue"
+    severity: MEDIUM
+    languages: [c, cpp]
+    pattern-either:
+      - pattern: strncpy($DEST, $SRC, strlen($SRC))
+      - pattern: strncat($DEST, $SRC, strlen($SRC))
+      - pattern: memcpy($DEST, $SRC, strlen($SRC))
+    metadata:
+      category: security
+      cwe: CWE-131
+      confidence: medium
+
+  # Input validation
+  - id: c-input-validation
+    message: "Input validation issue detected"
+    severity: HIGH
+    languages: [c, cpp]
+    pattern-either:
+      - pattern: |
+          fgets($BUF, sizeof($BUF), stdin);
+          system($BUF);
+      - pattern: |
+          scanf("%s", $BUF);
+          system($BUF);
+      - pattern: |
+          gets($BUF);
+          system($BUF);
+    metadata:
+      category: security
+      cwe: CWE-20
+      confidence: high

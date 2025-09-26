@@ -1,0 +1,494 @@
+rules:
+  # === Critical Severity Rules ===
+
+  # Code injection via reflection
+  - id: java-reflection-injection
+    message: "Code injection via reflection detected"
+    severity: CRITICAL
+    languages: [java]
+    pattern-either:
+      - pattern: Class.forName($USER_INPUT)
+      - pattern: $CLASS.newInstance()
+      - pattern: $METHOD.invoke($OBJ, $USER_INPUT)
+      - pattern: Runtime.getRuntime().exec($USER_INPUT)
+    metadata:
+      category: security
+      cwe: CWE-94
+      confidence: medium
+
+  # SQL injection
+  - id: java-sql-injection
+    message: "SQL injection vulnerability detected"
+    severity: CRITICAL
+    languages: [java]
+    pattern-either:
+      - pattern: $STMT.executeQuery($QUERY + $USER_INPUT)
+      - pattern: $STMT.execute($QUERY + $USER_INPUT)
+      - pattern: $STMT.executeUpdate($QUERY + $USER_INPUT)
+      - pattern: String.format($SQL, $USER_INPUT)
+    metadata:
+      category: security
+      cwe: CWE-89
+      confidence: high
+
+  # Deserialization vulnerabilities
+  - id: java-unsafe-deserialization
+    message: "Unsafe deserialization detected"
+    severity: CRITICAL
+    languages: [java]
+    pattern-either:
+      - pattern: new ObjectInputStream($STREAM).readObject()
+      - pattern: $OIS.readObject()
+      - pattern: XMLDecoder.readObject()
+      - pattern: Yaml.load($INPUT)
+    metadata:
+      category: security
+      cwe: CWE-502
+      confidence: high
+
+  # Command injection
+  - id: java-command-injection
+    message: "Command injection vulnerability detected"
+    severity: CRITICAL
+    languages: [java]
+    pattern-either:
+      - pattern: Runtime.getRuntime().exec($CMD + $USER_INPUT)
+      - pattern: ProcessBuilder($CMD + $USER_INPUT)
+      - pattern: new ProcessBuilder($CMD, $USER_INPUT)
+    metadata:
+      category: security
+      cwe: CWE-78
+      confidence: high
+
+  # LDAP injection
+  - id: java-ldap-injection
+    message: "LDAP injection vulnerability detected"
+    severity: CRITICAL
+    languages: [java]
+    pattern-either:
+      - pattern: $CTX.search($FILTER + $USER_INPUT, ...)
+      - pattern: new SearchFilter($FILTER + $USER_INPUT)
+      - pattern: LdapName($DN + $USER_INPUT)
+    metadata:
+      category: security
+      cwe: CWE-90
+      confidence: medium
+
+  # === High Severity Rules ===
+
+  # Hardcoded credentials
+  - id: java-hardcoded-credentials
+    message: "Hardcoded credentials detected"
+    severity: HIGH
+    languages: [java]
+    pattern-either:
+      - pattern: |
+          private static final String $VAR = "...";
+      - pattern: |
+          public static final String $VAR = "...";
+      - pattern: |
+          String $VAR = "...";
+    where:
+      - metavariable-regex:
+          metavariable: $VAR
+          regex: (?i).*(password|passwd|pwd|secret|token|key|api_key).*
+    metadata:
+      category: security
+      cwe: CWE-798
+      confidence: medium
+
+  # Weak cryptography
+  - id: java-weak-crypto-md5
+    message: "Use of weak MD5 hash algorithm"
+    severity: HIGH
+    languages: [java]
+    pattern-either:
+      - pattern: MessageDigest.getInstance("MD5")
+      - pattern: MessageDigest.getInstance("md5")
+      - pattern: DigestUtils.md5($DATA)
+    metadata:
+      category: security
+      cwe: CWE-327
+      confidence: high
+
+  - id: java-weak-crypto-sha1
+    message: "Use of weak SHA1 hash algorithm"
+    severity: HIGH
+    languages: [java]
+    pattern-either:
+      - pattern: MessageDigest.getInstance("SHA-1")
+      - pattern: MessageDigest.getInstance("SHA1")
+      - pattern: MessageDigest.getInstance("sha1")
+      - pattern: DigestUtils.sha1($DATA)
+    metadata:
+      category: security
+      cwe: CWE-327
+      confidence: high
+
+  # Insecure random
+  - id: java-insecure-random
+    message: "Use of insecure Random class for cryptographic purposes"
+    severity: HIGH
+    languages: [java]
+    pattern-either:
+      - pattern: new Random()
+      - pattern: new Random($SEED)
+      - pattern: Math.random()
+    pattern-not-inside:
+      pattern: |
+        // This is not for cryptographic use
+        ...
+    metadata:
+      category: security
+      cwe: CWE-338
+      confidence: medium
+
+  # XXE vulnerabilities
+  - id: java-xxe-vulnerability
+    message: "XML parsing vulnerable to XXE attacks"
+    severity: HIGH
+    languages: [java]
+    pattern-either:
+      - pattern: DocumentBuilderFactory.newInstance()
+      - pattern: SAXParserFactory.newInstance()
+      - pattern: XMLInputFactory.newInstance()
+      - pattern: SchemaFactory.newInstance(...)
+      - pattern: TransformerFactory.newInstance()
+    pattern-not-inside:
+      pattern: |
+        ...
+        $FACTORY.setFeature("http://apache.org/xml/features/disallow-doctype-decl", true);
+        ...
+    metadata:
+      category: security
+      cwe: CWE-611
+      confidence: medium
+
+  # Path traversal
+  - id: java-path-traversal
+    message: "Path traversal vulnerability detected"
+    severity: HIGH
+    languages: [java]
+    pattern-either:
+      - pattern: new File($PATH + $USER_INPUT)
+      - pattern: new FileInputStream($PATH + $USER_INPUT)
+      - pattern: new FileOutputStream($PATH + $USER_INPUT)
+      - pattern: Files.readAllBytes(Paths.get($PATH + $USER_INPUT))
+      - pattern: Paths.get($PATH + $USER_INPUT)
+    metadata:
+      category: security
+      cwe: CWE-22
+      confidence: medium
+
+  # SSL/TLS bypass
+  - id: java-ssl-bypass
+    message: "SSL/TLS certificate verification bypassed"
+    severity: HIGH
+    languages: [java]
+    pattern-either:
+      - pattern: |
+          HttpsURLConnection.setDefaultHostnameVerifier(new HostnameVerifier() {
+            public boolean verify(String hostname, SSLSession session) {
+              return true;
+            }
+          });
+      - pattern: |
+          TrustManager[] trustAllCerts = new TrustManager[] {
+            new X509TrustManager() {
+              public void checkClientTrusted(...) {}
+              public void checkServerTrusted(...) {}
+              public X509Certificate[] getAcceptedIssuers() { return null; }
+            }
+          };
+    metadata:
+      category: security
+      cwe: CWE-295
+      confidence: high
+
+  # === Medium Severity Rules ===
+
+  # Weak cipher algorithms
+  - id: java-weak-cipher
+    message: "Use of weak cipher algorithm"
+    severity: MEDIUM
+    languages: [java]
+    pattern-either:
+      - pattern: Cipher.getInstance("DES")
+      - pattern: Cipher.getInstance("RC4")
+      - pattern: Cipher.getInstance("RC2")
+      - pattern: Cipher.getInstance("DESede")
+      - pattern: Cipher.getInstance("Blowfish")
+    metadata:
+      category: security
+      cwe: CWE-327
+      confidence: high
+
+  # Weak SSL/TLS versions
+  - id: java-weak-ssl-version
+    message: "Use of weak SSL/TLS version"
+    severity: MEDIUM
+    languages: [java]
+    pattern-either:
+      - pattern: SSLContext.getInstance("SSL")
+      - pattern: SSLContext.getInstance("SSLv2")
+      - pattern: SSLContext.getInstance("SSLv3")
+      - pattern: SSLContext.getInstance("TLS")
+      - pattern: SSLContext.getInstance("TLSv1")
+      - pattern: SSLContext.getInstance("TLSv1.1")
+    metadata:
+      category: security
+      cwe: CWE-327
+      confidence: high
+
+  # HTTP usage instead of HTTPS
+  - id: java-insecure-http
+    message: "Use of HTTP instead of HTTPS"
+    severity: MEDIUM
+    languages: [java]
+    pattern-either:
+      - pattern: new URL("http://$URL")
+      - pattern: '"http://$URL"'
+      - pattern: HttpURLConnection.setRequestMethod("GET")
+    metadata:
+      category: security
+      cwe: CWE-319
+      confidence: low
+
+  # Weak key generation
+  - id: java-weak-key-generation
+    message: "Weak key generation detected"
+    severity: MEDIUM
+    languages: [java]
+    pattern-either:
+      - pattern: KeyPairGenerator.getInstance("RSA").initialize($SIZE)
+      - pattern: KeyGenerator.getInstance(...).init($SIZE)
+    where:
+      - metavariable-comparison:
+          metavariable: $SIZE
+          comparison: int($SIZE) < 2048
+    metadata:
+      category: security
+      cwe: CWE-310
+      confidence: medium
+
+  # Unvalidated redirects
+  - id: java-unvalidated-redirect
+    message: "Unvalidated redirect detected"
+    severity: MEDIUM
+    languages: [java]
+    pattern-either:
+      - pattern: response.sendRedirect($USER_INPUT)
+      - pattern: $RESPONSE.setHeader("Location", $USER_INPUT)
+    metadata:
+      category: security
+      cwe: CWE-601
+      confidence: low
+
+  # Cookie security issues
+  - id: java-insecure-cookie
+    message: "Cookie without secure flags"
+    severity: MEDIUM
+    languages: [java]
+    pattern-either:
+      - pattern: |
+          Cookie $COOKIE = new Cookie($NAME, $VALUE);
+      - pattern: |
+          new Cookie($NAME, $VALUE);
+    pattern-not-inside:
+      pattern: |
+        ...
+        $COOKIE.setSecure(true);
+        ...
+    metadata:
+      category: security
+      cwe: CWE-614
+      confidence: low
+
+  # === Low Severity Rules ===
+
+  # System.out usage in production
+  - id: java-system-out-usage
+    message: "System.out usage detected - consider using proper logging"
+    severity: LOW
+    languages: [java]
+    pattern-either:
+      - pattern: System.out.println($MSG)
+      - pattern: System.out.print($MSG)
+      - pattern: System.err.println($MSG)
+      - pattern: $THROWABLE.printStackTrace()
+    metadata:
+      category: security
+      cwe: CWE-532
+      confidence: low
+
+  # Empty catch blocks
+  - id: java-empty-catch-block
+    message: "Empty catch block detected - exceptions should be handled"
+    severity: LOW
+    languages: [java]
+    pattern: |
+      try {
+        ...
+      } catch ($EXCEPTION $VAR) {
+      }
+    metadata:
+      category: security
+      cwe: CWE-703
+      confidence: high
+
+  # Hardcoded IP addresses
+  - id: java-hardcoded-ip
+    message: "Hardcoded IP address detected"
+    severity: LOW
+    languages: [java]
+    pattern-either:
+      - pattern: '"192.168.$IP"'
+      - pattern: '"10.$IP"'
+      - pattern: '"172.16.$IP"'
+      - pattern: '"127.0.0.1"'
+    metadata:
+      category: security
+      cwe: CWE-798
+      confidence: low
+
+  # === Framework-specific Rules ===
+
+  # Spring Security bypass
+  - id: java-spring-security-bypass
+    message: "Spring Security potentially bypassed"
+    severity: HIGH
+    languages: [java]
+    pattern-either:
+      - pattern: |
+          @Override
+          protected void configure(HttpSecurity http) throws Exception {
+            http.csrf().disable();
+          }
+      - pattern: |
+          http.authorizeRequests().anyRequest().permitAll()
+    metadata:
+      category: security
+      framework: spring
+      cwe: CWE-352
+
+  # JPA/Hibernate SQL injection
+  - id: java-jpa-sql-injection
+    message: "Potential SQL injection in JPA/Hibernate query"
+    severity: HIGH
+    languages: [java]
+    pattern-either:
+      - pattern: entityManager.createQuery($QUERY + $USER_INPUT)
+      - pattern: session.createQuery($QUERY + $USER_INPUT)
+      - pattern: entityManager.createNativeQuery($QUERY + $USER_INPUT)
+    metadata:
+      category: security
+      framework: jpa
+      cwe: CWE-89
+      confidence: high
+
+  # Struts2 OGNL injection
+  - id: java-struts-ognl-injection
+    message: "Potential OGNL injection in Struts2"
+    severity: CRITICAL
+    languages: [java]
+    pattern-either:
+      - pattern: Ognl.parseExpression($USER_INPUT)
+      - pattern: OgnlContext.setRoot($USER_INPUT)
+    metadata:
+      category: security
+      framework: struts
+      cwe: CWE-94
+      confidence: medium
+
+  # Android specific vulnerabilities
+  - id: java-android-webview-js-enabled
+    message: "WebView with JavaScript enabled - potential XSS"
+    severity: MEDIUM
+    languages: [java]
+    pattern: |
+      $WEBVIEW.getSettings().setJavaScriptEnabled(true);
+    metadata:
+      category: security
+      platform: android
+      cwe: CWE-79
+      confidence: medium
+
+  - id: java-android-external-storage
+    message: "Use of external storage - data may be readable by other apps"
+    severity: LOW
+    languages: [java]
+    pattern-either:
+      - pattern: Environment.getExternalStorageDirectory()
+      - pattern: getExternalFilesDir(...)
+      - pattern: openFileOutput($NAME, MODE_WORLD_READABLE)
+    metadata:
+      category: security
+      platform: android
+      cwe: CWE-200
+      confidence: medium
+
+  # JNDI injection
+  - id: java-jndi-injection
+    message: "JNDI injection vulnerability detected"
+    severity: CRITICAL
+    languages: [java]
+    pattern-either:
+      - pattern: $CTX.lookup($USER_INPUT)
+      - pattern: new InitialContext().lookup($USER_INPUT)
+      - pattern: InitialContext.doLookup($USER_INPUT)
+    metadata:
+      category: security
+      cwe: CWE-74
+      confidence: medium
+
+  # Expression Language injection
+  - id: java-el-injection
+    message: "Expression Language injection detected"
+    severity: HIGH
+    languages: [java]
+    pattern-either:
+      - pattern: $FACTORY.createValueExpression($USER_INPUT, ...)
+      - pattern: $FACTORY.createMethodExpression($USER_INPUT, ...)
+    metadata:
+      category: security
+      cwe: CWE-94
+      confidence: medium
+
+  # Template injection
+  - id: java-template-injection
+    message: "Template injection vulnerability detected"
+    severity: HIGH
+    languages: [java]
+    pattern-either:
+      - pattern: new VelocityEngine().evaluate($USER_INPUT, ...)
+      - pattern: Template.make($USER_INPUT)
+      - pattern: $ENGINE.process($USER_INPUT, ...)
+    metadata:
+      category: security
+      cwe: CWE-94
+      confidence: medium
+
+  # File upload without validation
+  - id: java-file-upload-no-validation
+    message: "File upload without proper validation"
+    severity: HIGH
+    languages: [java]
+    pattern-either:
+      - pattern: |
+          @RequestMapping(method = RequestMethod.POST)
+          public String handleFileUpload(@RequestParam("file") MultipartFile file) {
+            ...
+            file.transferTo(new File($PATH));
+            ...
+          }
+    pattern-not-inside:
+      pattern: |
+        ...
+        if (!$FILE.getContentType().equals(...)) {
+          ...
+        }
+        ...
+    metadata:
+      category: security
+      cwe: CWE-434
+      confidence: low

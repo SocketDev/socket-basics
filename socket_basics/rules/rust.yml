@@ -1,0 +1,485 @@
+rules:
+  # === Critical Severity Rules ===
+
+  # Unsafe code blocks
+  - id: rust-unsafe-usage
+    message: "Unsafe code block detected - review for memory safety"
+    severity: CRITICAL
+    languages: [rust]
+    pattern-either:
+      - pattern: 'unsafe fn $FUNC(...) { ... }'
+      - pattern: '$VAR as *mut $TYPE'
+      - pattern: '$VAR as *const $TYPE'
+      - pattern: 'std::mem::transmute($VAR)'
+      - pattern: 'unsafe { ... }'
+    metadata:
+      category: security
+      cwe: CWE-119
+      confidence: medium
+
+  # Command injection
+  - id: rust-command-injection
+    message: "Command injection vulnerability detected"
+    severity: CRITICAL
+    languages: [rust]
+    pattern-either:
+      - pattern: std::process::Command::new($CMD + $USER_INPUT)
+      - pattern: Command::new($CMD + $USER_INPUT)
+      - pattern: std::process::Command::new($CMD).arg($USER_INPUT)
+      - pattern: Command::new($CMD).args(&[$USER_INPUT])
+    where:
+      - metavariable-pattern:
+          metavariable: $USER_INPUT
+          pattern: $VAR
+    metadata:
+      category: security
+      cwe: CWE-78
+      confidence: medium
+
+  # Unsafe deserialization
+  - id: rust-unsafe-deserialization
+    message: "Unsafe deserialization detected"
+    severity: CRITICAL
+    languages: [rust]
+    pattern-either:
+      - pattern: serde_pickle::from_slice($USER_INPUT)
+      - pattern: bincode::deserialize($USER_INPUT)
+      - pattern: postcard::from_bytes($USER_INPUT)
+    where:
+      - metavariable-pattern:
+          metavariable: $USER_INPUT
+          pattern: $VAR
+    metadata:
+      category: security
+      cwe: CWE-502
+      confidence: medium
+
+  # SQL injection potential
+  - id: rust-sql-injection
+    message: "Potential SQL injection vulnerability"
+    severity: CRITICAL
+    languages: [rust]
+    pattern-either:
+      - pattern: $CONN.execute($QUERY + $USER_INPUT, ...)
+      - pattern: $CONN.query($QUERY + $USER_INPUT, ...)
+      - pattern: format!($QUERY, $USER_INPUT)
+      - pattern: $QUERY.push_str($USER_INPUT)
+    metadata:
+      category: security
+      cwe: CWE-89
+      confidence: medium
+
+  # === High Severity Rules ===
+
+  # Hardcoded secrets
+  - id: rust-hardcoded-secrets
+    message: "Hardcoded secrets detected"
+    severity: HIGH
+    languages: [rust]
+    pattern-either:
+      - pattern: |
+          const $VAR: &str = "...";
+      - pattern: |
+          static $VAR: &str = "...";
+      - pattern: |
+          let $VAR = "...";
+    where:
+      - metavariable-regex:
+          metavariable: $VAR
+          regex: (?i).*(password|secret|token|key|api_key|apikey|private_key|auth|credential).*
+    metadata:
+      category: security
+      cwe: CWE-798
+      confidence: medium
+
+  # Weak cryptography - MD5
+  - id: rust-weak-crypto-md5
+    message: "Use of weak MD5 hash algorithm"
+    severity: HIGH
+    languages: [rust]
+    pattern-either:
+      - pattern: md5::Md5::new()
+      - pattern: Md5::new()
+      - pattern: md5::compute($DATA)
+      - pattern: md5_crate::Md5::new()
+    metadata:
+      category: security
+      cwe: CWE-327
+      confidence: high
+
+  # Weak cryptography - SHA1
+  - id: rust-weak-crypto-sha1
+    message: "Use of weak SHA1 hash algorithm"
+    severity: HIGH
+    languages: [rust]
+    pattern-either:
+      - pattern: sha1::Sha1::new()
+      - pattern: Sha1::new()
+      - pattern: sha1::digest($DATA)
+      - pattern: openssl::hash::hash(MessageDigest::sha1(), ...)
+    metadata:
+      category: security
+      cwe: CWE-327
+      confidence: high
+
+  # Insecure TLS configuration
+  - id: rust-insecure-tls
+    message: "Insecure TLS configuration detected"
+    severity: HIGH
+    languages: [rust]
+    pattern-either:
+      - pattern: ClientBuilder::new().danger_accept_invalid_certs(true)
+      - pattern: $CLIENT.danger_accept_invalid_hostnames(true)
+      - pattern: TlsConnector::builder().danger_accept_invalid_certs(true)
+    metadata:
+      category: security
+      cwe: CWE-295
+      confidence: high
+
+  # Path traversal
+  - id: rust-path-traversal
+    message: "Path traversal vulnerability detected"
+    severity: HIGH
+    languages: [rust]
+    pattern-either:
+      - pattern: std::fs::File::open($PATH + $USER_INPUT)
+      - pattern: std::fs::read_to_string($PATH + $USER_INPUT)
+      - pattern: std::fs::write($PATH + $USER_INPUT, ...)
+      - pattern: PathBuf::from($USER_INPUT)
+    where:
+      - metavariable-pattern:
+          metavariable: $USER_INPUT
+          pattern: $VAR
+    metadata:
+      category: security
+      cwe: CWE-22
+      confidence: medium
+
+  # Buffer overflow potential
+  - id: rust-buffer-overflow-potential
+    message: "Potential buffer overflow in unsafe code"
+    severity: HIGH
+    languages: [rust]
+    pattern-either:
+      - pattern: |
+          unsafe {
+            ...
+            std::ptr::copy($SRC, $DST, $COUNT)
+            ...
+          }
+      - pattern: |
+          unsafe {
+            ...
+            std::ptr::copy_nonoverlapping($SRC, $DST, $COUNT)
+            ...
+          }
+      - pattern: |
+          unsafe {
+            ...
+            std::slice::from_raw_parts($PTR, $LEN)
+            ...
+          }
+    metadata:
+      category: security
+      cwe: CWE-120
+      confidence: low
+
+  # === Medium Severity Rules ===
+
+  # Panic in production code
+  - id: rust-panic-in-production
+    message: "Explicit panic in production code - consider using Result instead"
+    severity: MEDIUM
+    languages: [rust]
+    pattern-either:
+      - pattern: panic!($MSG)
+      - pattern: unimplemented!()
+      - pattern: unreachable!()
+      - pattern: todo!()
+      - pattern: $VAR.unwrap()
+      - pattern: $VAR.expect($MSG)
+    metadata:
+      category: security
+      cwe: CWE-248
+      confidence: low
+
+  # Insecure random number generation
+  - id: rust-insecure-random
+    message: "Use of potentially insecure random number generation"
+    severity: MEDIUM
+    languages: [rust]
+    pattern-either:
+      - pattern: rand::random()
+      - pattern: rand::thread_rng().gen()
+      - pattern: StdRng::from_entropy()
+    metadata:
+      category: security
+      cwe: CWE-338
+      confidence: low
+
+  # HTTP instead of HTTPS
+  - id: rust-insecure-http
+    message: "Use of HTTP instead of HTTPS"
+    severity: MEDIUM
+    languages: [rust]
+    pattern-either:
+      - pattern: 'Url::parse("http://...")'
+      - pattern: 'reqwest::get("http://...")'
+      - pattern: '"http://..."'
+    metadata:
+      category: security
+      cwe: CWE-319
+      confidence: low
+
+  # Weak cipher algorithms
+  - id: rust-weak-cipher
+    message: "Use of weak cipher algorithm"
+    severity: MEDIUM
+    languages: [rust]
+    pattern-either:
+      - pattern: openssl::symm::Cipher::des_ede3()
+      - pattern: openssl::symm::Cipher::rc4()
+      - pattern: Cipher::aes_128_ecb()
+      - pattern: ring::aead::chacha20_poly1305_openssh()
+    metadata:
+      category: security
+      cwe: CWE-327
+      confidence: medium
+
+  # Integer overflow potential
+  - id: rust-integer-overflow
+    message: "Potential integer overflow - consider using checked arithmetic"
+    severity: MEDIUM
+    languages: [rust]
+    pattern-either:
+      - pattern: $A + $B
+      - pattern: $A - $B  
+      - pattern: $A * $B
+      - pattern: $A / $B
+    where:
+      - metavariable-pattern:
+          metavariable: $A
+          pattern: usize
+      - metavariable-pattern:
+          metavariable: $B
+          pattern: $VAR
+    metadata:
+      category: security
+      cwe: CWE-190
+      confidence: low
+
+  # === Low Severity Rules ===
+
+  # Debug information disclosure
+  - id: rust-debug-info-disclosure
+    message: "Debug information disclosure detected"
+    severity: LOW
+    languages: [rust]
+    pattern-either:
+      - pattern: println!($FMT, $USER_INPUT)
+      - pattern: print!($FMT, $USER_INPUT)
+      - pattern: dbg!($USER_INPUT)
+      - pattern: eprintln!($FMT, $USER_INPUT)
+    where:
+      - metavariable-regex:
+          metavariable: $USER_INPUT
+          regex: (?i).*(password|token|secret|key|credential).*
+    metadata:
+      category: security
+      cwe: CWE-532
+      confidence: low
+
+  # Hardcoded IP addresses
+  - id: rust-hardcoded-ip
+    message: "Hardcoded IP address detected"
+    severity: LOW
+    languages: [rust]
+    pattern-either:
+      - pattern: '"192.168.$X.$Y"'
+      - pattern: '"10.$X.$Y.$Z"'
+      - pattern: '"172.16.$X.$Y"'
+      - pattern: '"127.0.0.1"'
+      - pattern: '"localhost"'
+    metadata:
+      category: security
+      cwe: CWE-798
+      confidence: low
+
+  # Development/testing code
+  - id: rust-development-code
+    message: "Development/testing code detected - should not be in production"
+    severity: LOW
+    languages: [rust]
+    pattern-either:
+      - pattern: |
+          #[cfg(test)]
+          mod tests {
+            ...
+          }
+      - pattern: assert_eq!($A, $B)
+      - pattern: assert!($COND)
+      - pattern: debug_assert!($COND)
+    metadata:
+      category: security
+      cwe: CWE-489
+      confidence: low
+
+  # === Framework-specific Rules ===
+
+  # Actix-web security issues
+  - id: rust-actix-security
+    message: "Actix-web security configuration issue"
+    severity: MEDIUM
+    languages: [rust]
+    pattern-either:
+      - pattern: HttpServer::new().bind("0.0.0.0:$PORT")
+      - pattern: App::new().wrap(Logger::default())
+      - pattern: web::post().to($HANDLER)
+    pattern-not-inside:
+      pattern: |
+        ...
+        .wrap(middleware::DefaultHeaders::new().header("X-Frame-Options", "DENY"))
+        ...
+    metadata:
+      category: security
+      framework: actix
+      cwe: CWE-16
+      confidence: low
+
+  # Warp security issues
+  - id: rust-warp-security
+    message: "Warp security configuration issue"
+    severity: MEDIUM
+    languages: [rust]
+    pattern-either:
+      - pattern: warp::serve($ROUTES).run(([0, 0, 0, 0], $PORT))
+      - pattern: warp::path($PATH).and(warp::fs::dir($DIR))
+    metadata:
+      category: security
+      framework: warp
+      cwe: CWE-16
+      confidence: low
+
+  # Rocket security issues
+  - id: rust-rocket-security
+    message: "Rocket security configuration issue"
+    severity: MEDIUM
+    languages: [rust]
+    pattern-either:
+      - pattern: |
+          #[rocket::launch]
+          fn rocket() -> _ {
+            rocket::build().mount("/", routes![$ROUTES])
+          }
+    pattern-not-inside:
+      pattern: |
+        ...
+        .attach(Shield::default())
+        ...
+    metadata:
+      category: security
+      framework: rocket
+      cwe: CWE-16
+      confidence: low
+
+  # Diesel ORM injection
+  - id: rust-diesel-injection
+    message: "Potential Diesel ORM injection"
+    severity: HIGH
+    languages: [rust]
+    pattern-either:
+      - pattern: diesel::sql_query($QUERY + $USER_INPUT)
+      - pattern: sql_query($QUERY + $USER_INPUT)
+      - pattern: $TABLE.filter(sql($USER_INPUT))
+    metadata:
+      category: security
+      framework: diesel
+      cwe: CWE-89
+      confidence: medium
+
+  # Tokio security issues
+  - id: rust-tokio-security
+    message: "Tokio async security issue"
+    severity: MEDIUM
+    languages: [rust]
+    pattern-either:
+      - pattern: |
+          tokio::spawn(async move {
+            // Unbounded task
+            loop {
+              ...
+            }
+          })
+      - pattern: tokio::time::timeout(Duration::MAX, $FUTURE)
+    metadata:
+      category: security
+      framework: tokio
+      cwe: CWE-400
+      confidence: low
+
+  # Serde security issues
+  - id: rust-serde-security
+    message: "Serde deserialization security issue"
+    severity: HIGH
+    languages: [rust]
+    pattern-either:
+      - pattern: serde_json::from_str::<$TYPE>($USER_INPUT)
+      - pattern: serde_yaml::from_str::<$TYPE>($USER_INPUT)
+      - pattern: toml::from_str::<$TYPE>($USER_INPUT)
+    where:
+      - metavariable-pattern:
+          metavariable: $USER_INPUT
+          pattern: $VAR
+    metadata:
+      category: security
+      framework: serde
+      cwe: CWE-502
+      confidence: low
+
+  # Memory safety violations
+  - id: rust-memory-safety
+    message: "Potential memory safety violation in unsafe code"
+    severity: HIGH
+    languages: [rust]
+    pattern-either:
+      - pattern: '*$PTR = $VAL'
+      - pattern: 'std::mem::forget($VAL)'
+      - pattern: 'Box::from_raw($PTR)'
+      - pattern: 'std::mem::transmute($VAL)'
+      - pattern: 'std::ptr::write($PTR, $VAL)'
+    metadata:
+      category: security
+      cwe: CWE-416
+      confidence: low
+
+  # File permissions
+  - id: rust-file-permissions
+    message: "Insecure file permissions detected"
+    severity: MEDIUM
+    languages: [rust]
+    pattern-either:
+      - pattern: std::fs::OpenOptions::new().mode(0o777)
+      - pattern: std::fs::set_permissions($PATH, Permissions::from_mode(0o777))
+      - pattern: OpenOptions::new().create(true).mode(0o666)
+    metadata:
+      category: security
+      cwe: CWE-732
+      confidence: medium
+
+  # Environment variable injection
+  - id: rust-env-injection
+    message: "Environment variable injection potential"
+    severity: MEDIUM
+    languages: [rust]
+    pattern-either:
+      - pattern: std::env::var($USER_INPUT)
+      - pattern: env::var($USER_INPUT)
+      - pattern: std::env::set_var($USER_INPUT, $VALUE)
+    where:
+      - metavariable-pattern:
+          metavariable: $USER_INPUT
+          pattern: $VAR
+    metadata:
+      category: security
+      cwe: CWE-74
+      confidence: low
