@@ -337,17 +337,11 @@ class TrivyScanner(BaseConnector):
             "name": f"{dockerfile}",
             "internal": True,
             "version": "",
-            "subpath": dockerfile,
             "direct": True,
             "dev": False,
             "dead": False,
             "dependencies": [],
             "manifestFiles": [{"file": dockerfile}] if dockerfile else [],
-                "qualifiers": {
-                    "scanner": "trivy",
-                    "type": "dockerfile",
-                    "analysis": "container-config"
-                },
             "alerts": []
         }
 
@@ -403,11 +397,6 @@ class TrivyScanner(BaseConnector):
                         "dead": False,
                         "dependencies": [],
                         "manifestFiles": [{"file": image}],
-                        "qualifiers": {
-                            "scanner": "trivy",
-                            "type": "image",
-                            "analysis": "container-image"
-                        },
                         "alerts": []
                     }
 
@@ -612,7 +601,6 @@ Container vulnerabilities can lead to:
 
         for comp in processed_results.values():
             comp_name = comp.get('name') or comp.get('id') or '-'
-            q = (comp.get('qualifiers') or {})
             ctype = q.get('type') or comp.get('type')
             if ctype == 'image' or str(comp.get('subpath', '')).startswith('image:'):
                 # treat as image; gather rows
