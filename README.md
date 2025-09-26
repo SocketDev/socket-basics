@@ -57,6 +57,59 @@ After installation you should have the `socket-basics` CLI available in your env
 
 ## Quick start
 
+Build the container image and run a scan from your current working directory mounted as `/workspace`.
+
+1) Build the Docker image (tagged `socket-basics`):
+
+```sh
+docker build -t socket-basics .
+```
+
+2) Create a `.env` file that enables Jira + Slack and provides Socket credentials. The example below includes the required `SOCKET_ORG` and `SOCKET_SECURITY_API_KEY` variables used in this quick run (replace placeholders with real values or secrets):
+
+```env
+# Socket credentials
+SOCKET_ORG=socketdev-demo
+SOCKET_SECURITY_API_KEY=your-socket-security-api-key
+
+# Enable notifiers
+INPUT_JIRA_ENABLED=true
+INPUT_JIRA_URL=https://your-jira-instance.atlassian.net
+INPUT_JIRA_EMAIL=you@example.com
+INPUT_JIRA_API_TOKEN=your-jira-api-token
+INPUT_JIRA_PROJECT=PROJ
+
+INPUT_SLACK_ENABLED=true
+INPUT_SLACK_WEBHOOK_URL=https://hooks.slack.com/services/T00000000/B00000000/XXXXXXXXXXXXXXXXXXXXXXXX
+
+# Optional: prefer tabular console output
+INPUT_CONSOLE_ENABLED=true
+INPUT_SOCKET_CONSOLE_MODE=tabular
+```
+
+3) Run the container mounting the current directory into `/workspace` and pass the CLI flags you provided. This example runs secrets scanning, JavaScript SAST, requests Socket tier1 reporting, and scans the `trickyhu/sigsci-rule-editor` container image:
+
+```sh
+docker run --rm -v "$PWD:/workspace" --env-file .env socket-basics \
+	--workspace /workspace \
+	--repo node_goat_17 \
+	--branch main \
+	--secrets \
+	--console-tabular-enabled \
+	--javascript \
+	--socket-org socketdev-demo \
+	--socket-tier1 \
+	--container-images \
+	--images trickyhu/sigsci-rule-editor
+```
+
+Notes:
+- The container mounts your current project into `/workspace`, so the CLI option `--workspace /workspace` points to that path inside the container.
+- The `.env` file is loaded by `--env-file` to provide credentials and notifier configuration; you can also set secrets via your environment or your CI provider.
+- `SOCKET_ORG` and `SOCKET_SECURITY_API_KEY` in the example are included to show the minimum Socket-related env variables for SCA/Socket integrations. The tool also accepts `INPUT_SOCKET_ORG` / `INPUT_SOCKET_API_KEY` style env vars used elsewhere in this repo if you prefer that naming.
+
+Quick local examples (alternate):
+
 Run a basic scan from the repository root and print results to stdout:
 
 ```sh
