@@ -219,6 +219,16 @@ class GithubPRNotifier(BaseNotifier):
                 items.append({'text': text, 'checked': checked})
         return items
 
+    def _render_checklist(self, items: List[Dict[str, Any]]) -> str:
+        """Render checklist items (list of {'text':..., 'checked': bool}) into markdown."""
+        out_lines: List[str] = []
+        for it in items:
+            checked = it.get('checked', False)
+            box = 'x' if checked else ' '
+            text = it.get('text', '')
+            out_lines.append(f"- [{box}] {text}")
+        return '\n'.join(out_lines)
+
     def _find_pr_for_branch(self, owner_repo: str, branch: str) -> Optional[int]:
         # Query PRs matching head branch via GitHub API
         try:
@@ -365,8 +375,15 @@ class GithubPRNotifier(BaseNotifier):
                         # Store both display file name and the full path (used for links)
                         items.append({'rule': rule, 'severity': severity, 'file': file_name, 'path': file_path, 'loc': loc, 'snippet': snippet, 'checked': False})
                     else:
-                        desc = ' | '.join([str(x) for x in r if x is not None and x != ''])
-                        items.append({'text': desc, 'checked': False})
+                        # Preserve raw table or preformatted strings for non-SAST (and non-secrets) groups.
+                        # If the row is a single string (likely a markdown table or block), keep it in 'raw'
+                        if isinstance(r, str):
+                            items.append({'text': str(r), 'raw': str(r), 'checked': False})
+                        elif isinstance(r, list) and len(r) == 1 and isinstance(r[0], str):
+                            items.append({'text': r[0], 'raw': r[0], 'checked': False})
+                        else:
+                            desc = ' | '.join([str(x) for x in r if x is not None and x != ''])
+                            items.append({'text': desc, 'checked': False})
                 except Exception:
                     desc = ' | '.join([str(x) for x in r if x is not None and x != ''])
                     items.append({'text': desc, 'checked': False})
@@ -492,6 +509,19 @@ class GithubPRNotifier(BaseNotifier):
                             render_file_occurrences(fpath, occs)
             else:
                 for it in merged:
+                    # If the item contains a 'raw' key, emit it verbatim to preserve
+                    # preformatted tables or markdown blocks (e.g., Trivy table output).
+                    raw = it.get('raw')
+                    if raw:
+                        # Ensure there's a blank line before and after a block for readability
+                        if lines and lines[-1] != '':
+                            lines.append('')
+                        for l in str(raw).splitlines():
+                            lines.append(l)
+                        if lines[-1] != '':
+                            lines.append('')
+                        continue
+
                     checked = it.get('checked', False)
                     box = 'x' if checked else ' '
                     text = it.get('text', '')

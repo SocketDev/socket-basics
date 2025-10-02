@@ -391,7 +391,7 @@ class TrivyScanner(BaseConnector):
                         "name": f"{image}",
                         "internal": True,
                         "version": "",
-                        "subpath": f"image:{image}",
+                        "subPath": f"image:{image}",
                         "direct": True,
                         "dev": False,
                         "dead": False,
@@ -564,7 +564,7 @@ Container vulnerabilities can lead to:
         title_text = f"{vuln_id} in {pkg_name}"
 
         return {
-            "type": alert_type,
+            "type": "generic",
             "severity": severity,
             "title": title_text,
             "description": f"{title} in package {pkg_name}",
