@@ -14,6 +14,7 @@ from copy import deepcopy
 
 from .base import BaseConnector, ConnectorError, ConnectorConfigError
 from ..validator import SocketFactsValidator
+from ..config import get_socket_basics_severities
 
 logger = logging.getLogger(__name__)
 
@@ -33,8 +34,8 @@ class ConnectorManager:
         self.loaded_connectors: Dict[str, BaseConnector] = {}
         # Determine allowed severities from environment or config; used by connectors
         try:
-            sev_env = os.getenv('SOCKET_BASICS_SEVERITIES') or os.getenv('INPUT_FINDING_SEVERITIES')
-            if sev_env is None:
+            sev_env = get_socket_basics_severities()
+            if not sev_env:
                 self.allowed_severities = {"critical", "high"}
             else:
                 self.allowed_severities = {s.strip().lower() for s in str(sev_env).split(',') if s.strip()}
@@ -271,11 +272,22 @@ class ConnectorManager:
         aggregated_components: Dict[str, Any] = {}
         # aggregated notifications keyed by title -> {'headers': ..., 'rows': [...]}
         notifications_by_title: Dict[str, Dict[str, Any]] = {}
+        # per-notifier notifications from connectors: {connector_name: {notifier_name: {title, headers, rows}}}
+        per_notifier_notifications: Dict[str, Dict[str, Any]] = {}
 
         for name, connector in connectors.items():
-            logger.info(f"Running scan with connector: {name}")
+            logger.debug(f" Running scan with connector: {name} ({type(connector).__name__})")
+            logger.debug(f" Connector {name} is_enabled(): {connector.is_enabled()}")
             try:
                 results = connector.scan()
+                logger.debug(f" Connector {name} scan completed, results type: {type(results)}")
+                if isinstance(results, dict):
+                    components = results.get('components', [])
+                    logger.debug(f" Connector {name} returned {len(components) if isinstance(components, list) else 'non-list'} components")
+                    if components and isinstance(components, list):
+                        logger.debug(f" First component from {name}: {components[0] if components else 'none'}")
+                else:
+                    logger.debug(f" Connector {name} returned non-dict result: {results}")
             except Exception as e:
                 logger.error(f"Error running connector {name}: {e}")
                 if self.connectors_config.get('settings', {}).get('fail_fast', False):
@@ -290,7 +302,8 @@ class ConnectorManager:
                 if isinstance(results, dict):
                     for k, v in results.items():
                         if isinstance(v, dict) and isinstance(v.get('data'), list):
-                            logger.debug("Connector %s raw wrapper '%s' contains %d inner items", name, k, len(v.get('data')))
+                            data_list = v.get('data', [])
+                            logger.debug("Connector %s raw wrapper '%s' contains %d inner items", name, k, len(data_list))
             except Exception:
                 logger.debug('Failed to log raw wrapper details for connector %s', name)
 
@@ -329,8 +342,20 @@ class ConnectorManager:
             if not isinstance(comps, list):
                 logger.warning("Connector %s returned invalid 'components' shape; expected list", name)
                 comps = []
-            if not isinstance(notifs, list):
-                logger.warning("Connector %s returned invalid 'notifications' shape; expected list", name)
+            
+            # Handle new per-notifier notifications format or legacy list format
+            if isinstance(notifs, dict):
+                # New format: {notifier_name: {title, headers, rows}, ...} 
+                logger.debug("Connector %s returned new per-notifier notifications format", name)
+                # Store per-notifier format for notification manager to process
+                per_notifier_notifications[name] = notifs
+                notifs = []  # Don't process as legacy format
+            elif isinstance(notifs, list):
+                # Legacy format: [{title, headers, rows}, ...]
+                logger.debug("Connector %s returned legacy notifications format", name)
+                # Will be processed below
+            else:
+                logger.warning("Connector %s returned invalid 'notifications' shape; expected dict or list", name)
                 notifs = []
 
             # Merge components
@@ -338,7 +363,14 @@ class ConnectorManager:
             for c in comps:
                 try:
                     cid = c.get('id') or c.get('name') or str(id(c))
-                    aggregated_components[cid] = c
+                    
+                    # Set "direct": true by default for all connectors except socket_tier1
+                    # Connectors can override this in their results if needed
+                    component = deepcopy(c) if c else {}
+                    if name != 'socket_tier1' and 'direct' not in component:
+                        component['direct'] = True
+                    
+                    aggregated_components[cid] = component
                 except Exception:
                     logger.debug('Skipping malformed component from connector %s', name)
 
@@ -422,7 +454,33 @@ class ConnectorManager:
             components_list = []
             notifications_list = []
 
-        return {'components': components_list, 'notifications': notifications_list}
+        # If we have per-notifier notifications, use those instead of legacy format
+        if per_notifier_notifications:
+            # Merge all connector per-notifier notifications
+            merged_per_notifier: Dict[str, Any] = {}
+            for connector_name, notifier_data in per_notifier_notifications.items():
+                for notifier_name, notification_payload in notifier_data.items():
+                    if notifier_name not in merged_per_notifier:
+                        # Initialize with the first connector's data
+                        merged_per_notifier[notifier_name] = notification_payload
+                    else:
+                        # Merge lists of tables from multiple connectors
+                        existing = merged_per_notifier[notifier_name]
+                        if isinstance(existing, list) and isinstance(notification_payload, list):
+                            # Both are lists of tables - extend the list
+                            existing.extend(notification_payload)
+                        elif isinstance(existing, dict) and isinstance(notification_payload, dict):
+                            # Legacy single-table format - merge rows
+                            if ('rows' in existing and 'rows' in notification_payload and
+                                isinstance(existing['rows'], list) and isinstance(notification_payload['rows'], list)):
+                                existing['rows'].extend(notification_payload['rows'])
+                        else:
+                            # Mixed formats or incompatible - log and skip
+                            logger.warning(f"Cannot merge notifications for {notifier_name}: existing={type(existing)}, new={type(notification_payload)} from connector {connector_name}")
+            
+            return {'components': components_list, 'notifications': merged_per_notifier}
+        else:
+            return {'components': components_list, 'notifications': notifications_list}
     
     def get_connector_info(self) -> Dict[str, Any]:
         """Get information about available connectors

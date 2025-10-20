@@ -1,91 +1,110 @@
-import json
+from typing import Any, Dict
 import logging
-import os
-from typing import Any, Dict, List
 
-from .base import BaseNotifier
+from socket_basics.core.notification.base import BaseNotifier
+from socket_basics.core.config import (
+    get_ms_sentinel_workspace_id, get_ms_sentinel_shared_key, 
+    get_ms_sentinel_collector_url
+)
 
 logger = logging.getLogger(__name__)
 
 
 class MSSentinelNotifier(BaseNotifier):
-    """Microsoft Sentinel notifier: builds compact JSON bodies suitable for ingestion
-    by Sentinel HTTP Data Collector API. This follows JsonNotifier mapping style.
+    """Microsoft Sentinel notifier: sends security findings to Sentinel HTTP Data Collector.
+    
+    Simplified version that works with pre-formatted content from connectors.
     """
 
     name = "ms_sentinel"
 
     def __init__(self, params: Dict[str, Any] | None = None):
         super().__init__(params or {})
-        # read configuration from params or environment variables
-        self.workspace_id = self.config.get('workspace_id') or os.getenv('INPUT_MS_SENTINEL_WORKSPACE_ID')
-        self.shared_key = self.config.get('shared_key') or os.getenv('INPUT_MS_SENTINEL_SHARED_KEY')
-        # collector_url optional override
-        self.collector_url = self.config.get('collector_url') or os.getenv('INPUT_MS_SENTINEL_COLLECTOR_URL')
+        # MS Sentinel configuration from params, env variables, or app config
+        self.workspace_id = (
+            self.config.get('workspace_id') or
+            get_ms_sentinel_workspace_id()
+        )
+        self.shared_key = (
+            self.config.get('shared_key') or
+            get_ms_sentinel_shared_key()
+        )
+        self.collector_url = (
+            self.config.get('collector_url') or
+            get_ms_sentinel_collector_url()
+        )
 
     def notify(self, facts: Dict[str, Any]) -> None:
-        # Sentinel expects flattened event entries. Require new notification
-        # contract and do not synthesize events from components.
-        notifications = facts.get('notifications')
+        notifications = facts.get('notifications', []) or []
+        
+        if not isinstance(notifications, list):
+            logger.error('MSSentinelNotifier: only supports new format - list of dicts with title/content')
+            return
+            
         if not notifications:
-            logger.info('MSSentinelNotifier: no notifications present in facts; skipping')
+            logger.info('MSSentinelNotifier: no notifications present; skipping')
             return
 
-        # Flatten groups into events list
-        events: List[Dict[str, Any]] = []
-        if isinstance(notifications, list):
-            for grp in notifications:
-                if not isinstance(grp, dict):
-                    continue
-                rows = grp.get('rows') or []
-                headers = grp.get('headers') or []
-                for r in rows:
-                    # map row columns to known fields where possible
-                    ev = {'repository': facts.get('repository'), 'branch': facts.get('branch')}
-                    try:
-                        # Best-effort mapping by header names
-                        for i, h in enumerate(headers):
-                            key = str(h).strip().lower()
-                            ev[key] = r[i] if i < len(r) else None
-                    except Exception:
-                        pass
-                    events.append(ev)
-        elif isinstance(notifications, dict):
-            for title, payload in notifications.items():
-                if not isinstance(payload, dict):
-                    continue
-                headers = payload.get('headers') or []
-                for r in payload.get('rows') or []:
-                    ev = {'repository': facts.get('repository'), 'branch': facts.get('branch'), 'group': title}
-                    try:
-                        for i, h in enumerate(headers):
-                            ev[str(h).strip().lower()] = r[i] if i < len(r) else None
-                    except Exception:
-                        pass
-                    events.append(ev)
+        # Get full scan URL if available
+        full_scan_url = facts.get('full_scan_html_url')
 
-        body = {'repository': facts.get('repository'), 'branch': facts.get('branch'), 'events': events}
-
-        # If configuration not provided, print JSON to stdout for debugging
-        if not (self.workspace_id and self.shared_key):
-            logger.info('Sentinel credentials not configured; printing payload to stdout')
-            try:
-                print(json.dumps(body, indent=2))
-            except Exception:
-                logger.debug('Failed to print sentinel payload to stdout')
+        # Validate format
+        valid_notifications = []
+        for item in notifications:
+            if isinstance(item, dict) and 'title' in item and 'content' in item:
+                # Append full scan URL to content if available
+                content = item['content']
+                if full_scan_url:
+                    content += f"\n\nFull scan results: {full_scan_url}"
+                    item = {'title': item['title'], 'content': content}
+                valid_notifications.append(item)
+            else:
+                logger.warning('MSSentinelNotifier: skipping invalid notification item: %s', type(item))
+        
+        if not valid_notifications:
             return
+
+        # Send each notification as a separate Sentinel event
+        for item in valid_notifications:
+            title = item['title']
+            content = item['content']
+            self._send_sentinel_event(facts, title, content)
+
+    def _send_sentinel_event(self, facts: Dict[str, Any], title: str, content: str) -> None:
+        """Send a single event to Microsoft Sentinel with title and content."""
+        if not all([self.workspace_id, self.shared_key]):
+            logger.warning('MSSentinelNotifier: missing required configuration (workspace_id, shared_key)')
+            return
+
+        # Get repository and branch info from config (discovered by main logic)
+        repo = self.config.get('repository', 'Unknown')
+        branch = self.config.get('branch', 'Unknown')
+
+        # Create Sentinel event payload with pre-formatted content
+        event = {
+            'TimeGenerated': facts.get('timestamp'),
+            'Source': 'SocketSecurity',
+            'Repository': repo,
+            'Branch': branch,
+            'Severity': 'High',
+            'Title': title,
+            'Content': content,
+            'EventType': 'SecurityFinding'
+        }
 
         try:
-            import requests
-            collector_url = self.config.get('collector_url') or self.collector_url
-            if collector_url:
-                resp = requests.post(collector_url, json=events)
+            if self.collector_url:
+                # Use custom collector URL if provided
+                import requests
+                resp = requests.post(self.collector_url, json=[event], timeout=10)
                 if resp.status_code >= 400:
-                    logger.error('Sentinel collector returned %s: %s', resp.status_code, resp.text)
+                    logger.warning('MSSentinelNotifier: collector error %s: %s', resp.status_code, resp.text[:200])
+                else:
+                    logger.info('MSSentinelNotifier: sent event for "%s"', title)
             else:
-                try:
-                    print(json.dumps(body, indent=2))
-                except Exception:
-                    logger.debug('Failed to print sentinel payload to stdout')
-        except Exception:
-            logger.exception('Failed to send to Sentinel')
+                # Would need to implement Sentinel HTTP Data Collector API authentication here
+                # For now, just log the event
+                logger.info('MSSentinelNotifier: would send event for "%s" (collector URL not configured)', title)
+                
+        except Exception as e:
+            logger.error('MSSentinelNotifier: exception sending event: %s', e)

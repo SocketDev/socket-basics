@@ -12,6 +12,12 @@ from typing import Dict, List, Any
 
 from ..base import BaseConnector
 
+# Import individual notifier modules
+from . import github_pr, slack, ms_teams, ms_sentinel, sumologic, console, jira, webhook, json_notifier
+
+# Import shared formatters
+from ...formatters import get_all_formatters
+
 logger = logging.getLogger(__name__)
 
 
@@ -119,7 +125,14 @@ class TruffleHogScanner(BaseConnector):
                 if notifications:
                     tables = [{'title': 'results', 'headers': ['component','severity','title','location'], 'rows': notifications}]
 
-            return {'components': components_list, 'notifications': tables}
+            # Build notifications using new shared formatters
+            notifications_by_notifier = self.generate_notifications(components_list)
+            
+            # return Socket facts format
+            return {
+                'components': components_list,
+                'notifications': notifications_by_notifier
+            }
             
         except FileNotFoundError:
             logger.error("Trufflehog not found. Please install Trufflehog")
@@ -239,10 +252,7 @@ class TruffleHogScanner(BaseConnector):
                     "dead": False,
                     "dependencies": [],
                     "manifestFiles": [{"file": fp}] if fp else [],
-                    "qualifiers": {
-                        "scanner": "secrets",
-                        "type": inferred_type
-                    },
+                    "subPath": "secret-scanning",
                     "alerts": []
                 }
 
@@ -254,7 +264,16 @@ class TruffleHogScanner(BaseConnector):
                 alert.setdefault('category', 'supplyChainRisk')
                 comps[comp_id]['alerts'].append(alert)
 
-        return comps
+        # Convert to Socket facts format
+        components_list = list(comps.values())
+        
+        # Build notifications for all notifier types
+        notifications_by_notifier = self.generate_notifications(components_list)
+        
+        return {
+            'components': components_list,
+            'notifications': notifications_by_notifier
+        }
     
     def _create_alert(self, finding: Dict[str, Any]) -> Dict[str, Any]:
         """Create a generic alert from a Trufflehog finding"""
@@ -348,13 +367,12 @@ export SECRET_KEY="your-secret-here"
             "subType": "secrets",
             "action": self.config.get_action_for_severity(severity),
             "props": {
-                "detectorName": detector_name,
+                "ruleId": detector_name,
                 "verified": verified,
                 "filePath": file_path,
                 "lineNumber": line,
                 "secretType": detector_name.lower(),
                 "redactedValue": redacted_secret,
-                "isActive": verified,
                 "riskLevel": "critical" if verified else "low",
                 "exposureType": "source-code",
                 "detailedReport": {
@@ -364,31 +382,93 @@ export SECRET_KEY="your-secret-here"
             }
         }
 
-    # Notification processor for TruffleHog secrets
-    def notification_rows(self, processed_results: Dict[str, Any]) -> List[Dict[str, Any]]:
-        """Return a list of canonical notification table dicts.
 
-        Each table dict must include a `title`, optional `headers`, and `rows`.
-        Example:
-          [{"title": "Secrets", "headers": [...], "rows": [[...], ...]}]
+
+
+    # Notification processor for TruffleHog secrets
+    def notification_rows(self, processed_results: Dict[str, Any]) -> List[List[str]]:
+        """Legacy method - returns flat list of rows (not grouped tables).
+        
+        This is kept for backward compatibility.
         """
         rows: List[List[str]] = []
-        for comp in processed_results.values():
-            for a in comp.get('alerts', []):
-                props = a.get('props', {}) or {}
-                detection = props.get('detectorName', '') or a.get('title') or ''
-                sev = a.get('severity', '')
-                file_path = props.get('filePath', '-')
-                line = props.get('lineNumber', '')
-                redacted = props.get('redactedValue', '')
-                # Build row as: Detection, Severity, File, Line, Secrets (redacted)
-                rows.append([detection, sev, file_path, f"{line}" if line else '-', redacted])
+        if not processed_results:
+            return rows
+        
+        # Handle new Socket facts format (with 'components' key)
+        components = processed_results.get('components', [])
+        if components and isinstance(components, list):
+            for comp in components:
+                for a in comp.get('alerts', []):
+                    props = a.get('props', {}) or {}
+                    detection = str(props.get('detectorName', '') or a.get('title') or '')
+                    sev = str(a.get('severity', ''))
+                    file_path = str(props.get('filePath', '-'))
+                    line = str(props.get('lineNumber', ''))
+                    redacted = str(props.get('redactedValue', ''))
+                    # Build row as: Detection, Severity, File, Line, Secrets (redacted)
+                    rows.append([detection, sev, file_path, f"{line}" if line else '-', redacted])
+        else:
+            # Handle old format (direct component mapping)
+            for comp in processed_results.values():
+                if hasattr(comp, 'get'):  # It's a dict
+                    for a in comp.get('alerts', []):
+                        props = a.get('props', {}) or {}
+                        detection = str(props.get('detectorName', '') or a.get('title') or '')
+                        sev = str(a.get('severity', ''))
+                        file_path = str(props.get('filePath', '-'))
+                        line = str(props.get('lineNumber', ''))
+                        redacted = str(props.get('redactedValue', ''))
+                        # Build row as: Detection, Severity, File, Line, Secrets (redacted)
+                        rows.append([detection, sev, file_path, f"{line}" if line else '-', redacted])
 
-        table = {
-            'title': 'Secrets',
-            'headers': ['Detection', 'Severity', 'File', 'Line', 'Secrets'],
-            'rows': rows,
-        }
-
-        # Return empty list when there are no rows to make callers skip it cleanly
-        return [table] if rows else []
+        return rows
+    
+    def generate_notifications(self, components: List[Dict[str, Any]]) -> Dict[str, List[Dict[str, str]]]:
+        """Generate pre-formatted notifications for all notifier types.
+        
+        Args:
+            components: List of component dictionaries with alerts
+            
+        Returns:
+            Dictionary mapping notifier keys to lists of notification dictionaries
+        """
+        if not components:
+            return {}
+        
+        # Create component mapping for compatibility with TruffleHog-specific formatters
+        comps_map = {c.get('id') or c.get('name') or str(id(c)): c for c in components}
+        
+        # Filter components by severity
+        filtered_comps_map = {}
+        for comp_id, comp in comps_map.items():
+            filtered_alerts = []
+            for alert in comp.get('alerts', []):
+                # Filter by severity - only include alerts that match allowed severities
+                alert_severity = (alert.get('severity') or '').strip().lower()
+                if alert_severity and hasattr(self, 'allowed_severities') and alert_severity not in self.allowed_severities:
+                    continue  # Skip this alert - severity not enabled
+                filtered_alerts.append(alert)
+            
+            # Only include component if it has filtered alerts
+            if filtered_alerts:
+                filtered_comp = comp.copy()
+                filtered_comp['alerts'] = filtered_alerts
+                filtered_comps_map[comp_id] = filtered_comp
+        
+        if not filtered_comps_map:
+            return {}
+        
+        # Build notifications for each notifier type using TruffleHog-specific modules
+        notifications_by_notifier = {}
+        notifications_by_notifier['github_pr'] = github_pr.format_notifications(filtered_comps_map)
+        notifications_by_notifier['slack'] = slack.format_notifications(filtered_comps_map)
+        notifications_by_notifier['msteams'] = ms_teams.format_notifications(filtered_comps_map)
+        notifications_by_notifier['ms_sentinel'] = ms_sentinel.format_notifications(filtered_comps_map)
+        notifications_by_notifier['sumologic'] = sumologic.format_notifications(filtered_comps_map)
+        notifications_by_notifier['json'] = json_notifier.format_notifications(filtered_comps_map)
+        notifications_by_notifier['console'] = console.format_notifications(filtered_comps_map)
+        notifications_by_notifier['jira'] = jira.format_notifications(filtered_comps_map)
+        notifications_by_notifier['webhook'] = webhook.format_notifications(filtered_comps_map)
+        
+        return notifications_by_notifier

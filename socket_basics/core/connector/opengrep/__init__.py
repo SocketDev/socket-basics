@@ -19,6 +19,12 @@ from typing import Dict, Any, List
 from ..base import BaseConnector
 # Opengrep produces canonical components/notifications directly
 
+# Import individual notifier modules
+from . import github_pr, slack, ms_teams, ms_sentinel, sumologic, console, jira, webhook, json_notifier
+
+# Import shared formatters
+from ...formatters import get_all_formatters
+
 logger = logging.getLogger(__name__)
 
 
@@ -186,44 +192,14 @@ class OpenGrepScanner(BaseConnector):
 			wrapper = {'components': socket_facts.get('components', [])}
 			try:
 				comps_map: Dict[str, Dict[str, Any]] = {c.get('id') or c.get('name'): c for c in socket_facts.get('components', [])}
-				tables: List[Dict[str, Any]] = []
-				groups: Dict[str, List[Dict[str, Any]]] = {}
-				# Group all alerts by their subType
-				for c in comps_map.values():
-					comp_name = c.get('name') or c.get('id') or ''
-					for a in c.get('alerts', []):
-						st = a.get('subType') or a.get('subtype') or 'sast-generic'
-						groups.setdefault(st, []).append({'component': c, 'alert': a})
-
-				for subtype, items in groups.items():
-					rows: List[List[str]] = []
-					for it in items:
-						c = it['component']
-						a = it['alert']
-						props = a.get('props', {}) or {}
-						full_path = props.get('filePath', a.get('location', {}).get('path')) or '-'
-						try:
-							from pathlib import Path as _P
-							file_name = _P(full_path).name
-						except Exception:
-							file_name = full_path
-						# include severity as second column so notifiers (Jira) can display it
-						rows.append([
-							props.get('ruleId', a.get('title', '')),
-							a.get('severity', ''),
-							file_name,
-							full_path,
-							f"{props.get('startLine','')}-{props.get('endLine','')}",
-							props.get('codeSnippet','') or ''
-						])
-					# Provide headers so downstream notifiers preserve column names
-					headers = ['Rule', 'Severity', 'File', 'Path', 'Lines', 'Code']
-					tables.append({'title': subtype, 'headers': headers, 'rows': rows})
-
-				if tables:
-					wrapper['notifications'] = tables
+				
+				# Build notifications using new shared formatters
+				notifications_by_notifier = self.generate_notifications(wrapper.get('components', []))
+				
+				if notifications_by_notifier:
+					wrapper['notifications'] = notifications_by_notifier
 				elif notifications:
-					# adopt normalize_components notifications into canonical tables
+					# fallback to old format if needed
 					wrapper['notifications'] = [{'title': 'results', 'rows': notifications}]
 			except Exception:
 				# if grouping fails, fall back to raw notifications
@@ -295,9 +271,6 @@ class OpenGrepScanner(BaseConnector):
 							'description': message,
 							'severity': sev_label,
 							'type': 'generic',
-							# Keep location focused on line information only; do NOT
-							# include the path here so callers rely on props['filePath']
-							# for the file path (schema requirement).
 							'location': {
 								'start': start,
 								'end': end
@@ -388,38 +361,18 @@ class OpenGrepScanner(BaseConnector):
 							comp_id = path
 
 						if comp_id not in comps:
-							# initialize component with qualifiers; connectors may populate
-							# a component-level 'type' qualifier to mirror alert subType
 							comps[comp_id] = {
 								'id': comp_id,
-								# Use generic top-level type (keep specific scanner type in qualifiers)
 								'type': 'generic',
+								'subPath': detected_subtype,
 								'name': path,
 								"internal": True,
-								'alerts': [],
-								'qualifiers': {
-									'scanner': 'opengrep'
-								}
+								'alerts': []
 							}
 						comps[comp_id]['alerts'].append(alert)
 					except Exception:
 						logger.debug('Failed to convert single opengrep result to alert', exc_info=True)
-
-				# Filter out components with no alerts (shouldn't happen) and return
-				for k, v in comps.items():
-					# set component-level qualifier 'type' from the first alert subType if present
-					alerts = v.get('alerts') or []
-					if not alerts:
-						continue
-					first_sub = alerts[0].get('subType') or alerts[0].get('subtype')
-					if first_sub:
-						try:
-							v.setdefault('qualifiers', {})
-							v['qualifiers']['type'] = first_sub
-						except Exception:
-							pass
-					out[k] = v
-				return out
+				return comps
 
 			# If it's already a mapping of component_id -> component, filter empty alerts
 			if all(isinstance(v, dict) for v in raw_results.values()):
@@ -431,13 +384,15 @@ class OpenGrepScanner(BaseConnector):
 
 		return {}
 
+
+
 	def notification_rows(self, processed_results: Dict[str, Any]) -> List[List[str]]:
-		# Build canonical list-of-table dicts grouped by filename or rule
-		tables: List[Dict[str, Any]] = []
+		# Legacy method - returns flat list of rows (not grouped tables)
+		# This is kept for backward compatibility
+		rows: List[List[str]] = []
 		if not processed_results:
-			return tables
-		groups: Dict[str, List[List[str]]] = {}
-		headers = ['Rule', 'Severity', 'File', 'Path', 'Lines', 'Code']
+			return rows
+		
 		for comp in processed_results.values():
 			for a in comp.get('alerts', []):
 				props = a.get('props', {}) or {}
@@ -445,7 +400,6 @@ class OpenGrepScanner(BaseConnector):
 				full_path = props.get('filePath', a.get('location', {}).get('path')) or '-'
 				try:
 					from pathlib import Path
-
 					file_name = Path(full_path).name
 				except Exception:
 					file_name = full_path
@@ -458,11 +412,51 @@ class OpenGrepScanner(BaseConnector):
 					f"{props.get('startLine','')}-{props.get('endLine','')}",
 					props.get('codeSnippet','') or ''
 				]
-				group_key = props.get('ruleId') or file_name
-				groups.setdefault(group_key, []).append(row)
+				rows.append(row)
 
-		for title, rows in groups.items():
-			tables.append({'title': title, 'headers': headers, 'rows': rows})
-
-		return tables
+		return rows
+	
+	def generate_notifications(self, components: List[Dict[str, Any]]) -> Dict[str, List[Dict[str, str]]]:
+		"""Generate pre-formatted notifications for all notifier types.
+		
+		Args:
+			components: List of component dictionaries with alerts
+			
+		Returns:
+			Dictionary mapping notifier keys to lists of notification dictionaries
+		"""
+		if not components:
+			return {}
+		
+		# Create component mapping for compatibility with connector-specific formatters
+		comps_map = {c.get('id') or c.get('name') or str(id(c)): c for c in components}
+		
+		# Get all alerts grouped by subtype, with severity filtering
+		groups: Dict[str, List[Dict[str, Any]]] = {}
+		for c in comps_map.values():
+			for a in c.get('alerts', []):
+				# Filter by severity - only include alerts that match allowed severities
+				alert_severity = (a.get('severity') or '').strip().lower()
+				if alert_severity and hasattr(self, 'allowed_severities') and alert_severity not in self.allowed_severities:
+					continue  # Skip this alert - severity not enabled
+				
+				st = a.get('subType') or a.get('subtype') or 'sast-generic'
+				groups.setdefault(st, []).append({'component': c, 'alert': a})
+		
+		if not groups:
+			return {}
+		
+		# Build notifications for each notifier type using OpenGrep-specific modules
+		notifications_by_notifier = {}
+		notifications_by_notifier['github_pr'] = github_pr.format_notifications(groups)
+		notifications_by_notifier['slack'] = slack.format_notifications(groups)
+		notifications_by_notifier['msteams'] = ms_teams.format_notifications(groups)
+		notifications_by_notifier['ms_sentinel'] = ms_sentinel.format_notifications(groups)
+		notifications_by_notifier['sumologic'] = sumologic.format_notifications(groups)
+		notifications_by_notifier['json'] = json_notifier.format_notifications(groups)
+		notifications_by_notifier['console'] = console.format_notifications(groups)
+		notifications_by_notifier['jira'] = jira.format_notifications(groups)
+		notifications_by_notifier['webhook'] = webhook.format_notifications(groups)
+		
+		return notifications_by_notifier
 

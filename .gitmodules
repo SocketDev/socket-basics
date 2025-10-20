@@ -1,0 +1,27 @@
+[submodule "app_tests/NodeGoat"]
+	path = app_tests/NodeGoat
+	url = https://github.com/OWASP/NodeGoat.git
+[submodule "app_tests/DVWA"]
+	path = app_tests/DVWA
+	url = https://github.com/digininja/DVWA.git
+[submodule "app_tests/WebGoat"]
+	path = app_tests/WebGoat
+	url = https://github.com/WebGoat/WebGoat.git
+[submodule "app_tests/juice-shop"]
+	path = app_tests/juice-shop
+	url = https://github.com/juice-shop/juice-shop.git
+[submodule "app_tests/railsgoat"]
+	path = app_tests/railsgoat
+	url = https://github.com/OWASP/railsgoat.git
+[submodule "app_tests/IWA-DotNet"]
+	path = app_tests/IWA-DotNet
+	url = https://github.com/fortify/IWA-DotNet.git
+[submodule "app_tests/pygoat"]
+	path = app_tests/pygoat
+	url = https://github.com/adeyosemanputra/pygoat.git
+[submodule "app_tests/DVIA-v2"]
+	path = app_tests/DVIA-v2
+	url = https://github.com/prateek147/DVIA-v2.git
+[submodule "app_tests/scala-woof"]
+	path = app_tests/scala-woof
+	url = https://github.com/snyk/scala-woof.git

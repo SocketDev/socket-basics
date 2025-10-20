@@ -4,21 +4,24 @@ import os
 from typing import Any, Dict, List, Optional
 
 from socket_basics.core.notification.base import BaseNotifier
-from socket_basics.core.config import load_connectors_config
+from socket_basics.core.config import (
+    load_connectors_config,
+    get_slack_webhook_url,
+    get_webhook_url,
+    get_ms_sentinel_workspace_id,
+    get_jira_url,
+    get_sumologic_endpoint,
+    get_github_token,
+    get_jira_email,
+    get_jira_api_token,
+    get_socket_basics_severities,
+    get_github_workspace
+)
 
 logger = logging.getLogger(__name__)
 
 
 class NotificationManager:
-    def notify_all(self, facts: Dict[str, Any]) -> None:
-        # Debug: log facts at debug level (don't print raw structures unconditionally)
-        try:
-            logger.debug('notify_all facts: %s', {k: v for k, v in facts.items() if k != 'socket_tier1'})
-            if 'socket_tier1' in facts:
-                logger.debug('Raw socket_tier1 processed results: %s', facts.get('socket_tier1'))
-        except Exception:
-            logger.exception('Failed to debug-log notify_all facts')
-        # ...existing code...
     """Loads notifier plugins based on a config dict.
 
     Config format:
@@ -60,91 +63,79 @@ class NotificationManager:
             try:
                 # Slack: webhook
                 if name.lower() == 'slack':
+                    slack_url = get_slack_webhook_url()
                     if (
-                        os.getenv('SLACK_WEBHOOK_URL')
-                        or os.getenv('INPUT_SLACK_WEBHOOK_URL')
+                        slack_url
                         or (self.app_config and self.app_config.get('slack_webhook_url'))
                     ):
                         enabled = True
-                        if os.getenv('SLACK_WEBHOOK_URL'):
-                            enable_cause = 'env:SLACK_WEBHOOK_URL'
-                        elif os.getenv('INPUT_SLACK_WEBHOOK_URL'):
-                            enable_cause = 'env:INPUT_SLACK_WEBHOOK_URL'
+                        if slack_url:
+                            enable_cause = 'env:SLACK_WEBHOOK_URL or INPUT_SLACK_WEBHOOK_URL'
                         else:
                             enable_cause = 'app_config:slack_webhook_url'
 
                 # Webhook generic
                 if name.lower() == 'webhook':
+                    webhook = get_webhook_url()
                     if (
-                        os.getenv('WEBHOOK_URL')
-                        or os.getenv('INPUT_WEBHOOK_URL')
+                        webhook
                         or (self.app_config and self.app_config.get('webhook_url'))
                     ):
                         enabled = True
-                        if os.getenv('WEBHOOK_URL'):
-                            enable_cause = 'env:WEBHOOK_URL'
-                        elif os.getenv('INPUT_WEBHOOK_URL'):
-                            enable_cause = 'env:INPUT_WEBHOOK_URL'
+                        if webhook:
+                            enable_cause = 'env:WEBHOOK_URL or INPUT_WEBHOOK_URL'
                         else:
                             enable_cause = 'app_config:webhook_url'
 
                 # MS Sentinel
                 if name.lower() == 'ms_sentinel':
+                    sentinel_id = get_ms_sentinel_workspace_id()
                     if (
-                        os.getenv('INPUT_MS_SENTINEL_WORKSPACE_ID')
-                        or os.getenv('MS_SENTINEL_WORKSPACE_ID')
+                        sentinel_id
                         or (self.app_config and self.app_config.get('ms_sentinel_workspace_id'))
                     ):
                         enabled = True
-                        if os.getenv('MS_SENTINEL_WORKSPACE_ID'):
-                            enable_cause = 'env:MS_SENTINEL_WORKSPACE_ID'
-                        elif os.getenv('INPUT_MS_SENTINEL_WORKSPACE_ID'):
-                            enable_cause = 'env:INPUT_MS_SENTINEL_WORKSPACE_ID'
+                        if sentinel_id:
+                            enable_cause = 'env:MS_SENTINEL_WORKSPACE_ID or INPUT_MS_SENTINEL_WORKSPACE_ID'
                         else:
                             enable_cause = 'app_config:ms_sentinel_workspace_id'
 
                 # Jira
                 if name.lower() == 'jira':
+                    jira = get_jira_url()
                     if (
-                        os.getenv('INPUT_JIRA_URL')
-                        or os.getenv('JIRA_URL')
+                        jira
                         or (self.app_config and self.app_config.get('jira_url'))
                     ):
                         enabled = True
-                        if os.getenv('JIRA_URL'):
-                            enable_cause = 'env:JIRA_URL'
-                        elif os.getenv('INPUT_JIRA_URL'):
-                            enable_cause = 'env:INPUT_JIRA_URL'
+                        if jira:
+                            enable_cause = 'env:JIRA_URL or INPUT_JIRA_URL'
                         else:
                             enable_cause = 'app_config:jira_url'
 
                 # SumoLogic
                 if name.lower() == 'sumologic':
+                    sumologic = get_sumologic_endpoint()
                     if (
-                        os.getenv('INPUT_SUMOLOGIC_ENDPOINT')
-                        or os.getenv('SUMOLOGIC_ENDPOINT')
+                        sumologic
                         or (self.app_config and self.app_config.get('sumologic_endpoint'))
                     ):
                         enabled = True
-                        if os.getenv('SUMOLOGIC_ENDPOINT'):
-                            enable_cause = 'env:SUMOLOGIC_ENDPOINT'
-                        elif os.getenv('INPUT_SUMOLOGIC_ENDPOINT'):
-                            enable_cause = 'env:INPUT_SUMOLOGIC_ENDPOINT'
+                        if sumologic:
+                            enable_cause = 'env:SUMOLOGIC_ENDPOINT or INPUT_SUMOLOGIC_ENDPOINT'
                         else:
                             enable_cause = 'app_config:sumologic_endpoint'
 
                 # Github PR notifier: token presence
                 if name.lower() == 'github_pr':
+                    github_token = get_github_token()
                     if (
-                        os.getenv('INPUT_GITHUB_TOKEN')
-                        or os.getenv('GITHUB_TOKEN')
+                        github_token
                         or (self.app_config and self.app_config.get('github_token'))
                     ):
                         enabled = True
-                        if os.getenv('GITHUB_TOKEN'):
-                            enable_cause = 'env:GITHUB_TOKEN'
-                        elif os.getenv('INPUT_GITHUB_TOKEN'):
-                            enable_cause = 'env:INPUT_GITHUB_TOKEN'
+                        if github_token:
+                            enable_cause = 'env:GITHUB_TOKEN or INPUT_GITHUB_TOKEN'
                         else:
                             enable_cause = 'app_config:github_token'
             except Exception:
@@ -158,14 +149,15 @@ class NotificationManager:
                         self.app_config.get('console_tabular_enabled') or self.app_config.get('output_console_enabled')
                     ):
                         enabled = True
+                        enable_cause = 'app_config:console_tabular_enabled or output_console_enabled'
                     if name.lower() == 'json' and (
                         self.app_config.get('console_json_enabled') or self.app_config.get('output_json_enabled')
                     ):
                         enabled = True
-                except Exception:
-                    pass
-            except Exception:
-                pass
+                except Exception as e:
+                    logger.debug(f" Exception in console notifier check: {e}")
+            except Exception as e:
+                logger.debug(f" Exception in notifier enablement check: {e}")
 
             # If any connector requested this notifier via its notification_method param, enable it
             for connector_name, connector_cfg in connectors_cfg.items():
@@ -217,18 +209,21 @@ class NotificationManager:
                         val = None
                         if self.app_config and pname in self.app_config:
                             val = self.app_config.get(pname)
-                        elif env_var and os.getenv(env_var) is not None:
+                        if env_var and os.getenv(env_var) is not None:
                             ev = os.getenv(env_var)
-                            if p_type == 'bool':
-                                val = ev.lower() == 'true'
-                            elif p_type == 'int':
-                                try:
-                                    val = int(ev)
-                                except Exception:
-                                    logger.warning("Failed to convert notifier param %s=%s to int for notifier %s; using default %s", pname, ev, name, p_default)
-                                    val = p_default
+                            if ev is not None:
+                                if p_type == 'bool':
+                                    val = ev.lower() == 'true'
+                                elif p_type == 'int':
+                                    try:
+                                        val = int(ev)
+                                    except Exception:
+                                        logger.warning("Failed to convert notifier param %s=%s to int for notifier %s; using default %s", pname, ev, name, p_default)
+                                        val = p_default
+                                else:
+                                    val = ev
                             else:
-                                val = ev
+                                val = p_default
                         else:
                             val = p_default
 
@@ -246,8 +241,8 @@ class NotificationManager:
             # details into params if they exist in the environment or app_config
             try:
                 if name.lower() == 'jira':
-                    jira_email = os.getenv('INPUT_JIRA_EMAIL') or os.getenv('JIRA_EMAIL') or (self.app_config and self.app_config.get('jira_email'))
-                    jira_token = os.getenv('INPUT_JIRA_API_TOKEN') or os.getenv('JIRA_API_TOKEN') or (self.app_config and self.app_config.get('jira_api_token'))
+                    jira_email = get_jira_email() or (self.app_config and self.app_config.get('jira_email'))
+                    jira_token = get_jira_api_token() or (self.app_config and self.app_config.get('jira_api_token'))
                     if jira_email or jira_token:
                         # ensure params contains auth dict expected by JiraNotifier
                         params['auth'] = {'email': jira_email, 'api_token': jira_token}
@@ -274,12 +269,23 @@ class NotificationManager:
                 logger.exception("Failed to load notifier %s: %s", name, e)
 
     def notify_all(self, facts: Dict[str, Any]) -> None:
+        # Add repository, branch, and commit info from main config to facts
+        # so notifiers can access this information for title formatting
+        if self.app_config:
+            facts['repository'] = self.app_config.get('repo', 'Unknown')  # Note: uses 'repo' not 'repository'
+            facts['branch'] = self.app_config.get('branch', 'Unknown') 
+            facts['commit_hash'] = self.app_config.get('commit_hash', 'Unknown')
+            # Add full scan URL if available
+            full_scan_url = self.app_config.get('full_scan_html_url')
+            if full_scan_url:
+                facts['full_scan_html_url'] = full_scan_url
+            
         # Determine allowed severities for notifications. Honor SOCKET_BASICS_SEVERITIES
         # environment variable (comma-separated), fall back to INPUT_FINDING_SEVERITIES,
         # and default to critical,high when not provided.
         try:
-            sev_env = os.getenv('SOCKET_BASICS_SEVERITIES') or os.getenv('INPUT_FINDING_SEVERITIES')
-            if sev_env is None:
+            sev_env = get_socket_basics_severities()
+            if not sev_env:
                 allowed_severities = {'critical', 'high'}
             else:
                 allowed_severities = {s.strip().lower() for s in str(sev_env).split(',') if s.strip()}
@@ -312,7 +318,7 @@ class NotificationManager:
         # can display something meaningful when not running in GH actions.
         try:
             if not facts.get('repository'):
-                workspace = (self.app_config or {}).get('workspace') or os.getenv('GITHUB_WORKSPACE')
+                workspace = (self.app_config or {}).get('workspace') or get_github_workspace()
                 if workspace:
                     try:
                         from pathlib import Path
@@ -328,7 +334,10 @@ class NotificationManager:
         for c_name, c_cfg in connectors_cfg.items():
             for p in c_cfg.get('parameters', []) or []:
                 if isinstance(p, dict) and p.get('name') and p.get('group'):
-                    param_to_group[p.get('name')] = p.get('group')
+                    pname = p.get('name')
+                    pgroup = p.get('group')
+                    if pname and pgroup:
+                        param_to_group[pname] = pgroup
 
         # Helper: determine group for an alert using props/connector heuristics
         def _alert_group(alert: Dict[str, Any], comp: Dict[str, Any]) -> str:
@@ -379,253 +388,113 @@ class NotificationManager:
             return 'Ungrouped'
 
 
-        # If connectors already attached `facts['notifications']`, try to filter them
-        # by allowed severities where possible, but otherwise respect connector rows.
-        # Support two shapes for connector-provided notifications:
-        #  - {group_label: [row1, row2, ...]}
-        #  - {group_label: {'headers': [...], 'rows': [[...], ...]}}
+        # Handle simplified per-notifier format from connectors
+        # Connectors now provide notifications in simplified format:
+        # {'notifier_key': [{'title': '...', 'content': 'formatted_content'}, ...]}
+        # Severity filtering should be done in the connectors, not here
+        per_notifier_notifications = {}
         if facts.get('notifications'):
             try:
-                logger.debug('Facts already contains notifications; attempting to apply severity filtering')
-            except Exception:
-                pass
-
-            try:
+                logger.debug('Processing connector-provided per-notifier notifications')
                 raw_notifs = facts.get('notifications') or {}
-                filtered: Dict[str, Any] = {}
 
-                def _process_payload_and_filter(group_label: str, headers, rows):
-                    new_rows = []
-                    if not rows:
-                        return None
-                    for r in rows:
-                        sev_found = None
-                        try:
-                            # If headers are present, require a Severity header to perform filtering
-                            if headers:
-                                found_sev_index = None
-                                for i, h in enumerate(headers):
-                                    try:
-                                        if isinstance(h, str) and h.strip().lower() == 'severity':
-                                            found_sev_index = i
-                                            break
-                                    except Exception:
-                                        continue
-                                if found_sev_index is None:
-                                    # Connector provided headers but omitted Severity column.
-                                    # Warn and conservatively include all rows for this group
-                                    logger.warning("Connector-provided notifications for '%s' missing 'Severity' header; skipping severity filtering for this group", group_label)
-                                    sev_found = None
+                # Check if this is the new per-notifier format
+                # (keys like 'github_pr', 'slack', 'console' vs old semantic groups)
+                known_notifier_keys = {
+                    'github_pr', 'slack', 'msteams', 'ms_sentinel', 'sumologic', 
+                    'json', 'console', 'jira', 'webhook'
+                }
+                
+                has_notifier_keys = any(key in known_notifier_keys for key in raw_notifs.keys()) if isinstance(raw_notifs, dict) else False
+                
+                if has_notifier_keys:
+                    # New simplified format: connectors provide pre-formatted content
+                    # No filtering needed - connectors handle severity filtering
+                    for notifier_key, payload in raw_notifs.items():
+                        if notifier_key not in known_notifier_keys:
+                            continue
+                        
+                        # Validate payload format: should be list of {title, content} dicts
+                        if isinstance(payload, list):
+                            valid_items = []
+                            for item in payload:
+                                if isinstance(item, dict) and 'title' in item and 'content' in item:
+                                    valid_items.append(item)
                                 else:
-                                    if isinstance(r, (list, tuple)) and found_sev_index < len(r):
-                                        sev_found = str(r[found_sev_index] or '').lower()
-
-                            # Fallback heuristic: most tables put severity in idx 1
-                            if not sev_found:
-                                if isinstance(r, (list, tuple)):
-                                    if len(r) > 1:
-                                        sev_found = str(r[1] or '').lower()
-                                    if not sev_found or sev_found == '':
-                                        for cell in r:
-                                            try:
-                                                if isinstance(cell, str) and str(cell).strip().lower() in allowed_severities:
-                                                    sev_found = str(cell).strip().lower()
-                                                    break
-                                            except Exception:
-                                                continue
-                        except Exception:
-                            sev_found = None
-
-                        # If we couldn't determine a severity, conservatively include the row
-                        if not sev_found or sev_found in allowed_severities:
-                            new_rows.append(r)
-
-                    if new_rows:
-                        return {'headers': headers, 'rows': new_rows}
-                    return None
-
-                # raw_notifs may be a mapping {group_label: payload} or a list of table-dicts
-                if isinstance(raw_notifs, dict):
-                    for group_label, payload in raw_notifs.items():
-                        headers = None
-                        rows = []
-                        if isinstance(payload, dict) and 'rows' in payload:
-                            headers = payload.get('headers') or []
-                            rows = payload.get('rows') or []
-                        elif isinstance(payload, list):
-                            rows = payload
+                                    logger.warning('Invalid notification item for %s: expected {title, content}, got %s', 
+                                                 notifier_key, type(item))
+                            
+                            if valid_items:
+                                per_notifier_notifications[notifier_key] = valid_items
                         else:
-                            # unknown payload shape: skip it
-                            continue
-
-                        processed = _process_payload_and_filter(group_label, headers, rows)
-                        if processed:
-                            filtered[group_label] = processed
-                elif isinstance(raw_notifs, list):
-                    for item in raw_notifs:
-                        if not isinstance(item, dict):
-                            continue
-                        title = item.get('title') or 'results'
-                        headers = item.get('headers')
-                        rows = item.get('rows') or []
-                        processed = _process_payload_and_filter(title, headers, rows)
-                        if processed:
-                            filtered[title] = processed
+                            logger.warning('Invalid payload format for %s: expected list, got %s', 
+                                         notifier_key, type(payload))
+                    
+                    logger.debug('Processed %d notifier-specific notification formats', len(per_notifier_notifications))
                 else:
-                    # unrecognized notifications shape; skip filtering
-                    filtered = {}
-
-                # Prune any groups that ended up with zero rows (defensive)
-                for g in list(filtered.keys()):
-                    payload = filtered.get(g)
-                    try:
-                        if not payload or not isinstance(payload, dict) or not (payload.get('rows') or []):
-                            del filtered[g]
-                    except Exception:
-                        try:
-                            del filtered[g]
-                        except Exception:
-                            pass
-
-                # Attach filtered notifications back to facts for notifiers.
-                facts['notifications'] = filtered
-                if not filtered:
-                    try:
-                        logger.info('No notifications remain after severity filtering; skipping notifier delivery')
-                    except Exception:
-                        pass
-                    return
+                    # No new format notifications found
+                    logger.debug('No per-notifier notification formats found')
+                    
             except Exception:
-                logger.exception('Failed while attempting to filter connector-provided notifications by severity')
+                logger.exception('Failed to process connector-provided notifications')
 
-            # Attach to notifiers straight away
-            for n in self.notifiers:
-                try:
-                    n.notify(facts)
-                except Exception:
-                    logger.exception("Notifier %s failed", getattr(n, "name", n.__class__.__name__))
-            return
+            # Don't return early - continue to per-notifier filtering logic below
 
-        # Special handling: always use connector notification_rows for Socket Tier 1
-        # Connector may supply a dict with headers and rows; prefer that shape
-        notifications: Dict[str, Any] = {}
-        if 'socket_tier1' in facts:
-            # If connectors attached a `notifications` mapping with headers+rows,
-            # respect it verbatim (this allows connectors to control headings and
-            # column counts). If not present, fall back to the scanner.notification_rows
-            # legacy method (list-of-rows).
-            provided = facts.get('notifications') or {}
-            # Accept either the canonical top-level mapping or connector-attached mapping
-            if isinstance(provided, dict) and provided.get('Socket Tier 1 Reachability'):
-                # If the connector provides headers/rows, use them directly
-                notifications = provided
-            else:
-                # Fall back to scanner.notification_rows when no connector-provided mapping exists
-                from socket_basics.core.connector.socket_tier1.scanner import SocketTier1Scanner
-                scanner = SocketTier1Scanner(config=None)
-                rows = scanner.notification_rows(facts)
-                try:
-                    logger.debug('Rows returned by SocketTier1Scanner.notification_rows: %s', rows)
-                except Exception:
-                    logger.exception('Failed to debug-log socket_tier1 rows')
+        # All connectors now use the new simplified per-notifier format, no legacy processing needed
 
-                # If rows are present, attach them under the standard group label
-                if rows:
-                    notifications['Socket Tier 1 Reachability'] = rows
-
-            # Attach to facts and short-circuit the rest of the pipeline
-            if notifications:
-                try:
-                    facts['notifications'] = notifications
-                    logger.debug('Attached socket_tier1 notifications (authoritative): %s', notifications)
-                except Exception:
-                    logger.exception('Failed to attach socket_tier1 notifications')
-                for n in self.notifiers:
-                    try:
-                        n.notify(facts)
-                    except Exception:
-                        logger.exception("Notifier %s failed", getattr(n, "name", n.__class__.__name__))
-                return
-        else:
-            # Do not synthesize notification tables from component alerts here.
-            # Connectors are authoritative for producing `facts['notifications']` in the
-            # desired headers/rows shape. If no connector-provided notifications are
-            # present, leave `facts` as-is so notifiers can decide how to render
-            # `facts['components']` (this avoids manager guessing table shapes).
-            logger.debug('No connector-provided notifications present; leaving facts.components intact for notifiers to render')
-
-        # Attach notifications to facts so notifiers can render grouped tables.
-        # If socket_tier1 attached authoritative rows above, skip canonicalization
-        # to avoid mutating the connector-provided rows.
-        try:
-            if not facts.get('_socket_tier1_rows_attached'):
-                # Canonicalize SAST rows so all notifiers receive a consistent
-                # 4-column shape: [rule, file_path, lines, snippet]
-                for g, rows in list(notifications.items()):
-                    if g.lower().startswith('sast'):
-                        new_rows = []
-                        for r in rows:
-                            try:
-                                # Map common legacy shapes into [rule, file_path, lines, snippet]
-                                rule = ''
-                                full_path = ''
-                                lines = ''
-                                snippet = ''
-                                if len(r) >= 5:
-                                    first = (r[0] or '').lower() if isinstance(r[0], str) else ''
-                                    if first in ('python', 'javascript', 'js', 'typescript', 'java', 'ruby', 'go', 'php', 'csharp', 'c', 'cpp', 'rust', 'kotlin', 'scala', 'swift'):
-                                        # legacy: [language, rule, file, lines, snippet]
-                                        rule = r[1]
-                                        full_path = r[2]
-                                        lines = r[3]
-                                        snippet = r[4]
-                                    else:
-                                        # legacy: [rule, file_name, location, lines, snippet]
-                                        rule = r[0]
-                                        full_path = r[2] if len(r) > 2 else (r[1] if len(r) > 1 else '')
-                                        lines = r[3]
-                                        snippet = r[4]
-                                elif len(r) == 4:
-                                    # expected canonical shape: [rule, file_path, lines, snippet]
-                                    rule, full_path, lines, snippet = r
-                                elif len(r) == 3:
-                                    # [rule, file, lines] -> no snippet
-                                    rule, full_path, lines = r
-                                    snippet = ''
-                                else:
-                                    rule = r[0] if len(r) > 0 else ''
-                                    full_path = r[1] if len(r) > 1 else ''
-                                    lines = r[2] if len(r) > 2 else ''
-                                    snippet = r[3] if len(r) > 3 else ''
-
-                                new_rows.append([rule, full_path, lines, snippet])
-                            except Exception:
-                                # If canonicalization fails, keep original row to avoid data loss
-                                new_rows.append(r)
-                        notifications[g] = new_rows
-
-                if notifications:
-                    facts['notifications'] = notifications
-                else:
-                    facts.setdefault('notifications', {})
-            # Debug: log the notifications dict that will be passed to notifiers
-            try:
-                logger.debug('Grouped notifications to be passed to notifiers: %s', facts.get('notifications'))
-            except Exception:
-                logger.exception('Failed to debug-log notifications')
-        except Exception:
-            logger.exception('Failed to attach grouped notifications to facts')
-
-        # Debug: dump notifications just before running notifiers to help
-        # track down any remaining legacy-shaped rows (e.g. a leading "Language"
-        # column). This writes a small JSON file to /tmp for inspection during
-        # local runs.
-        # Call notifiers
-        # Debug: write a snapshot of grouped notifications to a temp file so
-        # we can inspect the exact rows passed to notifiers when debugging
-
+        # Call notifiers with their specific pre-formatted data
         for n in self.notifiers:
             try:
-                n.notify(facts)
+                # Create a copy of facts for this notifier
+                notifier_facts = facts.copy()
+                
+                # Map notifier class names to their expected notification keys
+                notifier_name = getattr(n, "name", n.__class__.__name__.lower())
+                notifier_key_map = {
+                    'console': 'console',
+                    'consolenotifier': 'console',
+                    'slack': 'slack', 
+                    'slacknotifier': 'slack',
+                    'github_pr': 'github_pr',
+                    'githubprnotifier': 'github_pr',
+                    'jira': 'jira',
+                    'jiranotifier': 'jira',
+                    'msteams': 'msteams',
+                    'msteamsnotifier': 'msteams',
+                    'ms_teams': 'msteams',
+                    'msteamsnotifier': 'msteams',
+                    'ms_sentinel': 'ms_sentinel',
+                    'mssentinelnotifier': 'ms_sentinel', 
+                    'sumologic': 'sumologic',
+                    'sumologicnotifier': 'sumologic',
+                    'json': 'json',
+                    'jsonnotifier': 'json',
+                    'webhook': 'webhook',
+                    'webhooknotifier': 'webhook'
+                }
+                
+                # Get the appropriate notification key for this notifier
+                notification_key = notifier_key_map.get(notifier_name.lower(), notifier_name.lower())
+                
+                # Debug logging
+                if per_notifier_notifications:
+                    logger.debug('Notifier %s -> notification_key %s, per_notifier_notifications keys: %s', 
+                               notifier_name, notification_key, list(per_notifier_notifications.keys()))
+                else:
+                    logger.debug('Notifier %s -> notification_key %s, per_notifier_notifications is empty/None', 
+                               notifier_name, notification_key)
+                
+                # If we have pre-formatted data for this notifier, use it
+                if per_notifier_notifications and notification_key in per_notifier_notifications:
+                    # Pass the per-notifier data in the simplified format: [{'title': '...', 'content': '...'}, ...]
+                    notifier_data = per_notifier_notifications[notification_key]
+                    notifier_facts['notifications'] = notifier_data
+                    logger.debug('Using pre-formatted data for notifier %s: %s items', notifier_name, len(notifier_data) if isinstance(notifier_data, list) else 1)
+                else:
+                    # No pre-formatted data available - skip this notifier to avoid sending wrong format
+                    logger.debug('No pre-formatted data found for notifier %s (key: %s), skipping to avoid format mismatch', notifier_name, notification_key)
+                    continue
+                
+                n.notify(notifier_facts)
             except Exception:
                 logger.exception("Notifier %s failed", getattr(n, "name", n.__class__.__name__))
