@@ -263,7 +263,7 @@ This project is licensed under the terms specified in the [LICENSE](LICENSE) fil
 - [Socket Dashboard](https://socket.dev/dashboard) — Configure Socket Basics (Enterprise)
 - [Socket Documentation](https://docs.socket.dev/) — Complete documentation
 - [Socket CLI](https://docs.socket.dev/docs/cli) — Dependency analysis tool
-- [Socket Enterprise](https://socket.dev/enterprise) — Learn about Enterprise features
+- [Socket Pricing](https://socket.dev/pricing) — Socket Pricing Details
 
 ---
 
