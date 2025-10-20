@@ -1,5 +1,5 @@
 name: "Socket Basics Security Scanner"
-description: "Comprehensive security scanning with SAST, secrets, container scanning, and more. Configure from Socket Dashboard (Enterprise required)."
+description: "Comprehensive security scanning with SAST, secrets, container scanning, and more."
 author: "Socket"
 
 runs:
