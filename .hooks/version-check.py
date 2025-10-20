@@ -1,4 +1,23 @@
 #!/usr/bin/env python3
+"""
+Version management script for Socket Basics.
+
+This script:
+1. Ensures version.py and pyproject.toml are in sync
+2. Auto-bumps version on commits if unchanged
+3. Automatically updates version references in:
+   - README.md (GitHub Action versions and Docker build tags)
+   - docs/github-action.md (all action version references)
+   - docs/pre-commit-hook.md (Docker build tags)
+
+Pattern matching:
+- GitHub Actions: SocketDev/socket-basics@vX.X.X -> @vNEW_VERSION
+- Docker builds: docker build -t IMAGE_NAME -> docker build -t IMAGE_NAME:NEW_VERSION
+
+Usage:
+- Normal commit: Will auto-bump patch version if unchanged
+- Dev mode: python3 .hooks/version-check.py --dev
+"""
 import subprocess
 import pathlib
 import re
@@ -8,9 +27,18 @@ import json
 
 VERSION_FILE = pathlib.Path("socket_basics/version.py")
 PYPROJECT_FILE = pathlib.Path("pyproject.toml")
+README_FILES = [
+    pathlib.Path("README.md"),
+    pathlib.Path("docs/github-action.md"),
+    pathlib.Path("docs/pre-commit-hook.md"),
+]
 
 VERSION_PATTERN = re.compile(r"__version__\s*=\s*['\"]([^'\"]+)['\"]")
 PYPROJECT_PATTERN = re.compile(r'^version\s*=\s*"([^"]+)"$', re.MULTILINE)
+# Pattern to match SocketDev/socket-basics@vX.X.X or @vX.X.X
+ACTION_VERSION_PATTERN = re.compile(r'(SocketDev/socket-basics|socket-basics)@v\d+\.\d+\.\d+')
+# Pattern to match docker build with version tag
+DOCKER_BUILD_PATTERN = re.compile(r'docker build -t (socketdev/socket-basics|socket-basics)(?::\d+\.\d+\.\d+)?')
 # Update this URL to match your actual PyPI package if you publish it
 PYPI_API = "https://pypi.org/pypi/security-wrapper/json"
 
@@ -71,6 +99,31 @@ def find_next_available_dev_version(base_version: str) -> str:
     print("❌ Could not find available .devN slot after 100 attempts.")
     sys.exit(1)
 
+def update_readme_versions(version: str):
+    """Update version references in README files"""
+    for readme_file in README_FILES:
+        if not readme_file.exists():
+            print(f"⚠️ {readme_file} not found, skipping")
+            continue
+        
+        content = readme_file.read_text()
+        original_content = content
+        
+        # Update action version references (SocketDev/socket-basics@vX.X.X)
+        content = ACTION_VERSION_PATTERN.sub(rf'\1@v{version}', content)
+        
+        # Update docker build commands to include version tag
+        def docker_replacement(match):
+            image_name = match.group(1)
+            return f'docker build -t {image_name}:{version}'
+        content = DOCKER_BUILD_PATTERN.sub(docker_replacement, content)
+        
+        if content != original_content:
+            readme_file.write_text(content)
+            print(f"✅ Updated version references in {readme_file}")
+        else:
+            print(f"ℹ️  No version updates needed in {readme_file}")
+
 def inject_version(version: str):
     print(f"🔁 Updating version to: {version}")
 
@@ -85,6 +138,9 @@ def inject_version(version: str):
         print(f"✅ Updated {PYPROJECT_FILE}")
     else:
         print(f"⚠️ Could not find version field in {PYPROJECT_FILE}")
+    
+    # Update README files with version references
+    update_readme_versions(version)
 
 def check_version_sync():
     """Ensure version.py and pyproject.toml are in sync"""

@@ -1,9 +1,6 @@
 version = 1
 revision = 3
 requires-python = ">=3.10"
-resolution-markers = [
-    "python_version < '0'",
-]
 
 [[package]]
 name = "black"
@@ -453,13 +450,14 @@ wheels = [
 ]
 
 [[package]]
-name = "security-wrapper"
-version = "1.0.0"
+name = "socket-basics"
+version = "1.0.2"
 source = { editable = "." }
 dependencies = [
     { name = "light-s3-client" },
     { name = "pyyaml" },
     { name = "requests" },
+    { name = "socketdev" },
     { name = "tabulate" },
     { name = "tomli", marker = "python_full_version < '3.11'" },
 ]
@@ -481,6 +479,7 @@ requires-dist = [
     { name = "pytest-cov", marker = "extra == 'dev'", specifier = ">=4.0.0" },
     { name = "pyyaml", specifier = ">=6.0.0" },
     { name = "requests", specifier = ">=2.31.0" },
+    { name = "socketdev", specifier = ">=0.1.0" },
     { name = "tabulate", specifier = "~=0.9.0" },
     { name = "tomli", marker = "python_full_version < '3.11'" },
 ]
@@ -488,6 +487,19 @@ provides-extras = ["dev"]
 
 [package.metadata.requires-dev]
 dev = []
+
+[[package]]
+name = "socketdev"
+version = "3.0.13"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "requests" },
+    { name = "typing-extensions" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/05/1c/e8dda1051e5f10e9d36aa37081b02d451f3491edccc44d41ee77c7b1865a/socketdev-3.0.13.tar.gz", hash = "sha256:5b7810cb7bd05a123d454f0e20735e451a943c405649dbfe891d1750c8688c57", size = 131853, upload-time = "2025-10-14T15:49:47.598Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/0d/61/c1d07e21b38dfda809539aab30c56c1ed47ca3b5ee58a117880e03d60ab7/socketdev-3.0.13-py3-none-any.whl", hash = "sha256:2acc38d532c8764c86fcca5007f518588a5f22ff56e480a59cdcbcb67e96defe", size = 57289, upload-time = "2025-10-14T15:49:45.917Z" },
+]
 
 [[package]]
 name = "tabulate"

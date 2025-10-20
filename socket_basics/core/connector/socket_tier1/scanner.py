@@ -11,6 +11,20 @@ from copy import deepcopy
 
 from ..base import BaseConnector, ConnectorExecutionError
 
+# Import individual notifier modules
+from . import github_pr
+from . import slack
+from . import ms_teams
+from . import ms_sentinel
+from . import sumologic
+from . import json_notifier
+from . import console
+from . import jira
+from . import webhook
+
+# Import shared formatters
+from ...formatters import get_all_formatters
+
 logger = logging.getLogger(__name__)
 
 
@@ -28,11 +42,7 @@ class SocketTier1Scanner(BaseConnector):
     FACTS_FILENAME = ".socket.facts.json"
 
     def is_enabled(self) -> bool:
-        # Allow explicit enable via env var
-        val = os.environ.get('SOCKET_TIER_1_ENABLED', '').lower()
-        if val in ('1', 'true', 'yes', 'on'):
-            return True
-        # Also allow enabling via config object if present
+        # Check config object first (which already handles environment variables)
         # connectors.yaml defines the parameter as 'socket_tier_1_enabled'
         try:
             if hasattr(self.config, 'get'):
@@ -49,15 +59,22 @@ class SocketTier1Scanner(BaseConnector):
 
     def _get_auth_env(self) -> Dict[str, str]:
         env = {}
-        # Prefer explicit environment variables, then fall back to values populated
-        # into the Config object by CLI parsing (create_config_from_args)
-        org = os.environ.get('SOCKET_ORG') or (self.config.get('socket_org') if hasattr(self.config, 'get') else getattr(self.config, 'socket_org', ''))
-        api_key = (
-            os.environ.get('SOCKET_SECURITY_API_KEY')
-            or os.environ.get('SOCKET_SECURITY_API_TOKEN')
-            or (self.config.get('socket_api_key') if hasattr(self.config, 'get') else getattr(self.config, 'socket_api_key', ''))
-            or (self.config.get('socket_api_token') if hasattr(self.config, 'get') else getattr(self.config, 'socket_api_token', ''))
+        # Use Config object exclusively - it already handles environment variables
+        # and Socket API auto-discovery with proper precedence
+        
+        # Get organization from config (which already handles SOCKET_ORG, SOCKET_ORG_SLUG, etc.)
+        org = (
+            self.config.get('socket_org') if hasattr(self.config, 'get') 
+            else getattr(self.config, 'socket_org', None)
         )
+        
+        # Get API key from config (which already handles SOCKET_SECURITY_API_KEY, SOCKET_SECURITY_API_TOKEN, etc.)
+        api_key = (
+            self.config.get('socket_api_key') if hasattr(self.config, 'get') 
+            else getattr(self.config, 'socket_api_key', None)
+        )
+        logger.debug(f" Socket Tier1 auth - org: '{org}', api_key_set: {bool(api_key)}")
+        
         if org:
             env['SOCKET_ORG'] = org
         if api_key:
@@ -65,8 +82,11 @@ class SocketTier1Scanner(BaseConnector):
         return env
 
     def _parse_additional_params(self) -> List[str]:
-        raw = os.environ.get('SOCKET_ADDITIONAL_PARAMS', '')
-        raw = raw or (self.config.get('socket_additional_params') if hasattr(self.config, 'get') else getattr(self.config, 'socket_additional_params', ''))
+        # Use config object exclusively - it already handles SOCKET_ADDITIONAL_PARAMS env var
+        raw = (
+            self.config.get('socket_additional_params') if hasattr(self.config, 'get') 
+            else getattr(self.config, 'socket_additional_params', '')
+        )
         if not raw:
             return []
         # Allow comma-separated or regular shell splitting
@@ -186,7 +206,8 @@ class SocketTier1Scanner(BaseConnector):
         for entry in comp_reach:
             if not target_id:
                 continue
-            if entry.get('ghsa_id') and str(entry.get('ghsa_id')).lower() == str(target_id).lower():
+            entry_id = entry.get('ghsa_id')
+            if entry_id and str(entry_id).lower() == str(target_id).lower():
                 matched = entry
                 break
 
@@ -201,6 +222,9 @@ class SocketTier1Scanner(BaseConnector):
                     out['type'] = 'reachable'
                 elif t == 'unreachable' and out['type'] != 'reachable':
                     out['type'] = 'unreachable'
+                elif t == 'missing_support' and out['type'] not in ('reachable', 'unreachable'):
+                    # missing_support means analysis couldn't determine reachability, treat as unknown
+                    out['type'] = 'unknown'
 
                 # For reachable entries, build a structured trace from 'matches'
                 if t == 'reachable':
@@ -246,7 +270,6 @@ class SocketTier1Scanner(BaseConnector):
                         else:
                             out['trace'].append(f"  -> {comp_name}")
 
-
         # Do not include pattern lines in the trace output; only include
         # the formatted match lines and the final '-> component@version' line.
 
@@ -254,6 +277,11 @@ class SocketTier1Scanner(BaseConnector):
         if out['type'] != 'reachable':
             out['trace'] = []
 
+        # If no matched reachability entry was found, this vulnerability is not applicable to this component version
+        if matched is None:
+            out['type'] = 'not_applicable'
+            return out
+        
         # If patterns exist but no matched reachability and not undeterminable, leave as unknown
         return out
 
@@ -368,26 +396,29 @@ class SocketTier1Scanner(BaseConnector):
         except Exception:
             return ''
 
+
+
     def _convert_to_socket_facts(self, raw_results: Any) -> Dict[str, Any]:
-        """Convert Socket CLI .socket.facts.json into a Socket facts wrapper with alerts
+        """Convert Socket CLI .socket.facts.json into a Socket facts wrapper with notifications
 
-        - Keeps components list as-is (adds 'alerts' list per component)
-        - For each vulnerability in a component, emits an alert with CVE/GHSA, severity, reachability, purl, and trace
+        - Keeps components list as-is (NO MODIFICATIONS to components from .socket.facts.json)
+        - For each vulnerability in a component, generates alerts for notifications only
+        - Returns original components unchanged and puts processed notifications in notifications section
         """
-        out: Dict[str, Any] = {"components": raw_results.get('components', [])}
-        comps = raw_results.get('components') if isinstance(raw_results, dict) else None
-        if not comps:
-            # unknown shape, return raw
-            return raw_results
+        # Return original components unchanged - no modifications allowed per requirement
+        original_components = raw_results.get('components', []) if isinstance(raw_results, dict) else []
+        
+        if not original_components:
+            # No socket components found, return empty structure
+            return {"components": [], "notifications": {}}
 
-        # Keep a map of generated alerts per component key so we can build
-        # notifications without injecting those alerts back into the component
-        generated_alerts_map: Dict[str, List[Dict[str, Any]]] = {}
-
-        for c in comps:
-            comp = deepcopy(c)
+        # Generate alerts for notifications only - do NOT modify original components
+        components_with_alerts_for_notifications = []
+        
+        for c in original_components:
             alerts: List[Dict[str, Any]] = []
             vulns = c.get('vulnerabilities') or []
+            
             for v in vulns:
                 vid = v.get('ghsaId') or v.get('cveId') or v.get('id') or v.get('vulnId')
                 # severity heuristics (pull from multiple possible fields)
@@ -424,6 +455,10 @@ class SocketTier1Scanner(BaseConnector):
                     sev = 'unknown'
 
                 reach = self._determine_reachability(v, c)
+                
+                # Skip vulnerabilities that are not applicable to this component version
+                if reach.get('type') == 'not_applicable':
+                    continue
 
                 purl = self._make_purl(c)
 
@@ -459,165 +494,113 @@ class SocketTier1Scanner(BaseConnector):
                 }
                 alerts.append(alert)
 
-            orig_had_alerts = bool(c.get('alerts'))
-            if orig_had_alerts:
-                # preserve original alerts as provided by the Socket CLI
-                try:
-                    comp['alerts'] = deepcopy(c.get('alerts') or [])
-                except Exception:
-                    comp['alerts'] = c.get('alerts') or []
-            else:
-                # Ensure we do not leave an empty 'alerts' list on components
-                if 'alerts' in comp:
-                    try:
-                        del comp['alerts']
-                    except Exception:
-                        comp.pop('alerts', None)
+            # Create a copy of the component with alerts for notifications only
+            # This is only used for generating notifications, NOT returned in components
+            if alerts:
+                comp_with_alerts = deepcopy(c)
+                comp_with_alerts['alerts'] = alerts
+                components_with_alerts_for_notifications.append(comp_with_alerts)
 
-            # Store generated alerts in a separate map keyed by component name/id
-            try:
-                comp_key = comp.get('name') or comp.get('id') or '-'
-                generated_alerts_map[comp_key] = alerts
-            except Exception:
-                # ignore mapping errors
-                pass
-
-
-        # Build notifications mapping so the notification manager uses our exact columns
+        # Build notifications for each notifier type using components with alerts
+        notifications_by_notifier = {}
         try:
-            # Build 5-column rows with explicit headers
-            rows_5col: List[List[str]] = []
-            comps = out.get('components') or []
-            for comp in comps:
-                    comp_name = comp.get('name') or comp.get('id') or '-'
-                    purl = self._make_purl(comp) or comp_name
-                    # Include any alerts that already exist on the component
-                    for a in comp.get('alerts', []):
-                        props = a.get('props', {}) or {}
-                        # first column: CVE/GHSA id or alert title
-                        id_col = props.get('ghsaId') or props.get('cveId') or a.get('title') or ''
-                        sev = a.get('severity') or props.get('severity') or ''
-                        reach = str(props.get('reachability') or '').lower()
-                        # trace: only include for reachable
-                        trace_raw = props.get('trace') or ''
-                        trace_str = ''
-                        if isinstance(trace_raw, list):
-                            trace_str = '\n'.join(str(x) for x in trace_raw)
-                        elif isinstance(trace_raw, str):
-                            trace_str = trace_raw
-
-                        if reach != 'reachable':
-                            # per requirement: only reachable items have traces
-                            trace_str = ''
-
-                        rows_5col.append([
-                            str(id_col),
-                            str(sev),
-                            str(reach),
-                            str(purl),
-                            str(trace_str),
-                        ])
-
-                    # If component did not have original alerts, include generated ones
-                    comp_key = comp.get('name') or comp.get('id') or '-'
-                    gen_alerts = generated_alerts_map.get(comp_key, [])
-                    if gen_alerts and not comp.get('alerts'):
-                        for a in gen_alerts:
-                            props = a.get('props', {}) or {}
-                            id_col = props.get('ghsaId') or props.get('cveId') or a.get('title') or ''
-                            sev = a.get('severity') or props.get('severity') or ''
-                            reach = str(props.get('reachability') or '').lower()
-                            trace_raw = props.get('trace') or ''
-                            trace_str = ''
-                            if isinstance(trace_raw, list):
-                                trace_str = '\n'.join(str(x) for x in trace_raw)
-                            elif isinstance(trace_raw, str):
-                                trace_str = trace_raw
-                            if reach != 'reachable':
-                                trace_str = ''
-                            purl = props.get('purl') or self._make_purl(comp) or comp_key
-                            rows_5col.append([
-                                str(id_col),
-                                str(sev),
-                                str(reach),
-                                str(purl),
-                                str(trace_str),
-                            ])
-
-            if rows_5col:
-                # Attach connector-provided notifications with explicit headers
-                # Include a generatedBy column so attribution travels with each row
-                headers = ['CVE/GHSA', 'severity', 'reachability', 'purl', 'trace', 'generatedBy']
-                out['notifications'] = [
-                    {
-                        'title': 'Socket Tier 1 Reachability',
-                        'headers': headers,
-                        'rows': [r + ['socket-tier1'] for r in rows_5col],
-                    }
-                ]
+            if components_with_alerts_for_notifications:
+                notifications_by_notifier = self.generate_notifications(components_with_alerts_for_notifications)
         except Exception:
             # best-effort: do not fail conversion if notifications building errors
             logger.exception('Failed to build notifications for socket_tier1')
 
-        return {'components': out.get('components', []), 'notifications': out.get('notifications', [])}
+        # Return ORIGINAL components unchanged and notifications separately
+        return {
+            'components': original_components,  # Original components with NO modifications
+            'notifications': notifications_by_notifier
+        }
 
-    # Note: consolidated `notification_rows` implementation follows below.
+
+
     def notification_rows(self, processed_results: Dict[str, Any]) -> List[List[str]]:
         """Produce consolidated notification rows compatible with the central notifier.
 
         Return canonical rows in the shape used by other connectors and the
         `normalize_components` helper: [file/component, severity, message/title, location/details].
 
-        This method accepts either the processed wrapper (with 'components') or
-        the full `facts` dict that contains a `socket_tier1` key.
+        For Socket Tier1, since components are returned unchanged (without alerts),
+        we need to reconstruct the alert information from the notifications.
         """
         rows: List[List[str]] = []
-        # Resolve components from multiple possible shapes
-        comps = []
-        if isinstance(processed_results, dict):
-            if 'components' in processed_results and isinstance(processed_results.get('components'), list):
-                comps = processed_results.get('components', [])
-            elif 'socket_tier1' in processed_results and isinstance(processed_results['socket_tier1'], dict):
-                comps = processed_results['socket_tier1'].get('components', [])
-            elif 'socket_tier1' in processed_results and isinstance(processed_results['socket_tier1'], list):
-                comps = processed_results['socket_tier1']
-            else:
-                comps = processed_results.get('components', [])
-
-        for comp in comps:
-            comp_name = comp.get('name') or comp.get('id') or '-'
-            for a in comp.get('alerts', []):
-                props = a.get('props', {}) or {}
-                # File/component column: prefer purl, fall back to component name
-                purl = props.get('purl') or ''
-                file_col = purl or comp_name
-
-                # Severity
-                sev = a.get('severity') or props.get('severity') or ''
-
-                # Message/title: use GHSA/CVE id if present, else alert title
-                title = props.get('ghsaId') or props.get('cveId') or a.get('title') or a.get('message') or ''
-
-                # Location/details: for reachable include formatted trace (multi-line), otherwise include purl or component
-                trace_raw = props.get('trace') or ''
-                trace_str = ''
-                if isinstance(trace_raw, list):
-                    trace_str = '\n'.join(str(x) for x in trace_raw)
-                elif isinstance(trace_raw, str):
-                    trace_str = trace_raw
-
-                if str(props.get('reachability') or '').lower() == 'reachable':
-                    # prepend patterns if present for context
-                    patterns = props.get('reachabilityPatterns') or props.get('patterns') or []
-                    pat_str = '\n'.join(str(p) for p in patterns) if patterns else ''
-                    loc = ''
-                    if pat_str:
-                        loc = pat_str + ('\n' + trace_str if trace_str else '')
-                    else:
-                        loc = trace_str or purl or comp_name
-                else:
-                    # non-reachable: location should be purl (or component name) and no trace
-                    loc = purl or comp_name
-
+        
+        # For Socket Tier1, alerts are not in components but in notifications
+        # We need to build rows from the notification data
+        notifications = processed_results.get('notifications', {})
+        
+        # Extract alert information from any notification format that has structured data
+        # Priority: use console notifications if available as they're most direct
+        console_notifications = notifications.get('console', [])
+        if console_notifications:
+            for notif in console_notifications:
+                # Console notifications should have the alert data we need
+                file_col = notif.get('component') or notif.get('file') or '-'
+                sev = notif.get('severity') or ''
+                title = notif.get('title') or notif.get('message') or ''
+                loc = notif.get('location') or notif.get('details') or ''
                 rows.append([str(file_col), str(sev), str(title), str(loc)])
+        else:
+            # Fallback: try to extract from any other notification format
+            for notifier_type, notifier_data in notifications.items():
+                if isinstance(notifier_data, list):
+                    for notif in notifier_data:
+                        if isinstance(notif, dict):
+                            file_col = notif.get('component') or notif.get('file') or notif.get('purl') or '-'
+                            sev = notif.get('severity') or ''
+                            title = notif.get('title') or notif.get('message') or notif.get('vulnerability') or ''
+                            loc = notif.get('location') or notif.get('details') or notif.get('trace') or ''
+                            rows.append([str(file_col), str(sev), str(title), str(loc)])
+                    break  # Only use first available notifier data to avoid duplicates
+        
         return rows
+    
+    def generate_notifications(self, components: List[Dict[str, Any]]) -> Dict[str, List[Dict[str, str]]]:
+        """Generate pre-formatted notifications for all notifier types.
+        
+        Args:
+            components: List of component dictionaries with alerts
+            
+        Returns:
+            Dictionary mapping notifier keys to lists of notification dictionaries
+        """
+        if not components:
+            return {}
+        
+        # Filter components by severity before formatting
+        filtered_components = []
+        for component in components:
+            filtered_alerts = []
+            for alert in component.get('alerts', []):
+                # Filter by severity - only include alerts that match allowed severities
+                alert_severity = (alert.get('severity') or '').strip().lower()
+                if alert_severity and hasattr(self, 'allowed_severities') and alert_severity not in self.allowed_severities:
+                    continue  # Skip this alert - severity not enabled
+                filtered_alerts.append(alert)
+            
+            # Only include component if it has filtered alerts
+            if filtered_alerts:
+                filtered_component = component.copy()
+                filtered_component['alerts'] = filtered_alerts
+                filtered_components.append(filtered_component)
+        
+        if not filtered_components:
+            return {}
+        
+        # Build notifications for each notifier type using Socket Tier1-specific modules
+        notifications_by_notifier = {}
+        notifications_by_notifier['github_pr'] = github_pr.format_notifications(filtered_components)
+        notifications_by_notifier['slack'] = slack.format_notifications(filtered_components)
+        notifications_by_notifier['msteams'] = ms_teams.format_notifications(filtered_components)
+        notifications_by_notifier['ms_sentinel'] = ms_sentinel.format_notifications(filtered_components)
+        notifications_by_notifier['sumologic'] = sumologic.format_notifications(filtered_components)
+        notifications_by_notifier['json'] = json_notifier.format_notifications(filtered_components)
+        notifications_by_notifier['console'] = console.format_notifications(filtered_components)
+        notifications_by_notifier['jira'] = jira.format_notifications(filtered_components)
+        notifications_by_notifier['webhook'] = webhook.format_notifications(filtered_components)
+        
+        return notifications_by_notifier

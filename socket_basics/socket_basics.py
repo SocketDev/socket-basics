@@ -197,6 +197,171 @@ class SecurityScanner:
         nm.load_from_config()
         self.notification_manager = nm
 
+    def submit_socket_facts(self, socket_facts_path: Path, results: Dict[str, Any]) -> Dict[str, Any]:
+        """Submit the socket facts file to Socket API and return full scan results.
+        
+        Args:
+            socket_facts_path: Path to the .socket.facts.json file
+            results: Current scan results dict to update with full scan info
+            
+        Returns:
+            Updated results dict with full scan information (id, html_url)
+        """
+        try:
+            # Check if socket facts file is empty or has no components
+            if not socket_facts_path.exists():
+                logger.debug("Socket facts file does not exist, skipping submission")
+                return results
+                
+            with open(socket_facts_path, 'r') as f:
+                facts_data = json.load(f)
+                
+            components = facts_data.get('components', [])
+            if not components:
+                logger.debug("Socket facts file is empty (no components), skipping submission")
+                return results
+                
+            # Check if we have the required Socket API configuration
+            socket_api_key = self.config.get('socket_api_key')
+            if not socket_api_key:
+                logger.debug("No Socket API key configured, skipping full scan submission")
+                return results
+                
+            socket_org = self.config.get('socket_org')
+            if not socket_org:
+                logger.debug("No Socket organization configured, skipping full scan submission")
+                return results
+                
+            # Import socketdev SDK
+            try:
+                logger.debug("Importing socketdev SDK")
+                from socketdev import socketdev
+                from socketdev.fullscans import FullScanParams
+                logger.debug("✓ socketdev SDK imported successfully")
+            except ImportError as e:
+                logger.warning(f"Failed to import socketdev SDK: {e}")
+                return results
+                
+            # Initialize SDK
+            logger.debug("Initializing socketdev SDK")
+            sdk = socketdev(token=socket_api_key, timeout=100)
+            logger.debug("✓ socketdev SDK initialized")
+            
+            # Prepare full scan parameters with proper defaults
+            repo_name = self.config.get('repo') or 'socket-basics-scan'
+            # Extract just the repo name if it contains org/repo format
+            if '/' in repo_name:
+                repo_name = repo_name.split('/')[-1]
+            
+            branch = self.config.get('branch') or 'main'
+            commit_hash = self.config.get('commit_hash') or ''
+            commit_message = self.config.get('commit_message') or 'Socket Basics security scan'
+            pull_request = self.config.get('pull_request')
+            committers = self.config.get('committers') or []
+            
+            logger.debug(f"Creating FullScanParams with: org_slug={socket_org}, repo={repo_name}, branch={branch}")
+            
+            # Determine if this is the default branch
+            is_default_branch = self.config.is_default_branch
+            logger.debug(f"Is default branch: {is_default_branch}")
+            
+            try:
+                # Only include pull_request and committers if they have values
+                params_dict = {
+                    'org_slug': socket_org,
+                    'repo': repo_name,
+                    'branch': branch,
+                    'commit_message': commit_message,
+                    'commit_hash': commit_hash,
+                    'make_default_branch': is_default_branch,
+                    'set_as_pending_head': is_default_branch,
+                    'integration_type': "api"
+                }
+                
+                # Always include pull_request (0 if not a PR)
+                pull_request_num = pull_request if pull_request is not None else 0
+                params_dict['pull_request'] = pull_request_num
+                    
+                # Only add committers if there are any
+                if committers:
+                    params_dict['committers'] = committers
+                
+                params = FullScanParams(**params_dict)
+                logger.debug(f"✓ FullScanParams created successfully")
+            except Exception as e:
+                logger.error(f"Failed to create FullScanParams: {type(e).__name__}: {str(e)}")
+                raise
+            
+            # Submit the socket facts file
+            logger.info(f"Submitting socket facts file to Socket API for organization: {socket_org}")
+            logger.debug(f"Full scan parameters: repo={repo_name}, branch={branch}, commit_hash={commit_hash}")
+            logger.debug(f"Socket facts file path: {socket_facts_path}")
+            
+            # Convert to absolute path to avoid SDK path parsing issues
+            absolute_socket_facts_path = socket_facts_path.absolute()
+            logger.debug(f"Absolute socket facts file path: {absolute_socket_facts_path}")
+            
+            try:
+                res = sdk.fullscans.post(
+                    [
+                        "./.socket.facts.json"],
+                        base_path="./",
+                        params=params,
+                        use_types=True,
+                        use_lazy_loading=True,
+                        max_open_files=50,
+                        base_paths=[str(self.config.workspace)
+                    ]
+                )
+                logger.debug(f"✓ SDK call completed")
+                logger.debug(f"SDK response type: {type(res)}")
+                logger.debug(f"SDK response: {res}")
+            except Exception as e:
+                logger.error(f"Failed during SDK fullscans.post call: {type(e).__name__}: {str(e)}")
+                raise
+            
+            # SDK typically returns a dict-like response
+            if isinstance(res, dict):
+                logger.debug("Processing dict-type response")
+                # Check for errors in dict response
+                if 'error' in res or res.get('success') == False:
+                    error_msg = res.get('error', res.get('message', 'Unknown error'))
+                    logger.error(f"Error creating full scan: {error_msg}")
+                    raise Exception(f"Error creating full scan: {error_msg}")
+                    
+                # Extract the scan ID and HTML URL from the response
+                scan_id = res.get('id')
+                html_url = res.get('html_url')
+                logger.debug(f"Extracted from dict: scan_id={scan_id}, html_url={html_url}")
+            else:
+                logger.debug("Processing object-type response")
+                # Handle object-based response (if the SDK uses objects)
+                if hasattr(res, 'error') or (hasattr(res, 'success') and not res.success):
+                    error_msg = getattr(res, 'error', getattr(res, 'message', 'Unknown error'))
+                    logger.error(f"Error creating full scan: {error_msg}")
+                    raise Exception(f"Error creating full scan: {error_msg}")
+                    
+                # Extract the scan ID and HTML URL from the response
+                scan_id = getattr(res, 'id', None)
+                html_url = getattr(res, 'html_url', None)
+                logger.debug(f"Extracted from object: scan_id={scan_id}, html_url={html_url}")
+                
+            if scan_id:
+                logger.info(f"Full scan created successfully with ID: {scan_id}")
+                results['full_scan_id'] = scan_id
+                
+            if html_url:
+                logger.info(f"Full scan available at: {html_url}")
+                results['full_scan_html_url'] = html_url
+                
+            return results
+            
+        except Exception as e:
+            logger.error(f"Failed to submit socket facts file: {type(e).__name__}: {str(e)}")
+            logger.debug("Full traceback:", exc_info=True)
+            # Return original results if submission fails
+            return results
+
 
 def main():
     """Main entry point"""
@@ -236,6 +401,12 @@ def main():
     
     # Save results
     output_path = scanner.save_results(results, args.output)
+
+    # Submit socket facts file to Socket API if not empty
+    try:
+        results = scanner.submit_socket_facts(output_path, results)
+    except Exception:
+        logger.exception("Failed to submit socket facts file")
 
     # Optionally upload to S3 if requested
     try:
@@ -280,6 +451,9 @@ def main():
     try:
         scanner.load_notification_manager()
         if scanner.notification_manager:
+            # Add full scan URL to results if available for notifiers
+            if 'full_scan_html_url' in results:
+                scanner.config.set('full_scan_html_url', results['full_scan_html_url'])
             scanner.notification_manager.notify_all(results)
     except Exception:
         logger.exception("Failed to run notifiers")

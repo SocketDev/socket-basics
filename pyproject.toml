@@ -1,5 +1,5 @@
 [project]
-name = "socket-basics"
+name = "socket_basics"
 version = "1.0.2"
 description = "Socket Basics with integrated SAST, secret scanning, and container analysis"
 readme = "README.md"
@@ -27,9 +27,8 @@ dependencies = [
     "tabulate~=0.9.0",
     "light-s3-client~=0.0.30",
     "PyYAML>=6.0.0",
-    # tomllib is in stdlib from Python 3.11 as `tomllib`. For older Python versions
-    # the `tomli` backport is required. Add as a conditional dependency for <3.11.
     "tomli; python_version < '3.11'",
+    "socketdev>=0.1.0",
 ]
 
 [project.optional-dependencies]
@@ -63,8 +62,8 @@ include = [
     "src/**/*.py",
 ]
 
-[tool.uv]
-dev-dependencies = []
+[dependency-groups]
+dev = []
 
 [tool.black]
 line-length = 100

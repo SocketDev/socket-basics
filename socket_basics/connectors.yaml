@@ -35,6 +35,7 @@ connectors:
           - swift_sast_enabled
           - rust_sast_enabled
           - elixir_sast_enabled
+          - erlang_sast_enabled
       - name: all_rules_enabled
         option: --all-rules
         description: "Run all bundled SAST rules regardless of language filters"
@@ -145,6 +146,12 @@ connectors:
         env_variable: INPUT_ELIXIR_SAST_ENABLED
         type: bool
         default: false
+      - name: erlang_sast_enabled
+        option: --erlang
+        description: "Enable Erlang SAST scanning"
+        env_variable: INPUT_ERLANG_SAST_ENABLED
+        type: bool
+        default: false
       - name: notification_method
         option: --opengrep-notify
         description: "Notification method for OpenGrep (e.g., console, slack)"
@@ -172,7 +179,7 @@ connectors:
         description: "Comma-separated list of JavaScript/TypeScript SAST rules to enable (default: high-confidence rules)"
         env_variable: INPUT_JAVASCRIPT_ENABLED_RULES
         type: str
-        default: "js-eval-usage,js-sql-injection,js-command-injection,js-prototype-pollution,js-xss-innerhtml,js-hardcoded-secrets,js-path-traversal,js-tls-reject-unauthorized-false,js-weak-crypto-md5"
+        default: "js-eval-usage,js-sql-injection,js-command-injection,js-prototype-pollution,js-xss-innerhtml,js-path-traversal,js-tls-reject-unauthorized-false,js-weak-crypto-md5"
       - name: javascript_disabled_rules
         option: --javascript-disabled-rules
         description: "Comma-separated list of JavaScript/TypeScript SAST rules to disable"
@@ -398,6 +405,12 @@ connectors:
         env_variable: INPUT_TRUFFLEHOG_NOTIFICATION_METHOD
         type: str
         default: ""
+      - name: trufflehog_show_unverified
+        option: --show-unverified
+        description: "Show unverified secrets in TruffleHog results"
+        env_variable: INPUT_TRUFFLEHOG_SHOW_UNVERIFIED
+        type: bool
+        default: false
 
   socket_tier1:
     class: SocketTier1Scanner
@@ -414,38 +427,12 @@ connectors:
         env_variable: SOCKET_TIER_1_ENABLED
         type: bool
         default: false
-      - name: socket_org
-        option: --socket-org
-        description: "Socket organization slug used for reachability scan"
-        env_variable: SOCKET_ORG
-        type: str
-        default: ""
-      - name: socket_api_key
-        option: --socket-security-api-key
-        description: "Socket security API key or token"
-        env_variable: SOCKET_SECURITY_API_KEY
-        type: str
-        default: ""
-      - name: socket_api_token
-        option: --socket-security-api-token
-        description: "Alternative name for Socket security API token"
-        env_variable: SOCKET_SECURITY_API_TOKEN
-        type: str
-        default: ""
       - name: socket_additional_params
         option: --socket-additional-params
         description: "Additional CLI params for 'socket scan reach' (comma or space separated). Also reads SOCKET_ADDITIONAL_PARAMS"
         env_variable: SOCKET_ADDITIONAL_PARAMS
         type: str
         default: ""
-        group: "Secret Scanning"
-      - name: trufflehog_show_unverified
-        option: --show-unverified
-        description: "Show unverified secrets in TruffleHog results"
-        env_variable: INPUT_TRUFFLEHOG_SHOW_UNVERIFIED
-        type: bool
-        default: false
-
 
   trivy:
     class: TrivyScanner
@@ -456,62 +443,26 @@ connectors:
     module_path: "socket_basics.core.connector.trivy"
     enabled_by_default: false
     parameters:
-      - name: dockerfile_scanning_enabled
-        option: --dockerfile
-        description: "Enable Dockerfile scanning"
-        env_variable: INPUT_DOCKERFILE_SCANNING_ENABLED
-        type: bool
-        default: false
-        group: "Dockerfile Scanning"
-      - name: container_image_scanning_enabled
-        option: --container-images
-        description: "Enable container image scanning"
-        env_variable: INPUT_CONTAINER_IMAGE_SCANNING_ENABLED
-        type: bool
-        default: false
-        group: "Container Image Scanning"
-      - name: container_images_to_scan
+      - name: container_images
         option: --images
-        description: "Comma-separated list of container images to scan"
+        description: "Comma-separated list of container images to scan (auto-enables image scanning)"
         env_variable: INPUT_CONTAINER_IMAGES_TO_SCAN
         type: str
         default: ""
         group: "Container Image Scanning"
-      - name: dockerfile_enabled
-        option: --dockerfile-legacy
-        description: "Enable Dockerfile scanning (legacy parameter)"
-        env_variable: INPUT_DOCKERFILE_ENABLED
-        type: bool
-        default: false
-        group: "Dockerfile Scanning"
       - name: dockerfiles
         option: --dockerfiles
-        description: "Comma-separated list of Dockerfiles to scan"
+        description: "Comma-separated list of Dockerfiles to scan (auto-enables Dockerfile scanning)"
         env_variable: INPUT_DOCKERFILES
         type: str
         default: ""
         group: "Dockerfile Scanning"
-      - name: image_enabled
-        option: --image-enabled
-        description: "Enable container image scanning (legacy parameter)"
-        env_variable: INPUT_IMAGE_ENABLED
-        type: bool
-        default: false
-        group: "Container Image Scanning"
-      - name: docker_images
-        option: --docker-images
-        description: "Comma-separated list of Docker images to scan (legacy parameter)"
-        env_variable: INPUT_DOCKER_IMAGES
-        type: str
-        default: ""
-        group: "Container Image Scanning"
-      - name: notification_method
+      - name: trivy_notification_method
         option: --trivy-notify
         description: "Notification method for Trivy (e.g., console, slack)"
         env_variable: INPUT_TRIVY_NOTIFICATION_METHOD
         type: str
         default: ""
-        group: "Container Image Scanning"
       - name: trivy_disabled_rules
         option: --trivy-disabled-rules
         description: "Comma-separated list of Trivy rules to disable"
@@ -524,9 +475,13 @@ connectors:
         env_variable: INPUT_TRIVY_IMAGE_SCANNING_DISABLED
         type: bool
         default: false
-        disables:
-          - container_image_scanning_enabled
-          - image_enabled
+      - name: trivy_vuln_enabled
+        option: --trivy-vuln-enabled
+        description: "Enable Trivy vulnerability scanning for all supported language ecosystems"
+        env_variable: INPUT_TRIVY_VULN_ENABLED
+        type: bool
+        default: false
+        group: "Trivy Vulnerability Scanning"
 
 # Global connector settings
 settings:

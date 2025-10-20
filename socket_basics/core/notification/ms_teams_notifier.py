@@ -1,152 +1,105 @@
-import json
+from typing import Any, Dict
 import logging
-import os
-import subprocess
-from typing import Any, Dict, List
 
-from .base import BaseNotifier
+from socket_basics.core.notification.base import BaseNotifier
+from socket_basics.core.config import get_msteams_webhook_url
 
 logger = logging.getLogger(__name__)
 
 
 class MSTeamsNotifier(BaseNotifier):
-    """Microsoft Teams notifier using incoming webhook connectors.
-
-    This follows the same pattern as SlackNotifier: it reads a webhook URL from
-    params or environment variables and posts grouped notifications (produced
-    by NotificationManager) as a simple card payload compatible with Teams
-    incoming webhooks.
+    """Microsoft Teams notifier: posts security findings to Teams webhook.
+    
+    Simplified version that works with pre-formatted content from connectors.
     """
 
     name = "msteams"
 
     def __init__(self, params: Dict[str, Any] | None = None):
         super().__init__(params or {})
+        # Teams webhook URL from params, env variable, or app config
         self.webhook_url = (
-            self.config.get('webhook_url')
-            or os.getenv('MSTEAMS_WEBHOOK_URL')
-            or os.getenv('INPUT_MSTEAMS_WEBHOOK_URL')
+            self.config.get('webhook_url') or
+            get_msteams_webhook_url()
         )
-        self.enabled = True if self.webhook_url else False
-        self.title = self.config.get('title') or 'Socket Security'
-
-    def _derive_repo_branch(self, facts: Dict[str, Any]) -> tuple[str | None, str | None]:
-        repo = facts.get('repository') or os.getenv('GITHUB_REPOSITORY')
-        branch = facts.get('branch') or os.getenv('GITHUB_REF')
-        if branch and branch.startswith('refs/heads/'):
-            branch = branch.split('refs/heads/')[-1]
-
-        if not branch:
-            try:
-                branch = subprocess.check_output(['git', 'rev-parse', '--abbrev-ref', 'HEAD'], text=True).strip()
-            except Exception:
-                branch = None
-
-        if not repo:
-            try:
-                url = subprocess.check_output(['git', 'config', '--get', 'remote.origin.url'], text=True).strip()
-                if url.endswith('.git'):
-                    url = url[:-4]
-                if url.startswith('git@'):
-                    repo = url.split(':', 1)[1]
-                else:
-                    parts = url.rstrip('/').split('/')
-                    if len(parts) >= 2:
-                        repo = f"{parts[-2]}/{parts[-1]}"
-                    else:
-                        repo = url
-            except Exception:
-                repo = None
-
-        return repo, branch
+        self.title = self.config.get('title', 'Socket Security')
 
     def notify(self, facts: Dict[str, Any]) -> None:
-        # Require canonical notifications provided by NotificationManager.
-        notifications = facts.get('notifications')
+        notifications = facts.get('notifications', []) or []
+        
+        if not isinstance(notifications, list):
+            logger.error('MSTeamsNotifier: only supports new format - list of dicts with title/content')
+            return
+            
         if not notifications:
-            logger.info('MSTeamsNotifier: no notifications present in facts; skipping')
+            logger.info('MSTeamsNotifier: no notifications present; skipping')
             return
 
-        # Normalize groups into canonical list form and validate headers/rows
-        groups: List[Dict[str, Any]] = []
-        if isinstance(notifications, list):
-            for item in notifications:
-                if not isinstance(item, dict):
-                    continue
-                groups.append({'title': item.get('title') or 'results', 'headers': item.get('headers'), 'rows': item.get('rows') or []})
-        elif isinstance(notifications, dict):
-            for title, payload in notifications.items():
-                if isinstance(payload, dict):
-                    groups.append({'title': title, 'headers': payload.get('headers'), 'rows': payload.get('rows') or []})
-                elif isinstance(payload, list):
-                    groups.append({'title': title, 'headers': None, 'rows': payload})
+        # Get full scan URL if available
+        full_scan_url = facts.get('full_scan_html_url')
 
-        valid = any(isinstance(g.get('headers'), list) and isinstance(g.get('rows'), list) for g in groups)
-        if not valid:
-            logger.info('MSTeamsNotifier: notifications present but none match required {headers:list, rows:list} shape; skipping')
+        # Validate format
+        valid_notifications = []
+        for item in notifications:
+            if isinstance(item, dict) and 'title' in item and 'content' in item:
+                # Append full scan URL to content if available
+                content = item['content']
+                if full_scan_url:
+                    content += f"\n\n🔗 [View complete scan results]({full_scan_url})"
+                    item = {'title': item['title'], 'content': content}
+                valid_notifications.append(item)
+            else:
+                logger.warning('MSTeamsNotifier: skipping invalid notification item: %s', type(item))
+        
+        if not valid_notifications:
             return
 
-        repo, branch = self._derive_repo_branch(facts)
-        repo_display = repo or (facts.get('workspace') or os.getenv('GITHUB_WORKSPACE') or 'unknown')
-        branch_display = branch or 'unknown'
+        # Send each notification as a separate Teams message
+        for item in valid_notifications:
+            title = item['title']
+            content = item['content']
+            self._send_teams_message(facts, title, content)
 
-        total = sum(len(g.get('rows') or []) for g in groups)
-
-        # Build visually-pleasing MessageCard sections
-        sections: List[Dict[str, Any]] = []
-        # Add a facts-style summary section with repo/branch/total
-        facts_list = [
-            {"name": "Repository", "value": str(repo_display)},
-            {"name": "Branch", "value": str(branch_display)},
-            {"name": "Total Alerts", "value": str(total)},
-        ]
-
-        # Compose the card title and summary derived from repo/branch/total
-        derived_title = f"Socket Security  {repo_display}  branch {branch_display}  {total} alert(s)"
-
-        # Build group sections with short, readable lines
-        for g in groups:
-            group_label = g.get('title')
-            rows = g.get('rows') or []
-            if not rows:
-                continue
-            text_lines: List[str] = []
-            # Show up to 10 items per group for brevity
-            for r in rows[:10]:
-                if isinstance(r, (list, tuple)) and len(r) >= 4:
-                    rule = r[0]
-                    file = r[1]
-                    loc = r[2]
-                    lines = r[3]
-                    text_lines.append(f"\u2022 {rule} \u2014 {file}:{loc} (lines: {lines})")
-                else:
-                    # fallback to stringified row
-                    text_lines.append(f"\u2022 {str(r)}")
-
-            sections.append({
-                "activityTitle": group_label,
-                "text": "\n".join(text_lines),
-            })
-
-        payload = {
-            "@type": "MessageCard",
-            "@context": "https://schema.org/extensions",
-            "summary": derived_title,
-            "themeColor": "0078D7",
-            "title": derived_title,
-            "sections": [{"facts": facts_list, "markdown": True}] + sections,
-        }
-
-        url = self.webhook_url or getattr(self, 'app_config', {}).get('msteams_webhook_url')
-        if not url:
-            logger.info('MS Teams webhook URL not configured; skipping notification')
+    def _send_teams_message(self, facts: Dict[str, Any], title: str, content: str) -> None:
+        """Send a single Teams message with title and content."""
+        if not self.webhook_url:
+            logger.warning('MSTeamsNotifier: no Teams webhook URL configured')
             return
+
+        # Get repository and branch info from config (discovered by main logic)
+        repo = self.config.get('repository', 'Unknown')
+        branch = self.config.get('branch', 'Unknown')
 
         try:
+            # Create Teams MessageCard payload with pre-formatted content
+            payload = {
+                "@type": "MessageCard",
+                "@context": "https://schema.org/extensions",
+                "summary": f"Socket Security - {title}",
+                "themeColor": "FF6B35",
+                "title": f"🔍 Socket Security - {title}",
+                "sections": [
+                    {
+                        "facts": [
+                            {"name": "Repository", "value": repo},
+                            {"name": "Branch", "value": branch}
+                        ],
+                        "markdown": True
+                    },
+                    {
+                        "activityTitle": title,
+                        "text": content,
+                        "markdown": True
+                    }
+                ]
+            }
+            
             import requests
-
-            resp = requests.post(url, json=payload)
+            resp = requests.post(self.webhook_url, json=payload, timeout=10)
             if resp.status_code >= 400:
-                logger.error('MS Teams webhook error %s: %s', resp.status_code, resp.text)
-        except Exception:
-            logger.exception('Failed to send MS Teams notification')
+                logger.warning('MSTeamsNotifier: webhook error %s: %s', resp.status_code, resp.text[:200])
+            else:
+                logger.info('MSTeamsNotifier: posted message for "%s"', title)
+                
+        except Exception as e:
+            logger.error('MSTeamsNotifier: exception posting message: %s', e)
