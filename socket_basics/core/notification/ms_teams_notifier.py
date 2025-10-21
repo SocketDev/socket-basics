@@ -45,9 +45,8 @@ class MSTeamsNotifier(BaseNotifier):
                 # Append full scan URL to content if available
                 content = item['content']
                 if full_scan_url:
-                    content += f"\n\n🔗 [View complete scan results]({full_scan_url})"
-                    item = {'title': item['title'], 'content': content}
-                valid_notifications.append(item)
+                    content += f"\n\n🔗 [View Full Socket Scan]({full_scan_url})"
+                valid_notifications.append({'title': item['title'], 'content': content})
             else:
                 logger.warning('MSTeamsNotifier: skipping invalid notification item: %s', type(item))
         

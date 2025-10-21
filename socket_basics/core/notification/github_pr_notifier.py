@@ -6,6 +6,9 @@ from socket_basics.core.config import get_github_token, get_github_repository, g
 
 logger = logging.getLogger(__name__)
 
+# GitHub API comment character limit
+GITHUB_COMMENT_MAX_LENGTH = 65536
+
 
 class GithubPRNotifier(BaseNotifier):
     """GitHub PR notifier: posts security findings as PR comments.
@@ -41,8 +44,8 @@ class GithubPRNotifier(BaseNotifier):
             logger.info('GithubPRNotifier: no notifications present; skipping')
             return
 
-        # Get full scan URL if available
-        full_scan_url = facts.get('full_scan_html_url')
+        # Get full scan URL if available and store it for use in truncation
+        self.full_scan_url = facts.get('full_scan_html_url')
 
         # Validate format
         valid_notifications = []
@@ -50,10 +53,9 @@ class GithubPRNotifier(BaseNotifier):
             if isinstance(item, dict) and 'title' in item and 'content' in item:
                 # Append full scan URL to content if available
                 content = item['content']
-                if full_scan_url:
-                    content += f"\n\n---\n\n🔗 [View complete scan results]({full_scan_url})\n"
-                    item = {'title': item['title'], 'content': content}
-                valid_notifications.append(item)
+                if self.full_scan_url:
+                    content += f"\n\n---\n\n🔗 [View Full Socket Scan]({self.full_scan_url})\n"
+                valid_notifications.append({'title': item['title'], 'content': content})
             else:
                 logger.warning('GithubPRNotifier: skipping invalid notification item: %s', type(item))
         
@@ -248,9 +250,47 @@ class GithubPRNotifier(BaseNotifier):
         pattern = f'<!-- {re.escape(section_type)} start -->.*?<!-- {re.escape(section_type)} end -->'
         
         # Replace the existing section with new content
-        updated_body = re.sub(pattern, new_section_content, comment_body, flags=re.DOTALL)
+        # Use a lambda to avoid regex replacement string interpretation issues
+        updated_body = re.sub(pattern, lambda m: new_section_content, comment_body, flags=re.DOTALL)
         
         return updated_body
+
+    def _truncate_comment_if_needed(self, comment_body: str, full_scan_url: Optional[str] = None) -> str:
+        """Truncate comment if it exceeds GitHub's character limit.
+        
+        Args:
+            comment_body: The comment body to check
+            full_scan_url: Optional URL to the full scan results
+            
+        Returns:
+            Potentially truncated comment body with a link to full results
+        """
+        if len(comment_body) <= GITHUB_COMMENT_MAX_LENGTH:
+            return comment_body
+        
+        # Calculate space needed for truncation message
+        truncation_msg = "\n\n---\n\n⚠️ **Results truncated due to size limits.**"
+        if full_scan_url:
+            truncation_msg += f"\n\n🔗 [View complete scan results in Socket Report]({full_scan_url})"
+        else:
+            truncation_msg += "\n\nThe complete results exceed GitHub's comment size limit."
+        
+        # Reserve space for the truncation message
+        max_content_length = GITHUB_COMMENT_MAX_LENGTH - len(truncation_msg) - 100  # Extra buffer
+        
+        # Truncate at a reasonable boundary (try to break at newline)
+        truncated = comment_body[:max_content_length]
+        
+        # Try to find the last complete line or section
+        last_newline = truncated.rfind('\n')
+        if last_newline > max_content_length * 0.8:  # If we find a newline in the last 20%
+            truncated = truncated[:last_newline]
+        
+        logger.warning(
+            f'GithubPRNotifier: comment truncated from {len(comment_body)} to {len(truncated)} characters'
+        )
+        
+        return truncated + truncation_msg
 
     def _update_comment(self, pr_number: int, comment_id: int, comment_body: str) -> bool:
         """Update an existing comment."""
@@ -258,6 +298,10 @@ class GithubPRNotifier(BaseNotifier):
         
         if not self.repository:
             return False
+        
+        # Truncate if needed
+        full_scan_url = getattr(self, 'full_scan_url', None)
+        comment_body = self._truncate_comment_if_needed(comment_body, full_scan_url)
             
         try:
             import requests
@@ -285,6 +329,10 @@ class GithubPRNotifier(BaseNotifier):
         if not self.repository:
             logger.warning('GithubPRNotifier: no repository configured')
             return False
+        
+        # Truncate if needed
+        full_scan_url = getattr(self, 'full_scan_url', None)
+        comment_body = self._truncate_comment_if_needed(comment_body, full_scan_url)
             
         try:
             import requests

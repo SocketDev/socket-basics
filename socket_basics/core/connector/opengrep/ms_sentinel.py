@@ -15,10 +15,10 @@ logger = logging.getLogger(__name__)
 def _get_ms_sentinel_result_limit() -> int:
     """Get the result limit for MS Sentinel notifications."""
     try:
-        notifications_yaml = Path(__file__).parent.parent.parent / 'notifications.yaml'
+        notifications_yaml = Path(__file__).parent.parent.parent.parent / 'notifications.yaml'
         with open(notifications_yaml, 'r') as f:
             config = yaml.safe_load(f)
-            return config.get('settings', {}).get('result_limits', {}).get('ms_sentinel', 500)
+            return config.get('settings', {}).get('result_limits', {}).get('ms_sentinel', 100)
     except Exception as e:
         logger.warning(f"Could not load MS Sentinel result limit from notifications.yaml: {e}, using default 500")
         return 500

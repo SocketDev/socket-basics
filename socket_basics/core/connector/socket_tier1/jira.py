@@ -1,6 +1,23 @@
 """Jira notifier formatting for Socket Tier1 reachability analysis."""
 
 from typing import Dict, Any, List
+from pathlib import Path
+import logging
+import yaml
+
+logger = logging.getLogger(__name__)
+
+
+def _get_jira_result_limit() -> int:
+    """Get the result limit for Jira notifications."""
+    try:
+        notifications_yaml = Path(__file__).parent.parent.parent.parent / 'notifications.yaml'
+        with open(notifications_yaml, 'r') as f:
+            config = yaml.safe_load(f)
+            return config.get('settings', {}).get('result_limits', {}).get('jira', 30)
+    except Exception as e:
+        logger.warning(f"Could not load Jira result limit from notifications.yaml: {e}, using default 30")
+        return 30
 
 
 def _detect_language_from_purl(purl: str) -> str:
@@ -76,7 +93,8 @@ def _make_purl(comp: Dict[str, Any]) -> str:
 
 
 def format_notifications(components_list: List[Dict[str, Any]], config=None) -> List[Dict[str, Any]]:
-    """Format for Jira tickets - using panels for better layout control."""
+    """Format for Jira tickets - grouped by PURL and reachability."""
+    from collections import defaultdict
     
     # Define severity ranking for sorting
     severity_rank = {
@@ -86,8 +104,9 @@ def format_notifications(components_list: List[Dict[str, Any]], config=None) -> 
         'low': 3
     }
     
-    # Collect all alerts with component info
-    all_alerts = []
+    # Group by PURL -> Reachability -> Findings
+    purl_groups = defaultdict(lambda: {'reachable': [], 'unknown': [], 'error': [], 'unreachable': []})
+    
     for comp in components_list:
         comp_name = str(comp.get('name') or comp.get('id') or '-')
         
@@ -96,7 +115,7 @@ def format_notifications(components_list: List[Dict[str, Any]], config=None) -> 
             purl = str(props.get('purl') or _make_purl(comp) or comp_name)
             cve_id = str(props.get('ghsaId') or props.get('cveId') or a.get('title') or '')
             severity = str(a.get('severity') or props.get('severity') or '').lower()
-            reachability = str(props.get('reachability') or '').lower()
+            reachability = str(props.get('reachability') or 'unknown').lower()
             
             # Format trace data 
             trace_raw = props.get('trace') or ''
@@ -106,15 +125,27 @@ def format_notifications(components_list: List[Dict[str, Any]], config=None) -> 
             elif isinstance(trace_raw, str):
                 trace_str = trace_raw
             
-            all_alerts.append({
+            # Truncate long traces
+            if trace_str and len(trace_str) > 2000:
+                trace_str = trace_str[:2000] + '\n...'
+            
+            finding = {
                 'cve_id': cve_id,
                 'severity': severity,
-                'reachability': reachability,
-                'purl': purl,
+                'severity_rank': severity_rank.get(severity, 999),
                 'trace_str': trace_str
-            })
+            }
+            
+            # Group by reachability
+            if reachability in purl_groups[purl]:
+                purl_groups[purl][reachability].append(finding)
     
-    if not all_alerts:
+    # Sort findings within each group by severity (Critical -> High -> Medium -> Low)
+    for purl in purl_groups:
+        for reach_type in ['reachable', 'unknown', 'error', 'unreachable']:
+            purl_groups[purl][reach_type].sort(key=lambda x: x['severity_rank'])
+    
+    if not purl_groups:
         content = {
             "type": "doc",
             "version": 1,
@@ -126,95 +157,217 @@ def format_notifications(components_list: List[Dict[str, Any]], config=None) -> 
             ]
         }
     else:
-        # Sort alerts by severity (Critical -> High -> Medium -> Low)
-        sorted_alerts = sorted(
-            all_alerts,
-            key=lambda x: severity_rank.get(x['severity'], 999)
+        # Apply truncation at finding level
+        result_limit = _get_jira_result_limit()
+        total_results = sum(
+            len(purl_groups[purl]['reachable']) + 
+            len(purl_groups[purl]['unreachable']) + 
+            len(purl_groups[purl]['unknown']) 
+            for purl in purl_groups
         )
         
         panels = []
+        findings_shown = 0
+        was_truncated = False
         
-        for alert in sorted_alerts:
-            # Map severity to Jira priority
-            jira_priority = {
-                'critical': 'Highest',
-                'high': 'High',
-                'medium': 'Medium', 
-                'low': 'Low'
-            }.get(alert['severity'], 'Medium')
+        # Sort PURLs by highest severity finding (critical first)
+        purl_severity_list = []
+        for purl in purl_groups:
+            min_sev = 999
+            for reach_type in ['reachable', 'unknown', 'error', 'unreachable']:
+                for finding in purl_groups[purl][reach_type]:
+                    if finding['severity_rank'] < min_sev:
+                        min_sev = finding['severity_rank']
+            purl_severity_list.append((min_sev, purl))
+        
+        purl_severity_list.sort(key=lambda x: x[0])
+        
+        # Detect language once per PURL
+        for _, purl in purl_severity_list:
+            if findings_shown >= result_limit:
+                was_truncated = True
+                break
             
-            # Determine panel color based on priority
-            panel_type = {
-                'Highest': 'error',
-                'High': 'warning',
-                'Medium': 'note',
-                'Low': 'info'
-            }.get(jira_priority, 'note')
+            language = _detect_language_from_purl(purl)
             
-            # Build panel content
-            panel_content = [
-                {
+            # Add PURL header
+            panels.append({
+                "type": "heading",
+                "attrs": {"level": 2},
+                "content": [
+                    {"type": "text", "text": "📦 Package: ", "marks": [{"type": "strong"}]},
+                    {"type": "text", "text": purl, "marks": [{"type": "code"}]}
+                ]
+            })
+            
+            # Reachable findings (highest priority)
+            if purl_groups[purl]['reachable']:
+                panels.append({
                     "type": "heading",
                     "attrs": {"level": 3},
-                    "content": [{"type": "text", "text": f"🔒 {alert['cve_id']}", "marks": [{"type": "strong"}]}]
-                },
-                {
-                    "type": "paragraph",
-                    "content": [
-                        {"type": "text", "text": "Severity: ", "marks": [{"type": "strong"}]},
-                        {"type": "text", "text": jira_priority}
-                    ]
-                },
-                {
-                    "type": "paragraph",
-                    "content": [
-                        {"type": "text", "text": "Reachability: ", "marks": [{"type": "strong"}]},
-                        {"type": "text", "text": alert['reachability'].upper() if alert['reachability'] == 'reachable' else alert['reachability']}
-                    ]
-                },
-                {
-                    "type": "paragraph",
-                    "content": [
-                        {"type": "text", "text": "Package: ", "marks": [{"type": "strong"}]},
-                        {"type": "text", "text": alert['purl'], "marks": [{"type": "code"}]}
-                    ]
-                }
-            ]
-            
-            # Add trace if reachable and trace exists
-            if alert['reachability'] == 'reachable' and alert['trace_str']:
-                # Dynamically determine language from PURL
-                language = _detect_language_from_purl(alert['purl'])
+                    "content": [{"type": "text", "text": "Reachable", "marks": [{"type": "strong"}]}]
+                })
                 
-                panel_content.extend([
-                    {
+                for finding in purl_groups[purl]['reachable']:
+                    if findings_shown >= result_limit:
+                        was_truncated = True
+                        break
+                    
+                    jira_priority = {
+                        'critical': 'Highest',
+                        'high': 'High',
+                        'medium': 'Medium',
+                        'low': 'Low'
+                    }.get(finding['severity'], 'Medium')
+                    
+                    panel_type = {
+                        'Highest': 'error',
+                        'High': 'warning',
+                        'Medium': 'note',
+                        'Low': 'info'
+                    }.get(jira_priority, 'note')
+                    
+                    panel_content = [
+                        {
+                            "type": "paragraph",
+                            "content": [
+                                {"type": "text", "text": f"🔒 {finding['cve_id']}: ", "marks": [{"type": "strong"}]},
+                                {"type": "text", "text": jira_priority}
+                            ]
+                        }
+                    ]
+                    
+                    if finding['trace_str']:
+                        panel_content.append({
+                            "type": "codeBlock",
+                            "attrs": {"language": language.lower()},
+                            "content": [{"type": "text", "text": finding['trace_str']}]
+                        })
+                    
+                    panels.append({
+                        "type": "panel",
+                        "attrs": {"panelType": panel_type},
+                        "content": panel_content
+                    })
+                    
+                    findings_shown += 1
+            
+            # Unknown reachability findings
+            if purl_groups[purl]['unknown'] and findings_shown < result_limit:
+                panels.append({
+                    "type": "heading",
+                    "attrs": {"level": 3},
+                    "content": [{"type": "text", "text": "Unknown", "marks": [{"type": "strong"}]}]
+                })
+                
+                for finding in purl_groups[purl]['unknown']:
+                    if findings_shown >= result_limit:
+                        was_truncated = True
+                        break
+                    
+                    jira_priority = {
+                        'critical': 'Highest',
+                        'high': 'High',
+                        'medium': 'Medium',
+                        'low': 'Low'
+                    }.get(finding['severity'], 'Medium')
+                    
+                    panels.append({
                         "type": "paragraph",
                         "content": [
-                            {"type": "text", "text": "Call Trace:", "marks": [{"type": "strong"}]}
+                            {"type": "text", "text": f"🔒 {finding['cve_id']}: ", "marks": [{"type": "strong"}]},
+                            {"type": "text", "text": jira_priority}
                         ]
-                    },
-                    {
-                        "type": "codeBlock",
-                        "attrs": {"language": language.lower()},
-                        "content": [{"type": "text", "text": alert['trace_str']}]
-                    }
-                ])
+                    })
+                    
+                    findings_shown += 1
             
-            # Create the panel
-            panels.append({
-                "type": "panel",
-                "attrs": {"panelType": panel_type},
-                "content": panel_content
-            })
+            # Error reachability findings
+            if purl_groups[purl]['error'] and findings_shown < result_limit:
+                panels.append({
+                    "type": "heading",
+                    "attrs": {"level": 3},
+                    "content": [{"type": "text", "text": "Error", "marks": [{"type": "strong"}]}]
+                })
+                
+                for finding in purl_groups[purl]['error']:
+                    if findings_shown >= result_limit:
+                        was_truncated = True
+                        break
+                    
+                    jira_priority = {
+                        'critical': 'Highest',
+                        'high': 'High',
+                        'medium': 'Medium',
+                        'low': 'Low'
+                    }.get(finding['severity'], 'Medium')
+                    
+                    panels.append({
+                        "type": "paragraph",
+                        "content": [
+                            {"type": "text", "text": f"🔒 {finding['cve_id']}: ", "marks": [{"type": "strong"}]},
+                            {"type": "text", "text": jira_priority}
+                        ]
+                    })
+                    
+                    findings_shown += 1
             
-            # Add a rule/divider between issues
-            panels.append({
-                "type": "rule"
-            })
+            # Unreachable findings (lowest priority)
+            if purl_groups[purl]['unreachable'] and findings_shown < result_limit:
+                panels.append({
+                    "type": "heading",
+                    "attrs": {"level": 3},
+                    "content": [{"type": "text", "text": "Unreachable", "marks": [{"type": "strong"}]}]
+                })
+                
+                for finding in purl_groups[purl]['unreachable']:
+                    if findings_shown >= result_limit:
+                        was_truncated = True
+                        break
+                    
+                    jira_priority = {
+                        'critical': 'Highest',
+                        'high': 'High',
+                        'medium': 'Medium',
+                        'low': 'Low'
+                    }.get(finding['severity'], 'Medium')
+                    
+                    panels.append({
+                        "type": "paragraph",
+                        "content": [
+                            {"type": "text", "text": f"🔒 {finding['cve_id']}: ", "marks": [{"type": "strong"}]},
+                            {"type": "text", "text": jira_priority}
+                        ]
+                    })
+                    
+                    findings_shown += 1
+            
+            # Add divider between packages
+            panels.append({"type": "rule"})
         
         # Remove the last rule
         if panels and panels[-1]["type"] == "rule":
             panels.pop()
+        
+        # Add truncation notice if needed
+        if was_truncated:
+            panels.extend([
+                {
+                    "type": "rule"
+                },
+                {
+                    "type": "panel",
+                    "attrs": {"panelType": "warning"},
+                    "content": [
+                        {
+                            "type": "paragraph",
+                            "content": [
+                                {"type": "text", "text": f"⚠️ Results truncated to {result_limit} highest severity findings (total: {total_results}). View more in full scan.", "marks": [{"type": "strong"}]}
+                            ]
+                        }
+                    ]
+                }
+            ])
         
         content = {
             "type": "doc",

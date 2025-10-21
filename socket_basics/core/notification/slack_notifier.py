@@ -45,16 +45,16 @@ class SlackNotifier(BaseNotifier):
         # Get full scan URL if available
         full_scan_url = facts.get('full_scan_html_url')
 
-        # Validate format
+        # Validate format and store URL separately for block building
         valid_notifications = []
         for item in notifications:
             if isinstance(item, dict) and 'title' in item and 'content' in item:
-                # Append full scan URL to content if available
-                content = item['content']
-                if full_scan_url:
-                    content += f"\n\n🔗 <{full_scan_url}|View complete scan results>"
-                    item = {'title': item['title'], 'content': content}
-                valid_notifications.append(item)
+                # Store original content and URL separately so we can add URL as its own block
+                valid_notifications.append({
+                    'title': item['title'], 
+                    'content': item['content'],
+                    'full_scan_url': full_scan_url
+                })
             else:
                 logger.warning('SlackNotifier: skipping invalid notification item: %s', type(item))
         
@@ -65,9 +65,10 @@ class SlackNotifier(BaseNotifier):
         for item in valid_notifications:
             title = item['title']
             content = item['content']
-            self._send_slack_message(facts, title, content)
+            full_scan_url = item.get('full_scan_url')
+            self._send_slack_message(facts, title, content, full_scan_url)
 
-    def _send_slack_message(self, facts: Dict[str, Any], title: str, content: str) -> None:
+    def _send_slack_message(self, facts: Dict[str, Any], title: str, content: str, full_scan_url: str | None = None) -> None:
         """Send a single Slack message with title and content."""
         if not self.webhook_url:
             logger.warning('SlackNotifier: no Slack webhook URL configured')
@@ -78,36 +79,49 @@ class SlackNotifier(BaseNotifier):
         branch = self.config.get('branch', 'Unknown')
 
         try:
-            # Truncate content if too long for Slack (3000 char limit per text block)
-            max_content_length = 2500  # Leave room for title and formatting
+            # Truncate content if it's too long for a single Slack block (3000 char limit)
+            max_content_length = 2900  # Leave room for title and formatting
             if len(content) > max_content_length:
-                content = content[:max_content_length] + "...\n[Content truncated]"
+                content = content[:max_content_length] + "\n\n_(content truncated)_"
             
             # Create Slack payload with pre-formatted content
+            blocks = [
+                {
+                    "type": "section",
+                    "text": {
+                        "type": "mrkdwn",
+                        "text": f"🔍 *Security Findings* - {repo} ({branch})"
+                    }
+                },
+                {
+                    "type": "section",
+                    "text": {
+                        "type": "mrkdwn",
+                        "text": f"*{title}*\n\n{content}"
+                    }
+                }
+            ]
+            
+            # Add full scan URL as a separate context block if available
+            if full_scan_url:
+                blocks.append({
+                    "type": "section",
+                    "text": {
+                        "type": "mrkdwn",
+                        "text": f"🔗 <{full_scan_url}|View Full Socket Scan>"
+                    }
+                })
+            
             payload = {
                 "username": self.username,
-                "blocks": [
-                    {
-                        "type": "section",
-                        "text": {
-                            "type": "mrkdwn",
-                            "text": f"🔍 *Security Findings* - {repo} ({branch})"
-                        }
-                    },
-                    {
-                        "type": "section",
-                        "text": {
-                            "type": "mrkdwn",
-                            "text": f"*{title}*\n```\n{content}\n```"
-                        }
-                    }
-                ]
+                "blocks": blocks
             }
             
             import requests
             resp = requests.post(self.webhook_url, json=payload, timeout=10)
             if resp.status_code >= 400:
-                logger.warning('SlackNotifier: webhook error %s: %s', resp.status_code, resp.text[:200])
+                logger.warning('SlackNotifier: webhook error %s: %s', resp.status_code, resp.text[:500])
+                logger.debug(f'Failed Slack payload: {payload}')
             else:
                 logger.info('SlackNotifier: posted message for "%s"', title)
                 

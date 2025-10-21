@@ -253,7 +253,7 @@ class JiraNotifier(BaseNotifier):
                         {"type": "text", "text": "🔗 "},
                         {
                             "type": "text",
-                            "text": "View complete scan results",
+                            "text": "View Full Socket Scan",
                             "marks": [
                                 {
                                     "type": "link",

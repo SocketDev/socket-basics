@@ -275,10 +275,11 @@ class NotificationManager:
             facts['repository'] = self.app_config.get('repo', 'Unknown')  # Note: uses 'repo' not 'repository'
             facts['branch'] = self.app_config.get('branch', 'Unknown') 
             facts['commit_hash'] = self.app_config.get('commit_hash', 'Unknown')
-            # Add full scan URL if available
-            full_scan_url = self.app_config.get('full_scan_html_url')
-            if full_scan_url:
-                facts['full_scan_html_url'] = full_scan_url
+            # Add full scan URL if available (from app_config or already in facts)
+            if 'full_scan_html_url' not in facts:
+                full_scan_url = self.app_config.get('full_scan_html_url')
+                if full_scan_url:
+                    facts['full_scan_html_url'] = full_scan_url
             
         # Determine allowed severities for notifications. Honor SOCKET_BASICS_SEVERITIES
         # environment variable (comma-separated), fall back to INPUT_FINDING_SEVERITIES,

@@ -13,12 +13,12 @@ logger = logging.getLogger(__name__)
 
 
 def _get_sumologic_result_limit() -> int:
-    """Get the result limit for SumoLogic notifications."""
+    """Get the result limit for Sumo Logic notifications."""
     try:
-        notifications_yaml = Path(__file__).parent.parent.parent / 'notifications.yaml'
+        notifications_yaml = Path(__file__).parent.parent.parent.parent / 'notifications.yaml'
         with open(notifications_yaml, 'r') as f:
             config = yaml.safe_load(f)
-            return config.get('settings', {}).get('result_limits', {}).get('sumologic', 500)
+            return config.get('settings', {}).get('result_limits', {}).get('sumologic', 100)
     except Exception as e:
         logger.warning(f"Could not load SumoLogic result limit from notifications.yaml: {e}, using default 500")
         return 500
