@@ -29,16 +29,24 @@ VERSION_FILE = pathlib.Path("socket_basics/version.py")
 PYPROJECT_FILE = pathlib.Path("pyproject.toml")
 README_FILES = [
     pathlib.Path("README.md"),
+    pathlib.Path("blog.md"),
     pathlib.Path("docs/github-action.md"),
     pathlib.Path("docs/pre-commit-hook.md"),
+    pathlib.Path("docs/local-install-docker.md"),
+    pathlib.Path("docs/version-management.md"),
+    pathlib.Path("docs/parameters.md"),
 ]
 
 VERSION_PATTERN = re.compile(r"__version__\s*=\s*['\"]([^'\"]+)['\"]")
 PYPROJECT_PATTERN = re.compile(r'^version\s*=\s*"([^"]+)"$', re.MULTILINE)
 # Pattern to match SocketDev/socket-basics@vX.X.X or @vX.X.X
 ACTION_VERSION_PATTERN = re.compile(r'(SocketDev/socket-basics|socket-basics)@v\d+\.\d+\.\d+')
-# Pattern to match docker build with version tag
-DOCKER_BUILD_PATTERN = re.compile(r'docker build -t (socketdev/socket-basics|socket-basics)(?::\d+\.\d+\.\d+)?')
+# Pattern to match docker build with optional version tag (handles both new and existing tags)
+DOCKER_BUILD_PATTERN = re.compile(r'docker build (?:--platform [^\s]+ )?-t ([^\s:]+)(?::\d+\.\d+\.\d+)?')
+# Pattern to match docker run commands with version tags
+DOCKER_RUN_PATTERN = re.compile(r'(docker run [^\n]*?)([^\s:]+):(\d+\.\d+\.\d+)')
+# Pattern to match standalone image references with version (in docker run or other contexts)
+IMAGE_VERSION_PATTERN = re.compile(r'\b(socket-basics|socketdev/socket-basics|myorg/security-scanner):(\d+\.\d+\.\d+)\b')
 # Update this URL to match your actual PyPI package if you publish it
 PYPI_API = "https://pypi.org/pypi/security-wrapper/json"
 
@@ -113,10 +121,15 @@ def update_readme_versions(version: str):
         content = ACTION_VERSION_PATTERN.sub(rf'\1@v{version}', content)
         
         # Update docker build commands to include version tag
-        def docker_replacement(match):
+        def docker_build_replacement(match):
+            # Group 0 is the whole match, group 1 is the image name
+            prefix = match.group(0).split('-t')[0] + '-t '
             image_name = match.group(1)
-            return f'docker build -t {image_name}:{version}'
-        content = DOCKER_BUILD_PATTERN.sub(docker_replacement, content)
+            return f'{prefix}{image_name}:{version}'
+        content = DOCKER_BUILD_PATTERN.sub(docker_build_replacement, content)
+        
+        # Update standalone image references with version (e.g., socket-basics:1.0.2)
+        content = IMAGE_VERSION_PATTERN.sub(rf'\1:{version}', content)
         
         if content != original_content:
             readme_file.write_text(content)
