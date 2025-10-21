@@ -1,6 +1,23 @@
 """Microsoft Teams notifier formatting for Socket Tier1 reachability analysis."""
 
 from typing import Dict, Any, List
+from pathlib import Path
+import logging
+import yaml
+
+logger = logging.getLogger(__name__)
+
+
+def _get_ms_teams_result_limit() -> int:
+    """Get the result limit for MS Teams notifications."""
+    try:
+        notifications_yaml = Path(__file__).parent.parent.parent.parent / 'notifications.yaml'
+        with open(notifications_yaml, 'r') as f:
+            config = yaml.safe_load(f)
+            return config.get('settings', {}).get('result_limits', {}).get('ms_teams', 50)
+    except Exception as e:
+        logger.warning(f"Could not load MS Teams result limit from notifications.yaml: {e}, using default 50")
+        return 50
 
 
 def _make_purl(comp: Dict[str, Any]) -> str:
@@ -24,8 +41,21 @@ def _make_purl(comp: Dict[str, Any]) -> str:
 
 
 def format_notifications(components_list: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
-    """Format for Microsoft Teams - clean tabular format."""
-    rows = []
+    """Format for Microsoft Teams - grouped by PURL and reachability."""
+    from collections import defaultdict
+    
+    severity_order = {'critical': 0, 'high': 1, 'medium': 2, 'low': 3}
+    severity_emoji = {
+        'critical': '🔴',
+        'high': '🟠',
+        'medium': '🟡',
+        'low': '⚪'
+    }
+    
+    # Group by PURL -> Reachability -> Findings
+    purl_groups = defaultdict(lambda: {'reachable': [], 'unknown': [], 'error': [], 'unreachable': []})
+    severity_counts = {'critical': 0, 'high': 0, 'medium': 0, 'low': 0}
+    
     for comp in components_list:
         comp_name = str(comp.get('name') or comp.get('id') or '-')
         
@@ -33,32 +63,131 @@ def format_notifications(components_list: List[Dict[str, Any]]) -> List[Dict[str
             props = a.get('props', {}) or {}
             purl = str(props.get('purl') or _make_purl(comp) or comp_name)
             cve_id = str(props.get('ghsaId') or props.get('cveId') or a.get('title') or '')
-            severity = str(a.get('severity') or props.get('severity') or '')
-            reachability = str(props.get('reachability') or '').lower()
+            severity = str(a.get('severity') or props.get('severity') or '').lower()
+            reachability = str(props.get('reachability') or 'unknown').lower()
             
-            # Clean format for Teams
-            rows.append([
-                cve_id,
-                severity,
-                reachability.upper(),
-                purl[:60] + '...' if len(purl) > 60 else purl,  # Truncate for Teams
-                'Reachable' if reachability == 'reachable' else 'Not Reachable'
-            ])
+            # Count by severity
+            if severity in severity_counts:
+                severity_counts[severity] += 1
+            
+            # Get trace data
+            trace_raw = props.get('trace') or ''
+            trace_str = ''
+            if isinstance(trace_raw, list):
+                trace_str = '\n'.join(str(x) for x in trace_raw)
+            elif isinstance(trace_raw, str):
+                trace_str = trace_raw
+            
+            # Truncate long traces
+            if trace_str and len(trace_str) > 500:
+                trace_str = trace_str[:500] + '\n...'
+            
+            finding = {
+                'cve_id': cve_id,
+                'severity': severity,
+                'severity_order': severity_order.get(severity, 4),
+                'severity_emoji': severity_emoji.get(severity, '⚪'),
+                'trace': trace_str
+            }
+            
+            # Group by reachability
+            if reachability in purl_groups[purl]:
+                purl_groups[purl][reachability].append(finding)
     
-    # Format as markdown table for MS Teams
-    if not rows:
-        content = "No Socket Tier1 vulnerabilities found."
+    # Sort findings within each group by severity (Critical -> High -> Medium -> Low)
+    for purl in purl_groups:
+        for reach_type in ['reachable', 'unknown', 'error', 'unreachable']:
+            purl_groups[purl][reach_type].sort(key=lambda x: x['severity_order'])
+    
+    # Apply truncation at finding level
+    result_limit = _get_ms_teams_result_limit()
+    total_results = sum(severity_counts.values())
+    
+    # Format for MS Teams
+    if not purl_groups:
+        content = "✅ No vulnerabilities found."
     else:
-        headers = ['CVE/GHSA', 'Severity', 'Reachability', 'Package', 'Status']
-        header_row = ' | '.join(headers)
-        separator_row = ' | '.join(['---'] * len(headers))
-        content_rows = []
-        for row in rows:
-            content_rows.append(' | '.join(str(cell) for cell in row))
+        # Add summary table
+        content_lines = [
+            "**Summary**\n\n",
+            f"🔴 Critical: {severity_counts['critical']} | 🟠 High: {severity_counts['high']} | 🟡 Medium: {severity_counts['medium']} | ⚪ Low: {severity_counts['low']}\n\n",
+            "---\n\n",
+            "**Details**\n\n"
+        ]
         
-        content = '\n'.join([header_row, separator_row] + content_rows)
+        findings_shown = 0
+        was_truncated = False
+        
+        # Sort PURLs by highest severity finding
+        purl_severity_list = []
+        for purl in purl_groups:
+            min_sev = 999
+            for reach_type in ['reachable', 'unknown', 'error', 'unreachable']:
+                for finding in purl_groups[purl][reach_type]:
+                    if finding['severity_order'] < min_sev:
+                        min_sev = finding['severity_order']
+            purl_severity_list.append((min_sev, purl))
+        
+        purl_severity_list.sort(key=lambda x: x[0])
+        
+        for _, purl in purl_severity_list:
+            if findings_shown >= result_limit:
+                was_truncated = True
+                break
+                
+            content_lines.append(f"**Package:** `{purl}`\n\n")
+            
+            # Reachable findings (highest priority)
+            if purl_groups[purl]['reachable']:
+                content_lines.append("**Reachable**\n\n")
+                for finding in purl_groups[purl]['reachable']:
+                    if findings_shown >= result_limit:
+                        was_truncated = True
+                        break
+                    content_lines.append(f"{finding['severity_emoji']} **{finding['cve_id']}**: *{finding['severity'].upper()}*\n\n")
+                    if finding['trace']:
+                        content_lines.append(f"```\n{finding['trace']}\n```\n\n")
+                    findings_shown += 1
+            
+            # Unknown reachability findings
+            if purl_groups[purl]['unknown'] and findings_shown < result_limit:
+                content_lines.append("**Unknown**\n\n")
+                for finding in purl_groups[purl]['unknown']:
+                    if findings_shown >= result_limit:
+                        was_truncated = True
+                        break
+                    content_lines.append(f"{finding['severity_emoji']} **{finding['cve_id']}**: *{finding['severity'].upper()}*\n\n")
+                    findings_shown += 1
+            
+            # Error reachability findings
+            if purl_groups[purl]['error'] and findings_shown < result_limit:
+                content_lines.append("**Error**\n\n")
+                for finding in purl_groups[purl]['error']:
+                    if findings_shown >= result_limit:
+                        was_truncated = True
+                        break
+                    content_lines.append(f"{finding['severity_emoji']} **{finding['cve_id']}**: *{finding['severity'].upper()}*\n\n")
+                    findings_shown += 1
+            
+            # Unreachable findings (lowest priority)
+            if purl_groups[purl]['unreachable'] and findings_shown < result_limit:
+                content_lines.append("**Unreachable**\n\n")
+                for finding in purl_groups[purl]['unreachable']:
+                    if findings_shown >= result_limit:
+                        was_truncated = True
+                        break
+                    content_lines.append(f"{finding['severity_emoji']} **{finding['cve_id']}**: *{finding['severity'].upper()}*\n\n")
+                    findings_shown += 1
+            
+            content_lines.append("---\n\n")
+        
+        content = "".join(content_lines)
+        
+        # Add truncation notice if needed
+        if was_truncated:
+            content += f"\n⚠️ **Showing {findings_shown} of {total_results} findings (highest severity first).**"
     
     return [{
-        'title': 'Socket Tier1 Reachability Analysis',
+        'title': 'Socket Tier1 Reachability',
         'content': content
     }]

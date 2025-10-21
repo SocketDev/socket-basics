@@ -9,12 +9,14 @@ from typing import Dict, Any, List
 
 def format_notifications(mapping: Dict[str, Any], config=None) -> List[Dict[str, Any]]:
     """Format for GitHub PR comments - detailed with markdown formatting."""
+    severity_order = {'critical': 0, 'high': 1, 'medium': 2, 'low': 3}
     rows = []
+    
     for comp in mapping.values():
         for a in comp.get('alerts', []):
             props = a.get('props', {}) or {}
             detector = str(props.get('detectorName', '') or a.get('title') or '')
-            severity = str(a.get('severity', ''))
+            severity = str(a.get('severity', '')).lower()
             file_path = str(props.get('filePath', '-'))
             line = str(props.get('lineNumber', ''))
             redacted = str(props.get('redactedValue', ''))
@@ -26,13 +28,20 @@ def format_notifications(mapping: Dict[str, Any], config=None) -> List[Dict[str,
             if line:
                 file_display += f":{line}"
             
-            rows.append([
-                f"**{detector}**",
-                f"*{severity}*",
-                status,
-                file_display,
-                f"`{redacted}`" if redacted else '-'
-            ])
+            rows.append((
+                severity_order.get(severity, 4),
+                [
+                    f"**{detector}**",
+                    f"*{severity.upper()}*",
+                    status,
+                    file_display,
+                    f"`{redacted}`" if redacted else '-'
+                ]
+            ))
+    
+    # Sort by severity (critical first)
+    rows.sort(key=lambda x: x[0])
+    rows = [row[1] for row in rows]
     
     # Create markdown table
     if not rows:

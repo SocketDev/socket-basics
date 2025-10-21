@@ -20,7 +20,6 @@ connectors:
         enables:
           - python_sast_enabled
           - javascript_sast_enabled
-          - typescript_sast_enabled
           - go_sast_enabled
           - golang_sast_enabled
           - java_sast_enabled
@@ -56,12 +55,6 @@ connectors:
         type: bool
         default: false
         group: "SAST Javascript"
-      - name: typescript_sast_enabled
-        option: --typescript
-        description: "Enable TypeScript SAST scanning"
-        env_variable: INPUT_TYPESCRIPT_SAST_ENABLED
-        type: bool
-        default: false
       - name: go_sast_enabled
         option: --go
         description: "Enable Go SAST scanning"

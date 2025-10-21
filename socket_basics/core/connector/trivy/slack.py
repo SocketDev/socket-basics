@@ -19,6 +19,7 @@ def format_notifications(mapping: Dict[str, Any], item_name: str = "Unknown", sc
     """
     # Group vulnerabilities by package and severity
     package_groups = defaultdict(lambda: defaultdict(set))  # Use set to avoid duplicates
+    severity_counts = {'critical': 0, 'high': 0, 'medium': 0, 'low': 0}
     
     if scan_type == 'dockerfile':
         # Process dockerfile components
@@ -26,9 +27,13 @@ def format_notifications(mapping: Dict[str, Any], item_name: str = "Unknown", sc
             for alert in comp.get('alerts', []):
                 props = alert.get('props', {}) or {}
                 rule_id = str(props.get('ruleId', '') or alert.get('title', ''))
-                severity = str(alert.get('severity', ''))
+                severity = str(alert.get('severity', '')).lower()
                 message = str(alert.get('description', ''))
                 resolution = str(props.get('resolution', ''))
+                
+                # Count by severity
+                if severity in severity_counts:
+                    severity_counts[severity] += 1
                 
                 rule_info = f"{rule_id}|{message}|{resolution}"
                 package_groups[rule_id][severity].add(rule_info)
@@ -48,7 +53,12 @@ def format_notifications(mapping: Dict[str, Any], item_name: str = "Unknown", sc
             for alert in comp.get('alerts', []):
                 props = alert.get('props', {}) or {}
                 cve_id = str(props.get('vulnerabilityId', '') or alert.get('title', ''))
-                severity = str(alert.get('severity', ''))
+                severity = str(alert.get('severity', '')).lower()
+                
+                # Count by severity
+                if severity in severity_counts:
+                    severity_counts[severity] += 1
+                
                 package_groups[package_key][severity].add(cve_id)
     
     # Create rows with proper formatting
@@ -66,24 +76,22 @@ def format_notifications(mapping: Dict[str, Any], item_name: str = "Unknown", sc
                         _, message, resolution = parts
                         
                         # Add severity emojis for Slack
-                        severity_lower = severity.lower()
                         severity_emoji = {
                             'critical': '🔴',
                             'high': '🟠', 
                             'medium': '🟡',
-                            'low': '🟢'
-                        }.get(severity_lower, '⚪')
+                            'low': '⚪'
+                        }.get(severity, '⚪')
                         
                         rows.append((
                             severity_order.get(severity, 4),
-                            [rule_id, f"{severity_emoji} {severity}", message, resolution[:100] + '...' if len(resolution) > 100 else resolution]
+                            [rule_id, severity_emoji, severity, message, resolution[:100] + '...' if len(resolution) > 100 else resolution]
                         ))
         
         # Sort by severity and extract rows
         rows.sort(key=lambda x: x[0])
         rows = [row[1] for row in rows]
         
-        headers = ['Rule ID', 'Severity', 'Message', 'Resolution']
     else:
         # Image format: Package | CVEs | Severity  
         for package_name, severity_dict in package_groups.items():
@@ -100,27 +108,24 @@ def format_notifications(mapping: Dict[str, Any], item_name: str = "Unknown", sc
                     cve_bullets = '\n'.join([f"• {cve}" for cve in cves])
                 
                 # Add severity emojis for Slack
-                severity_lower = severity.lower()
                 severity_emoji = {
                     'critical': '🔴',
                     'high': '🟠', 
                     'medium': '🟡',
-                    'low': '🟢'
-                }.get(severity_lower, '⚪')
+                    'low': '⚪'
+                }.get(severity, '⚪')
                 
                 # Truncate package name for readability if needed
                 display_package = package_name[:40] + '...' if len(package_name) > 40 else package_name
                 
                 rows.append((
                     severity_order.get(severity, 4),
-                    [display_package, cve_bullets, f"{severity_emoji} {severity}"]
+                    [display_package, cve_bullets, severity_emoji, severity]
                 ))
         
         # Sort by severity and extract rows
         rows.sort(key=lambda x: x[0])
         rows = [row[1] for row in rows]
-        
-        headers = ['Package', 'CVEs', 'Severity']
     
     # Apply truncation for Slack
     max_rows = get_notifier_result_limit('slack')
@@ -131,31 +136,50 @@ def format_notifications(mapping: Dict[str, Any], item_name: str = "Unknown", sc
         truncated = True
         logger.info(f"Truncated Slack results from {original_count} to {max_rows}")
     
-    # Format rows as markdown table for Slack
+    # Format for Slack
     if not rows:
-        content = "No vulnerabilities found."
+        content = "✅ No vulnerabilities found."
     else:
-        # Create markdown table using the correct headers
-        header_row = ' | '.join(headers)
-        separator_row = ' | '.join(['---'] * len(headers))
-        content_rows = []
-        for row in rows:
-            content_rows.append(' | '.join(str(cell) for cell in row))
+        # Add summary table
+        content_lines = [
+            "*Summary*",
+            f"🔴 Critical: {severity_counts['critical']} | 🟠 High: {severity_counts['high']} | 🟡 Medium: {severity_counts['medium']} | ⚪ Low: {severity_counts['low']}",
+            "",
+            "*Details*",
+            ""
+        ]
+        
+        if scan_type == 'dockerfile':
+            # Dockerfile format
+            for idx, row in enumerate(rows, 1):
+                rule_id, severity_emoji, severity, message, resolution = row
+                content_lines.append(
+                    f"{severity_emoji} *{rule_id}* ({severity.upper()})\n"
+                    f"Message: {message}\n"
+                    f"Resolution: {resolution}\n"
+                )
+        else:
+            # Image/CVE format - using bullet points
+            for idx, row in enumerate(rows, 1):
+                package, cves, severity_emoji, severity = row
+                content_lines.append(
+                    f"{severity_emoji} *{package}* ({severity.upper()})\n"
+                    f"{cves}\n"
+                )
+        
+        content = "\n".join(content_lines)
         
         # Add truncation notice if needed
         if truncated:
-            content_rows.append('')
-            content_rows.append(f"⚠️ *Showing top {max_rows} results (by severity).* {original_count - max_rows} additional results truncated. View full results at the scan URL below.")
-        
-        content = '\n'.join([header_row, separator_row] + content_rows)
+            content += f"\n⚠️ *Showing top {max_rows} results (by severity).* {original_count - max_rows} additional results truncated. View more in full scan."
     
     # Create title based on scan type
     if scan_type == 'vuln':
-        title = f'Socket CVE Scanning Results: {item_name}'
+        title = f'Socket Trivy CVE: {item_name}'
     elif scan_type == 'dockerfile':
-        title = f'Socket Dockerfile Results: {item_name}'
+        title = f'Socket Trivy Dockerfile: {item_name}'
     else:  # image
-        title = f'Socket Image Scanning Results: {item_name}'
+        title = f'Socket Trivy Image: {item_name}'
     
     return [{
         'title': title,

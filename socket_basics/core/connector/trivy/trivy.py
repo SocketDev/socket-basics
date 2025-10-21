@@ -510,7 +510,7 @@ class TrivyScanner(BaseConnector):
                         "name": pkg_name,
                         "internal": True,
                         "version": installed_version,
-                        "direct": True,
+                        "direct": False,
                         "dev": False,
                         "dead": False,
                         "dependencies": [],
@@ -561,7 +561,7 @@ class TrivyScanner(BaseConnector):
 
         # Combine all components (packages first, then image)
         components.update(package_components)
-        # components[image_id] = image_component
+        components[image_id] = image_component
 
         return components
 
