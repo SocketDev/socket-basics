@@ -23,7 +23,7 @@ jobs:
       - uses: actions/checkout@v4
       
       - name: Run Socket Basics
-        uses: SocketDev/socket-basics@1.0.7
+        uses: SocketDev/socket-basics@1.0.8
         with:
           github_token: ${{ secrets.GITHUB_TOKEN }}
           socket_security_api_key: ${{ secrets.SOCKET_SECURITY_API_KEY }}
@@ -106,7 +106,7 @@ Configure scanning policies, notification channels, and rule sets for your entir
 
 **Dashboard-Configured (Enterprise):**
 ```yaml
-- uses: SocketDev/socket-basics@1.0.7
+- uses: SocketDev/socket-basics@1.0.8
   with:
     github_token: ${{ secrets.GITHUB_TOKEN }}
     socket_security_api_key: ${{ secrets.SOCKET_SECURITY_API_KEY }}
@@ -115,7 +115,7 @@ Configure scanning policies, notification channels, and rule sets for your entir
 
 **CLI-Configured:**
 ```yaml
-- uses: SocketDev/socket-basics@1.0.7
+- uses: SocketDev/socket-basics@1.0.8
   with:
     github_token: ${{ secrets.GITHUB_TOKEN }}
     python_sast_enabled: 'true'
@@ -129,10 +129,10 @@ Configure scanning policies, notification channels, and rule sets for your entir
 
 ```bash
 # Build with version tag
-docker build -t socketdev/socket-basics:1.0.7 .
+docker build -t socketdev/socket-basics:1.0.8 .
 
 # Run scan
-docker run --rm -v "$PWD:/workspace" socketdev/socket-basics:1.0.7 \
+docker run --rm -v "$PWD:/workspace" socketdev/socket-basics:1.0.8 \
   --workspace /workspace \
   --python-sast-enabled \
   --secret-scanning-enabled \

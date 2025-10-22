@@ -570,9 +570,11 @@ def load_socket_basics_config() -> Dict[str, Any] | None:
     logger.debug(" load_socket_basics_config() called")
     
     # Check if Socket API integration is available
+    # Support both direct env vars and GitHub Actions INPUT_ prefixed vars
     api_key = (
         os.environ.get('SOCKET_SECURITY_API_KEY')
         or os.environ.get('SOCKET_SECURITY_API_TOKEN')
+        or os.environ.get('INPUT_SOCKET_SECURITY_API_KEY')
     )
     
     logger.debug(f" API key check - SOCKET_SECURITY_API_KEY set: {bool(os.environ.get('SOCKET_SECURITY_API_KEY'))}")
@@ -591,13 +593,16 @@ def load_socket_basics_config() -> Dict[str, Any] | None:
     
     logger.info("Socket API key detected - attempting to load dashboard configuration")
     
+    # Support both direct env vars and GitHub Actions INPUT_ prefixed vars
     org_slug = (
         os.environ.get('SOCKET_ORG_SLUG')
         or os.environ.get('SOCKET_ORG')
+        or os.environ.get('INPUT_SOCKET_ORG')
     )
     
     logger.debug(f" SOCKET_ORG_SLUG: {os.environ.get('SOCKET_ORG_SLUG', 'not set')}")
     logger.debug(f" SOCKET_ORG: {os.environ.get('SOCKET_ORG', 'not set')}")
+    logger.debug(f" INPUT_SOCKET_ORG: {os.environ.get('INPUT_SOCKET_ORG', 'not set')}")
     logger.debug(f" org_slug from env: {org_slug or 'not set - will auto-discover'}")
     
     try:

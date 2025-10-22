@@ -38,7 +38,7 @@ jobs:
       - uses: actions/checkout@v4
       
       - name: Run Socket Basics
-        uses: SocketDev/socket-basics@1.0.7
+        uses: SocketDev/socket-basics@1.0.8
         env:
           # Optional: Explicitly set PR number for guaranteed PR comments
           GITHUB_PR_NUMBER: ${{ github.event.pull_request.number || github.event.issue.number }}
@@ -79,7 +79,7 @@ Include these in your workflow's `jobs.<job_id>.permissions` section.
 
 **SAST (Static Analysis):**
 ```yaml
-- uses: SocketDev/socket-basics@1.0.7
+- uses: SocketDev/socket-basics@1.0.8
   with:
     github_token: ${{ secrets.GITHUB_TOKEN }}
     # Enable SAST for specific languages
@@ -93,7 +93,7 @@ Include these in your workflow's `jobs.<job_id>.permissions` section.
 
 **Secret Scanning:**
 ```yaml
-- uses: SocketDev/socket-basics@1.0.7
+- uses: SocketDev/socket-basics@1.0.8
   with:
     github_token: ${{ secrets.GITHUB_TOKEN }}
     secret_scanning_enabled: 'true'
@@ -105,7 +105,7 @@ Include these in your workflow's `jobs.<job_id>.permissions` section.
 
 **Container Scanning:**
 ```yaml
-- uses: SocketDev/socket-basics@1.0.7
+- uses: SocketDev/socket-basics@1.0.8
   with:
     github_token: ${{ secrets.GITHUB_TOKEN }}
     # Scan Docker images (auto-enables container scanning)
@@ -116,7 +116,7 @@ Include these in your workflow's `jobs.<job_id>.permissions` section.
 
 **Socket Tier 1 Reachability:**
 ```yaml
-- uses: SocketDev/socket-basics@1.0.7
+- uses: SocketDev/socket-basics@1.0.8
   with:
     github_token: ${{ secrets.GITHUB_TOKEN }}
     socket_tier_1_enabled: 'true'
@@ -125,7 +125,7 @@ Include these in your workflow's `jobs.<job_id>.permissions` section.
 ### Output Configuration
 
 ```yaml
-- uses: SocketDev/socket-basics@1.0.7
+- uses: SocketDev/socket-basics@1.0.8
   with:
     github_token: ${{ secrets.GITHUB_TOKEN }}
     python_sast_enabled: 'true'
@@ -155,7 +155,7 @@ Configure Socket Basics centrally from the [Socket Dashboard](https://socket.dev
 
 **Enable in workflow:**
 ```yaml
-- uses: SocketDev/socket-basics@1.0.7
+- uses: SocketDev/socket-basics@1.0.8
   env:
     # Optional: Explicitly set PR number for guaranteed PR comments
     GITHUB_PR_NUMBER: ${{ github.event.pull_request.number || github.event.issue.number }}
@@ -168,7 +168,7 @@ Configure Socket Basics centrally from the [Socket Dashboard](https://socket.dev
 
 > **Note:** You can also pass credentials using environment variables instead of the `with:` section:
 > ```yaml
-> - uses: SocketDev/socket-basics@1.0.7
+> - uses: SocketDev/socket-basics@1.0.8
 >   env:
 >     SOCKET_SECURITY_API_KEY: ${{ secrets.SOCKET_SECURITY_API_KEY }}
 >   with:
@@ -186,7 +186,7 @@ All notification integrations require Socket Enterprise.
 
 **Slack Notifications:**
 ```yaml
-- uses: SocketDev/socket-basics@1.0.7
+- uses: SocketDev/socket-basics@1.0.8
   with:
     github_token: ${{ secrets.GITHUB_TOKEN }}
     socket_org: ${{ secrets.SOCKET_ORG }}
@@ -198,7 +198,7 @@ All notification integrations require Socket Enterprise.
 
 **Jira Issue Creation:**
 ```yaml
-- uses: SocketDev/socket-basics@1.0.7
+- uses: SocketDev/socket-basics@1.0.8
   with:
     github_token: ${{ secrets.GITHUB_TOKEN }}
     socket_org: ${{ secrets.SOCKET_ORG }}
@@ -213,7 +213,7 @@ All notification integrations require Socket Enterprise.
 
 **Microsoft Teams:**
 ```yaml
-- uses: SocketDev/socket-basics@1.0.7
+- uses: SocketDev/socket-basics@1.0.8
   with:
     github_token: ${{ secrets.GITHUB_TOKEN }}
     socket_org: ${{ secrets.SOCKET_ORG }}
@@ -225,7 +225,7 @@ All notification integrations require Socket Enterprise.
 
 **Generic Webhook:**
 ```yaml
-- uses: SocketDev/socket-basics@1.0.7
+- uses: SocketDev/socket-basics@1.0.8
   with:
     github_token: ${{ secrets.GITHUB_TOKEN }}
     socket_org: ${{ secrets.SOCKET_ORG }}
@@ -237,7 +237,7 @@ All notification integrations require Socket Enterprise.
 
 **SIEM Integration:**
 ```yaml
-- uses: SocketDev/socket-basics@1.0.7
+- uses: SocketDev/socket-basics@1.0.8
   with:
     github_token: ${{ secrets.GITHUB_TOKEN }}
     socket_org: ${{ secrets.SOCKET_ORG }}
@@ -272,7 +272,7 @@ jobs:
       - uses: actions/checkout@v4
       
       - name: Run Socket Basics
-        uses: SocketDev/socket-basics@1.0.7
+        uses: SocketDev/socket-basics@1.0.8
         env:
           # Optional: Explicitly set PR number for guaranteed PR comments
           GITHUB_PR_NUMBER: ${{ github.event.pull_request.number || github.event.issue.number }}
@@ -319,7 +319,7 @@ jobs:
       - uses: actions/checkout@v4
       
       - name: Run Full Security Scan
-        uses: SocketDev/socket-basics@1.0.7
+        uses: SocketDev/socket-basics@1.0.8
         env:
           # Optional: Explicitly set PR number for guaranteed PR comments
           GITHUB_PR_NUMBER: ${{ github.event.pull_request.number || github.event.issue.number }}
@@ -369,10 +369,10 @@ jobs:
       - uses: actions/checkout@v4
       
       - name: Build Docker Image
-        run: docker build -t myapp:1.0.7:${{ github.sha }} .
+        run: docker build -t myapp:1.0.8:${{ github.sha }} .
       
       - name: Scan Container
-        uses: SocketDev/socket-basics@1.0.7
+        uses: SocketDev/socket-basics@1.0.8
         env:
           # Optional: Explicitly set PR number for guaranteed PR comments
           GITHUB_PR_NUMBER: ${{ github.event.pull_request.number || github.event.issue.number }}
@@ -404,7 +404,7 @@ jobs:
       - uses: actions/checkout@v4
       
       - name: Run Socket Basics
-        uses: SocketDev/socket-basics@1.0.7
+        uses: SocketDev/socket-basics@1.0.8
         env:
           # Optional: Explicitly set PR number for guaranteed PR comments
           GITHUB_PR_NUMBER: ${{ github.event.pull_request.number || github.event.issue.number }}
@@ -498,7 +498,7 @@ env:
 ```yaml
 steps:
   - uses: actions/checkout@v4  # Must be first
-  - uses: SocketDev/socket-basics@1.0.7
+  - uses: SocketDev/socket-basics@1.0.8
 ```
 
 ### PR Comments Not Appearing
