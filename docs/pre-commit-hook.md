@@ -39,7 +39,7 @@ git clone https://github.com/SocketDev/socket-basics.git
 cd socket-basics
 
 # Build the Docker image with version tag
-docker build -t socket-basics:1.0.9 .
+docker build -t socket-basics:1.0.10 .
 ```
 
 **2. Create pre-commit hook:**
