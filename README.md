@@ -18,12 +18,18 @@ on:
 
 jobs:
   security-scan:
+    permissions:
+      issues: write
+      contents: read
+      pull-requests: write
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
       
       - name: Run Socket Basics
-        uses: SocketDev/socket-basics@1.0.9
+        uses: SocketDev/socket-basics@1.0.10
+        env:
+          GITHUB_PR_NUMBER: ${{ github.event.pull_request.number || github.event.issue.number }}
         with:
           github_token: ${{ secrets.GITHUB_TOKEN }}
           socket_security_api_key: ${{ secrets.SOCKET_SECURITY_API_KEY }}
@@ -106,7 +112,9 @@ Configure scanning policies, notification channels, and rule sets for your entir
 
 **Dashboard-Configured (Enterprise):**
 ```yaml
-- uses: SocketDev/socket-basics@1.0.9
+- uses: SocketDev/socket-basics@1.0.10
+  env:
+    GITHUB_PR_NUMBER: ${{ github.event.pull_request.number || github.event.issue.number }}
   with:
     github_token: ${{ secrets.GITHUB_TOKEN }}
     socket_security_api_key: ${{ secrets.SOCKET_SECURITY_API_KEY }}
@@ -115,7 +123,9 @@ Configure scanning policies, notification channels, and rule sets for your entir
 
 **CLI-Configured:**
 ```yaml
-- uses: SocketDev/socket-basics@1.0.9
+- uses: SocketDev/socket-basics@1.0.10
+  env:
+    GITHUB_PR_NUMBER: ${{ github.event.pull_request.number || github.event.issue.number }}
   with:
     github_token: ${{ secrets.GITHUB_TOKEN }}
     python_sast_enabled: 'true'
@@ -129,10 +139,10 @@ Configure scanning policies, notification channels, and rule sets for your entir
 
 ```bash
 # Build with version tag
-docker build -t socketdev/socket-basics:1.0.9 .
+docker build -t socketdev/socket-basics:1.0.10 .
 
 # Run scan
-docker run --rm -v "$PWD:/workspace" socketdev/socket-basics:1.0.9 \
+docker run --rm -v "$PWD:/workspace" socketdev/socket-basics:1.0.10 \
   --workspace /workspace \
   --python-sast-enabled \
   --secret-scanning-enabled \
