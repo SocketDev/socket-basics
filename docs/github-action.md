@@ -29,12 +29,16 @@ on:
 
 jobs:
   security-scan:
+    permissions:
+      issues: write
+      contents: read
+      pull-requests: write
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
       
       - name: Run Socket Basics
-        uses: SocketDev/socket-basics@v1.0.4
+        uses: SocketDev/socket-basics@1.0.5
         with:
           github_token: ${{ secrets.GITHUB_TOKEN }}
           python_sast_enabled: 'true'
@@ -48,6 +52,19 @@ This will:
 
 ## Basic Configuration
 
+### Required Permissions
+
+Socket Basics requires the following permissions to post PR comments and create issues:
+
+```yaml
+permissions:
+  issues: write        # Create and update issues for findings
+  contents: read       # Read repository contents
+  pull-requests: write # Post comments on pull requests
+```
+
+Include these in your workflow's `jobs.<job_id>.permissions` section.
+
 ### Required Inputs
 
 **`github_token`** (required)
@@ -58,7 +75,7 @@ This will:
 
 **SAST (Static Analysis):**
 ```yaml
-- uses: SocketDev/socket-basics@v1.0.4
+- uses: SocketDev/socket-basics@1.0.5
   with:
     github_token: ${{ secrets.GITHUB_TOKEN }}
     # Enable SAST for specific languages
@@ -72,7 +89,7 @@ This will:
 
 **Secret Scanning:**
 ```yaml
-- uses: SocketDev/socket-basics@v1.0.4
+- uses: SocketDev/socket-basics@1.0.5
   with:
     github_token: ${{ secrets.GITHUB_TOKEN }}
     secret_scanning_enabled: 'true'
@@ -84,7 +101,7 @@ This will:
 
 **Container Scanning:**
 ```yaml
-- uses: SocketDev/socket-basics@v1.0.4
+- uses: SocketDev/socket-basics@1.0.5
   with:
     github_token: ${{ secrets.GITHUB_TOKEN }}
     # Scan Docker images (auto-enables container scanning)
@@ -95,7 +112,7 @@ This will:
 
 **Socket Tier 1 Reachability:**
 ```yaml
-- uses: SocketDev/socket-basics@v1.0.4
+- uses: SocketDev/socket-basics@1.0.5
   with:
     github_token: ${{ secrets.GITHUB_TOKEN }}
     socket_tier_1_enabled: 'true'
@@ -104,7 +121,7 @@ This will:
 ### Output Configuration
 
 ```yaml
-- uses: SocketDev/socket-basics@v1.0.4
+- uses: SocketDev/socket-basics@1.0.5
   with:
     github_token: ${{ secrets.GITHUB_TOKEN }}
     python_sast_enabled: 'true'
@@ -134,13 +151,23 @@ Configure Socket Basics centrally from the [Socket Dashboard](https://socket.dev
 
 **Enable in workflow:**
 ```yaml
-- uses: SocketDev/socket-basics@v1.0.4
+- uses: SocketDev/socket-basics@1.0.5
   with:
     github_token: ${{ secrets.GITHUB_TOKEN }}
     # Dashboard configuration (Enterprise required)
     socket_org: 'your-org-slug'
     socket_security_api_key: ${{ secrets.SOCKET_SECURITY_API_KEY }}
 ```
+
+> **Note:** You can also pass credentials using environment variables instead of the `with:` section:
+> ```yaml
+> - uses: SocketDev/socket-basics@1.0.5
+>   env:
+>     SOCKET_SECURITY_API_KEY: ${{ secrets.SOCKET_SECURITY_API_KEY }}
+>   with:
+>     github_token: ${{ secrets.GITHUB_TOKEN }}
+> ```
+> Both approaches work identically. Use whichever fits your workflow style.
 
 Your workflow will automatically use the settings configured in the dashboard.
 
@@ -152,7 +179,7 @@ All notification integrations require Socket Enterprise.
 
 **Slack Notifications:**
 ```yaml
-- uses: SocketDev/socket-basics@v1.0.4
+- uses: SocketDev/socket-basics@1.0.5
   with:
     github_token: ${{ secrets.GITHUB_TOKEN }}
     socket_org: ${{ secrets.SOCKET_ORG }}
@@ -164,7 +191,7 @@ All notification integrations require Socket Enterprise.
 
 **Jira Issue Creation:**
 ```yaml
-- uses: SocketDev/socket-basics@v1.0.4
+- uses: SocketDev/socket-basics@1.0.5
   with:
     github_token: ${{ secrets.GITHUB_TOKEN }}
     socket_org: ${{ secrets.SOCKET_ORG }}
@@ -179,7 +206,7 @@ All notification integrations require Socket Enterprise.
 
 **Microsoft Teams:**
 ```yaml
-- uses: SocketDev/socket-basics@v1.0.4
+- uses: SocketDev/socket-basics@1.0.5
   with:
     github_token: ${{ secrets.GITHUB_TOKEN }}
     socket_org: ${{ secrets.SOCKET_ORG }}
@@ -191,7 +218,7 @@ All notification integrations require Socket Enterprise.
 
 **Generic Webhook:**
 ```yaml
-- uses: SocketDev/socket-basics@v1.0.4
+- uses: SocketDev/socket-basics@1.0.5
   with:
     github_token: ${{ secrets.GITHUB_TOKEN }}
     socket_org: ${{ secrets.SOCKET_ORG }}
@@ -203,7 +230,7 @@ All notification integrations require Socket Enterprise.
 
 **SIEM Integration:**
 ```yaml
-- uses: SocketDev/socket-basics@v1.0.4
+- uses: SocketDev/socket-basics@1.0.5
   with:
     github_token: ${{ secrets.GITHUB_TOKEN }}
     socket_org: ${{ secrets.SOCKET_ORG }}
@@ -229,12 +256,16 @@ on:
 
 jobs:
   security-scan:
+    permissions:
+      issues: write
+      contents: read
+      pull-requests: write
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
       
       - name: Run Socket Basics
-        uses: SocketDev/socket-basics@v1.0.4
+        uses: SocketDev/socket-basics@1.0.5
         with:
           github_token: ${{ secrets.GITHUB_TOKEN }}
           socket_org: ${{ secrets.SOCKET_ORG }}
@@ -269,12 +300,16 @@ on:
 
 jobs:
   security-audit:
+    permissions:
+      issues: write
+      contents: read
+      pull-requests: write
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
       
       - name: Run Full Security Scan
-        uses: SocketDev/socket-basics@v1.0.4
+        uses: SocketDev/socket-basics@1.0.5
         with:
           github_token: ${{ secrets.GITHUB_TOKEN }}
           socket_org: ${{ secrets.SOCKET_ORG }}
@@ -312,15 +347,19 @@ on:
 
 jobs:
   container-scan:
+    permissions:
+      issues: write
+      contents: read
+      pull-requests: write
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
       
       - name: Build Docker Image
-        run: docker build -t myapp:1.0.4:${{ github.sha }} .
+        run: docker build -t myapp:1.0.5:${{ github.sha }} .
       
       - name: Scan Container
-        uses: SocketDev/socket-basics@v1.0.4
+        uses: SocketDev/socket-basics@1.0.5
         with:
           github_token: ${{ secrets.GITHUB_TOKEN }}
           
@@ -340,12 +379,16 @@ on: [pull_request]
 
 jobs:
   security-scan:
+    permissions:
+      issues: write
+      contents: read
+      pull-requests: write
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
       
       - name: Run Socket Basics
-        uses: SocketDev/socket-basics@v1.0.4
+        uses: SocketDev/socket-basics@1.0.5
         with:
           github_token: ${{ secrets.GITHUB_TOKEN }}
           
@@ -436,7 +479,7 @@ env:
 ```yaml
 steps:
   - uses: actions/checkout@v4  # Must be first
-  - uses: SocketDev/socket-basics@v1.0.4
+  - uses: SocketDev/socket-basics@1.0.5
 ```
 
 ### PR Comments Not Appearing

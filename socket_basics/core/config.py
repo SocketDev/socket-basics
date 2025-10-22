@@ -577,15 +577,19 @@ def load_socket_basics_config() -> Dict[str, Any] | None:
     
     logger.debug(f" API key check - SOCKET_SECURITY_API_KEY set: {bool(os.environ.get('SOCKET_SECURITY_API_KEY'))}")
     logger.debug(f" API key check - SOCKET_SECURITY_API_TOKEN set: {bool(os.environ.get('SOCKET_SECURITY_API_TOKEN'))}")
+    logger.debug(f" API key check - INPUT_SOCKET_SECURITY_API_KEY set: {bool(os.environ.get('INPUT_SOCKET_SECURITY_API_KEY'))}")
     logger.debug(f" Final api_key available: {bool(api_key)}")
     
     if not api_key:
-        logger.debug(" Socket API key not available, returning free plan config")
+        logger.info("Socket API key not detected - running in free plan mode (limited features)")
+        logger.debug("Checked: SOCKET_SECURITY_API_KEY, SOCKET_SECURITY_API_TOKEN, INPUT_SOCKET_SECURITY_API_KEY")
         return {
             'socket_plan': 'free',
             'socket_has_enterprise': False,
             'available_notifiers': ['console_tabular', 'console_json']
         }
+    
+    logger.info("Socket API key detected - attempting to load dashboard configuration")
     
     org_slug = (
         os.environ.get('SOCKET_ORG_SLUG')
@@ -702,7 +706,18 @@ def load_socket_basics_config() -> Dict[str, Any] | None:
 
 def load_explicit_env_config() -> Dict[str, Any]:
     """Load only explicitly set environment variables (not defaults)"""
+    logger = logging.getLogger(__name__)
     config = {}
+    
+    # Log which API key sources are available for debugging
+    api_key_sources = {
+        'SOCKET_SECURITY_API_KEY': bool(os.environ.get('SOCKET_SECURITY_API_KEY')),
+        'SOCKET_SECURITY_API_TOKEN': bool(os.environ.get('SOCKET_SECURITY_API_TOKEN')),
+        'INPUT_SOCKET_SECURITY_API_KEY': bool(os.environ.get('INPUT_SOCKET_SECURITY_API_KEY')),
+    }
+    found_sources = [k for k, v in api_key_sources.items() if v]
+    if found_sources:
+        logger.debug(f"API key sources detected: {', '.join(found_sources)}")
     
     # Core settings - only if explicitly set
     if 'GITHUB_WORKSPACE' in os.environ:

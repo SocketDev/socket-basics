@@ -136,8 +136,12 @@ class NotificationManager:
                         enabled = True
                         if github_token:
                             enable_cause = 'env:GITHUB_TOKEN or INPUT_GITHUB_TOKEN'
+                            logger.info("GitHub PR notifier will be enabled - token detected")
                         else:
                             enable_cause = 'app_config:github_token'
+                            logger.info("GitHub PR notifier will be enabled - token in config")
+                    else:
+                        logger.debug("GitHub PR notifier will NOT be enabled - no GITHUB_TOKEN found")
             except Exception:
                 pass
 

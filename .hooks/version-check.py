@@ -11,7 +11,7 @@ This script:
    - docs/pre-commit-hook.md (Docker build tags)
 
 Pattern matching:
-- GitHub Actions: SocketDev/socket-basics@vX.X.X -> @vNEW_VERSION
+- GitHub Actions: SocketDev/socket-basics@X.X.X -> @NEW_VERSION (no v prefix)
 - Docker builds: docker build -t IMAGE_NAME -> docker build -t IMAGE_NAME:NEW_VERSION
 
 Usage:
@@ -39,8 +39,8 @@ README_FILES = [
 
 VERSION_PATTERN = re.compile(r"__version__\s*=\s*['\"]([^'\"]+)['\"]")
 PYPROJECT_PATTERN = re.compile(r'^version\s*=\s*"([^"]+)"$', re.MULTILINE)
-# Pattern to match SocketDev/socket-basics@vX.X.X or @vX.X.X
-ACTION_VERSION_PATTERN = re.compile(r'(SocketDev/socket-basics|socket-basics)@v\d+\.\d+\.\d+')
+# Pattern to match SocketDev/socket-basics@X.X.X or @X.X.X (without v prefix)
+ACTION_VERSION_PATTERN = re.compile(r'(SocketDev/socket-basics|socket-basics)@v?\d+\.\d+\.\d+')
 # Pattern to match docker build with optional version tag (handles both new and existing tags)
 DOCKER_BUILD_PATTERN = re.compile(r'docker build (?:--platform [^\s]+ )?-t ([^\s:]+)(?::\d+\.\d+\.\d+)?')
 # Pattern to match docker run commands with version tags
@@ -117,8 +117,8 @@ def update_readme_versions(version: str):
         content = readme_file.read_text()
         original_content = content
         
-        # Update action version references (SocketDev/socket-basics@vX.X.X)
-        content = ACTION_VERSION_PATTERN.sub(rf'\1@v{version}', content)
+        # Update action version references (SocketDev/socket-basics@X.X.X without v prefix)
+        content = ACTION_VERSION_PATTERN.sub(rf'\1@{version}', content)
         
         # Update docker build commands to include version tag
         def docker_build_replacement(match):
