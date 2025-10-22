@@ -6,9 +6,9 @@ runs:
   using: "docker"
   image: "Dockerfile"
   env:
-    # GitHub context variables are automatically available in Docker containers
-    # Only explicit input mappings need to be defined here
+    # Core GitHub variables (these are automatically available, but we explicitly pass GITHUB_TOKEN)
     GITHUB_TOKEN: ${{ inputs.github_token }}
+    # Input mappings for all parameters
     INPUT_ALL_LANGUAGES_ENABLED: ${{ inputs.all_languages_enabled }}
     INPUT_ALL_RULES_ENABLED: ${{ inputs.all_rules_enabled }}
     INPUT_CONTAINER_IMAGES_TO_SCAN: ${{ inputs.container_images }}
