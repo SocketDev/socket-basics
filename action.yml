@@ -6,21 +6,9 @@ runs:
   using: "docker"
   image: "Dockerfile"
   env:
-    # GitHub context variables (automatically provided by GitHub Actions)
-    GITHUB_EVENT_PATH: ${{ github.event_path }}
-    GITHUB_EVENT_NAME: ${{ github.event_name }}
-    GITHUB_REPOSITORY: ${{ github.repository }}
-    GITHUB_REF: ${{ github.ref }}
-    GITHUB_HEAD_REF: ${{ github.head_ref }}
-    GITHUB_BASE_REF: ${{ github.base_ref }}
-    GITHUB_SHA: ${{ github.sha }}
-    GITHUB_API_URL: ${{ github.api_url }}
+    # GitHub context variables are automatically available in Docker containers
+    # Only explicit input mappings need to be defined here
     GITHUB_TOKEN: ${{ inputs.github_token }}
-    # Pass PR number based on event type
-    # For pull_request events, use pull_request.number
-    # For issue_comment events (comments on PRs), use issue.number
-    GITHUB_PR_NUMBER: ${{ github.event.pull_request.number || github.event.issue.number }}
-    # Input mappings for all parameters
     INPUT_ALL_LANGUAGES_ENABLED: ${{ inputs.all_languages_enabled }}
     INPUT_ALL_RULES_ENABLED: ${{ inputs.all_rules_enabled }}
     INPUT_CONTAINER_IMAGES_TO_SCAN: ${{ inputs.container_images }}
