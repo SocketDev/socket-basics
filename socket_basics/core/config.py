@@ -1313,7 +1313,15 @@ def _detect_git_changed_files(workspace_path: str, mode: str = 'staged', commit:
     """
     try:
         from subprocess import check_output, CalledProcessError
-        ws = Path(workspace_path)
+        import subprocess
+        
+        # Prefer GITHUB_WORKSPACE if set (GitHub Actions environment)
+        # Otherwise use the provided workspace_path
+        if os.environ.get('GITHUB_WORKSPACE'):
+            ws = Path(os.environ['GITHUB_WORKSPACE'])
+        else:
+            ws = Path(workspace_path) if workspace_path else Path.cwd()
+            
         if not ws.exists():
             return []
 
@@ -1322,19 +1330,29 @@ def _detect_git_changed_files(workspace_path: str, mode: str = 'staged', commit:
         if not git_dir.exists():
             return []
 
-        if mode == 'staged':
-            # staged but not yet committed
-            out = check_output(['git', '-C', str(ws), 'diff', '--name-only', '--cached'], text=True)
-        elif mode == 'current-commit':
-            # files that are part of HEAD commit
-            out = check_output(['git', '-C', str(ws), 'diff-tree', '--no-commit-id', '--name-only', '-r', 'HEAD'], text=True)
-        elif mode == 'commit' and commit:
-            out = check_output(['git', '-C', str(ws), 'diff-tree', '--no-commit-id', '--name-only', '-r', commit], text=True)
-        else:
-            return []
+        # Change to workspace directory before running git commands
+        # This ensures git runs in the correct repository context
+        original_cwd = os.getcwd()
+        try:
+            os.chdir(str(ws))
+            
+            if mode == 'staged':
+                # staged but not yet committed
+                out = check_output(['git', 'diff', '--name-only', '--cached'], text=True, stderr=subprocess.DEVNULL)
+            elif mode == 'current-commit':
+                # files that are part of HEAD commit
+                out = check_output(['git', 'diff-tree', '--no-commit-id', '--name-only', '-r', 'HEAD'], text=True, stderr=subprocess.DEVNULL)
+            elif mode == 'commit' and commit:
+                out = check_output(['git', 'diff-tree', '--no-commit-id', '--name-only', '-r', commit], text=True, stderr=subprocess.DEVNULL)
+            else:
+                return []
 
-        files = [line.strip() for line in out.splitlines() if line.strip()]
-        return files
+            files = [line.strip() for line in out.splitlines() if line.strip()]
+            return files
+        finally:
+            # Always restore original working directory
+            os.chdir(original_cwd)
+            
     except CalledProcessError:
         return []
     except Exception:
