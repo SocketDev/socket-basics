@@ -156,17 +156,29 @@ class GithubPRNotifier(BaseNotifier):
         # Try environment variables first
         pr_env = get_github_pr_number()
         if pr_env and pr_env.isdigit():
+            logger.info(f"GithubPRNotifier: Using PR number from environment: {pr_env}")
             return int(pr_env)
         
+        logger.debug(f"GithubPRNotifier: No PR number in environment (GITHUB_PR_NUMBER: {pr_env or 'not set'})")
+        
         # Try to find via API
-        return self._find_pr_for_branch()
+        pr_number = self._find_pr_for_branch()
+        if pr_number:
+            logger.info(f"GithubPRNotifier: Found PR number via API: {pr_number}")
+        else:
+            logger.debug("GithubPRNotifier: Could not find PR number via API")
+        
+        return pr_number
 
     def _find_pr_for_branch(self) -> Optional[int]:
         """Find PR number for the given branch using API."""
         owner_repo = self.repository
         branch = self.config.get('branch')
         
+        logger.debug(f"GithubPRNotifier: Searching for PR - repository: {owner_repo}, branch: {branch}")
+        
         if not self.repository or not branch:
+            logger.debug(f"GithubPRNotifier: Missing required info - repository: {bool(self.repository)}, branch: {bool(branch)}")
             return None
             
         try:
@@ -179,11 +191,18 @@ class GithubPRNotifier(BaseNotifier):
             url = f"{self.api_base}/repos/{self.repository}/pulls"
             params = {'head': f"{self.repository.split('/')[0]}:{branch}", 'state': 'open'}
             
+            logger.debug(f"GithubPRNotifier: API request to {url} with params: {params}")
+            
             resp = requests.get(url, headers=headers, params=params, timeout=10)
             if resp.status_code == 200:
                 prs = resp.json()
                 if prs:
+                    logger.debug(f"GithubPRNotifier: Found {len(prs)} open PR(s) for branch {branch}")
                     return prs[0]['number']
+                else:
+                    logger.debug(f"GithubPRNotifier: No open PRs found for branch {branch}")
+            else:
+                logger.warning(f"GithubPRNotifier: API request failed with status {resp.status_code}")
         except Exception as e:
             logger.debug('GithubPRNotifier: failed to find PR for branch %s: %s', branch, e)
         

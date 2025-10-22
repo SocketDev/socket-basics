@@ -570,30 +570,39 @@ def load_socket_basics_config() -> Dict[str, Any] | None:
     logger.debug(" load_socket_basics_config() called")
     
     # Check if Socket API integration is available
+    # Support both direct env vars and GitHub Actions INPUT_ prefixed vars
     api_key = (
         os.environ.get('SOCKET_SECURITY_API_KEY')
         or os.environ.get('SOCKET_SECURITY_API_TOKEN')
+        or os.environ.get('INPUT_SOCKET_SECURITY_API_KEY')
     )
     
     logger.debug(f" API key check - SOCKET_SECURITY_API_KEY set: {bool(os.environ.get('SOCKET_SECURITY_API_KEY'))}")
     logger.debug(f" API key check - SOCKET_SECURITY_API_TOKEN set: {bool(os.environ.get('SOCKET_SECURITY_API_TOKEN'))}")
+    logger.debug(f" API key check - INPUT_SOCKET_SECURITY_API_KEY set: {bool(os.environ.get('INPUT_SOCKET_SECURITY_API_KEY'))}")
     logger.debug(f" Final api_key available: {bool(api_key)}")
     
     if not api_key:
-        logger.debug(" Socket API key not available, returning free plan config")
+        logger.info("Socket API key not detected - running in free plan mode (limited features)")
+        logger.debug("Checked: SOCKET_SECURITY_API_KEY, SOCKET_SECURITY_API_TOKEN, INPUT_SOCKET_SECURITY_API_KEY")
         return {
             'socket_plan': 'free',
             'socket_has_enterprise': False,
             'available_notifiers': ['console_tabular', 'console_json']
         }
     
+    logger.info("Socket API key detected - attempting to load dashboard configuration")
+    
+    # Support both direct env vars and GitHub Actions INPUT_ prefixed vars
     org_slug = (
         os.environ.get('SOCKET_ORG_SLUG')
         or os.environ.get('SOCKET_ORG')
+        or os.environ.get('INPUT_SOCKET_ORG')
     )
     
     logger.debug(f" SOCKET_ORG_SLUG: {os.environ.get('SOCKET_ORG_SLUG', 'not set')}")
     logger.debug(f" SOCKET_ORG: {os.environ.get('SOCKET_ORG', 'not set')}")
+    logger.debug(f" INPUT_SOCKET_ORG: {os.environ.get('INPUT_SOCKET_ORG', 'not set')}")
     logger.debug(f" org_slug from env: {org_slug or 'not set - will auto-discover'}")
     
     try:
@@ -702,7 +711,18 @@ def load_socket_basics_config() -> Dict[str, Any] | None:
 
 def load_explicit_env_config() -> Dict[str, Any]:
     """Load only explicitly set environment variables (not defaults)"""
+    logger = logging.getLogger(__name__)
     config = {}
+    
+    # Log which API key sources are available for debugging
+    api_key_sources = {
+        'SOCKET_SECURITY_API_KEY': bool(os.environ.get('SOCKET_SECURITY_API_KEY')),
+        'SOCKET_SECURITY_API_TOKEN': bool(os.environ.get('SOCKET_SECURITY_API_TOKEN')),
+        'INPUT_SOCKET_SECURITY_API_KEY': bool(os.environ.get('INPUT_SOCKET_SECURITY_API_KEY')),
+    }
+    found_sources = [k for k, v in api_key_sources.items() if v]
+    if found_sources:
+        logger.debug(f"API key sources detected: {', '.join(found_sources)}")
     
     # Core settings - only if explicitly set
     if 'GITHUB_WORKSPACE' in os.environ:
@@ -926,11 +946,10 @@ def normalize_api_config(api_config: Dict[str, Any]) -> Dict[str, Any]:
 def merge_json_and_env_config(json_config: Dict[str, Any] | None = None) -> Dict[str, Any]:
     """Merge JSON configuration with environment variables
     
-    Priority order:
-    1. Explicitly set environment variables (highest priority)
-    2. JSON config (if provided)
-    3. Socket Basics API config (if no JSON config and API available)
-    4. Environment defaults (lowest priority)
+    Priority order (highest to lowest):
+    1. CLI options (handled separately via argparse, highest priority)
+    2. Socket Basics API config / JSON config (dashboard settings)
+    3. Environment variables from action.yml (lowest priority - defaults)
     
     Args:
         json_config: Optional dictionary from JSON config file
@@ -938,10 +957,11 @@ def merge_json_and_env_config(json_config: Dict[str, Any] | None = None) -> Dict
     Returns:
         Merged configuration dictionary
     """
-    # Start with environment defaults
+    # Start with environment defaults (lowest priority)
     config = load_config_from_env()
     
     # Override with Socket Basics API config if no explicit JSON config provided
+    # API config takes precedence over environment defaults
     if not json_config:
         logger = logging.getLogger(__name__)
         logger.debug(" No JSON config provided, attempting to load Socket Basics API config")
@@ -951,25 +971,20 @@ def merge_json_and_env_config(json_config: Dict[str, Any] | None = None) -> Dict
             # Normalize camelCase API keys to snake_case internal format
             normalized_config = normalize_api_config(socket_basics_config)
             config.update(normalized_config)
-            logging.getLogger(__name__).info("Loaded Socket Basics configuration from API")
+            logging.getLogger(__name__).info("Loaded Socket Basics API configuration (overrides environment defaults)")
         else:
             logger.debug(" No Socket Basics API config loaded")
     
     # Override with explicit JSON config if provided
+    # JSON config also takes precedence over environment defaults
     if json_config:
         # Also normalize JSON config in case it comes from API
         normalized_json = normalize_api_config(json_config)
         config.update(normalized_json)
+        logging.getLogger(__name__).info("Loaded JSON configuration (overrides environment defaults)")
     
-    # Finally, override with explicitly set environment variables (highest priority)
-    explicit_env = load_explicit_env_config()
-    config.update(explicit_env)
-    
-    logger = logging.getLogger(__name__)
-    if json_config:
-        logger.info("Merged JSON configuration with environment variables (explicit env takes precedence)")
-    elif socket_basics_config:
-        logger.info("Merged Socket Basics API configuration with environment variables (explicit env takes precedence)")
+    # Note: CLI arguments are handled separately and take highest priority
+    # They override the config object after this merge completes
     
     return config
 

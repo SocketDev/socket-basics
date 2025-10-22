@@ -5,22 +5,389 @@ author: "Socket"
 runs:
   using: "docker"
   image: "Dockerfile"
+  env:
+    # Core GitHub variables (these are automatically available, but we explicitly pass GITHUB_TOKEN)
+    GITHUB_TOKEN: ${{ inputs.github_token }}
+    # Input mappings for all parameters
+    INPUT_ALL_LANGUAGES_ENABLED: ${{ inputs.all_languages_enabled }}
+    INPUT_ALL_RULES_ENABLED: ${{ inputs.all_rules_enabled }}
+    INPUT_CONTAINER_IMAGES_TO_SCAN: ${{ inputs.container_images }}
+    INPUT_CPP_DISABLED_RULES: ${{ inputs.cpp_disabled_rules }}
+    INPUT_CPP_ENABLED_RULES: ${{ inputs.cpp_enabled_rules }}
+    INPUT_CPP_SAST_ENABLED: ${{ inputs.cpp_sast_enabled }}
+    INPUT_CSHARP_DISABLED_RULES: ${{ inputs.csharp_disabled_rules }}
+    INPUT_CSHARP_ENABLED_RULES: ${{ inputs.csharp_enabled_rules }}
+    INPUT_CSHARP_SAST_ENABLED: ${{ inputs.csharp_sast_enabled }}
+    INPUT_C_DISABLED_RULES: ${{ inputs.c_disabled_rules }}
+    INPUT_C_ENABLED_RULES: ${{ inputs.c_enabled_rules }}
+    INPUT_C_SAST_ENABLED: ${{ inputs.c_sast_enabled }}
+    INPUT_DISABLE_ALL_SECRETS: ${{ inputs.disable_all_secrets }}
+    INPUT_DOCKERFILES: ${{ inputs.dockerfiles }}
+    INPUT_DOTNET_DISABLED_RULES: ${{ inputs.dotnet_disabled_rules }}
+    INPUT_DOTNET_ENABLED_RULES: ${{ inputs.dotnet_enabled_rules }}
+    INPUT_DOTNET_SAST_ENABLED: ${{ inputs.dotnet_sast_enabled }}
+    INPUT_ELIXIR_DISABLED_RULES: ${{ inputs.elixir_disabled_rules }}
+    INPUT_ELIXIR_ENABLED_RULES: ${{ inputs.elixir_enabled_rules }}
+    INPUT_ELIXIR_SAST_ENABLED: ${{ inputs.elixir_sast_enabled }}
+    INPUT_ERLANG_SAST_ENABLED: ${{ inputs.erlang_sast_enabled }}
+    INPUT_GITHUB_TOKEN: ${{ inputs.github_token }}
+    INPUT_GOLANG_SAST_ENABLED: ${{ inputs.golang_sast_enabled }}
+    INPUT_GO_DISABLED_RULES: ${{ inputs.go_disabled_rules }}
+    INPUT_GO_ENABLED_RULES: ${{ inputs.go_enabled_rules }}
+    INPUT_GO_SAST_ENABLED: ${{ inputs.go_sast_enabled }}
+    INPUT_JAVASCRIPT_DISABLED_RULES: ${{ inputs.javascript_disabled_rules }}
+    INPUT_JAVASCRIPT_ENABLED_RULES: ${{ inputs.javascript_enabled_rules }}
+    INPUT_JAVASCRIPT_SAST_ENABLED: ${{ inputs.javascript_sast_enabled }}
+    INPUT_JAVA_DISABLED_RULES: ${{ inputs.java_disabled_rules }}
+    INPUT_JAVA_ENABLED_RULES: ${{ inputs.java_enabled_rules }}
+    INPUT_JAVA_SAST_ENABLED: ${{ inputs.java_sast_enabled }}
+    INPUT_JIRA_API_TOKEN: ${{ inputs.jira_api_token }}
+    INPUT_JIRA_EMAIL: ${{ inputs.jira_email }}
+    INPUT_JIRA_PROJECT: ${{ inputs.project }}
+    INPUT_JIRA_URL: ${{ inputs.server }}
+    INPUT_KOTLIN_DISABLED_RULES: ${{ inputs.kotlin_disabled_rules }}
+    INPUT_KOTLIN_ENABLED_RULES: ${{ inputs.kotlin_enabled_rules }}
+    INPUT_KOTLIN_SAST_ENABLED: ${{ inputs.kotlin_sast_enabled }}
+    INPUT_MSTEAMS_WEBHOOK_URL: ${{ inputs.msteams_webhook_url }}
+    INPUT_MS_SENTINEL_KEY: ${{ inputs.ms_sentinel_key }}
+    INPUT_MS_SENTINEL_WORKSPACE_ID: ${{ inputs.ms_sentinel_workspace_id }}
+    INPUT_PHP_DISABLED_RULES: ${{ inputs.php_disabled_rules }}
+    INPUT_PHP_ENABLED_RULES: ${{ inputs.php_enabled_rules }}
+    INPUT_PHP_SAST_ENABLED: ${{ inputs.php_sast_enabled }}
+    INPUT_PYTHON_DISABLED_RULES: ${{ inputs.python_disabled_rules }}
+    INPUT_PYTHON_ENABLED_RULES: ${{ inputs.python_enabled_rules }}
+    INPUT_PYTHON_SAST_ENABLED: ${{ inputs.python_sast_enabled }}
+    INPUT_RUBY_DISABLED_RULES: ${{ inputs.ruby_disabled_rules }}
+    INPUT_RUBY_ENABLED_RULES: ${{ inputs.ruby_enabled_rules }}
+    INPUT_RUBY_SAST_ENABLED: ${{ inputs.ruby_sast_enabled }}
+    INPUT_RUST_DISABLED_RULES: ${{ inputs.rust_disabled_rules }}
+    INPUT_RUST_ENABLED_RULES: ${{ inputs.rust_enabled_rules }}
+    INPUT_RUST_SAST_ENABLED: ${{ inputs.rust_sast_enabled }}
+    INPUT_SCALA_DISABLED_RULES: ${{ inputs.scala_disabled_rules }}
+    INPUT_SCALA_ENABLED_RULES: ${{ inputs.scala_enabled_rules }}
+    INPUT_SCALA_SAST_ENABLED: ${{ inputs.scala_sast_enabled }}
+    INPUT_SECRET_SCANNING_ENABLED: ${{ inputs.secret_scanning_enabled }}
+    INPUT_SLACK_WEBHOOK_URL: ${{ inputs.slack_webhook_url }}
+    INPUT_SOCKET_ORG: ${{ inputs.socket_org }}
+    INPUT_SOCKET_SECURITY_API_KEY: ${{ inputs.socket_security_api_key }}
+    INPUT_SUMOLOGIC_ENDPOINT: ${{ inputs.sumologic_endpoint }}
+    INPUT_SWIFT_DISABLED_RULES: ${{ inputs.swift_disabled_rules }}
+    INPUT_SWIFT_ENABLED_RULES: ${{ inputs.swift_enabled_rules }}
+    INPUT_SWIFT_SAST_ENABLED: ${{ inputs.swift_sast_enabled }}
+    INPUT_TRIVY_DISABLED_RULES: ${{ inputs.trivy_disabled_rules }}
+    INPUT_TRIVY_IMAGE_SCANNING_DISABLED: ${{ inputs.trivy_image_scanning_disabled }}
+    INPUT_TRIVY_NOTIFICATION_METHOD: ${{ inputs.trivy_notification_method }}
+    INPUT_TRIVY_VULN_ENABLED: ${{ inputs.trivy_vuln_enabled }}
+    INPUT_TRUFFLEHOG_EXCLUDE_DIR: ${{ inputs.trufflehog_exclude_dir }}
+    INPUT_TRUFFLEHOG_NOTIFICATION_METHOD: ${{ inputs.notification_method }}
+    INPUT_TRUFFLEHOG_SHOW_UNVERIFIED: ${{ inputs.trufflehog_show_unverified }}
+    INPUT_WEBHOOK_URL: ${{ inputs.webhook_url }}
+    SOCKET_ADDITIONAL_PARAMS: ${{ inputs.socket_additional_params }}
+    SOCKET_TIER_1_ENABLED: ${{ inputs.socket_tier_1_enabled }}
 
 inputs:
-  # Socket Configuration
   socket_org:
     description: "Socket organization slug (required for Enterprise features)"
     required: false
     default: ""
-  
   socket_security_api_key:
     description: "Socket Security API key (required for Enterprise features and Dashboard configuration)"
     required: false
     default: ""
-
-  # GitHub Integration
   github_token:
     description: "GitHub token for PR comments and API access"
+    required: false
+    default: ""
+  GITHUB_API_URL:
+    description: "Github Api Url"
+    required: false
+    default: ""
+  all_languages_enabled:
+    description: "Enable SAST for all supported languages"
+    required: false
+    default: "false"
+  all_rules_enabled:
+    description: "Run all bundled SAST rules regardless of language filters"
+    required: false
+    default: "false"
+  c_disabled_rules:
+    description: "Comma-separated list of C SAST rules to disable"
+    required: false
+    default: ""
+  c_enabled_rules:
+    description: "Comma-separated list of C SAST rules to enable (default: high-confidence rules)"
+    required: false
+    default: "c-buffer-overflow,c-format-string-vulnerability,c-command-injection,c-sql-injection,c-use-after-free,c-hardcoded-secrets,c-weak-crypto,c-ssl-issues"
+  c_sast_enabled:
+    description: "Enable C SAST scanning"
+    required: false
+    default: "false"
+  container_images:
+    description: "Comma-separated list of container images to scan (auto-enables image scanning)"
+    required: false
+    default: ""
+  cpp_disabled_rules:
+    description: "Comma-separated list of C++ SAST rules to disable"
+    required: false
+    default: ""
+  cpp_enabled_rules:
+    description: "Comma-separated list of C++ SAST rules to enable (default: high-confidence rules)"
+    required: false
+    default: "c-buffer-overflow,c-format-string-vulnerability,c-command-injection,c-sql-injection,c-use-after-free,c-hardcoded-secrets,c-weak-crypto,c-ssl-issues,cpp-unsafe-cast,cpp-memory-management"
+  cpp_sast_enabled:
+    description: "Enable C++ SAST scanning"
+    required: false
+    default: "false"
+  csharp_disabled_rules:
+    description: "Comma-separated list of C# SAST rules to disable"
+    required: false
+    default: ""
+  csharp_enabled_rules:
+    description: "Comma-separated list of C# SAST rules to enable (default: high-confidence rules)"
+    required: false
+    default: "dotnet-sql-injection,dotnet-command-injection,dotnet-code-injection,dotnet-unsafe-deserialization,dotnet-ldap-injection,dotnet-hardcoded-credentials,dotnet-ssl-bypass,dotnet-xxe-vulnerability,dotnet-xpath-injection"
+  csharp_sast_enabled:
+    description: "Enable C# SAST scanning"
+    required: false
+    default: "false"
+  disable_all_secrets:
+    description: "Disable all secret scanning features"
+    required: false
+    default: "false"
+  dockerfiles:
+    description: "Comma-separated list of Dockerfiles to scan (auto-enables Dockerfile scanning)"
+    required: false
+    default: ""
+  dotnet_disabled_rules:
+    description: "Comma-separated list of .NET SAST rules to disable"
+    required: false
+    default: ""
+  dotnet_enabled_rules:
+    description: "Comma-separated list of .NET SAST rules to enable (default: high-confidence rules)"
+    required: false
+    default: "dotnet-sql-injection,dotnet-command-injection,dotnet-code-injection,dotnet-unsafe-deserialization,dotnet-ldap-injection,dotnet-hardcoded-credentials,dotnet-ssl-bypass,dotnet-xxe-vulnerability,dotnet-xpath-injection"
+  dotnet_sast_enabled:
+    description: "Enable .NET SAST scanning"
+    required: false
+    default: "false"
+  elixir_disabled_rules:
+    description: "Comma-separated list of Elixir SAST rules to disable"
+    required: false
+    default: ""
+  elixir_enabled_rules:
+    description: "Comma-separated list of Elixir SAST rules to enable (default: high-confidence rules)"
+    required: false
+    default: "elixir-code-injection,elixir-sql-injection,elixir-command-injection,elixir-unsafe-deserialization,elixir-hardcoded-secrets,elixir-phoenix-ecto-injection"
+  elixir_sast_enabled:
+    description: "Enable Elixir SAST scanning"
+    required: false
+    default: "false"
+  erlang_sast_enabled:
+    description: "Enable Erlang SAST scanning"
+    required: false
+    default: "false"
+  go_disabled_rules:
+    description: "Comma-separated list of Go SAST rules to disable"
+    required: false
+    default: ""
+  go_enabled_rules:
+    description: "Comma-separated list of Go SAST rules to enable (default: high-confidence rules)"
+    required: false
+    default: "go-hardcoded-credentials,go-bind-all-interfaces,go-unsafe-usage,go-ssh-insecure-ignore-host-key,go-profiling-endpoint-exposed,go-decompression-bomb,go-sql-format-string"
+  go_sast_enabled:
+    description: "Enable Go SAST scanning"
+    required: false
+    default: "false"
+  golang_sast_enabled:
+    description: "Enable Golang SAST scanning"
+    required: false
+    default: "false"
+  java_disabled_rules:
+    description: "Comma-separated list of Java SAST rules to disable"
+    required: false
+    default: ""
+  java_enabled_rules:
+    description: "Comma-separated list of Java SAST rules to enable (default: high-confidence rules)"
+    required: false
+    default: "java-sql-injection,java-unsafe-deserialization,java-command-injection,java-ldap-injection,java-hardcoded-credentials,java-weak-crypto-md5,java-weak-crypto-sha1,java-xxe-vulnerability,java-ssl-bypass,java-weak-ssl-version,java-jndi-injection,java-el-injection"
+  java_sast_enabled:
+    description: "Enable Java SAST scanning"
+    required: false
+    default: "false"
+  javascript_disabled_rules:
+    description: "Comma-separated list of JavaScript/TypeScript SAST rules to disable"
+    required: false
+    default: ""
+  javascript_enabled_rules:
+    description: "Comma-separated list of JavaScript/TypeScript SAST rules to enable (default: high-confidence rules)"
+    required: false
+    default: "js-eval-usage,js-sql-injection,js-command-injection,js-prototype-pollution,js-xss-innerhtml,js-path-traversal,js-tls-reject-unauthorized-false,js-weak-crypto-md5"
+  javascript_sast_enabled:
+    description: "Enable JavaScript/TypeScript SAST scanning"
+    required: false
+    default: "false"
+  jira_api_token:
+    description: "Jira Api Token"
+    required: false
+    default: ""
+  jira_email:
+    description: "Jira Email"
+    required: false
+    default: ""
+  kotlin_disabled_rules:
+    description: "Comma-separated list of Kotlin SAST rules to disable"
+    required: false
+    default: ""
+  kotlin_enabled_rules:
+    description: "Comma-separated list of Kotlin SAST rules to enable (default: high-confidence rules)"
+    required: false
+    default: "kotlin-sql-injection,kotlin-command-injection,kotlin-code-injection,kotlin-unsafe-deserialization,kotlin-hardcoded-secrets,kotlin-ssl-bypass,kotlin-xxe-vulnerability,kotlin-ldap-injection"
+  kotlin_sast_enabled:
+    description: "Enable Kotlin SAST scanning"
+    required: false
+    default: "false"
+  ms_sentinel_key:
+    description: "Ms Sentinel Key"
+    required: false
+    default: ""
+  ms_sentinel_workspace_id:
+    description: "Ms Sentinel Workspace Id"
+    required: false
+    default: ""
+  msteams_webhook_url:
+    description: "MS Teams incoming webhook URL (also reads MSTEAMS_WEBHOOK_URL or INPUT_MSTEAMS_WEBHOOK_URL)"
+    required: false
+    default: ""
+  notification_method:
+    description: "Notification method for TruffleHog (e.g., console, slack)"
+    required: false
+    default: ""
+  php_disabled_rules:
+    description: "Comma-separated list of PHP SAST rules to disable"
+    required: false
+    default: ""
+  php_enabled_rules:
+    description: "Comma-separated list of PHP SAST rules to enable (default: high-confidence rules)"
+    required: false
+    default: "php-code-injection,php-sql-injection,php-command-injection,php-unsafe-deserialization,php-ldap-injection,php-file-inclusion,php-xxe-vulnerability,php-hardcoded-secrets,php-path-traversal"
+  php_sast_enabled:
+    description: "Enable PHP SAST scanning"
+    required: false
+    default: "false"
+  project:
+    description: "Project"
+    required: false
+    default: ""
+  python_disabled_rules:
+    description: "Comma-separated list of Python SAST rules to disable"
+    required: false
+    default: ""
+  python_enabled_rules:
+    description: "Comma-separated list of Python SAST rules to enable (default: high-confidence rules)"
+    required: false
+    default: "python-exec-used,python-bad-file-permissions,python-hardcoded-password-string,python-eval-usage,python-request-without-cert-validation,python-ssl-bad-version,python-subprocess-shell-true,python-start-process-with-shell,python-sql-injection-format,python-flask-debug-true,python-jinja2-autoescape-false"
+  python_sast_enabled:
+    description: "Enable Python SAST scanning"
+    required: false
+    default: "false"
+  ruby_disabled_rules:
+    description: "Comma-separated list of Ruby SAST rules to disable"
+    required: false
+    default: ""
+  ruby_enabled_rules:
+    description: "Comma-separated list of Ruby SAST rules to enable (default: high-confidence rules)"
+    required: false
+    default: "ruby-eval-injection,ruby-command-injection,ruby-sql-injection,ruby-unsafe-deserialization,ruby-hardcoded-secrets,ruby-ssl-verification-bypass,ruby-rails-find-by-sql-injection,ruby-rails-unsafe-constantize,ruby-xxe-vulnerability"
+  ruby_sast_enabled:
+    description: "Enable Ruby SAST scanning"
+    required: false
+    default: "false"
+  rust_disabled_rules:
+    description: "Comma-separated list of Rust SAST rules to disable"
+    required: false
+    default: ""
+  rust_enabled_rules:
+    description: "Comma-separated list of Rust SAST rules to enable (default: high-confidence rules)"
+    required: false
+    default: "rust-command-injection,rust-unsafe-deserialization,rust-sql-injection,rust-hardcoded-secrets,rust-insecure-tls,rust-buffer-overflow-potential"
+  rust_sast_enabled:
+    description: "Enable Rust SAST scanning"
+    required: false
+    default: "false"
+  scala_disabled_rules:
+    description: "Comma-separated list of Scala SAST rules to disable"
+    required: false
+    default: ""
+  scala_enabled_rules:
+    description: "Comma-separated list of Scala SAST rules to enable (default: high-confidence rules)"
+    required: false
+    default: "scala-sql-injection,scala-code-injection,scala-command-injection,scala-unsafe-deserialization,scala-hardcoded-secrets,scala-ssl-bypass,scala-slick-sql-injection"
+  scala_sast_enabled:
+    description: "Enable Scala SAST scanning"
+    required: false
+    default: "false"
+  secret_scanning_enabled:
+    description: "Enable secret scanning"
+    required: false
+    default: "false"
+  server:
+    description: "Server"
+    required: false
+    default: ""
+  slack_webhook_url:
+    description: "Slack webhook URL (also reads SLACK_WEBHOOK_URL or INPUT_SLACK_WEBHOOK_URL)"
+    required: false
+    default: ""
+  socket_additional_params:
+    description: "Additional CLI params for 'socket scan reach' (comma or space separated). Also reads SOCKET_ADDITIONAL_PARAMS"
+    required: false
+    default: ""
+  socket_tier_1_enabled:
+    description: "Enable Socket Tier 1 reachability analysis"
+    required: false
+    default: "false"
+  sumologic_endpoint:
+    description: "Sumologic Endpoint"
+    required: false
+    default: ""
+  swift_disabled_rules:
+    description: "Comma-separated list of Swift SAST rules to disable"
+    required: false
+    default: ""
+  swift_enabled_rules:
+    description: "Comma-separated list of Swift SAST rules to enable (default: high-confidence rules)"
+    required: false
+    default: "swift-sql-injection,swift-command-injection,swift-unsafe-deserialization,swift-hardcoded-secrets,swift-ssl-bypass,swift-insecure-urlsession,swift-certificate-pinning-bypass"
+  swift_sast_enabled:
+    description: "Enable Swift SAST scanning"
+    required: false
+    default: "false"
+  trivy_disabled_rules:
+    description: "Comma-separated list of Trivy rules to disable"
+    required: false
+    default: ""
+  trivy_image_scanning_disabled:
+    description: "Disable Trivy image scanning"
+    required: false
+    default: "false"
+  trivy_notification_method:
+    description: "Notification method for Trivy (e.g., console, slack)"
+    required: false
+    default: ""
+  trivy_vuln_enabled:
+    description: "Enable Trivy vulnerability scanning for all supported language ecosystems"
+    required: false
+    default: "false"
+  trufflehog_exclude_dir:
+    description: "Comma-separated list of directories to exclude from secret scanning"
+    required: false
+    default: ""
+  trufflehog_show_unverified:
+    description: "Show unverified secrets in TruffleHog results"
+    required: false
+    default: "false"
+  webhook_url:
+    description: "Generic webhook URL for WebhookNotifier"
     required: false
     default: ""
 
