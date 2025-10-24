@@ -182,6 +182,30 @@ Run all bundled SAST rules regardless of language filters.
 socket-basics --all-rules
 ```
 
+### `--use-custom-sast-rules`
+Use custom SAST rules instead of bundled rules (falls back to bundled rules for languages without custom rules).
+
+**Environment Variable:** `INPUT_USE_CUSTOM_SAST_RULES`
+
+**Default:** `false`
+
+**Example:**
+```bash
+socket-basics --python --use-custom-sast-rules
+```
+
+### `--custom-sast-rule-path CUSTOM_SAST_RULE_PATH`
+Relative path to custom SAST rules directory (relative to workspace if set, otherwise cwd).
+
+**Environment Variable:** `INPUT_CUSTOM_SAST_RULE_PATH`
+
+**Default:** `custom_rules`
+
+**Example:**
+```bash
+socket-basics --python --use-custom-sast-rules --custom-sast-rule-path "my_custom_rules"
+```
+
 ### Language-Specific Rule Configuration
 
 For each language, you can enable or disable specific rules:

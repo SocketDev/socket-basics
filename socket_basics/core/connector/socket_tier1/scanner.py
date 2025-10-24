@@ -105,16 +105,21 @@ class SocketTier1Scanner(BaseConnector):
         if not auth_env.get('SOCKET_ORG') or not auth_env.get('SOCKET_SECURITY_API_KEY'):
             raise ConnectorExecutionError('Socket Tier 1 scanner requires SOCKET_ORG and SOCKET_SECURITY_API_KEY or SOCKET_SECURITY_API_TOKEN to be set')
 
+        # Find socket executable
+        socket_exe = shutil.which('socket')
+        if not socket_exe:
+            raise ConnectorExecutionError('Socket CLI executable not found in PATH. Ensure "socket" is installed.')
+
         # Build command
         additional = self._parse_additional_params()
         # Default target is current dir
         target = '.'
-        cmd = ['socket', 'scan', 'reach', '--org', auth_env['SOCKET_ORG'], '.']
+        cmd = [socket_exe, 'scan', 'reach', '--org', auth_env['SOCKET_ORG'], '.']
         # Add additional options before the target if they look like flags
         # To be safe, append all additional params before target
         if additional:
             # remove target and rebuild: socket scan reach --org <org> [additional...] .
-            cmd = ['socket', 'scan', 'reach', '--org', auth_env['SOCKET_ORG']] + additional + ['.']
+            cmd = [socket_exe, 'scan', 'reach', '--org', auth_env['SOCKET_ORG']] + additional + ['.']
 
         logger.info('Running Socket Tier1 reachability: %s', ' '.join(shlex.quote(p) for p in cmd))
 

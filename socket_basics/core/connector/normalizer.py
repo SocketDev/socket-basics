@@ -38,6 +38,35 @@ def _normalize_alert(a: Dict[str, Any], connector: Any | None = None, default_ge
         a['severity'] = a['severity'].lower()
     # Minimal normalization: lowercase severity and ensure action exists
 
+    # Check if this alert's rule is in the disabled rules list for any language
+    # If so, set action to 'ignore' regardless of severity
+    try:
+        if connector and hasattr(connector, 'config'):
+            rule_id = a.get('title') or a.get('ruleId') or a.get('props', {}).get('ruleId')
+            if rule_id:
+                # Check all language disabled_rules configs
+                disabled_rule_params = [
+                    'python_disabled_rules', 'javascript_disabled_rules', 'go_disabled_rules',
+                    'java_disabled_rules', 'kotlin_disabled_rules', 'scala_disabled_rules',
+                    'php_disabled_rules', 'ruby_disabled_rules', 'csharp_disabled_rules',
+                    'dotnet_disabled_rules', 'c_disabled_rules', 'cpp_disabled_rules',
+                    'swift_disabled_rules', 'rust_disabled_rules', 'elixir_disabled_rules',
+                    'erlang_disabled_rules', 'trivy_disabled_rules'
+                ]
+                for param in disabled_rule_params:
+                    try:
+                        disabled_rules_str = connector.config.get(param, '')
+                        if disabled_rules_str:
+                            disabled_rules = [r.strip() for r in disabled_rules_str.split(',') if r.strip()]
+                            if rule_id in disabled_rules:
+                                logger.debug(f"Rule {rule_id} is disabled via {param}, setting action to 'ignore'")
+                                a['action'] = 'ignore'
+                                return a
+                    except Exception:
+                        pass
+    except Exception:
+        logger.debug('Failed to check disabled rules for alert', exc_info=True)
+
     # Ensure action is one of allowed values; derive from severity when missing/invalid
     try:
         allowed_actions = ('error', 'warn', 'monitor', 'ignore')

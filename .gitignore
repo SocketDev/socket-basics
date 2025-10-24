@@ -28,6 +28,7 @@ file_generator.py
 *.md
 test_results
 local_tests/
+custom_rules/
 
 # Common Python ignores
 __pycache__/
@@ -100,3 +101,4 @@ logs/
 *.log
 
 .python-version
+.socket.fact.json

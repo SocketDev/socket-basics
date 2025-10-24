@@ -11,6 +11,13 @@ COPY --from=ghcr.io/astral-sh/uv:latest /uv /uvx /bin/
 # Install system dependencies
 RUN apt-get update && apt-get install -y curl git wget
 
+# Install Node.js 22.x
+RUN curl -fsSL https://deb.nodesource.com/setup_22.x | bash - && \
+    apt-get install -y nodejs
+
+# Install Socket CLI globally
+RUN npm install -g socket
+
 # Install Trivy
 RUN curl -sfL https://raw.githubusercontent.com/aquasecurity/trivy/main/contrib/install.sh | sh -s -- -b /usr/local/bin v0.67.2
 
@@ -30,7 +37,7 @@ COPY uv.lock /socket-basics/uv.lock
 # Install Python dependencies using uv from the project root
 WORKDIR /socket-basics
 RUN pip install -e . && uv sync --frozen --no-dev
-ENV PATH="/socket-basics/.venv/bin:/root/.opengrep/cli/latest:$PATH"
+ENV PATH="/socket-basics/.venv/bin:/root/.opengrep/cli/latest:/usr/bin:$PATH"
 
 # Use socket-basics as the default entrypoint
 ENTRYPOINT ["socket-basics"]

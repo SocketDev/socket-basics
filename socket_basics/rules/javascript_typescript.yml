@@ -1,346 +1,818 @@
 rules:
-  # === Critical Severity Rules ===
-  
-  # Code injection via eval
-  - id: js-eval-usage
-    message: "Use of eval() detected. This can execute arbitrary code and is extremely dangerous"
-    severity: CRITICAL
-    languages: [javascript, typescript]
-    pattern-either:
-      - pattern: eval($EXPR)
-      - pattern: Function($ARGS)
-      - pattern: setTimeout($CODE, ...)
-      - pattern: setInterval($CODE, ...)
-    where:
-      - metavariable-pattern:
-          metavariable: $CODE
-          pattern: "..."
-    metadata:
-      category: security
-      cwe: CWE-94
-      confidence: high
+  # =====================================================================
+  # OWASP Top 10 2021 Coverage for JavaScript/TypeScript
+  # =====================================================================
 
-  # SQL injection
-  - id: js-sql-injection
-    message: "Possible SQL injection via string concatenation or template literals"
-    severity: CRITICAL
-    languages: [javascript, typescript]
-    pattern-either:
-      - pattern: $DB.query("..." + $VAR + "...")
-      - pattern: $DB.execute("..." + $VAR + "...")
-      - pattern: $DB.raw("..." + $VAR + "...")
-      - pattern: $DB.query(`...${$VAR}...`)
-      - pattern: $DB.execute(`...${$VAR}...`)
-    metadata:
-      category: security
-      cwe: CWE-89
-      confidence: high
+  # ===================================================================== 
+  # A01:2021 - Broken Access Control
+  # =====================================================================
 
-  # Command injection
-  - id: js-command-injection
-    message: "Command injection detected via child_process functions"
-    severity: CRITICAL
-    languages: [javascript, typescript]
-    pattern-either:
-      - pattern: child_process.exec($CMD + $VAR)
-      - pattern: child_process.spawn($CMD, [$ARGS, ..., $VAR, ...])
-      - pattern: require('child_process').exec($CMD + $VAR)
-      - pattern: exec($CMD + $VAR)
-    metadata:
-      category: security
-      cwe: CWE-78
-      confidence: high
-
-  # Prototype pollution
-  - id: js-prototype-pollution
-    message: "Potential prototype pollution vulnerability"
-    severity: CRITICAL
-    languages: [javascript, typescript]
-    pattern-either:
-      - pattern: $OBJ["__proto__"] = $VAL
-      - pattern: $OBJ.__proto__ = $VAL
-      - pattern: $OBJ["constructor"] = $VAL
-      - pattern: $OBJ.constructor = $VAL
-      - pattern: Object.setPrototypeOf($OBJ, $PROTO)
-    metadata:
-      category: security
-      cwe: CWE-1321
-      confidence: medium
-
-  # === High Severity Rules ===
-
-  # XSS via innerHTML
-  - id: js-xss-innerhtml
-    message: "XSS vulnerability via innerHTML with unsanitized data"
+  # Missing authorization checks
+  - id: js-missing-auth-check
+    message: "Route handler missing authentication/authorization check"
     severity: HIGH
     languages: [javascript, typescript]
-    pattern-either:
-      - pattern: $ELEMENT.innerHTML = $VAR
-      - pattern: $ELEMENT.outerHTML = $VAR
-      - pattern: document.write($VAR)
-      - pattern: document.writeln($VAR)
-    where:
-      - metavariable-pattern:
-          metavariable: $VAR
-          pattern: $USER_INPUT
+    patterns:
+      - pattern-either:
+          - pattern: |
+              $APP.$METHOD($PATH, async ($REQ, $RES) => {
+                ...
+              })
+          - pattern: |
+              $APP.$METHOD($PATH, ($REQ, $RES) => {
+                ...
+              })
+      - pattern-not-inside: |
+          ...
+          if ($REQ.user) { ... }
+          ...
+      - pattern-not-inside: |
+          ...
+          if ($REQ.isAuthenticated()) { ... }
+          ...
+      - metavariable-regex:
+          metavariable: $METHOD
+          regex: (post|put|delete|patch)
     metadata:
       category: security
-      cwe: CWE-79
-      confidence: medium
+      owasp: "A01:2021"
+      cwe: CWE-862
+      confidence: low
+      subcategory: access-control
 
-  # Hardcoded secrets
-  - id: js-hardcoded-secrets
-    message: "Hardcoded secret or API key detected"
+  # Insecure direct object reference
+  - id: js-idor-vulnerability
+    message: "Potential IDOR vulnerability - verify user authorization before accessing resource"
     severity: HIGH
     languages: [javascript, typescript]
-    pattern-either:
-      - pattern: const $VAR = "..."
-      - pattern: let $VAR = "..."
-      - pattern: var $VAR = "..."
-      - pattern: $OBJ.$PROP = "..."
-    where:
-      - metavariable-regex:
-          metavariable: $VAR
-          regex: (?i).*(api_key|apikey|secret|token|password|passwd|pwd|private_key|access_token).*
-      - metavariable-regex:
-          metavariable: $PROP
-          regex: (?i).*(api_key|apikey|secret|token|password|passwd|pwd|private_key|access_token).*
+    patterns:
+      - pattern-either:
+          - pattern: $DB.findById($REQ.params.id)
+          - pattern: "$DB.findOne({ _id: $REQ.params.id })"
+          - pattern: "$DB.findOne({ id: $REQ.params.id })"
+          - pattern: fs.readFile($REQ.params.file, ...)
+          - pattern: fs.readFileSync($REQ.params.file)
+      - pattern-not-inside: |
+          ...
+          if ($REQ.user.id === ...) { ... }
+          ...
+      - pattern-not-inside: |
+          ...
+          if ($RESOURCE.userId === $REQ.user.id) { ... }
+          ...
+      - pattern-not-inside: |
+          ...
+          authorize($REQ.user, ...)
+          ...
     metadata:
       category: security
-      cwe: CWE-798
+      owasp: "A01:2021"
+      cwe: CWE-639
       confidence: medium
+      subcategory: access-control
 
   # Path traversal
   - id: js-path-traversal
-    message: "Path traversal vulnerability detected"
+    message: "Path traversal vulnerability - user input used in file operations"
     severity: HIGH
     languages: [javascript, typescript]
     pattern-either:
-      - pattern: fs.readFile($PATH + $USER_INPUT)
+      # File system operations with concatenated paths
+      - pattern: fs.readFile($PATH + $USER_INPUT, ...)
       - pattern: fs.readFileSync($PATH + $USER_INPUT)
       - pattern: fs.writeFile($PATH + $USER_INPUT, ...)
+      - pattern: fs.writeFileSync($PATH + $USER_INPUT, ...)
       - pattern: fs.createReadStream($PATH + $USER_INPUT)
-      - pattern: path.join($BASE, $USER_INPUT)
+      - pattern: fs.createWriteStream($PATH + $USER_INPUT)
+      - pattern: fs.readFile(`${$PATH}${$USER_INPUT}`, ...)
+      - pattern: fs.readFileSync(`${$PATH}${$USER_INPUT}`)
+      - pattern: fs.writeFile(`${$PATH}${$USER_INPUT}`, ...)
+      - pattern: fs.writeFileSync(`${$PATH}${$USER_INPUT}`)
+      # User input directly in file operations (common with req.query/params/body)
+      - pattern: fs.readFile($REQ.query.$PARAM, ...)
+      - pattern: fs.readFileSync($REQ.query.$PARAM)
+      - pattern: fs.writeFile($REQ.query.$PARAM, ...)
+      - pattern: fs.writeFileSync($REQ.query.$PARAM)
+      - pattern: fs.readFile($REQ.params.$PARAM, ...)
+      - pattern: fs.readFileSync($REQ.params.$PARAM)
+      - pattern: fs.readFile($REQ.body.$PARAM, ...)
+      - pattern: fs.readFileSync($REQ.body.$PARAM)
+      - pattern: fs.createReadStream($REQ.query.$PARAM)
+      - pattern: fs.createReadStream($REQ.params.$PARAM)
+      - pattern: fs.createWriteStream($REQ.query.$PARAM)
+      - pattern: fs.createWriteStream($REQ.params.$PARAM)
+      # Path module with user input
+      - pattern: path.join($BASE, $REQ.query.$PARAM)
+      - pattern: path.join($BASE, $REQ.params.$PARAM)
+      - pattern: path.join($BASE, $REQ.body.$PARAM)
+      - pattern: path.resolve($BASE, $REQ.query.$PARAM)
+      - pattern: path.resolve($BASE, $REQ.params.$PARAM)
+      - pattern: path.resolve($BASE, $REQ.body.$PARAM)
+      # Dynamic require/import with request parameters (not static strings)
+      - pattern: require($REQ.query.$PARAM)
+      - pattern: require($REQ.params.$PARAM)
+      - pattern: require($REQ.body.$PARAM)
+      - pattern: import($REQ.query.$PARAM)
+      - pattern: import($REQ.params.$PARAM)
+      - pattern: import($REQ.body.$PARAM)
+      # Template literals with user input
+      - pattern: fs.readFile(`...${$REQ.query.$PARAM}...`, ...)
+      - pattern: fs.readFile(`...${$REQ.params.$PARAM}...`, ...)
+      - pattern: fs.readFile(`...${$REQ.body.$PARAM}...`, ...)
     metadata:
       category: security
+      owasp: "A01:2021"
       cwe: CWE-22
-      confidence: medium
+      confidence: high
+      subcategory: access-control
 
-  # Insecure random
-  - id: js-insecure-random
-    message: "Math.random() is not cryptographically secure"
-    severity: HIGH
+  # Unvalidated redirect
+  - id: js-open-redirect
+    message: "Open redirect vulnerability - user input used in redirect without validation"
+    severity: MEDIUM
     languages: [javascript, typescript]
-    pattern: Math.random()
+    pattern-either:
+      # Server-side redirects with user input
+      - pattern: res.redirect($REQ.query.$PARAM)
+      - pattern: res.redirect($REQ.params.$PARAM)
+      - pattern: res.redirect($REQ.body.$PARAM)
+      # Client-side redirects with request data (more specific)
+      - pattern: window.location = $REQ.query.$PARAM
+      - pattern: window.location.href = $REQ.query.$PARAM
+      - pattern: document.location = $REQ.query.$PARAM
+      - pattern: document.location.href = $REQ.query.$PARAM
+      # URL concatenation with user input
+      - pattern: res.redirect($BASE + $REQ.query.$PARAM)
+      - pattern: res.redirect(`${$BASE}${$REQ.query.$PARAM}`)
     metadata:
       category: security
-      cwe: CWE-338
+      owasp: "A01:2021"
+      cwe: CWE-601
       confidence: high
+      subcategory: access-control
 
-  # TLS/SSL bypass
-  - id: js-tls-reject-unauthorized-false
-    message: "TLS certificate validation disabled"
+  # CORS misconfiguration
+  - id: js-cors-allow-all
+    message: "CORS configured to allow all origins - security risk"
     severity: HIGH
     languages: [javascript, typescript]
     pattern-either:
-      - pattern: process.env.NODE_TLS_REJECT_UNAUTHORIZED = "0"
-      - pattern: process.env["NODE_TLS_REJECT_UNAUTHORIZED"] = "0"
-      - pattern: $AGENT.options.rejectUnauthorized = false
+      - pattern: |
+          cors({ origin: "*" })
+      - pattern: |
+          $RES.setHeader("Access-Control-Allow-Origin", "*")
+      - pattern: |
+          $RES.header("Access-Control-Allow-Origin", "*")
     metadata:
       category: security
-      cwe: CWE-295
+      owasp: "A01:2021"
+      cwe: CWE-942
       confidence: high
+      subcategory: access-control
 
-  # === Medium Severity Rules ===
+  # ===================================================================== 
+  # A02:2021 - Cryptographic Failures
+  # =====================================================================
 
-  # Weak crypto algorithms
-  - id: js-weak-crypto-md5
-    message: "Use of weak MD5 hash algorithm"
-    severity: MEDIUM
+  # Weak cryptographic hash algorithms
+  - id: js-weak-hash-md5
+    message: "MD5 is cryptographically broken and should not be used"
+    severity: HIGH
     languages: [javascript, typescript]
     pattern-either:
       - pattern: crypto.createHash("md5")
       - pattern: crypto.createHash('md5')
-      - pattern: require('md5')($DATA)
-      - pattern: md5($DATA)
+      - pattern: require('md5')
+      - pattern: import ... from 'md5'
     metadata:
       category: security
+      owasp: "A02:2021"
       cwe: CWE-327
       confidence: high
+      subcategory: crypto
 
-  - id: js-weak-crypto-sha1
-    message: "Use of weak SHA1 hash algorithm"
-    severity: MEDIUM
+  - id: js-weak-hash-sha1
+    message: "SHA1 is cryptographically weak and should not be used for security"
+    severity: HIGH
     languages: [javascript, typescript]
     pattern-either:
       - pattern: crypto.createHash("sha1")
       - pattern: crypto.createHash('sha1')
-      - pattern: require('sha1')($DATA)
-      - pattern: sha1($DATA)
+      - pattern: require('sha1')
+      - pattern: import ... from 'sha1'
     metadata:
       category: security
+      owasp: "A02:2021"
       cwe: CWE-327
       confidence: high
+      subcategory: crypto
 
-  # Insecure HTTP
-  - id: js-insecure-http-usage
-    message: "Use of HTTP instead of HTTPS detected"
-    severity: MEDIUM
+  # Insecure random number generation
+  - id: js-insecure-random
+    message: "Math.random() used for security-sensitive operation - use crypto.randomBytes() instead"
+    severity: HIGH
     languages: [javascript, typescript]
-    pattern-either:
-      - pattern: 'new URL("http://...")'
-      - pattern: 'fetch("http://...")'
-      - pattern: 'axios.get("http://...")'
-      - pattern: '"http://..."'
+    patterns:
+      - pattern: Math.random()
+      - pattern-inside: |
+          ...
+          $TOKEN = ...
+          ...
+      - metavariable-regex:
+          metavariable: $TOKEN
+          regex: (?i).*(token|secret|key|password|salt|nonce|session|auth|crypto).*
     metadata:
       category: security
+      owasp: "A02:2021"
+      cwe: CWE-338
+      confidence: medium
+      subcategory: crypto
+      fix: "Use crypto.randomBytes() or crypto.getRandomValues() for security-sensitive operations"
+
+  # Hardcoded secrets and credentials
+  - id: js-hardcoded-secret
+    message: "Hardcoded secret or credential detected - use environment variables"
+    severity: HIGH
+    languages: [javascript, typescript]
+    patterns:
+      - pattern-either:
+          - pattern: const $VAR = "..."
+          - pattern: let $VAR = "..."
+          - pattern: var $VAR = "..."
+      - metavariable-regex:
+          metavariable: $VAR
+          regex: ^(password|passwd|pwd|secret|apiKey|api_key|privateKey|private_key|accessToken|access_token|authToken|auth_token|sessionKey|session_key)$
+      - metavariable-comparison:
+          metavariable: $VAR
+          comparison: str($VAR).length > 8
+    metadata:
+      category: security
+      owasp: "A02:2021"
+      cwe: CWE-798
+      confidence: medium
+      subcategory: crypto
+
+  # Weak cipher algorithms
+  - id: js-weak-cipher
+    message: "Weak cipher algorithm detected - use AES-256-GCM or ChaCha20-Poly1305"
+    severity: HIGH
+    languages: [javascript, typescript]
+    pattern-either:
+      - pattern: crypto.createCipher("des", ...)
+      - pattern: crypto.createCipher("des-ede", ...)
+      - pattern: crypto.createCipher("des-ede-cbc", ...)
+      - pattern: crypto.createCipher("des3", ...)
+      - pattern: crypto.createCipher("rc4", ...)
+      - pattern: crypto.createCipher("rc2", ...)
+      - pattern: crypto.createCipher("blowfish", ...)
+      - pattern: crypto.createCipheriv("des", ...)
+      - pattern: crypto.createCipheriv("rc4", ...)
+    metadata:
+      category: security
+      owasp: "A02:2021"
+      cwe: CWE-327
+      confidence: high
+      subcategory: crypto
+
+  # TLS/SSL certificate validation disabled
+  - id: js-tls-reject-unauthorized-false
+    message: "TLS certificate validation disabled - vulnerable to MITM attacks"
+    severity: CRITICAL
+    languages: [javascript, typescript]
+    pattern-either:
+      - pattern: process.env.NODE_TLS_REJECT_UNAUTHORIZED = "0"
+      - pattern: process.env.NODE_TLS_REJECT_UNAUTHORIZED = '0'
+      - pattern: process.env["NODE_TLS_REJECT_UNAUTHORIZED"] = "0"
+      - pattern: |
+          { ..., rejectUnauthorized: false, ... }
+      - pattern: |
+          axios.create({ ..., rejectUnauthorized: false, ... })
+      - pattern: |
+          https.request({ ..., rejectUnauthorized: false, ... })
+    metadata:
+      category: security
+      owasp: "A02:2021"
+      cwe: CWE-295
+      confidence: high
+      subcategory: crypto
+
+  # Insecure TLS versions
+  - id: js-insecure-tls-version
+    message: "Insecure TLS version - use TLS 1.2 or higher"
+    severity: HIGH
+    languages: [javascript, typescript]
+    pattern-either:
+      - pattern: |
+          { ..., secureProtocol: "SSLv2_method", ... }
+      - pattern: |
+          { ..., secureProtocol: "SSLv3_method", ... }
+      - pattern: |
+          { ..., secureProtocol: "TLSv1_method", ... }
+      - pattern: |
+          { ..., secureProtocol: "TLSv1_1_method", ... }
+      - pattern: |
+          tls.createSecureContext({ ..., secureProtocol: "SSLv3_method", ... })
+    metadata:
+      category: security
+      owasp: "A02:2021"
+      cwe: CWE-327
+      confidence: high
+      subcategory: crypto
+
+  # Missing encryption in transit
+  - id: js-insecure-protocol
+    message: "HTTP server listening on external interface - should use HTTPS"
+    severity: MEDIUM
+    languages: [javascript, typescript]
+    patterns:
+      - pattern-either:
+          - pattern: |
+              http.createServer(...).listen($PORT, "0.0.0.0", ...)
+          - pattern: |
+              http.createServer(...).listen($PORT)
+          - pattern: |
+              require("http").createServer(...).listen($PORT, "0.0.0.0", ...)
+      - pattern-not-inside: |
+          ...
+          if (process.env.NODE_ENV === "development") { ... }
+          ...
+      - metavariable-comparison:
+          metavariable: $PORT
+          comparison: $PORT != 3000 and $PORT != 8080
+    metadata:
+      category: security
+      owasp: "A02:2021"
       cwe: CWE-319
       confidence: low
+      subcategory: crypto
 
-  # Regular expression DoS
-  - id: js-regex-dos
-    message: "Potential ReDoS (Regular Expression Denial of Service) vulnerability"
-    severity: MEDIUM
+  # ===================================================================== 
+  # A03:2021 - Injection
+  # =====================================================================
+
+  # Code injection via eval
+  - id: js-code-injection-eval
+    message: "Code injection via eval() - can execute arbitrary code"
+    severity: CRITICAL
     languages: [javascript, typescript]
     pattern-either:
-      - pattern: new RegExp($PATTERN + $USER_INPUT)
-      - pattern: $STR.match($PATTERN + $USER_INPUT)
-      - pattern: $STR.replace($PATTERN + $USER_INPUT, ...)
+      # Direct eval usage
+      - pattern: eval($EXPR)
+      - pattern: eval($REQ.$PROP)
+      # Function constructor with user input
+      - pattern: Function($REQ.$PROP)
+      - pattern: new Function($REQ.$PROP)
+      # setTimeout/setInterval with string (not function)
+      - patterns:
+          - pattern-either:
+              - pattern: setTimeout($CODE_STR, ...)
+              - pattern: setInterval($CODE_STR, ...)
+          - metavariable-pattern:
+              metavariable: $CODE_STR
+              patterns:
+                - pattern-not: $FUNC
+                - pattern: "..."
+      # VM module with user input
+      - pattern: vm.runInNewContext($REQ.$PROP)
+      - pattern: vm.runInThisContext($REQ.$PROP)
     metadata:
       category: security
-      cwe: CWE-1333
-      confidence: low
+      owasp: "A03:2021"
+      cwe: CWE-94
+      confidence: high
+      subcategory: injection
 
-  # DOM XSS sinks
-  - id: js-dom-xss-sinks
-    message: "Potential DOM XSS sink detected"
-    severity: MEDIUM
+  # SQL injection
+  - id: js-sql-injection
+    message: "SQL injection vulnerability - use parameterized queries"
+    severity: CRITICAL
     languages: [javascript, typescript]
     pattern-either:
-      - pattern: $ELEMENT.setAttribute($ATTR, $USER_INPUT)
-      - pattern: $ELEMENT.src = $USER_INPUT
-      - pattern: $ELEMENT.href = $USER_INPUT
-      - pattern: location.href = $USER_INPUT
-      - pattern: window.location = $USER_INPUT
+      - pattern: $DB.query("..." + $VAR + "...")
+      - pattern: $DB.query(`...${$VAR}...`)
+      - pattern: $DB.execute("..." + $VAR + "...")
+      - pattern: $DB.execute(`...${$VAR}...`)
+      - pattern: $DB.raw("..." + $VAR + "...")
+      - pattern: $DB.raw(`...${$VAR}...`)
+      - pattern: $CONN.query("..." + $REQ.$PROP + "...")
+      - pattern: $CONN.query(`...${$REQ.$PROP}...`)
+      - pattern: mysql.query("..." + $VAR + "...")
+      - pattern: pg.query("..." + $VAR + "...")
     metadata:
       category: security
+      owasp: "A03:2021"
+      cwe: CWE-89
+      confidence: high
+      subcategory: injection
+
+  # NoSQL injection (MongoDB)
+  - id: js-nosql-injection
+    message: "NoSQL injection vulnerability - validate and sanitize user input"
+    severity: HIGH
+    languages: [javascript, typescript]
+    pattern-either:
+      # Directly passing request object to query methods
+      - pattern: $COLLECTION.find($REQ.query)
+      - pattern: $COLLECTION.find($REQ.body)
+      - pattern: $COLLECTION.findOne($REQ.query)
+      - pattern: $COLLECTION.findOne($REQ.body)
+      - pattern: $COLLECTION.update($REQ.query, ...)
+      - pattern: $COLLECTION.update($REQ.body, ...)
+      - pattern: $COLLECTION.remove($REQ.query)
+      - pattern: $COLLECTION.deleteOne($REQ.query)
+      - pattern: $COLLECTION.deleteMany($REQ.query)
+      # Query operators with user input
+      - pattern: "$MODEL.find({ ..., $ne: $REQ.query.$PARAM, ... })"
+      - pattern: "$MODEL.find({ ..., $gt: $REQ.query.$PARAM, ... })"
+      - pattern: "$MODEL.find({ ..., $regex: $REQ.query.$PARAM, ... })"
+      - pattern: "$MODEL.find({ ..., $where: $REQ.query.$PARAM, ... })"
+    metadata:
+      category: security
+      owasp: "A03:2021"
+      cwe: CWE-943
+      confidence: high
+      subcategory: injection
+
+  # Command injection
+  - id: js-command-injection
+    message: "Command injection vulnerability - avoid shell execution with user input"
+    severity: CRITICAL
+    languages: [javascript, typescript]
+    pattern-either:
+      - pattern: child_process.exec($CMD + $VAR)
+      - pattern: child_process.exec(`${$CMD}${$VAR}`)
+      - pattern: child_process.exec($REQ.$PROP)
+      - pattern: cp.exec($CMD + $VAR)
+      - pattern: require('child_process').exec($CMD + $VAR)
+      - pattern: execSync($CMD + $VAR)
+      - pattern: child_process.execSync($CMD + $VAR)
+      - pattern: "child_process.spawn($CMD, ..., { shell: true })"
+    metadata:
+      category: security
+      owasp: "A03:2021"
+      cwe: CWE-78
+      confidence: high
+      subcategory: injection
+
+  # LDAP injection
+  - id: js-ldap-injection
+    message: "LDAP injection vulnerability - sanitize user input in LDAP queries"
+    severity: HIGH
+    languages: [javascript, typescript]
+    pattern-either:
+      - pattern: $CLIENT.search($FILTER + $USER_INPUT, ...)
+      - pattern: $CLIENT.search(`${$FILTER}${$USER_INPUT}`, ...)
+      - pattern: $CLIENT.bind($DN + $USER_INPUT, ...)
+      - pattern: $CLIENT.bind(`${$DN}${$USER_INPUT}`, ...)
+    metadata:
+      category: security
+      owasp: "A03:2021"
+      cwe: CWE-90
+      confidence: high
+      subcategory: injection
+
+  # XSS via innerHTML
+  - id: js-xss-innerhtml
+    message: "XSS vulnerability via innerHTML with user input - use textContent or sanitize"
+    severity: HIGH
+    languages: [javascript, typescript]
+    pattern-either:
+      # innerHTML with request data
+      - pattern: $ELEMENT.innerHTML = $REQ.query.$PARAM
+      - pattern: $ELEMENT.innerHTML = $REQ.body.$PARAM
+      - pattern: $ELEMENT.innerHTML = $REQ.params.$PARAM
+      - pattern: $ELEMENT.outerHTML = $REQ.query.$PARAM
+      - pattern: $ELEMENT.outerHTML = $REQ.body.$PARAM
+      # insertAdjacentHTML with request data
+      - pattern: $ELEMENT.insertAdjacentHTML(..., $REQ.query.$PARAM)
+      - pattern: $ELEMENT.insertAdjacentHTML(..., $REQ.body.$PARAM)
+      # document.write with request data
+      - pattern: document.write($REQ.query.$PARAM)
+      - pattern: document.writeln($REQ.body.$PARAM)
+      # Template literals with user input in innerHTML
+      - pattern: $ELEMENT.innerHTML = `...${$REQ.query.$PARAM}...`
+      - pattern: $ELEMENT.innerHTML = `...${$REQ.body.$PARAM}...`
+    metadata:
+      category: security
+      owasp: "A03:2021"
       cwe: CWE-79
-      confidence: low
+      confidence: high
+      subcategory: injection
 
-  # JWT without verification
-  - id: js-jwt-no-verify
-    message: "JWT token used without proper verification"
-    severity: MEDIUM
+  # DOM-based XSS
+  - id: js-dom-xss
+    message: "DOM XSS vulnerability - validate and sanitize user input before using in DOM"
+    severity: HIGH
     languages: [javascript, typescript]
     pattern-either:
-      - pattern: jwt.decode($TOKEN)
-      - pattern: jsonwebtoken.decode($TOKEN)
-      - pattern: "jwt.verify($TOKEN, { verify: false })"
+      # Setting dangerous attributes with request data
+      - pattern: $ELEMENT.setAttribute("href", $REQ.query.$PARAM)
+      - pattern: $ELEMENT.setAttribute("src", $REQ.query.$PARAM)
+      - pattern: $ELEMENT.setAttribute("action", $REQ.body.$PARAM)
+      - pattern: $ELEMENT.setAttribute("formaction", $REQ.body.$PARAM)
+      - pattern: $ELEMENT.src = $REQ.query.$PARAM
+      - pattern: $ELEMENT.href = $REQ.query.$PARAM
+      # Location manipulation with user input
+      - pattern: location = $REQ.query.$PARAM
+      - pattern: location.href = $REQ.query.$PARAM
+      - pattern: location.assign($REQ.query.$PARAM)
+      - pattern: window.location = $REQ.query.$PARAM
+      - pattern: window.location.href = $REQ.query.$PARAM
     metadata:
       category: security
-      cwe: CWE-347
+      owasp: "A03:2021"
+      cwe: CWE-79
+      confidence: high
+      subcategory: injection
+
+  # XXE (XML External Entity)
+  - id: js-xxe-vulnerability
+    message: "XXE vulnerability - disable external entity processing in XML parser"
+    severity: HIGH
+    languages: [javascript, typescript]
+    patterns:
+      - pattern-either:
+          - pattern: new DOMParser().parseFromString($XML, "text/xml")
+          - pattern: libxmljs.parseXml($XML)
+          - pattern: xml2js.parseString($XML, ...)
+          - pattern: parser.parseFromString($XML, ...)
+      - pattern-not-inside: |
+          ...
+          noent: false
+          ...
+    metadata:
+      category: security
+      owasp: "A03:2021"
+      cwe: CWE-611
       confidence: medium
+      subcategory: injection
 
-  # === Low Severity Rules ===
+  # Server-side template injection
+  - id: js-template-injection
+    message: "Template injection vulnerability - sanitize user input in templates"
+    severity: HIGH
+    languages: [javascript, typescript]
+    pattern-either:
+      # Eval in template context
+      - pattern: eval($TEMPLATE_STR)
+      # Lodash template with user input
+      - pattern: _.template($REQ.query.$PARAM)
+      - pattern: _.template($REQ.body.$PARAM)
+      - pattern: lodash.template($REQ.query.$PARAM)
+      # Handlebars compile with user input
+      - pattern: Handlebars.compile($REQ.body.$PARAM)
+      - pattern: Handlebars.compile($REQ.query.$PARAM)
+      # Template engines rendering user-controlled template strings
+      - pattern: $ENGINE.renderString($REQ.body.$PARAM, ...)
+      - pattern: pug.compile($REQ.body.$PARAM)
+    metadata:
+      category: security
+      owasp: "A03:2021"
+      cwe: CWE-1336
+      confidence: high
+      subcategory: injection
 
-  # Console logging sensitive data
-  - id: js-console-log-sensitive
-    message: "Potentially sensitive data logged to console"
+  # Prototype pollution
+  - id: js-prototype-pollution
+    message: "Prototype pollution vulnerability - can lead to arbitrary code execution"
+    severity: CRITICAL
+    languages: [javascript, typescript]
+    pattern-either:
+      # Direct prototype manipulation
+      - pattern: $OBJ["__proto__"] = $VAL
+      - pattern: $OBJ.__proto__ = $VAL
+      - pattern: $OBJ["constructor"]["prototype"] = $VAL
+      - pattern: $OBJ.constructor.prototype = $VAL
+      - pattern: Object.setPrototypeOf($OBJ, $PROTO)
+      # Unsafe merge with user input
+      - pattern: Object.assign($TARGET, $REQ.body)
+      - pattern: Object.assign($TARGET, $REQ.query)
+      - pattern: lodash.merge($TARGET, $REQ.body)
+      - pattern: _.merge($TARGET, $REQ.query)
+      # Dynamic property assignment with __proto__
+      - patterns:
+          - pattern: $OBJ[$KEY] = $VAL
+          - metavariable-regex:
+              metavariable: $KEY
+              regex: (__proto__|constructor|prototype)
+    metadata:
+      category: security
+      owasp: "A03:2021"
+      cwe: CWE-1321
+      confidence: high
+      subcategory: injection
+
+  # ===================================================================== 
+  # A04:2021 - Insecure Design
+  # =====================================================================
+
+  # Missing rate limiting
+  - id: js-missing-rate-limit
+    message: "Route missing rate limiting - vulnerable to brute force attacks"
+    severity: MEDIUM
+    languages: [javascript, typescript]
+    patterns:
+      - pattern-either:
+          - pattern: |
+              $APP.post("/login", ...)
+          - pattern: |
+              $APP.post("/api/login", ...)
+          - pattern: |
+              $APP.post("*/login", ...)
+      - pattern-not-inside: |
+          ...
+          rateLimit(...)
+          ...
+    metadata:
+      category: security
+      owasp: "A04:2021"
+      cwe: CWE-307
+      confidence: low
+      subcategory: design
+
+  # Insufficient input validation
+  - id: js-missing-input-validation
+    message: "User input used without validation"
+    severity: MEDIUM
+    languages: [javascript, typescript]
+    patterns:
+      - pattern-either:
+          - pattern: $DB.find($REQ.query)
+          - pattern: $DB.findOne($REQ.params)
+          - pattern: $FS.readFile($REQ.body.$PROP, ...)
+      - pattern-not-inside: |
+          ...
+          if (typeof $REQ.$PROP === ...) { ... }
+          ...
+      - pattern-not-inside: |
+          ...
+          validator.validate(...)
+          ...
+    metadata:
+      category: security
+      owasp: "A04:2021"
+      cwe: CWE-20
+      confidence: low
+      subcategory: design
+
+  # Predictable resource location
+  - id: js-predictable-resource
+    message: "Predictable resource identifiers - use UUIDs instead of sequential IDs"
     severity: LOW
     languages: [javascript, typescript]
     pattern-either:
-      - pattern: console.log(..., $VAR, ...)
-      - pattern: console.error(..., $VAR, ...)
-      - pattern: console.warn(..., $VAR, ...)
-      - pattern: console.info(..., $VAR, ...)
-    where:
-      - metavariable-regex:
-          metavariable: $VAR
-          regex: (?i).*(password|token|secret|key|credential).*
+      - pattern: |
+          $VAR = $NUM++
+      - pattern: |
+          $OBJ.id = $COUNTER++
+      - pattern: |
+          uuid.v1()
     metadata:
       category: security
-      cwe: CWE-532
+      owasp: "A04:2021"
+      cwe: CWE-330
       confidence: low
+      subcategory: design
 
-  # Debugger statements
+  # ===================================================================== 
+  # A05:2021 - Security Misconfiguration
+  # =====================================================================
+
+  # Debug mode enabled
+  - id: js-debug-mode-enabled
+    message: "Debug mode enabled in production - exposes sensitive information"
+    severity: HIGH
+    languages: [javascript, typescript]
+    pattern-either:
+      - pattern: |
+          { ..., debug: true, ... }
+      - pattern: process.env.NODE_ENV = "development"
+      - pattern: app.set("env", "development")
+    metadata:
+      category: security
+      owasp: "A05:2021"
+      cwe: CWE-489
+      confidence: medium
+      subcategory: configuration
+
+  # Debugger statement in code
   - id: js-debugger-statement
-    message: "Debugger statement found - should not be in production code"
+    message: "Debugger statement should not be in production code"
     severity: LOW
     languages: [javascript, typescript]
     pattern: debugger
     metadata:
       category: security
+      owasp: "A05:2021"
       cwe: CWE-489
       confidence: high
+      subcategory: configuration
 
-  # Alert/confirm/prompt usage
-  - id: js-browser-dialogs
-    message: "Browser dialog functions can be annoying and are often blocked"
-    severity: LOW
+  # Weak session configuration
+  - id: js-weak-session-cookie
+    message: "Insecure session cookie configuration"
+    severity: HIGH
     languages: [javascript, typescript]
     pattern-either:
-      - pattern: alert($MSG)
-      - pattern: confirm($MSG)
-      - pattern: prompt($MSG)
+      - pattern: |
+          session({ ..., secure: false, ... })
+      - pattern: |
+          session({ ..., httpOnly: false, ... })
+      - pattern: |
+          session({ ..., sameSite: false, ... })
+      - pattern: |
+          session({ ..., sameSite: "none", ... })
+      - pattern: |
+          $RES.cookie($NAME, $VAL, { ..., secure: false, ... })
+      - pattern: |
+          $RES.cookie($NAME, $VAL, { ..., httpOnly: false, ... })
     metadata:
       category: security
-      cwe: CWE-200
-      confidence: low
+      owasp: "A05:2021"
+      cwe: CWE-614
+      confidence: high
+      subcategory: configuration
 
-  # Unvalidated redirects
-  - id: js-unvalidated-redirect
-    message: "Unvalidated redirect detected"
-    severity: LOW
+  # Missing security headers (Helmet.js)
+  - id: js-missing-helmet
+    message: "Express app missing Helmet.js security headers middleware"
+    severity: MEDIUM
     languages: [javascript, typescript]
-    pattern-either:
-      - pattern: res.redirect($USER_INPUT)
-      - pattern: response.redirect($USER_INPUT)
-      - pattern: window.location.href = $USER_INPUT
-      - pattern: document.location = $USER_INPUT
+    patterns:
+      - pattern-either:
+          - pattern: const $APP = express()
+          - pattern: var $APP = express()
+          - pattern: let $APP = express()
+      - pattern-not-inside: |
+          ...
+          $APP.use(helmet(...))
+          ...
     metadata:
       category: security
-      cwe: CWE-601
+      owasp: "A05:2021"
+      cwe: CWE-693
       confidence: low
+      subcategory: configuration
 
-  # === Framework-specific Rules ===
-
-  # Express.js security issues
-  - id: js-express-no-helmet
-    message: "Express app without helmet security middleware"
+  # Error stack traces exposed
+  - id: js-error-stack-exposed
+    message: "Error stack trace exposed to client - can leak sensitive information"
     severity: MEDIUM
     languages: [javascript, typescript]
     pattern-either:
-      - pattern: |
-          const app = express()
-          ...
-      - pattern: |
-          var app = express()
-          ...
-    pattern-not-inside:
-      pattern: |
-        ...
-        app.use(helmet(...))
-        ...
+      - pattern: $RES.send($ERR.stack)
+      - pattern: "$RES.json({ ..., stack: $ERR.stack, ... })"
+      - pattern: $RES.status(...).send($ERR)
     metadata:
       category: security
-      framework: express
-      cwe: CWE-200
+      owasp: "A05:2021"
+      cwe: CWE-209
+      confidence: high
+      subcategory: configuration
 
-  # React dangerous props
-  - id: js-react-dangerous-html
-    message: "React dangerouslySetInnerHTML usage detected"
+  # Default credentials
+  - id: js-default-credentials
+    message: "Default or weak credentials detected"
     severity: HIGH
-    languages: [javascript, typescript, js, ts]
-    pattern: 'dangerouslySetInnerHTML: { __html: $HTML }'
+    languages: [javascript, typescript]
+    pattern-either:
+      - pattern: |
+          password: "admin"
+      - pattern: |
+          password: "password"
+      - pattern: |
+          password: "123456"
+      - pattern: |
+          password: ""
+      - pattern: |
+          { ..., user: "admin", password: "admin", ... }
     metadata:
       category: security
-      framework: react
-      cwe: CWE-79
-      confidence: medium
+      owasp: "A05:2021"
+      cwe: CWE-798
+      confidence: high
+      subcategory: configuration
 
-  # Node.js specific
-  - id: js-node-buffer-alloc-unsafe
-    message: "Unsafe Buffer allocation detected"
+  # ===================================================================== 
+  # A06:2021 - Vulnerable and Outdated Components
+  # =====================================================================
+
+  # Deprecated APIs
+  - id: js-deprecated-crypto-api
+    message: "Deprecated crypto API - use crypto.createCipheriv instead"
+    severity: MEDIUM
+    languages: [javascript, typescript]
+    pattern: crypto.createCipher(...)
+    metadata:
+      category: security
+      owasp: "A06:2021"
+      cwe: CWE-327
+      confidence: high
+      subcategory: deprecated
+
+  # Unsafe Buffer constructor
+  - id: js-unsafe-buffer
+    message: "Unsafe Buffer allocation - use Buffer.alloc() or Buffer.from()"
     severity: MEDIUM
     languages: [javascript, typescript]
     pattern-either:
@@ -349,85 +821,573 @@ rules:
       - pattern: Buffer.allocUnsafe($SIZE)
     metadata:
       category: security
-      runtime: nodejs
+      owasp: "A06:2021"
       cwe: CWE-119
+      confidence: high
+      subcategory: deprecated
 
-  # MongoDB injection
-  - id: js-mongodb-injection
-    message: "Potential MongoDB injection via object construction"
-    severity: HIGH
+  # ===================================================================== 
+  # A07:2021 - Identification and Authentication Failures
+  # =====================================================================
+
+  # Weak password requirements
+  - id: js-weak-password-validation
+    message: "Weak password validation - enforce strong password policy"
+    severity: MEDIUM
     languages: [javascript, typescript]
-    pattern-either:
-      - pattern: $COLLECTION.find($USER_INPUT)
-      - pattern: $COLLECTION.findOne($USER_INPUT)
-      - pattern: $COLLECTION.update($USER_INPUT, ...)
-      - pattern: $COLLECTION.remove($USER_INPUT)
-    where:
-      - metavariable-pattern:
-          metavariable: $USER_INPUT
-          pattern: $OBJ
+    patterns:
+      - pattern-either:
+          - pattern: $PASSWORD.length < $N
+          - pattern: $PASSWORD.length > $MIN
+      - metavariable-comparison:
+          metavariable: $N
+          comparison: $N < 8
+      - metavariable-comparison:
+          metavariable: $MIN
+          comparison: $MIN < 8
     metadata:
       category: security
-      cwe: CWE-943
+      owasp: "A07:2021"
+      cwe: CWE-521
       confidence: low
+      subcategory: authentication
 
-  # LDAP injection
-  - id: js-ldap-injection
-    message: "Potential LDAP injection via string concatenation"
+  # JWT without verification
+  - id: js-jwt-no-verify
+    message: "JWT decoded without signature verification - use jwt.verify()"
     severity: HIGH
     languages: [javascript, typescript]
     pattern-either:
-      - pattern: $CLIENT.search($FILTER + $USER_INPUT)
-      - pattern: $CLIENT.bind($DN + $USER_INPUT, ...)
+      - pattern: jwt.decode($TOKEN)
+      - pattern: jsonwebtoken.decode($TOKEN)
+      - pattern: |
+          jwt.verify($TOKEN, ..., { ..., verify: false, ... })
     metadata:
       category: security
-      cwe: CWE-90
-      confidence: medium
+      owasp: "A07:2021"
+      cwe: CWE-347
+      confidence: high
+      subcategory: authentication
 
-  # XXE (XML External Entity)
-  - id: js-xxe-vulnerability
-    message: "Potential XXE vulnerability in XML parsing"
+  # Weak JWT secret
+  - id: js-weak-jwt-secret
+    message: "Weak JWT secret - use a strong random secret"
     severity: HIGH
     languages: [javascript, typescript]
-    pattern-either:
-      - pattern: new DOMParser().parseFromString($XML, "text/xml")
-      - pattern: libxmljs.parseXml($XML)
-      - pattern: xml2js.parseString($XML, ...)
-    pattern-not-inside:
-      pattern: |
-        ...
-        noent: false
-        ...
+    patterns:
+      - pattern: jwt.sign(..., $SECRET, ...)
+      - metavariable-regex:
+          metavariable: $SECRET
+          regex: ^["'](secret|test|dev|password|123)["']$
     metadata:
       category: security
-      cwe: CWE-611
+      owasp: "A07:2021"
+      cwe: CWE-798
+      confidence: high
+      subcategory: authentication
+
+  # Session fixation
+  - id: js-session-fixation
+    message: "Session fixation vulnerability - regenerate session after login"
+    severity: MEDIUM
+    languages: [javascript, typescript]
+    patterns:
+      - pattern-inside: |
+          $APP.post("/login", ..., async ($REQ, $RES) => {
+            ...
+          })
+      - pattern-not-inside: |
+          ...
+          $REQ.session.regenerate(...)
+          ...
+    metadata:
+      category: security
+      owasp: "A07:2021"
+      cwe: CWE-384
       confidence: low
+      subcategory: authentication
 
-  # Weak session configuration
-  - id: js-weak-session-config
-    message: "Weak session configuration detected"
+  # ===================================================================== 
+  # A08:2021 - Software and Data Integrity Failures
+  # =====================================================================
+
+  # Unsafe deserialization
+  - id: js-unsafe-deserialization
+    message: "Unsafe deserialization - can lead to remote code execution"
+    severity: CRITICAL
+    languages: [javascript, typescript]
+    pattern-either:
+      # Dangerous deserialization libraries
+      - pattern: serialize.unserialize($DATA)
+      - pattern: node-serialize.unserialize($DATA)
+      - pattern: funcster.deepDeserialize($DATA)
+      # Eval-based JSON parsing
+      - pattern: eval("(" + $JSON_STR + ")")
+      - pattern: Function("return " + $JSON_STR)()
+      # VM module with untrusted data
+      - pattern: vm.runInNewContext($REQ.body.$PARAM)
+      - pattern: vm.runInThisContext($REQ.query.$PARAM)
+    metadata:
+      category: security
+      owasp: "A08:2021"
+      cwe: CWE-502
+      confidence: high
+      subcategory: integrity
+
+  # Missing integrity check for external resources
+  - id: js-missing-sri
+    message: "External resource loaded without Subresource Integrity (SRI) check"
+    severity: MEDIUM
+    languages: [javascript, typescript]
+    patterns:
+      - pattern-either:
+          - pattern: |
+              <script src="http://..."></script>
+          - pattern: |
+              <script src="https://..."></script>
+          - pattern: |
+              <link href="https://..." rel="stylesheet">
+      - pattern-not: |
+          <... integrity="..." ...>
+    metadata:
+      category: security
+      owasp: "A08:2021"
+      cwe: CWE-353
+      confidence: low
+      subcategory: integrity
+
+  # Insecure update mechanism
+  - id: js-insecure-auto-update
+    message: "Auto-update mechanism without integrity verification"
+    severity: HIGH
+    languages: [javascript, typescript]
+    patterns:
+      - pattern-either:
+          - pattern: autoUpdater.checkForUpdates()
+          - pattern: autoUpdater.downloadUpdate()
+      - pattern-not-inside: |
+          ...
+          autoUpdater.on("update-downloaded", ..., (info) => {
+            ...
+            crypto.verify(...)
+            ...
+          })
+          ...
+    metadata:
+      category: security
+      owasp: "A08:2021"
+      cwe: CWE-494
+      confidence: low
+      subcategory: integrity
+
+  # ===================================================================== 
+  # A09:2021 - Security Logging and Monitoring Failures
+  # =====================================================================
+
+  # Sensitive data in logs
+  - id: js-sensitive-data-in-logs
+    message: "Sensitive data logged - can expose credentials or personal information"
     severity: MEDIUM
     languages: [javascript, typescript]
     pattern-either:
-      - pattern: |
-          session({
-            ...,
-            secure: false,
-            ...
-          })
-      - pattern: |
-          session({
-            ...,
-            httpOnly: false,
-            ...
-          })
-      - pattern: |
-          session({
-            ...,
-            sameSite: false,
-            ...
-          })
+      - pattern: console.log(..., $REQ.body.password, ...)
+      - pattern: console.log(..., $REQ.body.token, ...)
+      - pattern: console.log(..., $REQ.headers.authorization, ...)
+      - pattern: logger.info(..., $PASSWORD, ...)
+      - pattern: logger.debug(..., $TOKEN, ...)
+      - pattern: console.error(..., $SECRET, ...)
     metadata:
       category: security
-      cwe: CWE-614
+      owasp: "A09:2021"
+      cwe: CWE-532
+      confidence: low
+      subcategory: logging
+
+  # Missing error logging
+  - id: js-missing-error-logging
+    message: "Error caught but not logged - can hide security issues"
+    severity: LOW
+    languages: [javascript, typescript]
+    patterns:
+      - pattern: |
+          try {
+            ...
+          } catch ($ERR) {
+          }
+      - pattern-not-inside: |
+          try {
+            ...
+          } catch ($ERR) {
+            ...
+            console.error(...)
+            ...
+          }
+      - pattern-not-inside: |
+          try {
+            ...
+          } catch ($ERR) {
+            ...
+            logger.error(...)
+            ...
+          }
+    metadata:
+      category: security
+      owasp: "A09:2021"
+      cwe: CWE-778
+      confidence: low
+      subcategory: logging
+
+  # ===================================================================== 
+  # A10:2021 - Server-Side Request Forgery (SSRF)
+  # =====================================================================
+
+  # SSRF via user-controlled URL
+  - id: js-ssrf-vulnerability
+    message: "SSRF vulnerability - validate and whitelist URLs before making requests"
+    severity: HIGH
+    languages: [javascript, typescript]
+    pattern-either:
+      - pattern: fetch($REQ.query.$PARAM)
+      - pattern: fetch($REQ.body.$PARAM)
+      - pattern: axios.get($REQ.query.$PARAM)
+      - pattern: axios.post($REQ.body.$PARAM, ...)
+      - pattern: request($REQ.query.$PARAM)
+      - pattern: http.get($REQ.query.$PARAM)
+      - pattern: https.get($REQ.query.$PARAM)
+      - pattern: got($REQ.body.$PARAM)
+    metadata:
+      category: security
+      owasp: "A10:2021"
+      cwe: CWE-918
+      confidence: high
+      subcategory: ssrf
+
+  # =====================================================================
+  # JavaScript/TypeScript Best Practices
+  # =====================================================================
+
+  # Unsafe type coercion
+  - id: js-unsafe-type-coercion
+    message: "Unsafe type coercion - use strict equality (===) instead"
+    severity: LOW
+    languages: [javascript, typescript]
+    pattern-either:
+      - pattern: $A == $B
+      - pattern: $A != $B
+    metadata:
+      category: best-practice
+      cwe: CWE-697
+      confidence: low
+      subcategory: type-safety
+
+  # Missing await on Promise
+  - id: js-missing-await
+    message: "Promise not awaited - may cause unexpected behavior"
+    severity: LOW
+    languages: [javascript, typescript]
+    patterns:
+      - pattern-inside: |
+          async function $FUNC(...) {
+            ...
+          }
+      - pattern: $PROMISE
+      - metavariable-pattern:
+          metavariable: $PROMISE
+          patterns:
+            - pattern-either:
+                - pattern: fetch(...)
+                - pattern: $DB.query(...)
+                - pattern: $DB.execute(...)
+      - pattern-not: await $PROMISE
+    metadata:
+      category: best-practice
+      cwe: CWE-703
+      confidence: low
+      subcategory: async
+
+  # Unhandled Promise rejection
+  - id: js-unhandled-promise-rejection
+    message: "Promise without error handling - can cause unhandled rejections"
+    severity: LOW
+    languages: [javascript, typescript]
+    patterns:
+      - pattern-either:
+          - pattern: |
+              $PROMISE.then(...)
+          - pattern: |
+              await $ASYNC_CALL
+      - pattern-not: |
+          $PROMISE.then(...).catch(...)
+      - pattern-not: |
+          try {
+            ...
+            await $ASYNC_CALL
+            ...
+          } catch (...) {
+            ...
+          }
+    metadata:
+      category: best-practice
+      cwe: CWE-755
+      confidence: low
+      subcategory: error-handling
+
+  # RegEx Denial of Service (ReDoS)
+  - id: js-regex-dos
+    message: "Complex regex pattern - potential ReDoS vulnerability"
+    severity: MEDIUM
+    languages: [javascript, typescript]
+    pattern-either:
+      # User input used as regex
+      - pattern: new RegExp($REQ.query.$PARAM)
+      - pattern: new RegExp($REQ.body.$PARAM)
+      - pattern: RegExp($REQ.query.$PARAM)
+      # Dangerous regex patterns (nested quantifiers)
+      - pattern: |
+          /(.+)+/
+      - pattern: |
+          /(.*)+/
+      - pattern: |
+          /(.*)*/
+      - pattern: |
+          /([a-zA-Z]+)*/
+      - pattern: |
+          /(a+)+/
+      - pattern: |
+          /(a|a)*/
+    metadata:
+      category: security
+      cwe: CWE-1333
       confidence: medium
+      subcategory: dos
+
+  # Unsafe parseInt without radix
+  - id: js-parseint-missing-radix
+    message: "parseInt() without radix parameter - can cause unexpected results"
+    severity: LOW
+    languages: [javascript, typescript]
+    pattern: parseInt($STR)
+    metadata:
+      category: best-practice
+      cwe: CWE-704
+      confidence: high
+      subcategory: type-safety
+
+  # =====================================================================
+  # Framework-Specific Rules
+  # =====================================================================
+
+  # React dangerouslySetInnerHTML
+  - id: js-react-dangerous-html
+    message: "React dangerouslySetInnerHTML can introduce XSS vulnerabilities"
+    severity: HIGH
+    languages: [javascript, typescript]
+    pattern: "dangerouslySetInnerHTML={{ __html: $HTML }}"
+    metadata:
+      category: security
+      framework: react
+      cwe: CWE-79
+      confidence: high
+      subcategory: xss
+
+  # React missing key prop
+  - id: js-react-missing-key
+    message: "Missing key prop in list rendering - can cause rendering issues"
+    severity: LOW
+    languages: [javascript, typescript]
+    patterns:
+      - pattern: |
+          $ARR.map($ITEM => <$COMPONENT ... />)
+      - pattern-not: |
+          $ARR.map($ITEM => <$COMPONENT key={...} ... />)
+    metadata:
+      category: best-practice
+      framework: react
+      confidence: low
+      subcategory: performance
+
+  # Express missing async error handler
+  - id: js-express-async-no-error-handler
+    message: "Async Express route handler without try-catch - errors won't be caught"
+    severity: MEDIUM
+    languages: [javascript, typescript]
+    patterns:
+      - pattern: |
+          $APP.$METHOD($PATH, async ($REQ, $RES) => {
+            ...
+          })
+      - pattern-not-inside: |
+          $APP.$METHOD($PATH, async ($REQ, $RES) => {
+            try {
+              ...
+            } catch ($ERR) {
+              ...
+            }
+          })
+      - pattern-not-inside: |
+          $APP.$METHOD($PATH, async ($REQ, $RES, $NEXT) => {
+            try {
+              ...
+            } catch ($ERR) {
+              ...
+            }
+          })
+    metadata:
+      category: best-practice
+      framework: express
+      cwe: CWE-755
+      confidence: medium
+      subcategory: error-handling
+
+  # Express trust proxy not set
+  - id: js-express-trust-proxy-not-set
+    message: "Express behind proxy without 'trust proxy' setting"
+    severity: LOW
+    languages: [javascript, typescript]
+    patterns:
+      - pattern: const $APP = express()
+      - pattern-not-inside: |
+          ...
+          $APP.set("trust proxy", ...)
+          ...
+    metadata:
+      category: configuration
+      framework: express
+      cwe: CWE-693
+      confidence: low
+      subcategory: proxy
+
+  # Next.js getServerSideProps without error handling
+  - id: js-nextjs-gsp-no-error-handling
+    message: "getServerSideProps without error handling"
+    severity: LOW
+    languages: [javascript, typescript]
+    patterns:
+      - pattern: |
+          export async function getServerSideProps(...) {
+            ...
+          }
+      - pattern-not-inside: |
+          export async function getServerSideProps(...) {
+            try {
+              ...
+            } catch (...) {
+              ...
+            }
+          }
+    metadata:
+      category: best-practice
+      framework: nextjs
+      cwe: CWE-755
+      confidence: low
+      subcategory: error-handling
+
+  # =====================================================================
+  # Node.js Specific Vulnerabilities
+  # =====================================================================
+
+  # Unsafe file operations
+  - id: js-unsafe-file-operations
+    message: "Unsafe file operation - validate file paths"
+    severity: HIGH
+    languages: [javascript, typescript]
+    pattern-either:
+      - pattern: fs.unlinkSync($REQ.$PROP)
+      - pattern: fs.unlink($REQ.$PROP, ...)
+      - pattern: fs.rmdir($REQ.$PROP, ...)
+      - pattern: fs.rmdirSync($REQ.$PROP)
+      - pattern: fs.chmod($REQ.$PROP, ...)
+      - pattern: fs.chmodSync($REQ.$PROP, ...)
+    metadata:
+      category: security
+      runtime: nodejs
+      cwe: CWE-73
+      confidence: high
+      subcategory: file-operations
+
+  # Process execution with user input
+  - id: js-unsafe-process-spawn
+    message: "Unsafe process execution with user input"
+    severity: HIGH
+    languages: [javascript, typescript]
+    pattern-either:
+      - pattern: spawn($REQ.$PROP, ...)
+      - pattern: spawnSync($REQ.$PROP, ...)
+      - pattern: fork($REQ.$PROP, ...)
+      - pattern: execFile($REQ.$PROP, ...)
+    metadata:
+      category: security
+      runtime: nodejs
+      cwe: CWE-78
+      confidence: high
+      subcategory: process
+
+  # Timing attack vulnerability
+  - id: js-timing-attack
+    message: "String comparison vulnerable to timing attacks - use crypto.timingSafeEqual()"
+    severity: MEDIUM
+    languages: [javascript, typescript]
+    patterns:
+      - pattern-either:
+          # Direct comparison of sensitive values
+          - patterns:
+              - pattern: $A === $B
+              - metavariable-regex:
+                  metavariable: $A
+                  regex: .*(token|Token|TOKEN|secret|Secret|SECRET|key|Key|KEY).*
+              - metavariable-regex:
+                  metavariable: $B
+                  regex: .*(req|REQ|request|input|user|User).*
+          # Password comparisons
+          - patterns:
+              - pattern: $PASSWORD === $INPUT_PASSWORD
+              - metavariable-regex:
+                  metavariable: $PASSWORD
+                  regex: .*(password|Password|PASSWORD|passwd).*
+      - pattern-not-inside: |
+          ...
+          crypto.timingSafeEqual(...)
+          ...
+    metadata:
+      category: security
+      cwe: CWE-208
+      confidence: low
+      subcategory: crypto
+
+  # Unvalidated file upload
+  - id: js-unvalidated-file-upload
+    message: "File upload without validation - validate file type and size"
+    severity: HIGH
+    languages: [javascript, typescript]
+    patterns:
+      - pattern: |
+          $APP.post($PATH, $UPLOAD.single(...), ...)
+      - pattern-not-inside: |
+          ...
+          if ($FILE.mimetype ...) { ... }
+          ...
+    metadata:
+      category: security
+      cwe: CWE-434
+      confidence: low
+      subcategory: upload
+
+  # Zip bomb / decompression bomb
+  - id: js-zip-bomb
+    message: "Zip decompression without size limit - vulnerable to zip bombs"
+    severity: MEDIUM
+    languages: [javascript, typescript]
+    patterns:
+      - pattern-either:
+          - pattern: unzip.Extract(...)
+          - pattern: $ZIP.extractAllTo(...)
+          - pattern: decompress($FILE, ...)
+      - pattern-not-inside: |
+          ...
+          if ($SIZE > ...) { ... }
+          ...
+    metadata:
+      category: security
+      cwe: CWE-409
+      confidence: low
+      subcategory: dos

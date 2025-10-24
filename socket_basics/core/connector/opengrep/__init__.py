@@ -21,6 +21,7 @@ from ..base import BaseConnector
 
 # Import individual notifier modules
 from . import github_pr, slack, ms_teams, ms_sentinel, sumologic, console, jira, webhook, json_notifier
+from .custom_rules import CustomRulesBuilder
 
 # Import shared formatters
 from ...formatters import get_all_formatters
@@ -46,7 +47,20 @@ class OpenGrepScanner(BaseConnector):
 
 		targets = self.config.get_scan_targets()
 
-		# Locate rules directory
+		# Check if custom rules mode is enabled
+		custom_rules_path = self.config.get_custom_rules_path()
+		custom_rule_files: Dict[str, Path] = {}
+		
+		if custom_rules_path:
+			logger.info(f"Custom SAST rules enabled, loading from: {custom_rules_path}")
+			try:
+				builder = CustomRulesBuilder(custom_rules_path)
+				custom_rule_files = builder.build_rule_files(rule_files)
+			except Exception as e:
+				logger.error(f"Failed to build custom rule files: {e}", exc_info=True)
+				custom_rule_files = {}
+
+		# Locate bundled rules directory for fallback
 		module_dir = Path(__file__).resolve().parents[3]
 		bundled_rules_dir = module_dir / 'rules'
 		rules_dir = self.config.get('opengrep_rules_dir') or (str(bundled_rules_dir) if bundled_rules_dir.exists() else None)
@@ -71,12 +85,25 @@ class OpenGrepScanner(BaseConnector):
 			filtered = {}
 
 		config_args: List[str] = []
-		if filtered:
-			for rf, enabled_ids in filtered.items():
+		
+		# Build config_args using custom rules where available, falling back to bundled rules
+		# Process all enabled languages - use filtered rules if specified, otherwise use all rules
+		for rf in rule_files:
+			# Check if we have a custom rule file for this language
+			if custom_rule_files and rf in custom_rule_files:
+				p = custom_rule_files[rf]
+				logger.info(f"Using custom rules for {rf}")
+			else:
+				# Fall back to bundled rules
 				p = Path(rules_dir) / rf
 				if not p.exists():
 					logger.debug('Rule file missing: %s', p)
 					continue
+			
+			# Check if this language has specific rules enabled (filtered mode)
+			if filtered and rf in filtered:
+				enabled_ids = filtered[rf]
+				logger.debug(f"Using filtered rules for {rf}: {len(enabled_ids)} rules enabled")
 				try:
 					with open(p, 'r') as fh:
 						data = yaml.safe_load(fh) or {}
@@ -87,11 +114,10 @@ class OpenGrepScanner(BaseConnector):
 						config_args.extend(['--exclude-rule', ex])
 				except Exception:
 					logger.debug('Failed reading/parsing rule file %s', p, exc_info=True)
-		else:
-			for rf in rule_files:
-				p = Path(rules_dir) / rf
-				if p.exists():
-					config_args.extend(['--config', str(p)])
+			else:
+				# No specific rules configured - use all rules from this file
+				logger.debug(f"Using all rules for {rf}")
+				config_args.extend(['--config', str(p)])
 
 		# If nothing selected, only include all bundled rule files when the
 		# caller explicitly requested all languages or all rules. Otherwise
@@ -114,6 +140,9 @@ class OpenGrepScanner(BaseConnector):
 			if not config_args and self.config.get('all_languages_enabled', False):
 				try:
 					for p in Path(rules_dir).glob('*.yml'):
+						# Skip tests.yml from community rules
+						if p.name == 'tests.yml':
+							continue
 						config_args.extend(['--config', str(p)])
 				except Exception:
 					pass
@@ -236,6 +265,73 @@ class OpenGrepScanner(BaseConnector):
 				for r in results:
 					try:
 						path = r.get('path') or (r.get('extra', {}) or {}).get('file') or 'unknown'
+						
+						# Skip files from custom_rules directory - these are rule files, not source code
+						# Check if path starts with custom_rules (relative to workspace/cwd)
+						try:
+							from pathlib import Path as _P
+							p = _P(path)
+							# Get custom rules path from config
+							custom_rules_path = self.config.get_custom_rules_path()
+							if custom_rules_path:
+								custom_rules_path = Path(custom_rules_path)
+								# Check if the file path is inside the custom rules directory
+								try:
+									# For absolute paths
+									if p.is_absolute() and custom_rules_path.is_absolute():
+										try:
+											p.relative_to(custom_rules_path)
+											logger.debug(f"Skipping result from custom_rules directory: {path}")
+											continue
+										except ValueError:
+											pass
+									# For relative paths, check if path starts with custom_rules
+									else:
+										path_str = str(p.as_posix())
+										custom_rules_str = str(custom_rules_path.as_posix())
+										# Normalize both to relative paths
+										if path_str.startswith(custom_rules_str + '/') or path_str == custom_rules_str:
+											logger.debug(f"Skipping result from custom_rules directory: {path}")
+											continue
+										# Also check if just the first component matches (e.g., "custom_rules/...")
+										parts = p.parts
+										if parts and parts[0] == custom_rules_path.name:
+											logger.debug(f"Skipping result from custom_rules directory: {path}")
+											continue
+								except Exception:
+									pass
+						except Exception:
+							pass
+						
+						# Normalize path early to strip workspace/temp/custom_rules paths
+						normalized_path = path
+						try:
+							from pathlib import Path as _P
+							p = _P(path)
+							ws = getattr(self.config, 'workspace', None)
+							ws_root = getattr(ws, 'path', None) or getattr(ws, 'root', None) or ws
+							if ws_root:
+								# If path is absolute and inside workspace, make it relative
+								if p.is_absolute():
+									try:
+										if str(p).startswith(str(ws_root)):
+											p = _P(os.path.relpath(str(p), str(ws_root)))
+									except Exception:
+										pass
+								else:
+									# Remove leading workspace folder components
+									parts = str(p).split(os.sep)
+									ws_name = os.path.basename(str(ws_root))
+									if parts and (parts[0] == ws_name or (len(parts) >= 2 and parts[0] in ('.', '..') and parts[1] == ws_name)):
+										if parts[0] == ws_name:
+											parts = parts[1:]
+										else:
+											parts = parts[2:]
+										p = _P(os.path.join(*parts)) if parts else _P('')
+							normalized_path = str(p.as_posix())
+						except Exception:
+							pass
+						
 						# Preserve original identifier so we can annotate generatedBy when
 						# the rule comes from the bundled socket_basics ruleset
 						original_check_id = r.get('check_id') or (r.get('extra') or {}).get('rule_id') or ''
@@ -243,8 +339,23 @@ class OpenGrepScanner(BaseConnector):
 						# Remove internal namespace prefix if present; connectors own
 						# their emitted identifiers and must not expose internal pkg IDs
 						try:
-							if isinstance(check_id, str) and check_id.startswith('socket_basics.rules.'):
-								check_id = check_id.replace('socket_basics.rules.', '', 1)
+							if isinstance(check_id, str):
+								# Remove socket_basics.rules. prefix from bundled rules
+								if check_id.startswith('socket_basics.rules.'):
+									check_id = check_id.replace('socket_basics.rules.', '', 1)
+								# Remove temp directory path prefix from custom rules
+								# Pattern: var.folders.nl.zptkx4wd7sv5kn9lbp_vbm980000gn.T.socket_custom_rules_XXXX.rule-name
+								# We want to extract just the rule-name part
+								elif '.socket_custom_rules_' in check_id:
+									# Find the last dot after socket_custom_rules_ to get the rule name
+									parts = check_id.split('.')
+									# Find index of part containing socket_custom_rules_
+									for i, part in enumerate(parts):
+										if part.startswith('socket_custom_rules_'):
+											# Rule name is everything after this part
+											if i + 1 < len(parts):
+												check_id = '.'.join(parts[i+1:])
+											break
 						except Exception:
 							pass
 						severity = ((r.get('extra') or {}).get('severity') or r.get('severity') or '')
@@ -280,7 +391,7 @@ class OpenGrepScanner(BaseConnector):
 								'confidence': (r.get('extra') or {}).get('metadata', {}).get('confidence', ''),
 								'fingerprint': (r.get('extra') or {}).get('fingerprint') or '',
 								# Fill commonly-consumed fields so notifiers can format Location/Lines
-								'filePath': path,
+								'filePath': normalized_path,
 								'startLine': start,
 								'endLine': end,
 								'codeSnippet': (r.get('extra') or {}).get('lines') or (r.get('extra') or {}).get('snippet') or ''
@@ -292,7 +403,7 @@ class OpenGrepScanner(BaseConnector):
 						detected_subtype = None
 						try:
 							from pathlib import Path as _P
-							ext = (_P(path).suffix or '').lower()
+							ext = (_P(normalized_path).suffix or '').lower()
 							if ext == '.py' or (isinstance(check_id, str) and check_id.startswith('python-')):
 								detected_subtype = 'sast-python'
 							elif ext in ('.js', '.ts') or (isinstance(check_id, str) and check_id.startswith('js-')):
@@ -323,64 +434,71 @@ class OpenGrepScanner(BaseConnector):
 						else:
 							alert.setdefault('subType', 'sast-generic')
 
-						# Normalize path and strip workspace prefix if present so component
-						# names are stable and do not include the workspace folder.
+						# Build component ID from normalized path
 						try:
-							from pathlib import Path as _P
 							import hashlib as _hash
-							p = _P(path)
-							# Resolve relative to workspace when present so paths are stable
-							try:
-								ws = getattr(self.config, 'workspace', None)
-								ws_root = getattr(ws, 'path', None) or getattr(ws, 'root', None) or ws
-								if ws_root:
-									# If path is absolute and inside workspace, make it relative
-									if p.is_absolute():
-										try:
-											if str(p).startswith(str(ws_root)):
-												p = _P(os.path.relpath(str(p), str(ws_root)))
-										except Exception:
-											pass
-									else:
-										# Remove leading workspace folder components like "../NodeGoat" or "NodeGoat"
-										parts = str(p).split(os.sep)
-										ws_name = os.path.basename(str(ws_root))
-										if parts and (parts[0] == ws_name or (len(parts) >= 2 and parts[0] in ('.', '..') and parts[1] == ws_name)):
-											# find index after workspace name
-											if parts[0] == ws_name:
-												parts = parts[1:]
-											else:
-												parts = parts[2:]
-										p = _P(os.path.join(*parts)) if parts else _P('')
-							except Exception:
-								pass
-							# Build a normalized identifier from path and filename
-							norm = str(p.as_posix())
-							comp_id = _hash.sha256(norm.encode('utf-8')).hexdigest()
+							comp_id = _hash.sha256(normalized_path.encode('utf-8')).hexdigest()
 						except Exception:
-							comp_id = path
+							comp_id = normalized_path
 
 						if comp_id not in comps:
 							comps[comp_id] = {
 								'id': comp_id,
 								'type': 'generic',
 								'subPath': detected_subtype,
-								'name': path,
+								'name': normalized_path,
 								"internal": True,
 								'alerts': []
 							}
+						
+						# Normalize alert action based on disabled rules before adding to component
+						from ..normalizer import _normalize_alert
+						try:
+							alert = _normalize_alert(alert, connector=self)
+						except Exception:
+							logger.debug('Failed to normalize alert action', exc_info=True)
+						
 						comps[comp_id]['alerts'].append(alert)
 					except Exception:
 						logger.debug('Failed to convert single opengrep result to alert', exc_info=True)
+				
+				# Now add components for ALL files in the workspace (even those without alerts)
+				try:
+					from ...config import discover_all_files
+					import hashlib as _hash
+					from pathlib import Path as _P
+					
+					workspace = getattr(self.config, 'workspace', None)
+					if workspace:
+						all_files = discover_all_files(str(workspace), respect_gitignore=True)
+						logger.debug(f"Discovered {len(all_files)} files in workspace for component generation")
+						
+						for file_path in all_files:
+							# Normalize path and generate component ID (same logic as above)
+							try:
+								norm = file_path.replace('\\', '/')  # Normalize to forward slashes
+								comp_id = _hash.sha256(norm.encode('utf-8')).hexdigest()
+								
+								# Only add if not already present (files with alerts already have components)
+								if comp_id not in comps:
+									comps[comp_id] = {
+										'id': comp_id,
+										'type': 'generic',
+										'subPath': 'sast-generic',
+										'name': file_path,
+										"internal": True,
+										'alerts': []
+									}
+							except Exception:
+								logger.debug(f'Failed to create component for file: {file_path}', exc_info=True)
+				except Exception as e:
+					logger.debug(f'Failed to discover all workspace files: {e}', exc_info=True)
+				
 				return comps
 
-			# If it's already a mapping of component_id -> component, filter empty alerts
+			# If it's already a mapping of component_id -> component, return all (not just with alerts)
 			if all(isinstance(v, dict) for v in raw_results.values()):
-				for k, v in raw_results.items():
-					alerts = v.get('alerts') or []
-					if alerts:
-						out[k] = v
-				return out
+				return raw_results
 
 		return {}
 

@@ -295,23 +295,26 @@ class SecurityScanner:
             # Submit the socket facts file
             logger.info(f"Submitting socket facts file to Socket API for organization: {socket_org}")
             logger.debug(f"Full scan parameters: repo={repo_name}, branch={branch}, commit_hash={commit_hash}")
-            logger.debug(f"Socket facts file path: {socket_facts_path}")
             
-            # Convert to absolute path to avoid SDK path parsing issues
-            absolute_socket_facts_path = socket_facts_path.absolute()
-            logger.debug(f"Absolute socket facts file path: {absolute_socket_facts_path}")
+            # The SDK needs:
+            # 1. Absolute path to the file (so it can be opened)
+            # 2. base_path that the file path starts with (so it can be stripped for the upload key)
+            socket_facts_absolute = str(socket_facts_path.absolute())
+            workspace_absolute = str(Path(self.config.workspace).absolute())
+            
+            logger.debug(f"Socket facts absolute path: {socket_facts_absolute}")
+            logger.debug(f"Workspace absolute path: {workspace_absolute}")
+            logger.debug(f"File exists: {socket_facts_path.exists()}")
+            logger.debug(f"File starts with workspace: {socket_facts_absolute.startswith(workspace_absolute)}")
             
             try:
                 res = sdk.fullscans.post(
-                    [
-                        "./.socket.facts.json"],
-                        base_path="./",
-                        params=params,
-                        use_types=True,
-                        use_lazy_loading=True,
-                        max_open_files=50,
-                        base_paths=[str(self.config.workspace)
-                    ]
+                    [socket_facts_absolute],
+                    params=params,
+                    use_types=True,
+                    use_lazy_loading=True,
+                    max_open_files=50,
+                    base_path=workspace_absolute
                 )
                 logger.debug(f"✓ SDK call completed")
                 logger.debug(f"SDK response type: {type(res)}")
@@ -378,6 +381,12 @@ def main():
     try:
         out_arg = getattr(args, 'output', '.socket.facts.json') or '.socket.facts.json'
         out_path = Path(out_arg)
+        
+        # If output path is relative and workspace is specified, make it relative to workspace
+        if not out_path.is_absolute() and hasattr(args, 'workspace') and args.workspace:
+            workspace_path = Path(args.workspace)
+            out_path = workspace_path / out_path
+        
         # If file exists, remove it to ensure fresh start
         if out_path.exists():
             out_path.unlink()

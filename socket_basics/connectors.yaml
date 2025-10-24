@@ -151,6 +151,18 @@ connectors:
         env_variable: INPUT_OPENGREP_NOTIFICATION_METHOD
         type: str
         default: ""
+      - name: use_custom_sast_rules
+        option: --use-custom-sast-rules
+        description: "Use custom SAST rules instead of bundled rules (falls back to bundled rules for languages without custom rules)"
+        env_variable: INPUT_USE_CUSTOM_SAST_RULES
+        type: bool
+        default: false
+      - name: custom_sast_rule_path
+        option: --custom-sast-rule-path
+        description: "Relative path to custom SAST rules directory (relative to workspace if set, otherwise cwd)"
+        env_variable: INPUT_CUSTOM_SAST_RULE_PATH
+        type: str
+        default: "custom_rules"
 
       # Python rule configuration
       - name: python_enabled_rules
@@ -172,7 +184,7 @@ connectors:
         description: "Comma-separated list of JavaScript/TypeScript SAST rules to enable (default: high-confidence rules)"
         env_variable: INPUT_JAVASCRIPT_ENABLED_RULES
         type: str
-        default: "js-eval-usage,js-sql-injection,js-command-injection,js-prototype-pollution,js-xss-innerhtml,js-path-traversal,js-tls-reject-unauthorized-false,js-weak-crypto-md5"
+        default: "js-code-injection-eval,js-sql-injection,js-nosql-injection,js-command-injection,js-ldap-injection,js-prototype-pollution,js-xss-innerhtml,js-dom-xss,js-path-traversal,js-open-redirect,js-cors-allow-all,js-weak-hash-md5,js-weak-hash-sha1,js-hardcoded-secret,js-weak-cipher,js-tls-reject-unauthorized-false,js-insecure-tls-version,js-jwt-no-verify,js-weak-jwt-secret,js-weak-session-cookie,js-default-credentials,js-error-stack-exposed,js-unsafe-deserialization,js-ssrf-vulnerability,js-react-dangerous-html,js-unsafe-buffer,js-unsafe-file-operations,js-unsafe-process-spawn,js-debugger-statement,js-parseint-missing-radix"
       - name: javascript_disabled_rules
         option: --javascript-disabled-rules
         description: "Comma-separated list of JavaScript/TypeScript SAST rules to disable"
