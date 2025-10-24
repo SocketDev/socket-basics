@@ -21,6 +21,7 @@ from ..base import BaseConnector
 
 # Import individual notifier modules
 from . import github_pr, slack, ms_teams, ms_sentinel, sumologic, console, jira, webhook, json_notifier
+from .custom_rules import CustomRulesBuilder
 
 # Import shared formatters
 from ...formatters import get_all_formatters
@@ -46,7 +47,20 @@ class OpenGrepScanner(BaseConnector):
 
 		targets = self.config.get_scan_targets()
 
-		# Locate rules directory
+		# Check if custom rules mode is enabled
+		custom_rules_path = self.config.get_custom_rules_path()
+		custom_rule_files: Dict[str, Path] = {}
+		
+		if custom_rules_path:
+			logger.info(f"Custom SAST rules enabled, loading from: {custom_rules_path}")
+			try:
+				builder = CustomRulesBuilder(custom_rules_path)
+				custom_rule_files = builder.build_rule_files(rule_files)
+			except Exception as e:
+				logger.error(f"Failed to build custom rule files: {e}", exc_info=True)
+				custom_rule_files = {}
+
+		# Locate bundled rules directory for fallback
 		module_dir = Path(__file__).resolve().parents[3]
 		bundled_rules_dir = module_dir / 'rules'
 		rules_dir = self.config.get('opengrep_rules_dir') or (str(bundled_rules_dir) if bundled_rules_dir.exists() else None)
@@ -71,12 +85,22 @@ class OpenGrepScanner(BaseConnector):
 			filtered = {}
 
 		config_args: List[str] = []
+		
+		# Build config_args using custom rules where available, falling back to bundled rules
 		if filtered:
+			# When specific rules are enabled, use filtered approach
 			for rf, enabled_ids in filtered.items():
-				p = Path(rules_dir) / rf
-				if not p.exists():
-					logger.debug('Rule file missing: %s', p)
-					continue
+				# Check if we have a custom rule file for this language
+				if custom_rule_files and rf in custom_rule_files:
+					p = custom_rule_files[rf]
+					logger.info(f"Using custom rules for {rf}")
+				else:
+					# Fall back to bundled rules
+					p = Path(rules_dir) / rf
+					if not p.exists():
+						logger.debug('Rule file missing: %s', p)
+						continue
+				
 				try:
 					with open(p, 'r') as fh:
 						data = yaml.safe_load(fh) or {}
@@ -88,10 +112,21 @@ class OpenGrepScanner(BaseConnector):
 				except Exception:
 					logger.debug('Failed reading/parsing rule file %s', p, exc_info=True)
 		else:
+			# No filtering - use entire rule files
 			for rf in rule_files:
-				p = Path(rules_dir) / rf
-				if p.exists():
+				# Check if we have a custom rule file for this language
+				if custom_rule_files and rf in custom_rule_files:
+					p = custom_rule_files[rf]
+					logger.info(f"Using custom rules for {rf}")
 					config_args.extend(['--config', str(p)])
+				else:
+					# Fall back to bundled rules
+					p = Path(rules_dir) / rf
+					if p.exists():
+						logger.debug(f"Using bundled rules for {rf}")
+						config_args.extend(['--config', str(p)])
+					else:
+						logger.warning(f"No rules found for {rf} (neither custom nor bundled)")
 
 		# If nothing selected, only include all bundled rule files when the
 		# caller explicitly requested all languages or all rules. Otherwise

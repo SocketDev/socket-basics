@@ -10,7 +10,9 @@ import os
 import yaml
 import logging
 from pathlib import Path
-from typing import Dict, Any, List
+from typing import Dict, Any, List, Optional
+
+logger = logging.getLogger(__name__)
 
 
 class Config:
@@ -283,6 +285,42 @@ class Config:
 
         # Convert sets to lists for output
         return {k: list(v) for k, v in rule_file_filters.items()}
+
+    def get_custom_rules_path(self) -> Optional[Path]:
+        """Get the absolute path to custom SAST rules directory.
+        
+        Returns path relative to workspace if workspace is set, otherwise relative to cwd.
+        Returns None if custom rules are not enabled or path doesn't exist.
+        """
+        if not self.get('use_custom_sast_rules', False):
+            return None
+        
+        custom_path_str = self.get('custom_sast_rule_path', 'custom_rules')
+        if not custom_path_str:
+            return None
+        
+        # Determine base path
+        try:
+            if hasattr(self, 'workspace') and self.workspace:
+                base_path = Path(self.workspace)
+            else:
+                base_path = Path.cwd()
+        except Exception:
+            base_path = Path.cwd()
+        
+        # Resolve custom rules path
+        custom_path = base_path / custom_path_str
+        
+        # Check if path exists
+        if not custom_path.exists():
+            logger.warning(f"Custom SAST rules path does not exist: {custom_path}")
+            return None
+        
+        if not custom_path.is_dir():
+            logger.warning(f"Custom SAST rules path is not a directory: {custom_path}")
+            return None
+        
+        return custom_path
 
 
 # Centralized environment variable getters
@@ -1102,6 +1140,9 @@ def create_config_from_args(args) -> Config:
     # Override config with CLI args
     if args.workspace:
         config_dict['workspace'] = args.workspace
+        # When workspace is explicitly set, default output_dir to workspace unless OUTPUT_DIR env var is set
+        if 'OUTPUT_DIR' not in os.environ:
+            config_dict['output_dir'] = args.workspace
     if args.scan_files:
         config_dict['scan_files'] = args.scan_files
     # Console tabular flag (new) with fallback to deprecated name

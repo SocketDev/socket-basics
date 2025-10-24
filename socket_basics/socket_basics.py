@@ -303,15 +303,13 @@ class SecurityScanner:
             
             try:
                 res = sdk.fullscans.post(
-                    [
-                        "./.socket.facts.json"],
-                        base_path="./",
-                        params=params,
-                        use_types=True,
-                        use_lazy_loading=True,
-                        max_open_files=50,
-                        base_paths=[str(self.config.workspace)
-                    ]
+                    [str(absolute_socket_facts_path)],
+                    base_path=str(socket_facts_path.parent.absolute()),
+                    params=params,
+                    use_types=True,
+                    use_lazy_loading=True,
+                    max_open_files=50,
+                    base_paths=[str(self.config.workspace)]
                 )
                 logger.debug(f"✓ SDK call completed")
                 logger.debug(f"SDK response type: {type(res)}")
@@ -378,6 +376,12 @@ def main():
     try:
         out_arg = getattr(args, 'output', '.socket.facts.json') or '.socket.facts.json'
         out_path = Path(out_arg)
+        
+        # If output path is relative and workspace is specified, make it relative to workspace
+        if not out_path.is_absolute() and hasattr(args, 'workspace') and args.workspace:
+            workspace_path = Path(args.workspace)
+            out_path = workspace_path / out_path
+        
         # If file exists, remove it to ensure fresh start
         if out_path.exists():
             out_path.unlink()
