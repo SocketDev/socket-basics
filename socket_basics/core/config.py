@@ -292,11 +292,17 @@ class Config:
         Returns path relative to workspace if workspace is set, otherwise relative to cwd.
         Returns None if custom rules are not enabled or path doesn't exist.
         """
+        # Cache the result to avoid repeated warnings and path resolution
+        if hasattr(self, '_custom_rules_path_cache'):
+            return self._custom_rules_path_cache
+        
         if not self.get('use_custom_sast_rules', False):
+            self._custom_rules_path_cache = None
             return None
         
         custom_path_str = self.get('custom_sast_rule_path', 'custom_rules')
         if not custom_path_str:
+            self._custom_rules_path_cache = None
             return None
         
         # Determine base path
@@ -313,13 +319,16 @@ class Config:
         
         # Check if path exists
         if not custom_path.exists():
-            logger.warning(f"Custom SAST rules path does not exist: {custom_path}")
+            logger.debug(f"Custom SAST rules path does not exist: {custom_path}")
+            self._custom_rules_path_cache = None
             return None
         
         if not custom_path.is_dir():
             logger.warning(f"Custom SAST rules path is not a directory: {custom_path}")
+            self._custom_rules_path_cache = None
             return None
         
+        self._custom_rules_path_cache = custom_path
         return custom_path
 
 
