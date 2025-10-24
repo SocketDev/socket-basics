@@ -42,15 +42,28 @@ rules:
 
   # Insecure direct object reference
   - id: js-idor-vulnerability
-    message: "Potential IDOR vulnerability - user input directly used to access resources"
+    message: "Potential IDOR vulnerability - verify user authorization before accessing resource"
     severity: HIGH
     languages: [javascript, typescript]
-    pattern-either:
-      - pattern: "$DB.find({ id: $REQ.params.id })"
-      - pattern: $DB.findById($REQ.params.id)
-      - pattern: "$DB.findOne({ _id: $REQ.params.id })"
-      - pattern: fs.readFile($REQ.params.file, ...)
-      - pattern: fs.readFileSync($REQ.params.file)
+    patterns:
+      - pattern-either:
+          - pattern: $DB.findById($REQ.params.id)
+          - pattern: "$DB.findOne({ _id: $REQ.params.id })"
+          - pattern: "$DB.findOne({ id: $REQ.params.id })"
+          - pattern: fs.readFile($REQ.params.file, ...)
+          - pattern: fs.readFileSync($REQ.params.file)
+      - pattern-not-inside: |
+          ...
+          if ($REQ.user.id === ...) { ... }
+          ...
+      - pattern-not-inside: |
+          ...
+          if ($RESOURCE.userId === $REQ.user.id) { ... }
+          ...
+      - pattern-not-inside: |
+          ...
+          authorize($REQ.user, ...)
+          ...
     metadata:
       category: security
       owasp: "A01:2021"
@@ -64,6 +77,7 @@ rules:
     severity: HIGH
     languages: [javascript, typescript]
     pattern-either:
+      # File system operations with concatenated paths
       - pattern: fs.readFile($PATH + $USER_INPUT, ...)
       - pattern: fs.readFileSync($PATH + $USER_INPUT)
       - pattern: fs.writeFile($PATH + $USER_INPUT, ...)
@@ -72,8 +86,39 @@ rules:
       - pattern: fs.createWriteStream($PATH + $USER_INPUT)
       - pattern: fs.readFile(`${$PATH}${$USER_INPUT}`, ...)
       - pattern: fs.readFileSync(`${$PATH}${$USER_INPUT}`)
-      - pattern: require($USER_INPUT)
-      - pattern: import($USER_INPUT)
+      - pattern: fs.writeFile(`${$PATH}${$USER_INPUT}`, ...)
+      - pattern: fs.writeFileSync(`${$PATH}${$USER_INPUT}`)
+      # User input directly in file operations (common with req.query/params/body)
+      - pattern: fs.readFile($REQ.query.$PARAM, ...)
+      - pattern: fs.readFileSync($REQ.query.$PARAM)
+      - pattern: fs.writeFile($REQ.query.$PARAM, ...)
+      - pattern: fs.writeFileSync($REQ.query.$PARAM)
+      - pattern: fs.readFile($REQ.params.$PARAM, ...)
+      - pattern: fs.readFileSync($REQ.params.$PARAM)
+      - pattern: fs.readFile($REQ.body.$PARAM, ...)
+      - pattern: fs.readFileSync($REQ.body.$PARAM)
+      - pattern: fs.createReadStream($REQ.query.$PARAM)
+      - pattern: fs.createReadStream($REQ.params.$PARAM)
+      - pattern: fs.createWriteStream($REQ.query.$PARAM)
+      - pattern: fs.createWriteStream($REQ.params.$PARAM)
+      # Path module with user input
+      - pattern: path.join($BASE, $REQ.query.$PARAM)
+      - pattern: path.join($BASE, $REQ.params.$PARAM)
+      - pattern: path.join($BASE, $REQ.body.$PARAM)
+      - pattern: path.resolve($BASE, $REQ.query.$PARAM)
+      - pattern: path.resolve($BASE, $REQ.params.$PARAM)
+      - pattern: path.resolve($BASE, $REQ.body.$PARAM)
+      # Dynamic require/import with request parameters (not static strings)
+      - pattern: require($REQ.query.$PARAM)
+      - pattern: require($REQ.params.$PARAM)
+      - pattern: require($REQ.body.$PARAM)
+      - pattern: import($REQ.query.$PARAM)
+      - pattern: import($REQ.params.$PARAM)
+      - pattern: import($REQ.body.$PARAM)
+      # Template literals with user input
+      - pattern: fs.readFile(`...${$REQ.query.$PARAM}...`, ...)
+      - pattern: fs.readFile(`...${$REQ.params.$PARAM}...`, ...)
+      - pattern: fs.readFile(`...${$REQ.body.$PARAM}...`, ...)
     metadata:
       category: security
       owasp: "A01:2021"
@@ -87,18 +132,23 @@ rules:
     severity: MEDIUM
     languages: [javascript, typescript]
     pattern-either:
+      # Server-side redirects with user input
       - pattern: res.redirect($REQ.query.$PARAM)
       - pattern: res.redirect($REQ.params.$PARAM)
       - pattern: res.redirect($REQ.body.$PARAM)
-      - pattern: window.location = $USER_INPUT
-      - pattern: window.location.href = $USER_INPUT
-      - pattern: document.location = $USER_INPUT
-      - pattern: document.location.href = $USER_INPUT
+      # Client-side redirects with request data (more specific)
+      - pattern: window.location = $REQ.query.$PARAM
+      - pattern: window.location.href = $REQ.query.$PARAM
+      - pattern: document.location = $REQ.query.$PARAM
+      - pattern: document.location.href = $REQ.query.$PARAM
+      # URL concatenation with user input
+      - pattern: res.redirect($BASE + $REQ.query.$PARAM)
+      - pattern: res.redirect(`${$BASE}${$REQ.query.$PARAM}`)
     metadata:
       category: security
       owasp: "A01:2021"
       cwe: CWE-601
-      confidence: medium
+      confidence: high
       subcategory: access-control
 
   # CORS misconfiguration
@@ -159,15 +209,23 @@ rules:
 
   # Insecure random number generation
   - id: js-insecure-random
-    message: "Math.random() is not cryptographically secure - use crypto.randomBytes() instead"
+    message: "Math.random() used for security-sensitive operation - use crypto.randomBytes() instead"
     severity: HIGH
     languages: [javascript, typescript]
-    pattern: Math.random()
+    patterns:
+      - pattern: Math.random()
+      - pattern-inside: |
+          ...
+          $TOKEN = ...
+          ...
+      - metavariable-regex:
+          metavariable: $TOKEN
+          regex: (?i).*(token|secret|key|password|salt|nonce|session|auth|crypto).*
     metadata:
       category: security
       owasp: "A02:2021"
       cwe: CWE-338
-      confidence: high
+      confidence: medium
       subcategory: crypto
       fix: "Use crypto.randomBytes() or crypto.getRandomValues() for security-sensitive operations"
 
@@ -183,7 +241,10 @@ rules:
           - pattern: var $VAR = "..."
       - metavariable-regex:
           metavariable: $VAR
-          regex: (?i)(password|passwd|pwd|secret|token|api_key|apikey|private_key|access_token|auth_token|session_key|encryption_key)
+          regex: ^(password|passwd|pwd|secret|apiKey|api_key|privateKey|private_key|accessToken|access_token|authToken|auth_token|sessionKey|session_key)$
+      - metavariable-comparison:
+          metavariable: $VAR
+          comparison: str($VAR).length > 8
     metadata:
       category: security
       owasp: "A02:2021"
@@ -260,18 +321,24 @@ rules:
 
   # Missing encryption in transit
   - id: js-insecure-protocol
-    message: "HTTP used instead of HTTPS - data transmitted in cleartext"
+    message: "HTTP server listening on external interface - should use HTTPS"
     severity: MEDIUM
     languages: [javascript, typescript]
-    pattern-either:
-      - pattern: require("http").createServer(...)
-      - pattern: http.createServer(...)
-      - pattern: |
-          fetch("http://...")
-      - pattern: |
-          axios.get("http://...")
-      - pattern: |
-          axios.post("http://...")
+    patterns:
+      - pattern-either:
+          - pattern: |
+              http.createServer(...).listen($PORT, "0.0.0.0", ...)
+          - pattern: |
+              http.createServer(...).listen($PORT)
+          - pattern: |
+              require("http").createServer(...).listen($PORT, "0.0.0.0", ...)
+      - pattern-not-inside: |
+          ...
+          if (process.env.NODE_ENV === "development") { ... }
+          ...
+      - metavariable-comparison:
+          metavariable: $PORT
+          comparison: $PORT != 3000 and $PORT != 8080
     metadata:
       category: security
       owasp: "A02:2021"
@@ -289,14 +356,25 @@ rules:
     severity: CRITICAL
     languages: [javascript, typescript]
     pattern-either:
+      # Direct eval usage
       - pattern: eval($EXPR)
       - pattern: eval($REQ.$PROP)
-      - pattern: Function($ARGS)
-      - pattern: new Function($ARGS)
-      - pattern: setTimeout($CODE_STR, ...)
-      - pattern: setInterval($CODE_STR, ...)
-      - pattern: vm.runInNewContext($CODE)
-      - pattern: vm.runInThisContext($CODE)
+      # Function constructor with user input
+      - pattern: Function($REQ.$PROP)
+      - pattern: new Function($REQ.$PROP)
+      # setTimeout/setInterval with string (not function)
+      - patterns:
+          - pattern-either:
+              - pattern: setTimeout($CODE_STR, ...)
+              - pattern: setInterval($CODE_STR, ...)
+          - metavariable-pattern:
+              metavariable: $CODE_STR
+              patterns:
+                - pattern-not: $FUNC
+                - pattern: "..."
+      # VM module with user input
+      - pattern: vm.runInNewContext($REQ.$PROP)
+      - pattern: vm.runInThisContext($REQ.$PROP)
     metadata:
       category: security
       owasp: "A03:2021"
@@ -333,6 +411,7 @@ rules:
     severity: HIGH
     languages: [javascript, typescript]
     pattern-either:
+      # Directly passing request object to query methods
       - pattern: $COLLECTION.find($REQ.query)
       - pattern: $COLLECTION.find($REQ.body)
       - pattern: $COLLECTION.findOne($REQ.query)
@@ -342,7 +421,11 @@ rules:
       - pattern: $COLLECTION.remove($REQ.query)
       - pattern: $COLLECTION.deleteOne($REQ.query)
       - pattern: $COLLECTION.deleteMany($REQ.query)
-      - pattern: "$MODEL.find({ ..., $FIELD: $REQ.query.$PARAM, ... })"
+      # Query operators with user input
+      - pattern: "$MODEL.find({ ..., $ne: $REQ.query.$PARAM, ... })"
+      - pattern: "$MODEL.find({ ..., $gt: $REQ.query.$PARAM, ... })"
+      - pattern: "$MODEL.find({ ..., $regex: $REQ.query.$PARAM, ... })"
+      - pattern: "$MODEL.find({ ..., $where: $REQ.query.$PARAM, ... })"
     metadata:
       category: security
       owasp: "A03:2021"
@@ -390,41 +473,56 @@ rules:
 
   # XSS via innerHTML
   - id: js-xss-innerhtml
-    message: "XSS vulnerability via innerHTML - use textContent or sanitize input"
+    message: "XSS vulnerability via innerHTML with user input - use textContent or sanitize"
     severity: HIGH
     languages: [javascript, typescript]
     pattern-either:
-      - pattern: $ELEMENT.innerHTML = $VAR
-      - pattern: $ELEMENT.outerHTML = $VAR
-      - pattern: $ELEMENT.insertAdjacentHTML(..., $VAR)
-      - pattern: document.write($VAR)
-      - pattern: document.writeln($VAR)
+      # innerHTML with request data
+      - pattern: $ELEMENT.innerHTML = $REQ.query.$PARAM
+      - pattern: $ELEMENT.innerHTML = $REQ.body.$PARAM
+      - pattern: $ELEMENT.innerHTML = $REQ.params.$PARAM
+      - pattern: $ELEMENT.outerHTML = $REQ.query.$PARAM
+      - pattern: $ELEMENT.outerHTML = $REQ.body.$PARAM
+      # insertAdjacentHTML with request data
+      - pattern: $ELEMENT.insertAdjacentHTML(..., $REQ.query.$PARAM)
+      - pattern: $ELEMENT.insertAdjacentHTML(..., $REQ.body.$PARAM)
+      # document.write with request data
+      - pattern: document.write($REQ.query.$PARAM)
+      - pattern: document.writeln($REQ.body.$PARAM)
+      # Template literals with user input in innerHTML
+      - pattern: $ELEMENT.innerHTML = `...${$REQ.query.$PARAM}...`
+      - pattern: $ELEMENT.innerHTML = `...${$REQ.body.$PARAM}...`
     metadata:
       category: security
       owasp: "A03:2021"
       cwe: CWE-79
-      confidence: medium
+      confidence: high
       subcategory: injection
 
   # DOM-based XSS
   - id: js-dom-xss
-    message: "DOM XSS vulnerability - validate and sanitize before using in DOM"
+    message: "DOM XSS vulnerability - validate and sanitize user input before using in DOM"
     severity: HIGH
     languages: [javascript, typescript]
     pattern-either:
-      - pattern: $ELEMENT.setAttribute("href", $USER_INPUT)
-      - pattern: $ELEMENT.setAttribute("src", $USER_INPUT)
-      - pattern: $ELEMENT.setAttribute("action", $USER_INPUT)
-      - pattern: $ELEMENT.setAttribute("formaction", $USER_INPUT)
-      - pattern: $ELEMENT.src = $USER_INPUT
-      - pattern: $ELEMENT.href = $USER_INPUT
-      - pattern: location = $USER_INPUT
-      - pattern: location.href = $USER_INPUT
+      # Setting dangerous attributes with request data
+      - pattern: $ELEMENT.setAttribute("href", $REQ.query.$PARAM)
+      - pattern: $ELEMENT.setAttribute("src", $REQ.query.$PARAM)
+      - pattern: $ELEMENT.setAttribute("action", $REQ.body.$PARAM)
+      - pattern: $ELEMENT.setAttribute("formaction", $REQ.body.$PARAM)
+      - pattern: $ELEMENT.src = $REQ.query.$PARAM
+      - pattern: $ELEMENT.href = $REQ.query.$PARAM
+      # Location manipulation with user input
+      - pattern: location = $REQ.query.$PARAM
+      - pattern: location.href = $REQ.query.$PARAM
+      - pattern: location.assign($REQ.query.$PARAM)
+      - pattern: window.location = $REQ.query.$PARAM
+      - pattern: window.location.href = $REQ.query.$PARAM
     metadata:
       category: security
       owasp: "A03:2021"
       cwe: CWE-79
-      confidence: medium
+      confidence: high
       subcategory: injection
 
   # XXE (XML External Entity)
@@ -455,18 +553,23 @@ rules:
     severity: HIGH
     languages: [javascript, typescript]
     pattern-either:
+      # Eval in template context
       - pattern: eval($TEMPLATE_STR)
-      - pattern: |
-          $TEMPLATE_ENGINE.render($TEMPLATE, { ..., userInput: $REQ.$PROP, ... })
-      - pattern: |
-          _.template($USER_INPUT)
-      - pattern: |
-          Handlebars.compile($USER_INPUT)
+      # Lodash template with user input
+      - pattern: _.template($REQ.query.$PARAM)
+      - pattern: _.template($REQ.body.$PARAM)
+      - pattern: lodash.template($REQ.query.$PARAM)
+      # Handlebars compile with user input
+      - pattern: Handlebars.compile($REQ.body.$PARAM)
+      - pattern: Handlebars.compile($REQ.query.$PARAM)
+      # Template engines rendering user-controlled template strings
+      - pattern: $ENGINE.renderString($REQ.body.$PARAM, ...)
+      - pattern: pug.compile($REQ.body.$PARAM)
     metadata:
       category: security
       owasp: "A03:2021"
       cwe: CWE-1336
-      confidence: medium
+      confidence: high
       subcategory: injection
 
   # Prototype pollution
@@ -475,17 +578,28 @@ rules:
     severity: CRITICAL
     languages: [javascript, typescript]
     pattern-either:
+      # Direct prototype manipulation
       - pattern: $OBJ["__proto__"] = $VAL
       - pattern: $OBJ.__proto__ = $VAL
       - pattern: $OBJ["constructor"]["prototype"] = $VAL
       - pattern: $OBJ.constructor.prototype = $VAL
       - pattern: Object.setPrototypeOf($OBJ, $PROTO)
-      - pattern: $OBJ[$KEY] = $VAL
+      # Unsafe merge with user input
+      - pattern: Object.assign($TARGET, $REQ.body)
+      - pattern: Object.assign($TARGET, $REQ.query)
+      - pattern: lodash.merge($TARGET, $REQ.body)
+      - pattern: _.merge($TARGET, $REQ.query)
+      # Dynamic property assignment with __proto__
+      - patterns:
+          - pattern: $OBJ[$KEY] = $VAL
+          - metavariable-regex:
+              metavariable: $KEY
+              regex: (__proto__|constructor|prototype)
     metadata:
       category: security
       owasp: "A03:2021"
       cwe: CWE-1321
-      confidence: medium
+      confidence: high
       subcategory: injection
 
   # ===================================================================== 
@@ -803,17 +917,21 @@ rules:
     severity: CRITICAL
     languages: [javascript, typescript]
     pattern-either:
-      - pattern: JSON.parse($REQ.body)
-      - pattern: JSON.parse($REQ.query.$PARAM)
-      - pattern: eval($JSON_STR)
-      - pattern: Function("return " + $JSON_STR)()
+      # Dangerous deserialization libraries
       - pattern: serialize.unserialize($DATA)
       - pattern: node-serialize.unserialize($DATA)
+      - pattern: funcster.deepDeserialize($DATA)
+      # Eval-based JSON parsing
+      - pattern: eval("(" + $JSON_STR + ")")
+      - pattern: Function("return " + $JSON_STR)()
+      # VM module with untrusted data
+      - pattern: vm.runInNewContext($REQ.body.$PARAM)
+      - pattern: vm.runInThisContext($REQ.query.$PARAM)
     metadata:
       category: security
       owasp: "A08:2021"
       cwe: CWE-502
-      confidence: medium
+      confidence: high
       subcategory: integrity
 
   # Missing integrity check for external resources
@@ -1020,19 +1138,27 @@ rules:
     severity: MEDIUM
     languages: [javascript, typescript]
     pattern-either:
-      - pattern: new RegExp($USER_INPUT)
-      - pattern: $STR.match($USER_INPUT)
-      - pattern: $STR.replace($USER_INPUT, ...)
+      # User input used as regex
+      - pattern: new RegExp($REQ.query.$PARAM)
+      - pattern: new RegExp($REQ.body.$PARAM)
+      - pattern: RegExp($REQ.query.$PARAM)
+      # Dangerous regex patterns (nested quantifiers)
       - pattern: |
           /(.+)+/
       - pattern: |
           /(.*)+/
       - pattern: |
-          /([a-zA-Z]+)*/.test($INPUT)
+          /(.*)*/
+      - pattern: |
+          /([a-zA-Z]+)*/
+      - pattern: |
+          /(a+)+/
+      - pattern: |
+          /(a|a)*/
     metadata:
       category: security
       cwe: CWE-1333
-      confidence: low
+      confidence: medium
       subcategory: dos
 
   # Unsafe parseInt without radix
@@ -1082,7 +1208,7 @@ rules:
 
   # Express missing async error handler
   - id: js-express-async-no-error-handler
-    message: "Async Express route handler without error handling"
+    message: "Async Express route handler without try-catch - errors won't be caught"
     severity: MEDIUM
     languages: [javascript, typescript]
     patterns:
@@ -1091,12 +1217,18 @@ rules:
             ...
           })
       - pattern-not-inside: |
-          $APP.$METHOD($PATH, async ($REQ, $RES, $NEXT) => {
+          $APP.$METHOD($PATH, async ($REQ, $RES) => {
             try {
               ...
             } catch ($ERR) {
               ...
-              $NEXT($ERR)
+            }
+          })
+      - pattern-not-inside: |
+          $APP.$METHOD($PATH, async ($REQ, $RES, $NEXT) => {
+            try {
+              ...
+            } catch ($ERR) {
               ...
             }
           })
@@ -1104,7 +1236,7 @@ rules:
       category: best-practice
       framework: express
       cwe: CWE-755
-      confidence: low
+      confidence: medium
       subcategory: error-handling
 
   # Express trust proxy not set
@@ -1197,12 +1329,25 @@ rules:
     languages: [javascript, typescript]
     patterns:
       - pattern-either:
-          - pattern: $TOKEN === $USER_TOKEN
-          - pattern: $PASSWORD === $USER_PASSWORD
-          - pattern: $SECRET === $USER_SECRET
-      - metavariable-regex:
-          metavariable: $TOKEN
-          regex: (?i).*(token|secret|password|key).*
+          # Direct comparison of sensitive values
+          - patterns:
+              - pattern: $A === $B
+              - metavariable-regex:
+                  metavariable: $A
+                  regex: .*(token|Token|TOKEN|secret|Secret|SECRET|key|Key|KEY).*
+              - metavariable-regex:
+                  metavariable: $B
+                  regex: .*(req|REQ|request|input|user|User).*
+          # Password comparisons
+          - patterns:
+              - pattern: $PASSWORD === $INPUT_PASSWORD
+              - metavariable-regex:
+                  metavariable: $PASSWORD
+                  regex: .*(password|Password|PASSWORD|passwd).*
+      - pattern-not-inside: |
+          ...
+          crypto.timingSafeEqual(...)
+          ...
     metadata:
       category: security
       cwe: CWE-208
