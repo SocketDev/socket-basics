@@ -87,20 +87,23 @@ class OpenGrepScanner(BaseConnector):
 		config_args: List[str] = []
 		
 		# Build config_args using custom rules where available, falling back to bundled rules
-		if filtered:
-			# When specific rules are enabled, use filtered approach
-			for rf, enabled_ids in filtered.items():
-				# Check if we have a custom rule file for this language
-				if custom_rule_files and rf in custom_rule_files:
-					p = custom_rule_files[rf]
-					logger.info(f"Using custom rules for {rf}")
-				else:
-					# Fall back to bundled rules
-					p = Path(rules_dir) / rf
-					if not p.exists():
-						logger.debug('Rule file missing: %s', p)
-						continue
-				
+		# Process all enabled languages - use filtered rules if specified, otherwise use all rules
+		for rf in rule_files:
+			# Check if we have a custom rule file for this language
+			if custom_rule_files and rf in custom_rule_files:
+				p = custom_rule_files[rf]
+				logger.info(f"Using custom rules for {rf}")
+			else:
+				# Fall back to bundled rules
+				p = Path(rules_dir) / rf
+				if not p.exists():
+					logger.debug('Rule file missing: %s', p)
+					continue
+			
+			# Check if this language has specific rules enabled (filtered mode)
+			if filtered and rf in filtered:
+				enabled_ids = filtered[rf]
+				logger.debug(f"Using filtered rules for {rf}: {len(enabled_ids)} rules enabled")
 				try:
 					with open(p, 'r') as fh:
 						data = yaml.safe_load(fh) or {}
@@ -111,22 +114,10 @@ class OpenGrepScanner(BaseConnector):
 						config_args.extend(['--exclude-rule', ex])
 				except Exception:
 					logger.debug('Failed reading/parsing rule file %s', p, exc_info=True)
-		else:
-			# No filtering - use entire rule files
-			for rf in rule_files:
-				# Check if we have a custom rule file for this language
-				if custom_rule_files and rf in custom_rule_files:
-					p = custom_rule_files[rf]
-					logger.info(f"Using custom rules for {rf}")
-					config_args.extend(['--config', str(p)])
-				else:
-					# Fall back to bundled rules
-					p = Path(rules_dir) / rf
-					if p.exists():
-						logger.debug(f"Using bundled rules for {rf}")
-						config_args.extend(['--config', str(p)])
-					else:
-						logger.warning(f"No rules found for {rf} (neither custom nor bundled)")
+			else:
+				# No specific rules configured - use all rules from this file
+				logger.debug(f"Using all rules for {rf}")
+				config_args.extend(['--config', str(p)])
 
 		# If nothing selected, only include all bundled rule files when the
 		# caller explicitly requested all languages or all rules. Otherwise
@@ -407,15 +398,44 @@ class OpenGrepScanner(BaseConnector):
 						comps[comp_id]['alerts'].append(alert)
 					except Exception:
 						logger.debug('Failed to convert single opengrep result to alert', exc_info=True)
+				
+				# Now add components for ALL files in the workspace (even those without alerts)
+				try:
+					from ...config import discover_all_files
+					import hashlib as _hash
+					from pathlib import Path as _P
+					
+					workspace = getattr(self.config, 'workspace', None)
+					if workspace:
+						all_files = discover_all_files(str(workspace), respect_gitignore=True)
+						logger.debug(f"Discovered {len(all_files)} files in workspace for component generation")
+						
+						for file_path in all_files:
+							# Normalize path and generate component ID (same logic as above)
+							try:
+								norm = file_path.replace('\\', '/')  # Normalize to forward slashes
+								comp_id = _hash.sha256(norm.encode('utf-8')).hexdigest()
+								
+								# Only add if not already present (files with alerts already have components)
+								if comp_id not in comps:
+									comps[comp_id] = {
+										'id': comp_id,
+										'type': 'generic',
+										'subPath': 'sast-generic',
+										'name': file_path,
+										"internal": True,
+										'alerts': []
+									}
+							except Exception:
+								logger.debug(f'Failed to create component for file: {file_path}', exc_info=True)
+				except Exception as e:
+					logger.debug(f'Failed to discover all workspace files: {e}', exc_info=True)
+				
 				return comps
 
-			# If it's already a mapping of component_id -> component, filter empty alerts
+			# If it's already a mapping of component_id -> component, return all (not just with alerts)
 			if all(isinstance(v, dict) for v in raw_results.values()):
-				for k, v in raw_results.items():
-					alerts = v.get('alerts') or []
-					if alerts:
-						out[k] = v
-				return out
+				return raw_results
 
 		return {}
 

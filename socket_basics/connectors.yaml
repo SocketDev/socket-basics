@@ -184,7 +184,7 @@ connectors:
         description: "Comma-separated list of JavaScript/TypeScript SAST rules to enable (default: high-confidence rules)"
         env_variable: INPUT_JAVASCRIPT_ENABLED_RULES
         type: str
-        default: "js-eval-usage,js-sql-injection,js-command-injection,js-prototype-pollution,js-xss-innerhtml,js-path-traversal,js-tls-reject-unauthorized-false,js-weak-crypto-md5"
+        default: "js-code-injection-eval,js-sql-injection,js-nosql-injection,js-command-injection,js-ldap-injection,js-prototype-pollution,js-xss-innerhtml,js-dom-xss,js-path-traversal,js-open-redirect,js-cors-allow-all,js-weak-hash-md5,js-weak-hash-sha1,js-insecure-random,js-hardcoded-secret,js-weak-cipher,js-tls-reject-unauthorized-false,js-insecure-tls-version,js-jwt-no-verify,js-weak-jwt-secret,js-weak-session-cookie,js-default-credentials,js-error-stack-exposed,js-unsafe-deserialization,js-ssrf-vulnerability,js-react-dangerous-html,js-unsafe-buffer,js-unsafe-file-operations,js-unsafe-process-spawn,js-unvalidated-file-upload,js-debugger-statement,js-parseint-missing-radix"
       - name: javascript_disabled_rules
         option: --javascript-disabled-rules
         description: "Comma-separated list of JavaScript/TypeScript SAST rules to disable"

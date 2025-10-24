@@ -297,13 +297,12 @@ class SecurityScanner:
             logger.debug(f"Full scan parameters: repo={repo_name}, branch={branch}, commit_hash={commit_hash}")
             logger.debug(f"Socket facts file path: {socket_facts_path}")
             
-            # Convert to absolute path to avoid SDK path parsing issues
-            absolute_socket_facts_path = socket_facts_path.absolute()
-            logger.debug(f"Absolute socket facts file path: {absolute_socket_facts_path}")
+            # Use just the filename without path for SDK fullscans.post
+            logger.debug(f"Socket facts file path: {socket_facts_path}")
             
             try:
                 res = sdk.fullscans.post(
-                    [str(absolute_socket_facts_path)],
+                    [".socket.facts.json"],
                     base_path=str(socket_facts_path.parent.absolute()),
                     params=params,
                     use_types=True,

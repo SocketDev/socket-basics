@@ -17,7 +17,7 @@ Run Socket Basics locally using Docker without installing any security tools on 
 # 1. Clone and build
 git clone https://github.com/SocketDev/socket-basics.git
 cd socket-basics
-docker build -t socket-basics:1.0.12 .
+docker build -t socket-basics:1.0.13 .
 
 # 2. Create .env file with your credentials
 cat > .env << 'EOF'
@@ -29,7 +29,7 @@ EOF
 docker run --rm \
   -v "$PWD:/workspace" \
   --env-file .env \
-  socket-basics:1.0.12 \
+  socket-basics:1.0.13 \
   --workspace /workspace \
   --python \
   --secrets \
@@ -46,10 +46,10 @@ git clone https://github.com/SocketDev/socket-basics.git
 cd socket-basics
 
 # Build with version tag
-docker build -t socket-basics:1.0.12 .
+docker build -t socket-basics:1.0.13 .
 
 # Or build with latest tag
-docker build -t socket-basics:1.0.12:latest .
+docker build -t socket-basics:1.0.13:latest .
 
 # Verify the build
 docker images | grep socket-basics
@@ -59,21 +59,21 @@ docker images | grep socket-basics
 
 ```bash
 # Use your own image name
-docker build -t myorg/security-scanner:1.0.12 .
+docker build -t myorg/security-scanner:1.0.13 .
 
 # Build for specific platform (e.g., for M1/M2 Macs)
-docker build --platform linux/amd64 -t socket-basics:1.0.12 .
+docker build --platform linux/amd64 -t socket-basics:1.0.13 .
 ```
 
 ### Verify Installation
 
 ```bash
 # Check that all tools are available in the container
-docker run --rm socket-basics:1.0.12 socket-basics --version
-docker run --rm socket-basics:1.0.12 socket --version
-docker run --rm socket-basics:1.0.12 trivy --version
-docker run --rm socket-basics:1.0.12 semgrep --version
-docker run --rm socket-basics:1.0.12 trufflehog --version
+docker run --rm socket-basics:1.0.13 socket-basics --version
+docker run --rm socket-basics:1.0.13 socket --version
+docker run --rm socket-basics:1.0.13 trivy --version
+docker run --rm socket-basics:1.0.13 semgrep --version
+docker run --rm socket-basics:1.0.13 trufflehog --version
 ```
 
 ## Running Scans
@@ -86,7 +86,7 @@ Mount your project directory into the container:
 # Scan current directory
 docker run --rm \
   -v "$PWD:/workspace" \
-  socket-basics:1.0.12 \
+  socket-basics:1.0.13 \
   --workspace /workspace \
   --python \
   --secrets \
@@ -103,7 +103,7 @@ docker run --rm \
 # Scan a specific project directory
 docker run --rm \
   -v "/path/to/your/project:/workspace" \
-  socket-basics:1.0.12 \
+  socket-basics:1.0.13 \
   --workspace /workspace \
   --javascript \
   --secrets
@@ -114,7 +114,7 @@ docker run --rm \
 ```bash
 docker run --rm \
   -v "$PWD:/workspace" \
-  socket-basics:1.0.12 \
+  socket-basics:1.0.13 \
   --workspace /workspace \
   --all-languages \
   --secrets \
@@ -162,7 +162,7 @@ VERBOSE=false
 docker run --rm \
   -v "$PWD:/workspace" \
   --env-file .env \
-  socket-basics:1.0.12 \
+  socket-basics:1.0.13 \
   --workspace /workspace \
   --python \
   --secrets
@@ -177,7 +177,7 @@ docker run --rm \
   -v "$PWD:/workspace" \
   -e "SOCKET_SECURITY_API_KEY=scrt_your_api_key" \
   -e "SOCKET_ORG=your-org-slug" \
-  socket-basics:1.0.12 \
+  socket-basics:1.0.13 \
   --workspace /workspace \
   --python \
   --secrets \
@@ -199,7 +199,7 @@ docker run --rm \
   --env-file .env.socket \
   --env-file .env.notifiers \
   --env-file .env.scanning \
-  socket-basics:1.0.12 \
+  socket-basics:1.0.13 \
   --workspace /workspace \
   --all-languages
 ```
@@ -218,7 +218,7 @@ docker run --rm \
   -v "$PWD:/workspace" \
   -e "SOCKET_SECURITY_API_KEY=$SOCKET_SECURITY_API_KEY" \
   -e "SOCKET_ORG=$SOCKET_ORG" \
-  socket-basics:1.0.12 \
+  socket-basics:1.0.13 \
   --workspace /workspace \
   --python
 ```
@@ -234,7 +234,7 @@ docker run --rm \
   -v "$PWD:/workspace" \
   -v "/var/run/docker.sock:/var/run/docker.sock" \
   --env-file .env \
-  socket-basics:1.0.12 \
+  socket-basics:1.0.13 \
   --workspace /workspace \
   --images "nginx:latest,redis:7" \
   --console-tabular-enabled
@@ -255,7 +255,7 @@ docker run --rm \
   -v "$PWD:/workspace" \
   -v "$PWD/scan-results:/results" \
   --env-file .env \
-  socket-basics:1.0.12 \
+  socket-basics:1.0.13 \
   --workspace /workspace \
   --python \
   --secrets \
@@ -272,7 +272,7 @@ docker run --rm -it \
   -v "$PWD:/workspace" \
   --env-file .env \
   --entrypoint /bin/bash \
-  socket-basics:1.0.12
+  socket-basics:1.0.13
 
 # Inside container, run commands manually:
 # cd /workspace
@@ -301,7 +301,7 @@ docker run --rm \
   -v "$PWD:/workspace" \
   -v "$PWD/socket-config.json:/config.json" \
   --env-file .env \
-  socket-basics:1.0.12 \
+  socket-basics:1.0.13 \
   --workspace /workspace \
   --config /config.json
 ```
@@ -325,7 +325,7 @@ for PROJECT in "${PROJECTS[@]}"; do
   docker run --rm \
     -v "$PROJECT:/workspace" \
     --env-file .env \
-    socket-basics:1.0.12 \
+    socket-basics:1.0.13 \
     --workspace /workspace \
     --all-languages \
     --secrets \
@@ -345,7 +345,7 @@ pipeline {
         stage('Security Scan') {
             steps {
                 script {
-                    docker.image('socket-basics:1.0.12').inside(
+                    docker.image('socket-basics:1.0.13').inside(
                         "-v ${WORKSPACE}:/workspace --env-file .env"
                     ) {
                         sh '''
@@ -367,7 +367,7 @@ pipeline {
 
 ```yaml
 security-scan:
-  image: socket-basics:1.0.12
+  image: socket-basics:1.0.13
   stage: test
   script:
     - socket-basics
@@ -393,7 +393,7 @@ security-scan:
    docker run --rm \
      -v "$PWD:/workspace" \
      --user "$(id -u):$(id -g)" \
-     socket-basics:1.0.12 \
+     socket-basics:1.0.13 \
      --workspace /workspace
    ```
 
@@ -412,14 +412,14 @@ security-scan:
    ```bash
    docker run --rm \
      -v "$(pwd):/workspace" \  # Use $(pwd) instead of $PWD
-     socket-basics:1.0.12
+     socket-basics:1.0.13
    ```
 
 2. Verify mount:
    ```bash
    docker run --rm \
      -v "$PWD:/workspace" \
-     socket-basics:1.0.12 \
+     socket-basics:1.0.13 \
      ls -la /workspace
    ```
 
@@ -449,7 +449,7 @@ security-scan:
    docker run --rm \
      -v "$PWD:/workspace" \
      --env-file "$(pwd)/.env" \
-     socket-basics:1.0.12
+     socket-basics:1.0.13
    ```
 
 ### Docker Socket Permission Denied
@@ -497,7 +497,7 @@ security-scan:
    ```bash
    docker run --rm \
      -v "$PWD:/workspace" \
-     socket-basics:1.0.12 \
+     socket-basics:1.0.13 \
      --workspace /workspace \
      --python \
      --secrets \
@@ -518,7 +518,7 @@ security-scan:
    ```bash
    docker run --rm \
      -v "$PWD:/workspace" \
-     socket-basics:1.0.12 \
+     socket-basics:1.0.13 \
      --workspace /workspace \
      --output /workspace/results.json  # Save to mounted directory
    ```
@@ -529,7 +529,7 @@ security-scan:
    docker run --rm \
      -v "$PWD:/workspace" \
      -v "$PWD/results:/results" \
-     socket-basics:1.0.12 \
+     socket-basics:1.0.13 \
      --workspace /workspace \
      --output /results/scan.json
    ```
@@ -540,14 +540,14 @@ Add these to your `~/.bashrc` or `~/.zshrc` for quick access:
 
 ```bash
 # Socket Basics Docker aliases
-alias sb-docker='docker run --rm -v "$PWD:/workspace" --env-file .env socket-basics:1.0.12 --workspace /workspace'
+alias sb-docker='docker run --rm -v "$PWD:/workspace" --env-file .env socket-basics:1.0.13 --workspace /workspace'
 alias sb-quick='sb-docker --secrets --console-tabular-enabled'
 alias sb-python='sb-docker --python --secrets --console-tabular-enabled'
 alias sb-js='sb-docker --javascript --secrets --console-tabular-enabled'
 alias sb-all='sb-docker --all-languages --secrets --socket-tier1 --console-tabular-enabled'
 
 # Rebuild image
-alias sb-build='docker build -t socket-basics:1.0.12 .'
+alias sb-build='docker build -t socket-basics:1.0.13 .'
 ```
 
 Usage:
@@ -583,7 +583,7 @@ set -e
 # Configuration
 PROJECT_DIR="$(pwd)"
 RESULTS_DIR="./scan-results"
-IMAGE_NAME="socket-basics:1.0.12"
+IMAGE_NAME="socket-basics:1.0.13"
 ENV_FILE=".env"
 
 # Create results directory

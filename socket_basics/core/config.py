@@ -1008,7 +1008,16 @@ def merge_json_and_env_config(json_config: Dict[str, Any] | None = None) -> Dict
         if socket_basics_config:
             # Normalize camelCase API keys to snake_case internal format
             normalized_config = normalize_api_config(socket_basics_config)
-            config.update(normalized_config)
+            # Filter out empty strings for rule configs - treat them as unset to use code defaults
+            # Only filter string values ending with _enabled_rules or _disabled_rules
+            filtered_config = {}
+            for k, v in normalized_config.items():
+                if isinstance(v, str) and v == '' and (k.endswith('_enabled_rules') or k.endswith('_disabled_rules')):
+                    # Skip empty rule config strings - they'll fall back to defaults
+                    logger.debug(f"Filtering out empty rule config: {k}")
+                    continue
+                filtered_config[k] = v
+            config.update(filtered_config)
             logging.getLogger(__name__).info("Loaded Socket Basics API configuration (overrides environment defaults)")
         else:
             logger.debug(" No Socket Basics API config loaded")
@@ -1018,7 +1027,15 @@ def merge_json_and_env_config(json_config: Dict[str, Any] | None = None) -> Dict
     if json_config:
         # Also normalize JSON config in case it comes from API
         normalized_json = normalize_api_config(json_config)
-        config.update(normalized_json)
+        # Filter out empty strings for rule configs - treat them as unset to use code defaults
+        filtered_json = {}
+        for k, v in normalized_json.items():
+            if isinstance(v, str) and v == '' and (k.endswith('_enabled_rules') or k.endswith('_disabled_rules')):
+                # Skip empty rule config strings - they'll fall back to defaults
+                logger.debug(f"Filtering out empty rule config: {k}")
+                continue
+            filtered_json[k] = v
+        config.update(filtered_json)
         logging.getLogger(__name__).info("Loaded JSON configuration (overrides environment defaults)")
     
     # Note: CLI arguments are handled separately and take highest priority
