@@ -1469,6 +1469,8 @@ def discover_all_files(workspace_path: str, respect_gitignore: bool = True) -> L
         'node_modules/**',
         '.tmp',
         '.tmp/**',
+        'custom_rules',
+        'custom_rules/**',
     ]
     
     all_patterns = gitignore_patterns + default_ignore_patterns

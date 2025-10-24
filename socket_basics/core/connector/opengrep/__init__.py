@@ -140,6 +140,9 @@ class OpenGrepScanner(BaseConnector):
 			if not config_args and self.config.get('all_languages_enabled', False):
 				try:
 					for p in Path(rules_dir).glob('*.yml'):
+						# Skip tests.yml from community rules
+						if p.name == 'tests.yml':
+							continue
 						config_args.extend(['--config', str(p)])
 				except Exception:
 					pass
