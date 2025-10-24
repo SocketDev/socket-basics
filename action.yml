@@ -8,6 +8,7 @@ runs:
   env:
     # Core GitHub variables (these are automatically available, but we explicitly pass GITHUB_TOKEN)
     GITHUB_TOKEN: ${{ inputs.github_token }}
+    INPUT_WORKSPACE: ${{ inputs.workspace }}
     # Input mappings for all parameters
     INPUT_ALL_LANGUAGES_ENABLED: ${{ inputs.all_languages_enabled }}
     INPUT_ALL_RULES_ENABLED: ${{ inputs.all_rules_enabled }}
@@ -88,6 +89,10 @@ runs:
     SOCKET_TIER_1_ENABLED: ${{ inputs.socket_tier_1_enabled }}
 
 inputs:
+  workspace:
+    description: "Workspace directory to scan (defaults to GITHUB_WORKSPACE)"
+    required: false
+    default: ""
   socket_org:
     description: "Socket organization slug (required for Enterprise features)"
     required: false

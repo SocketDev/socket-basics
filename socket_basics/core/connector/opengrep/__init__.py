@@ -266,6 +266,43 @@ class OpenGrepScanner(BaseConnector):
 					try:
 						path = r.get('path') or (r.get('extra', {}) or {}).get('file') or 'unknown'
 						
+						# Skip files from custom_rules directory - these are rule files, not source code
+						# Check if path starts with custom_rules (relative to workspace/cwd)
+						try:
+							from pathlib import Path as _P
+							p = _P(path)
+							# Get custom rules path from config
+							custom_rules_path = self.config.get_custom_rules_path()
+							if custom_rules_path:
+								custom_rules_path = Path(custom_rules_path)
+								# Check if the file path is inside the custom rules directory
+								try:
+									# For absolute paths
+									if p.is_absolute() and custom_rules_path.is_absolute():
+										try:
+											p.relative_to(custom_rules_path)
+											logger.debug(f"Skipping result from custom_rules directory: {path}")
+											continue
+										except ValueError:
+											pass
+									# For relative paths, check if path starts with custom_rules
+									else:
+										path_str = str(p.as_posix())
+										custom_rules_str = str(custom_rules_path.as_posix())
+										# Normalize both to relative paths
+										if path_str.startswith(custom_rules_str + '/') or path_str == custom_rules_str:
+											logger.debug(f"Skipping result from custom_rules directory: {path}")
+											continue
+										# Also check if just the first component matches (e.g., "custom_rules/...")
+										parts = p.parts
+										if parts and parts[0] == custom_rules_path.name:
+											logger.debug(f"Skipping result from custom_rules directory: {path}")
+											continue
+								except Exception:
+									pass
+						except Exception:
+							pass
+						
 						# Normalize path early to strip workspace/temp/custom_rules paths
 						normalized_path = path
 						try:
@@ -302,8 +339,23 @@ class OpenGrepScanner(BaseConnector):
 						# Remove internal namespace prefix if present; connectors own
 						# their emitted identifiers and must not expose internal pkg IDs
 						try:
-							if isinstance(check_id, str) and check_id.startswith('socket_basics.rules.'):
-								check_id = check_id.replace('socket_basics.rules.', '', 1)
+							if isinstance(check_id, str):
+								# Remove socket_basics.rules. prefix from bundled rules
+								if check_id.startswith('socket_basics.rules.'):
+									check_id = check_id.replace('socket_basics.rules.', '', 1)
+								# Remove temp directory path prefix from custom rules
+								# Pattern: var.folders.nl.zptkx4wd7sv5kn9lbp_vbm980000gn.T.socket_custom_rules_XXXX.rule-name
+								# We want to extract just the rule-name part
+								elif '.socket_custom_rules_' in check_id:
+									# Find the last dot after socket_custom_rules_ to get the rule name
+									parts = check_id.split('.')
+									# Find index of part containing socket_custom_rules_
+									for i, part in enumerate(parts):
+										if part.startswith('socket_custom_rules_'):
+											# Rule name is everything after this part
+											if i + 1 < len(parts):
+												check_id = '.'.join(parts[i+1:])
+											break
 						except Exception:
 							pass
 						severity = ((r.get('extra') or {}).get('severity') or r.get('severity') or '')
