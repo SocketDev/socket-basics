@@ -395,6 +395,14 @@ class OpenGrepScanner(BaseConnector):
 								"internal": True,
 								'alerts': []
 							}
+						
+						# Normalize alert action based on disabled rules before adding to component
+						from ..normalizer import _normalize_alert
+						try:
+							alert = _normalize_alert(alert, connector=self)
+						except Exception:
+							logger.debug('Failed to normalize alert action', exc_info=True)
+						
 						comps[comp_id]['alerts'].append(alert)
 					except Exception:
 						logger.debug('Failed to convert single opengrep result to alert', exc_info=True)
