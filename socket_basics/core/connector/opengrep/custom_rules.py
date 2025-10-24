@@ -86,6 +86,10 @@ class CustomRulesBuilder:
         
         # Find all YAML files recursively
         yaml_files = list(self.custom_rules_path.rglob('*.yml')) + list(self.custom_rules_path.rglob('*.yaml'))
+        
+        # Filter out test files
+        yaml_files = [f for f in yaml_files if not (f.name.endswith('.test.yml') or f.name.endswith('.test.yaml'))]
+        
         logger.info(f"Found {len(yaml_files)} custom rule files in {self.custom_rules_path}")
         
         for yaml_file in yaml_files:

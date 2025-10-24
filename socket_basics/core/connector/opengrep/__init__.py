@@ -265,6 +265,36 @@ class OpenGrepScanner(BaseConnector):
 				for r in results:
 					try:
 						path = r.get('path') or (r.get('extra', {}) or {}).get('file') or 'unknown'
+						
+						# Normalize path early to strip workspace/temp/custom_rules paths
+						normalized_path = path
+						try:
+							from pathlib import Path as _P
+							p = _P(path)
+							ws = getattr(self.config, 'workspace', None)
+							ws_root = getattr(ws, 'path', None) or getattr(ws, 'root', None) or ws
+							if ws_root:
+								# If path is absolute and inside workspace, make it relative
+								if p.is_absolute():
+									try:
+										if str(p).startswith(str(ws_root)):
+											p = _P(os.path.relpath(str(p), str(ws_root)))
+									except Exception:
+										pass
+								else:
+									# Remove leading workspace folder components
+									parts = str(p).split(os.sep)
+									ws_name = os.path.basename(str(ws_root))
+									if parts and (parts[0] == ws_name or (len(parts) >= 2 and parts[0] in ('.', '..') and parts[1] == ws_name)):
+										if parts[0] == ws_name:
+											parts = parts[1:]
+										else:
+											parts = parts[2:]
+										p = _P(os.path.join(*parts)) if parts else _P('')
+							normalized_path = str(p.as_posix())
+						except Exception:
+							pass
+						
 						# Preserve original identifier so we can annotate generatedBy when
 						# the rule comes from the bundled socket_basics ruleset
 						original_check_id = r.get('check_id') or (r.get('extra') or {}).get('rule_id') or ''
@@ -309,7 +339,7 @@ class OpenGrepScanner(BaseConnector):
 								'confidence': (r.get('extra') or {}).get('metadata', {}).get('confidence', ''),
 								'fingerprint': (r.get('extra') or {}).get('fingerprint') or '',
 								# Fill commonly-consumed fields so notifiers can format Location/Lines
-								'filePath': path,
+								'filePath': normalized_path,
 								'startLine': start,
 								'endLine': end,
 								'codeSnippet': (r.get('extra') or {}).get('lines') or (r.get('extra') or {}).get('snippet') or ''
@@ -321,7 +351,7 @@ class OpenGrepScanner(BaseConnector):
 						detected_subtype = None
 						try:
 							from pathlib import Path as _P
-							ext = (_P(path).suffix or '').lower()
+							ext = (_P(normalized_path).suffix or '').lower()
 							if ext == '.py' or (isinstance(check_id, str) and check_id.startswith('python-')):
 								detected_subtype = 'sast-python'
 							elif ext in ('.js', '.ts') or (isinstance(check_id, str) and check_id.startswith('js-')):
@@ -352,49 +382,19 @@ class OpenGrepScanner(BaseConnector):
 						else:
 							alert.setdefault('subType', 'sast-generic')
 
-						# Normalize path and strip workspace prefix if present so component
-						# names are stable and do not include the workspace folder.
+						# Build component ID from normalized path
 						try:
-							from pathlib import Path as _P
 							import hashlib as _hash
-							p = _P(path)
-							# Resolve relative to workspace when present so paths are stable
-							try:
-								ws = getattr(self.config, 'workspace', None)
-								ws_root = getattr(ws, 'path', None) or getattr(ws, 'root', None) or ws
-								if ws_root:
-									# If path is absolute and inside workspace, make it relative
-									if p.is_absolute():
-										try:
-											if str(p).startswith(str(ws_root)):
-												p = _P(os.path.relpath(str(p), str(ws_root)))
-										except Exception:
-											pass
-									else:
-										# Remove leading workspace folder components like "../NodeGoat" or "NodeGoat"
-										parts = str(p).split(os.sep)
-										ws_name = os.path.basename(str(ws_root))
-										if parts and (parts[0] == ws_name or (len(parts) >= 2 and parts[0] in ('.', '..') and parts[1] == ws_name)):
-											# find index after workspace name
-											if parts[0] == ws_name:
-												parts = parts[1:]
-											else:
-												parts = parts[2:]
-										p = _P(os.path.join(*parts)) if parts else _P('')
-							except Exception:
-								pass
-							# Build a normalized identifier from path and filename
-							norm = str(p.as_posix())
-							comp_id = _hash.sha256(norm.encode('utf-8')).hexdigest()
+							comp_id = _hash.sha256(normalized_path.encode('utf-8')).hexdigest()
 						except Exception:
-							comp_id = path
+							comp_id = normalized_path
 
 						if comp_id not in comps:
 							comps[comp_id] = {
 								'id': comp_id,
 								'type': 'generic',
 								'subPath': detected_subtype,
-								'name': path,
+								'name': normalized_path,
 								"internal": True,
 								'alerts': []
 							}
