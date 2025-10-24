@@ -12,6 +12,7 @@ runs:
     INPUT_ALL_LANGUAGES_ENABLED: ${{ inputs.all_languages_enabled }}
     INPUT_ALL_RULES_ENABLED: ${{ inputs.all_rules_enabled }}
     INPUT_CONTAINER_IMAGES_TO_SCAN: ${{ inputs.container_images }}
+    INPUT_CUSTOM_SAST_RULE_PATH: ${{ inputs.custom_sast_rule_path }}
     INPUT_CPP_DISABLED_RULES: ${{ inputs.cpp_disabled_rules }}
     INPUT_CPP_ENABLED_RULES: ${{ inputs.cpp_enabled_rules }}
     INPUT_CPP_SAST_ENABLED: ${{ inputs.cpp_sast_enabled }}
@@ -81,6 +82,7 @@ runs:
     INPUT_TRUFFLEHOG_EXCLUDE_DIR: ${{ inputs.trufflehog_exclude_dir }}
     INPUT_TRUFFLEHOG_NOTIFICATION_METHOD: ${{ inputs.notification_method }}
     INPUT_TRUFFLEHOG_SHOW_UNVERIFIED: ${{ inputs.trufflehog_show_unverified }}
+    INPUT_USE_CUSTOM_SAST_RULES: ${{ inputs.use_custom_sast_rules }}
     INPUT_WEBHOOK_URL: ${{ inputs.webhook_url }}
     SOCKET_ADDITIONAL_PARAMS: ${{ inputs.socket_additional_params }}
     SOCKET_TIER_1_ENABLED: ${{ inputs.socket_tier_1_enabled }}
@@ -126,6 +128,10 @@ inputs:
     description: "Comma-separated list of container images to scan (auto-enables image scanning)"
     required: false
     default: ""
+  custom_sast_rule_path:
+    description: "Relative path to custom SAST rules directory (relative to workspace if set, otherwise cwd)"
+    required: false
+    default: "custom_rules"
   cpp_disabled_rules:
     description: "Comma-separated list of C++ SAST rules to disable"
     required: false
@@ -384,6 +390,10 @@ inputs:
     default: ""
   trufflehog_show_unverified:
     description: "Show unverified secrets in TruffleHog results"
+    required: false
+    default: "false"
+  use_custom_sast_rules:
+    description: "Use custom SAST rules instead of bundled rules (falls back to bundled rules for languages without custom rules)"
     required: false
     default: "false"
   webhook_url:
