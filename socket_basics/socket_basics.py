@@ -295,20 +295,26 @@ class SecurityScanner:
             # Submit the socket facts file
             logger.info(f"Submitting socket facts file to Socket API for organization: {socket_org}")
             logger.debug(f"Full scan parameters: repo={repo_name}, branch={branch}, commit_hash={commit_hash}")
-            logger.debug(f"Socket facts file path: {socket_facts_path}")
             
-            # Use just the filename without path for SDK fullscans.post
-            logger.debug(f"Socket facts file path: {socket_facts_path}")
+            # The SDK needs:
+            # 1. Absolute path to the file (so it can be opened)
+            # 2. base_path that the file path starts with (so it can be stripped for the upload key)
+            socket_facts_absolute = str(socket_facts_path.absolute())
+            workspace_absolute = str(Path(self.config.workspace).absolute())
+            
+            logger.debug(f"Socket facts absolute path: {socket_facts_absolute}")
+            logger.debug(f"Workspace absolute path: {workspace_absolute}")
+            logger.debug(f"File exists: {socket_facts_path.exists()}")
+            logger.debug(f"File starts with workspace: {socket_facts_absolute.startswith(workspace_absolute)}")
             
             try:
                 res = sdk.fullscans.post(
-                    [".socket.facts.json"],
-                    base_path=str(socket_facts_path.parent.absolute()),
+                    [socket_facts_absolute],
                     params=params,
                     use_types=True,
                     use_lazy_loading=True,
                     max_open_files=50,
-                    base_paths=[str(self.config.workspace)]
+                    base_path=workspace_absolute
                 )
                 logger.debug(f"✓ SDK call completed")
                 logger.debug(f"SDK response type: {type(res)}")
