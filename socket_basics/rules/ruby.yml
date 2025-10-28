@@ -1,61 +1,100 @@
 rules:
   # === Critical Severity Rules ===
 
-  # Code injection via eval - keep generic
+  # Code injection via eval - using taint mode
   - id: ruby-eval-injection
-    message: "Code injection via eval, instance_eval, or class_eval"
+    message: "Code injection via eval detected. User-controlled data flows into eval without sanitization. Avoid eval with user input."
     severity: CRITICAL
     languages: [ruby]
-    pattern-either:
-      - pattern: eval($USER_INPUT)
-      - pattern: instance_eval($USER_INPUT)
-      - pattern: class_eval($USER_INPUT)
-      - pattern: module_eval($USER_INPUT)
-      - pattern: binding.eval($USER_INPUT)
+    mode: taint
+    pattern-sources:
+      # User-controlled input sources
+      - pattern: params
+      - pattern: request.params
+      - pattern: cookies
+      - pattern: request.query_string
+    pattern-propagators:
+      # String concatenation
+      - pattern: (String $A) + (String $B)
+        from: $B
+        to: $A
+    pattern-sinks:
+      # Code evaluation methods
+      - pattern: eval(...)
+      - pattern: instance_eval(...)
+      - pattern: class_eval(...)
+      - pattern: module_eval(...)
+      - pattern: binding.eval(...)
     metadata:
       category: security
       cwe: CWE-94
       confidence: high
 
-  # Command injection - generic patterns
+  # Command injection - using taint mode for accurate detection
   - id: ruby-command-injection
-    message: "Command injection vulnerability detected"
+    message: "Command injection vulnerability detected. User-controlled data flows into system command without proper sanitization. Use safe command execution with array arguments or proper escaping."
     severity: CRITICAL
     languages: [ruby]
-    pattern-either:
-      - pattern: system($USER_INPUT)
-      - pattern: exec($USER_INPUT)
-      - pattern: spawn($USER_INPUT)
-      - pattern: IO.popen($USER_INPUT)
-      - pattern: Kernel.system($USER_INPUT)
-      # String concatenation patterns
-      - pattern: system($CMD + $VAR)
-      - pattern: system($CMD << $VAR)
-      - pattern: exec($CMD + $VAR)
-      # Backtick patterns (simplified)
-      - pattern: '$VAR'
+    mode: taint
+    pattern-sources:
+      # User-controlled input sources
+      - pattern: params
+      - pattern: request.params
+      - pattern: cookies
+      - pattern: request.query_string
+    pattern-propagators:
+      # String concatenation
+      - pattern: (String $A) + (String $B)
+        from: $B
+        to: $A
+    pattern-sinks:
+      # Command execution methods
+      - pattern: system(...)
+      - pattern: exec(...)
+      - pattern: spawn(...)
+      - pattern: IO.popen(...)
+      - pattern: Kernel.system(...)
+    pattern-sanitizers:
+      # Array-based command execution is safe
+      - pattern: system([$CMD, ...])
+      - pattern: spawn([$CMD, ...])
     metadata:
       category: security
       cwe: CWE-78
       confidence: high
 
-  # SQL injection - broad patterns that catch real cases
+  # SQL injection - using taint mode for accurate detection
   - id: ruby-sql-injection
-    message: "SQL injection vulnerability detected"
+    message: "SQL injection vulnerability detected. User-controlled data flows into SQL query without proper sanitization. Use parameterized queries with placeholders (?, :symbol) to prevent SQL injection."
     severity: CRITICAL
     languages: [ruby]
-    pattern-either:
-      # String concatenation (most common)
-      - pattern: $MODEL.where($QUERY + $VAR)
-      - pattern: $MODEL.find_by_sql($QUERY + $VAR)
-      - pattern: ActiveRecord::Base.connection.execute($QUERY + $VAR)
-      - pattern: $DB.query($QUERY + $VAR)
-      # String interpolation (catch variables that might contain interpolation)
-      - pattern: $MODEL.where($VAR)
-      - pattern: $MODEL.find_by_sql($VAR)
-      # Format string patterns
-      - pattern: $MODEL.where($QUERY % $VAR)
-      - pattern: $MODEL.where(sprintf($QUERY, $VAR))
+    mode: taint
+    pattern-sources:
+      # User-controlled input sources
+      - pattern: params
+      - pattern: request.params
+      - pattern: cookies
+      - pattern: request.query_string
+      - pattern: request.GET
+      - pattern: request.POST
+    pattern-propagators:
+      # String concatenation
+      - pattern: (String $A) + (String $B)
+        from: $B
+        to: $A
+      # String interpolation is implicitly tracked
+    pattern-sinks:
+      # ActiveRecord query methods
+      - pattern: $MODEL.where(...)
+      - pattern: $MODEL.find_by_sql(...)
+      - pattern: ActiveRecord::Base.connection.execute(...)
+      - pattern: $DB.execute(...)
+      - pattern: $DB.query(...)
+    pattern-sanitizers:
+      # Parameterized queries
+      - pattern: $MODEL.where($KEY => $VAL)
+      - pattern: $MODEL.where("... ?", ...)
+      - pattern: $MODEL.where("... :$SYM", ...)
     metadata:
       category: security
       cwe: CWE-89
@@ -115,51 +154,98 @@ rules:
       cwe: CWE-798
       confidence: medium
 
-  # File path traversal - generic patterns
+  # File path traversal - using taint mode
   - id: ruby-path-traversal
-    message: "Path traversal vulnerability detected"
+    message: "Path traversal vulnerability detected. User-controlled data flows into file operations without proper validation. Use File.expand_path or validate paths."
     severity: HIGH
     languages: [ruby]
-    pattern-either:
-      - pattern: File.open($PATH + $USER_INPUT)
-      - pattern: File.read($PATH + $USER_INPUT)
-      - pattern: File.write($PATH + $USER_INPUT, $DATA)
-      - pattern: IO.read($PATH + $USER_INPUT)
-      - pattern: Pathname.new($PATH + $USER_INPUT)
-      - pattern: Dir.glob($PATH + $USER_INPUT)
-      # Also catch direct user input
-      - pattern: File.open($USER_INPUT)
-      - pattern: File.read($USER_INPUT)
+    mode: taint
+    pattern-sources:
+      # User-controlled input sources
+      - pattern: params
+      - pattern: request.params
+      - pattern: cookies
+    pattern-propagators:
+      # String concatenation
+      - pattern: (String $A) + (String $B)
+        from: $B
+        to: $A
+      # File.join propagates taint
+      - pattern: File.join(..., (String $X), ...)
+        from: $X
+        to: File.join
+    pattern-sinks:
+      # File operations
+      - pattern: File.open(...)
+      - pattern: File.read(...)
+      - pattern: File.write(...)
+      - pattern: IO.read(...)
+      - pattern: Pathname.new(...)
+      - pattern: Dir.glob(...)
+    pattern-sanitizers:
+      # Path validation
+      - pattern: File.expand_path(...)
+      - pattern: File.basename(...)
     metadata:
       category: security
       cwe: CWE-22
-      confidence: medium
+      confidence: high
 
-  # Open redirect - Rails patterns
+  # Open redirect - Rails patterns with taint mode
   - id: ruby-open-redirect
     message: "Open redirect vulnerability detected"
     severity: HIGH
     languages: [ruby]
-    pattern-either:
-      - pattern: redirect_to($USER_INPUT)
-      - pattern: redirect_to(params[$PARAM])
+    mode: taint
+    pattern-sources:
+      # User-controlled input sources
+      - pattern: params
+      - pattern: request.params
+      - pattern: request.query_string
+      - pattern: cookies
+    pattern-propagators:
+      # String concatenation
+      - pattern: (String $A) + (String $B)
+        from: $B
+        to: $A
+    pattern-sinks:
+      # Redirect methods that are dangerous with user input
+      - pattern: redirect_to(...)
+      - pattern: redirect_back(...)
     metadata:
       category: security
       cwe: CWE-601
-      confidence: medium
+      confidence: high
 
-  # XSS vulnerabilities - Rails specific
+  # XSS vulnerabilities - Rails specific with taint mode
   - id: ruby-xss-raw-output
-    message: "XSS vulnerability via raw HTML output"
+    message: "XSS vulnerability via raw HTML output. User-controlled data flows into raw HTML rendering without proper sanitization. Use sanitize() or escape HTML properly."
     severity: HIGH
     languages: [ruby]
-    pattern-either:
-      - pattern: raw($USER_INPUT)
+    mode: taint
+    pattern-sources:
+      # User-controlled input sources
+      - pattern: params
+      - pattern: request.params
+      - pattern: cookies
+    pattern-propagators:
+      # String concatenation
+      - pattern: (String $A) + (String $B)
+        from: $B
+        to: $A
+    pattern-sinks:
+      # Raw HTML output methods
+      - pattern: raw(...)
       - pattern: $VAR.html_safe
+    pattern-sanitizers:
+      # Proper HTML sanitization
+      - pattern: sanitize(...)
+      - pattern: h(...)
+      - pattern: html_escape(...)
     metadata:
       category: security
       cwe: CWE-79
-      confidence: medium
+      confidence: high
 
   # SSL/TLS verification bypass
   - id: ruby-ssl-verification-bypass
@@ -327,9 +413,9 @@ rules:
     severity: CRITICAL
     languages: [ruby]
     pattern-either:
-      - pattern: $MODEL.find_by_sql($VAR)
       - pattern: $MODEL.find_by_sql($QUERY + $VAR)
       - pattern: $MODEL.find_by_sql($QUERY % $VAR)
+      - pattern: $MODEL.find_by_sql("...#{$VAR}...")
     metadata:
       category: security
       framework: rails
@@ -342,9 +428,9 @@ rules:
     severity: CRITICAL
     languages: [ruby]
     pattern-either:
-      - pattern: $MODEL.where($VAR)
       - pattern: $MODEL.where($QUERY + $VAR)
       - pattern: $MODEL.where($QUERY % $VAR)
+      - pattern: $MODEL.where("...#{$VAR}...")
     metadata:
       category: security
       framework: rails

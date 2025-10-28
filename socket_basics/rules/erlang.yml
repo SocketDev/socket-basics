@@ -218,12 +218,12 @@ rules:
     message: "Debug information disclosure detected"
     severity: LOW
     languages: [elixir]
-    pattern-either:
-      - pattern: IO.puts($USER_INPUT)
-      - pattern: IO.inspect($USER_INPUT)
-      - pattern: Logger.debug($USER_INPUT)
-      - pattern: Logger.info($USER_INPUT)
-    where:
+    patterns:
+      - pattern-either:
+          - pattern: IO.puts($USER_INPUT)
+          - pattern: IO.inspect($USER_INPUT)
+          - pattern: Logger.debug($USER_INPUT)
+          - pattern: Logger.info($USER_INPUT)
       - metavariable-regex:
           metavariable: $USER_INPUT
           regex: (?i).*(password|token|secret|key|credential).*
@@ -478,11 +478,11 @@ rules:
     message: "Debug information disclosure detected"
     severity: LOW
     languages: [erlang]
-    pattern-either:
-      - pattern: io:format("~p~n", [$USER_INPUT])
-      - pattern: "error_logger:info_msg($USER_INPUT)"
-      - pattern: "lager:debug($USER_INPUT)"
-    where:
+    patterns:
+      - pattern-either:
+          - pattern: io:format("~p~n", [$USER_INPUT])
+          - pattern: "error_logger:info_msg($USER_INPUT)"
+          - pattern: "lager:debug($USER_INPUT)"
       - metavariable-regex:
           metavariable: $USER_INPUT
           regex: (?i).*(password|token|secret|key|credential).*
@@ -644,10 +644,10 @@ rules:
     message: "Potential atom table exhaustion"
     severity: MEDIUM
     languages: [erlang]
-    pattern-either:
-      - pattern: list_to_atom($USER_INPUT)
-      - pattern: binary_to_atom($USER_INPUT, utf8)
-    where:
+    patterns:
+      - pattern-either:
+          - pattern: list_to_atom($USER_INPUT)
+          - pattern: binary_to_atom($USER_INPUT, utf8)
       - metavariable-pattern:
           metavariable: $USER_INPUT
           pattern: $VAR

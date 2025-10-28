@@ -22,12 +22,12 @@ rules:
     message: "Command injection vulnerability detected"
     severity: CRITICAL
     languages: [rust]
-    pattern-either:
-      - pattern: std::process::Command::new($CMD + $USER_INPUT)
-      - pattern: Command::new($CMD + $USER_INPUT)
-      - pattern: std::process::Command::new($CMD).arg($USER_INPUT)
-      - pattern: Command::new($CMD).args(&[$USER_INPUT])
-    where:
+    patterns:
+      - pattern-either:
+          - pattern: std::process::Command::new($CMD + $USER_INPUT)
+          - pattern: Command::new($CMD + $USER_INPUT)
+          - pattern: std::process::Command::new($CMD).arg($USER_INPUT)
+          - pattern: Command::new($CMD).args(&[$USER_INPUT])
       - metavariable-pattern:
           metavariable: $USER_INPUT
           pattern: $VAR
@@ -41,11 +41,11 @@ rules:
     message: "Unsafe deserialization detected"
     severity: CRITICAL
     languages: [rust]
-    pattern-either:
-      - pattern: serde_pickle::from_slice($USER_INPUT)
-      - pattern: bincode::deserialize($USER_INPUT)
-      - pattern: postcard::from_bytes($USER_INPUT)
-    where:
+    patterns:
+      - pattern-either:
+          - pattern: serde_pickle::from_slice($USER_INPUT)
+          - pattern: bincode::deserialize($USER_INPUT)
+          - pattern: postcard::from_bytes($USER_INPUT)
       - metavariable-pattern:
           metavariable: $USER_INPUT
           pattern: $VAR
@@ -76,14 +76,14 @@ rules:
     message: "Hardcoded secrets detected"
     severity: HIGH
     languages: [rust]
-    pattern-either:
-      - pattern: |
-          const $VAR: &str = "...";
-      - pattern: |
-          static $VAR: &str = "...";
-      - pattern: |
-          let $VAR = "...";
-    where:
+    patterns:
+      - pattern-either:
+          - pattern: |
+              const $VAR: &str = "...";
+          - pattern: |
+              static $VAR: &str = "...";
+          - pattern: |
+              let $VAR = "...";
       - metavariable-regex:
           metavariable: $VAR
           regex: (?i).*(password|secret|token|key|api_key|apikey|private_key|auth|credential).*
@@ -141,12 +141,12 @@ rules:
     message: "Path traversal vulnerability detected"
     severity: HIGH
     languages: [rust]
-    pattern-either:
-      - pattern: std::fs::File::open($PATH + $USER_INPUT)
-      - pattern: std::fs::read_to_string($PATH + $USER_INPUT)
-      - pattern: std::fs::write($PATH + $USER_INPUT, ...)
-      - pattern: PathBuf::from($USER_INPUT)
-    where:
+    patterns:
+      - pattern-either:
+          - pattern: std::fs::File::open($PATH + $USER_INPUT)
+          - pattern: std::fs::read_to_string($PATH + $USER_INPUT)
+          - pattern: std::fs::write($PATH + $USER_INPUT, ...)
+          - pattern: PathBuf::from($USER_INPUT)
       - metavariable-pattern:
           metavariable: $USER_INPUT
           pattern: $VAR
@@ -251,12 +251,12 @@ rules:
     message: "Potential integer overflow - consider using checked arithmetic"
     severity: MEDIUM
     languages: [rust]
-    pattern-either:
-      - pattern: $A + $B
-      - pattern: $A - $B  
-      - pattern: $A * $B
-      - pattern: $A / $B
-    where:
+    patterns:
+      - pattern-either:
+          - pattern: $A + $B
+          - pattern: $A - $B  
+          - pattern: $A * $B
+          - pattern: $A / $B
       - metavariable-pattern:
           metavariable: $A
           pattern: usize
@@ -275,12 +275,12 @@ rules:
     message: "Debug information disclosure detected"
     severity: LOW
     languages: [rust]
-    pattern-either:
-      - pattern: println!($FMT, $USER_INPUT)
-      - pattern: print!($FMT, $USER_INPUT)
-      - pattern: dbg!($USER_INPUT)
-      - pattern: eprintln!($FMT, $USER_INPUT)
-    where:
+    patterns:
+      - pattern-either:
+          - pattern: println!($FMT, $USER_INPUT)
+          - pattern: print!($FMT, $USER_INPUT)
+          - pattern: dbg!($USER_INPUT)
+          - pattern: eprintln!($FMT, $USER_INPUT)
       - metavariable-regex:
           metavariable: $USER_INPUT
           regex: (?i).*(password|token|secret|key|credential).*
@@ -422,11 +422,11 @@ rules:
     message: "Serde deserialization security issue"
     severity: HIGH
     languages: [rust]
-    pattern-either:
-      - pattern: serde_json::from_str::<$TYPE>($USER_INPUT)
-      - pattern: serde_yaml::from_str::<$TYPE>($USER_INPUT)
-      - pattern: toml::from_str::<$TYPE>($USER_INPUT)
-    where:
+    patterns:
+      - pattern-either:
+          - pattern: serde_json::from_str::<$TYPE>($USER_INPUT)
+          - pattern: serde_yaml::from_str::<$TYPE>($USER_INPUT)
+          - pattern: toml::from_str::<$TYPE>($USER_INPUT)
       - metavariable-pattern:
           metavariable: $USER_INPUT
           pattern: $VAR
@@ -471,11 +471,11 @@ rules:
     message: "Environment variable injection potential"
     severity: MEDIUM
     languages: [rust]
-    pattern-either:
-      - pattern: std::env::var($USER_INPUT)
-      - pattern: env::var($USER_INPUT)
-      - pattern: std::env::set_var($USER_INPUT, $VALUE)
-    where:
+    patterns:
+      - pattern-either:
+          - pattern: std::env::var($USER_INPUT)
+          - pattern: env::var($USER_INPUT)
+          - pattern: std::env::set_var($USER_INPUT, $VALUE)
       - metavariable-pattern:
           metavariable: $USER_INPUT
           pattern: $VAR

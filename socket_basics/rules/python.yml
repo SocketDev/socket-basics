@@ -1,108 +1,1174 @@
 rules:
-  # === Bandit B101: Assert statements ===
+  # =====================================================================
+  # OWASP Top 10 2021 Coverage for Python
+  # =====================================================================
+
+  # ===================================================================== 
+  # A01:2021 - Broken Access Control
+  # =====================================================================
+
+  # Path traversal vulnerabilities
+  - id: python-path-traversal-open
+    message: "Path traversal vulnerability detected. User-controlled data flows into file operations without proper validation. Use os.path.abspath() and validate the result is within allowed directory."
+    severity: HIGH
+    languages: [python]
+    mode: taint
+    pattern-sources:
+      # Flask request sources
+      - pattern: request.args
+      - pattern: request.form
+      - pattern: request.values
+      - pattern: request.json
+      - pattern: request.data
+      - pattern: request.cookies
+      - pattern: request.files
+      # Django request sources
+      - pattern: request.GET
+      - pattern: request.POST
+      - pattern: request.COOKIES
+      - pattern: request.FILES
+      # FastAPI request sources
+      - pattern: request.query_params
+      - pattern: request.path_params
+      # Generic input sources
+      - pattern: input(...)
+    pattern-propagators:
+      # String concatenation
+      - pattern: $A + $B
+        from: $B
+        to: $A
+      # Path operations that propagate taint (if any arg is tainted, result is tainted)
+      - pattern: os.path.join(..., $X, ...)
+        from: $X
+        to: os.path.join
+      - pattern: pathlib.Path($X)
+        from: $X
+        to: pathlib.Path
+    pattern-sinks:
+      # File operations
+      - pattern: open(...)
+      - pattern: io.open(...)
+      - pattern: pathlib.Path(...).open(...)
+      - pattern: pathlib.Path(...).read_text(...)
+      - pattern: pathlib.Path(...).read_bytes(...)
+      - pattern: pathlib.Path(...).write_text(...)
+      - pattern: pathlib.Path(...).write_bytes(...)
+      # os module file operations
+      - pattern: os.remove(...)
+      - pattern: os.unlink(...)
+      - pattern: os.rmdir(...)
+      - pattern: os.rename(...)
+      - pattern: os.replace(...)
+      # shutil operations
+      - pattern: shutil.copy(...)
+      - pattern: shutil.copy2(...)
+      - pattern: shutil.copytree(...)
+      - pattern: shutil.move(...)
+      - pattern: shutil.rmtree(...)
+    pattern-sanitizers:
+      # Path validation functions
+      - pattern: os.path.abspath(...)
+      - pattern: os.path.realpath(...)
+      - pattern: pathlib.Path(...).resolve()
+    metadata:
+      category: security
+      owasp: "A01:2021"
+      cwe: CWE-22
+      confidence: high
+      subcategory: access-control
+
+  # Open redirect
+  - id: python-open-redirect
+    message: "Open redirect vulnerability detected. User-controlled data flows into redirect without validation. Validate URLs against an allowlist of trusted domains."
+    severity: MEDIUM
+    languages: [python]
+    mode: taint
+    pattern-sources:
+      # Flask request sources
+      - pattern: request.args
+      - pattern: request.form
+      - pattern: request.values
+      - pattern: request.json
+      - pattern: request.data
+      - pattern: request.cookies
+      # Django request sources
+      - pattern: request.GET
+      - pattern: request.POST
+      - pattern: request.COOKIES
+      # FastAPI request sources
+      - pattern: request.query_params
+      - pattern: request.path_params
+      # Generic input sources
+      - pattern: input(...)
+    pattern-propagators:
+      # String concatenation
+      - pattern: $A + $B
+        from: $B
+        to: $A
+    pattern-sinks:
+      # Flask redirects
+      - pattern: flask.redirect(...)
+      - pattern: redirect(...)
+      # Django redirects
+      - pattern: django.shortcuts.redirect(...)
+      - pattern: django.http.HttpResponseRedirect(...)
+      - pattern: HttpResponseRedirect(...)
+      # FastAPI redirects
+      - pattern: fastapi.responses.RedirectResponse(...)
+      - pattern: RedirectResponse(...)
+    pattern-sanitizers:
+      # URL validation functions (if any are used)
+      - pattern: urllib.parse.urlparse(...)
+    metadata:
+      category: security
+      owasp: "A01:2021"
+      cwe: CWE-601
+      confidence: high
+      subcategory: access-control
+
+  # Insecure direct object reference
+  - id: python-idor-vulnerability
+    message: "Potential IDOR vulnerability - verify user authorization before accessing resource"
+    severity: HIGH
+    languages: [python]
+    patterns:
+      - pattern-either:
+          - pattern: $MODEL.objects.get(id=$REQ.$W.get(...))
+          - pattern: $MODEL.objects.get(pk=$REQ.$W[...])
+          - pattern: $SESSION.query($MODEL).get($REQ.$W.get(...))
+          - pattern: $DB.get($MODEL, $REQ.$W.get(...))
+      - pattern-not-inside: |
+          ...
+          if $USER.id == ...:
+            ...
+      - pattern-not-inside: |
+          ...
+          if $OBJ.user_id == $USER.id:
+            ...
+    metadata:
+      category: security
+      owasp: "A01:2021"
+      cwe: CWE-639
+      confidence: medium
+      subcategory: access-control
+
+  # Missing authorization check
+  - id: python-missing-auth-check
+    message: "Route handler missing authentication/authorization check"
+    severity: HIGH
+    languages: [python]
+    patterns:
+      - pattern-inside: |
+          @$APP.route(...)
+          def $FUNC($REQ, ...):
+            ...
+      - pattern-not-inside: |
+          @$APP.route(...)
+          @login_required
+          def $FUNC($REQ, ...):
+            ...
+      - pattern-not-inside: |
+          @$APP.route(...)
+          @permission_required(...)
+          def $FUNC($REQ, ...):
+            ...
+      - pattern-not-inside: |
+          ...
+          if not $REQ.user.is_authenticated:
+            ...
+      - metavariable-regex:
+          metavariable: $FUNC
+          regex: (create|update|delete|remove|edit|modify)_(user|account|profile|password|permission|role|admin|resource|data|record)
+    metadata:
+      category: security
+      owasp: "A01:2021"
+      cwe: CWE-862
+      confidence: low
+      subcategory: access-control
+
+  # ===================================================================== 
+  # A02:2021 - Cryptographic Failures
+  # =====================================================================
+
+  # Weak cryptographic hash algorithms
+  - id: python-weak-hash-md5
+    message: "MD5 is cryptographically broken and should not be used"
+    severity: HIGH
+    languages: [python]
+    pattern-either:
+      - pattern: hashlib.md5(...)
+      - pattern: Crypto.Hash.MD5.new(...)
+      - pattern: cryptography.hazmat.primitives.hashes.MD5()
+    metadata:
+      category: security
+      owasp: "A02:2021"
+      cwe: CWE-327
+      confidence: high
+      subcategory: crypto
+
+  - id: python-weak-hash-sha1
+    message: "SHA1 is cryptographically weak and should not be used for security"
+    severity: HIGH
+    languages: [python]
+    pattern-either:
+      - pattern: hashlib.sha1(...)
+      - pattern: Crypto.Hash.SHA1.new(...)
+      - pattern: cryptography.hazmat.primitives.hashes.SHA1()
+    metadata:
+      category: security
+      owasp: "A02:2021"
+      cwe: CWE-327
+      confidence: high
+      subcategory: crypto
+
+  # Insecure random number generation
+  - id: python-insecure-random
+    message: "random module used for security-sensitive operation - use secrets module instead"
+    severity: HIGH
+    languages: [python]
+    patterns:
+      - pattern-either:
+          - pattern: random.random()
+          - pattern: random.randint(...)
+          - pattern: random.choice(...)
+          - pattern: random.randrange(...)
+      - pattern-inside: |
+          ...
+          $TOKEN = ...
+          ...
+      - metavariable-regex:
+          metavariable: $TOKEN
+          regex: (?i).*(token|secret|key|password|salt|nonce|session|auth|crypto).*
+    metadata:
+      category: security
+      owasp: "A02:2021"
+      cwe: CWE-338
+      confidence: medium
+      subcategory: crypto
+      fix: "Use secrets.token_bytes(), secrets.token_hex(), or secrets.choice() for security-sensitive operations"
+
+  # Hardcoded secrets
+  - id: python-hardcoded-secret
+    message: "Hardcoded secret or credential detected - use environment variables"
+    severity: HIGH
+    languages: [python]
+    patterns:
+      - pattern-either:
+          - pattern: $VAR = "..."
+          - pattern: $VAR = '...'
+      - metavariable-regex:
+          metavariable: $VAR
+          regex: (?i).*(password|passwd|pwd|secret|api[_-]?key|private[_-]?key|access[_-]?token|auth[_-]?token|session[_-]?key|db[_-]?password).*
+    metadata:
+      category: security
+      owasp: "A02:2021"
+      cwe: CWE-798
+      confidence: medium
+      subcategory: crypto
+
+  # Weak cipher algorithms
+  - id: python-weak-cipher-des
+    message: "Weak cipher algorithm DES detected - use AES-256-GCM instead"
+    severity: HIGH
+    languages: [python]
+    pattern-either:
+      - pattern: Crypto.Cipher.DES.new(...)
+      - pattern: Crypto.Cipher.DES3.new(...)
+      - pattern: Crypto.Cipher.ARC2.new(...)
+      - pattern: Crypto.Cipher.ARC4.new(...)
+      - pattern: Crypto.Cipher.Blowfish.new(...)
+    metadata:
+      category: security
+      owasp: "A02:2021"
+      cwe: CWE-327
+      confidence: high
+      subcategory: crypto
+
+  # SSL/TLS verification disabled
+  - id: python-ssl-verify-disabled
+    message: "SSL certificate validation disabled - vulnerable to MITM attacks"
+    severity: CRITICAL
+    languages: [python]
+    pattern-either:
+      - pattern: requests.get(..., verify=False, ...)
+      - pattern: requests.post(..., verify=False, ...)
+      - pattern: requests.request(..., verify=False, ...)
+      - pattern: urllib.request.urlopen(..., context=ssl._create_unverified_context(), ...)
+      - pattern: httpx.get(..., verify=False, ...)
+      - pattern: aiohttp.ClientSession(..., connector=aiohttp.TCPConnector(ssl=False), ...)
+    metadata:
+      category: security
+      owasp: "A02:2021"
+      cwe: CWE-295
+      confidence: high
+      subcategory: crypto
+
+  # Insecure TLS versions
+  - id: python-insecure-tls-version
+    message: "Insecure TLS version - use TLS 1.2 or higher"
+    severity: HIGH
+    languages: [python]
+    pattern-either:
+      - pattern: ssl.PROTOCOL_SSLv2
+      - pattern: ssl.PROTOCOL_SSLv3
+      - pattern: ssl.PROTOCOL_TLSv1
+      - pattern: ssl.PROTOCOL_TLSv1_1
+      - pattern: ssl.SSLContext(ssl.PROTOCOL_SSLv3)
+      - pattern: ssl.SSLContext(ssl.PROTOCOL_TLSv1)
+    metadata:
+      category: security
+      owasp: "A02:2021"
+      cwe: CWE-327
+      confidence: high
+      subcategory: crypto
+
+  # ===================================================================== 
+  # A03:2021 - Injection
+  # =====================================================================
+
+  # Code injection via eval
+  - id: python-code-injection-eval
+    message: "Code injection vulnerability detected. User-controlled data flows into eval()/exec() which can execute arbitrary code. Avoid eval/exec entirely or use ast.literal_eval() for safe evaluation."
+    severity: CRITICAL
+    languages: [python]
+    mode: taint
+    pattern-sources:
+      # Flask request sources
+      - pattern: request.args
+      - pattern: request.form
+      - pattern: request.values
+      - pattern: request.json
+      - pattern: request.data
+      - pattern: request.cookies
+      # Django request sources
+      - pattern: request.GET
+      - pattern: request.POST
+      - pattern: request.COOKIES
+      # FastAPI request sources
+      - pattern: request.query_params
+      - pattern: request.path_params
+      # Generic input sources
+      - pattern: input(...)
+    pattern-propagators:
+      # String concatenation
+      - pattern: $A + $B
+        from: $B
+        to: $A
+    pattern-sinks:
+      # Code execution sinks
+      - pattern: eval(...)
+      - pattern: exec(...)
+      - pattern: compile(...)
+      - pattern: __import__(...)
+    pattern-sanitizers:
+      # Safe alternatives
+      - pattern: ast.literal_eval(...)
+      - pattern: json.loads(...)
+    metadata:
+      category: security
+      owasp: "A03:2021"
+      cwe: CWE-94
+      confidence: high
+      subcategory: injection
+
+  # SQL injection
+  - id: python-sql-injection
+    message: "SQL injection vulnerability detected. User-controlled data flows into SQL query without proper sanitization. Use parameterized queries with placeholders (?, %s) to prevent SQL injection."
+    severity: CRITICAL
+    languages: [python]
+    mode: taint
+    pattern-sources:
+      # Flask request sources
+      - pattern: request.args
+      - pattern: request.form
+      - pattern: request.values
+      - pattern: request.json
+      - pattern: request.data
+      - pattern: request.cookies
+      # Django request sources
+      - pattern: request.GET
+      - pattern: request.POST
+      - pattern: request.COOKIES
+      # FastAPI request sources
+      - pattern: request.query_params
+      - pattern: request.path_params
+      # Generic input sources
+      - pattern: input(...)
+    pattern-propagators:
+      # String concatenation and formatting
+      - pattern: $A + $B
+        from: $B
+        to: $A
+      # Template strings and formatting propagate taint implicitly
+    pattern-sinks:
+      # Database cursor/connection execute methods
+      - pattern: $CURSOR.execute(...)
+      - pattern: $CURSOR.executemany(...)
+      - pattern: $CONN.execute(...)
+      - pattern: $DB.execute(...)
+      # Django ORM raw queries
+      - pattern: $MODEL.objects.raw(...)
+      - pattern: RawSQL(...)
+      # SQLAlchemy text queries
+      - pattern: sqlalchemy.text(...)
+      - pattern: text(...)
+      # Psycopg2/psycopg3
+      - pattern: $CURSOR.mogrify(...)
+      # MySQL connector
+      - pattern: mysql.connector.cursor.execute(...)
+    pattern-sanitizers:
+      # Parameterized queries with proper placeholders
+      - pattern: $CURSOR.execute("...", (...))
+      - pattern: $CURSOR.execute("...", [...])
+      - pattern: $CONN.execute("...", (...))
+      - pattern: $CONN.execute("...", [...])
+      # ORM methods that use parameterization
+      - pattern: $MODEL.objects.filter(...)
+      - pattern: $MODEL.objects.get(...)
+      - pattern: $QUERY.filter(...)
+    metadata:
+      category: security
+      owasp: "A03:2021"
+      cwe: CWE-89
+      confidence: high
+      subcategory: injection
+
+  # NoSQL injection (MongoDB)
+  - id: python-nosql-injection
+    message: "NoSQL injection vulnerability - validate and sanitize user input"
+    severity: HIGH
+    languages: [python]
+    pattern-either:
+      # Direct request data in MongoDB queries
+      - pattern: $COLLECTION.find($REQ.GET)
+      - pattern: $COLLECTION.find($REQ.POST)
+      - pattern: $COLLECTION.find_one($REQ.GET.get(...))
+      - pattern: $COLLECTION.update($REQ.POST, ...)
+      - pattern: $COLLECTION.delete_one($REQ.GET)
+      # Pymongo with user input
+      - pattern: "$DB[$COLLECTION].find({ ..., $KEY: $REQ.$W.get(...), ... })"
+    metadata:
+      category: security
+      owasp: "A03:2021"
+      cwe: CWE-943
+      confidence: high
+      subcategory: injection
+
+  # Command injection
+  - id: python-command-injection
+    message: "Command injection vulnerability detected. User-controlled data flows into system command execution without proper sanitization. Avoid shell=True and use list arguments instead of string concatenation."
+    severity: CRITICAL
+    languages: [python]
+    mode: taint
+    pattern-sources:
+      # Flask request sources
+      - pattern: request.args
+      - pattern: request.form
+      - pattern: request.values
+      - pattern: request.json
+      - pattern: request.data
+      - pattern: request.cookies
+      # Django request sources
+      - pattern: request.GET
+      - pattern: request.POST
+      - pattern: request.COOKIES
+      # FastAPI request sources
+      - pattern: request.query_params
+      - pattern: request.path_params
+      # Generic input sources
+      - pattern: input(...)
+    pattern-propagators:
+      # String concatenation
+      - pattern: $A + $B
+        from: $B
+        to: $A
+      # Template strings propagate taint implicitly
+    pattern-sinks:
+      # Dangerous command execution methods
+      - pattern: os.system(...)
+      - pattern: os.popen(...)
+      - pattern: os.popen2(...)
+      - pattern: os.popen3(...)
+      - pattern: os.popen4(...)
+      - pattern: subprocess.call(..., shell=True, ...)
+      - pattern: subprocess.run(..., shell=True, ...)
+      - pattern: subprocess.Popen(..., shell=True, ...)
+      - pattern: subprocess.check_output(..., shell=True, ...)
+      - pattern: subprocess.check_call(..., shell=True, ...)
+      - pattern: commands.getoutput(...)
+      - pattern: commands.getstatusoutput(...)
+      - pattern: eval(...)
+      - pattern: exec(...)
+    pattern-sanitizers:
+      # Safe subprocess usage with list arguments (not shell=True)
+      - pattern: subprocess.run([...], ...)
+      - pattern: subprocess.call([...], ...)
+      - pattern: subprocess.Popen([...], ...)
+    metadata:
+      category: security
+      owasp: "A03:2021"
+      cwe: CWE-78
+      confidence: high
+      subcategory: injection
+
+  # LDAP injection
+  - id: python-ldap-injection
+    message: "LDAP injection vulnerability - sanitize user input in LDAP queries"
+    severity: HIGH
+    languages: [python]
+    pattern-either:
+      - pattern: ldap.search_s($BASE, $SCOPE, $FILTER + $USER_INPUT)
+      - pattern: ldap.search_s($BASE, $SCOPE, f"...{$USER_INPUT}...")
+      - pattern: ldap.search($BASE, $SCOPE, $FILTER + $USER_INPUT)
+    metadata:
+      category: security
+      owasp: "A03:2021"
+      cwe: CWE-90
+      confidence: high
+      subcategory: injection
+
+  # XSS via template rendering
+  - id: python-xss-template
+    message: "XSS vulnerability detected. User-controlled data flows into template rendering without proper escaping. Use template auto-escaping or explicit escaping functions."
+    severity: HIGH
+    languages: [python]
+    mode: taint
+    pattern-sources:
+      # Flask request sources
+      - pattern: request.args
+      - pattern: request.form
+      - pattern: request.values
+      - pattern: request.json
+      - pattern: request.data
+      - pattern: request.cookies
+      # Django request sources
+      - pattern: request.GET
+      - pattern: request.POST
+      - pattern: request.COOKIES
+      # FastAPI request sources
+      - pattern: request.query_params
+      - pattern: request.path_params
+      # Generic input sources
+      - pattern: input(...)
+    pattern-propagators:
+      # String concatenation
+      - pattern: $A + $B
+        from: $B
+        to: $A
+    pattern-sinks:
+      # Flask template sinks
+      - pattern: flask.render_template_string(...)
+      - pattern: render_template_string(...)
+      # Jinja2 template sinks
+      - pattern: jinja2.Template(...).render(...)
+      - pattern: Template(...).render(...)
+      # Django mark_safe (disables escaping)
+      - pattern: django.utils.safestring.mark_safe(...)
+      - pattern: django.utils.html.mark_safe(...)
+      - pattern: mark_safe(...)
+      # Direct HTTP response with HTML
+      - pattern: HttpResponse(...)
+      - pattern: flask.Response(...)
+    pattern-sanitizers:
+      # Escaping functions
+      - pattern: flask.escape(...)
+      - pattern: django.utils.html.escape(...)
+      - pattern: html.escape(...)
+      - pattern: markupsafe.escape(...)
+      # Template rendering with auto-escape (safe)
+      - pattern: render_template(...)
+    metadata:
+      category: security
+      owasp: "A03:2021"
+      cwe: CWE-79
+      confidence: high
+      subcategory: injection
+
+  # XXE (XML External Entity)
+  - id: python-xxe-vulnerability
+    message: "XXE vulnerability - disable external entity processing in XML parser"
+    severity: HIGH
+    languages: [python]
+    patterns:
+      - pattern-either:
+          - pattern: xml.etree.ElementTree.parse($FILE)
+          - pattern: xml.etree.ElementTree.fromstring($XML)
+          - pattern: lxml.etree.parse($FILE)
+          - pattern: lxml.etree.fromstring($XML)
+      - pattern-not-inside: |
+          ...
+          defusedxml.ElementTree.parse(...)
+          ...
+    metadata:
+      category: security
+      owasp: "A03:2021"
+      cwe: CWE-611
+      confidence: medium
+      subcategory: injection
+
+  # Server-side template injection
+  - id: python-template-injection
+    message: "Template injection vulnerability - sanitize user input in templates"
+    severity: CRITICAL
+    languages: [python]
+    pattern-either:
+      # Jinja2 from string with user input
+      - pattern: jinja2.Environment().from_string($REQ.$W.get(...))
+      - pattern: jinja2.Template($REQ.$W.get(...))
+      # Flask template string with user input
+      - pattern: flask.render_template_string($REQ.args.get(...))
+      - pattern: flask.render_template_string($REQ.form.get(...))
+      # Mako template with user input
+      - pattern: mako.template.Template($REQ.$W.get(...))
+    metadata:
+      category: security
+      owasp: "A03:2021"
+      cwe: CWE-1336
+      confidence: high
+      subcategory: injection
+
+  # YAML deserialization
+  - id: python-yaml-load-unsafe
+    message: "Unsafe YAML deserialization - use yaml.safe_load() instead"
+    severity: CRITICAL
+    languages: [python]
+    pattern-either:
+      - pattern: yaml.load($DATA, ...)
+      - pattern: yaml.load_all($DATA, ...)
+    metadata:
+      category: security
+      owasp: "A03:2021"
+      cwe: CWE-502
+      confidence: high
+      subcategory: injection
+
+  # ===================================================================== 
+  # A04:2021 - Insecure Design
+  # =====================================================================
+
+  # Missing rate limiting
+  - id: python-missing-rate-limit
+    message: "Authentication route missing rate limiting - vulnerable to brute force attacks"
+    severity: MEDIUM
+    languages: [python]
+    patterns:
+      - pattern-inside: |
+          @$APP.route(..., methods=[..., "POST", ...])
+          def $FUNC(...):
+            ...
+      - pattern-not-inside: |
+          @limiter.limit(...)
+          def $FUNC(...):
+            ...
+      - pattern-not-inside: |
+          @$APP.route(...)
+          @ratelimit(...)
+          def $FUNC(...):
+            ...
+      - metavariable-regex:
+          metavariable: $FUNC
+          regex: (login|signin|authenticate).*
+    metadata:
+      category: security
+      owasp: "A04:2021"
+      cwe: CWE-307
+      confidence: low
+      subcategory: design
+
+  # Insufficient input validation
+  - id: python-missing-input-validation
+    message: "User input used without validation"
+    severity: MEDIUM
+    languages: [python]
+    patterns:
+      - pattern-either:
+          - pattern: int($REQ.$W.get(...))
+          - pattern: float($REQ.$W.get(...))
+          - pattern: eval($REQ.$W.get(...))
+      - pattern-not-inside: |
+          ...
+          if isinstance(..., ...):
+            ...
+      - pattern-not-inside: |
+          ...
+          try:
+            ...
+          except ValueError:
+            ...
+    metadata:
+      category: security
+      owasp: "A04:2021"
+      cwe: CWE-20
+      confidence: low
+      subcategory: design
+
+  # ===================================================================== 
+  # A05:2021 - Security Misconfiguration
+  # =====================================================================
+
+  # Debug mode enabled
+  - id: python-debug-mode-enabled
+    message: "Debug mode enabled - exposes sensitive information in production"
+    severity: HIGH
+    languages: [python]
+    pattern-either:
+      # Flask debug
+      - pattern: $APP.run(..., debug=True, ...)
+      - pattern: $APP.debug = True
+      # Django settings
+      - pattern: DEBUG = True
+      # FastAPI
+      - pattern: fastapi.FastAPI(..., debug=True, ...)
+    metadata:
+      category: security
+      owasp: "A05:2021"
+      cwe: CWE-489
+      confidence: high
+      subcategory: configuration
+
+  # Weak session configuration
+  - id: python-weak-session-config
+    message: "Insecure session configuration"
+    severity: HIGH
+    languages: [python]
+    pattern-either:
+      # Flask session without secure flag
+      - pattern: $APP.config["SESSION_COOKIE_SECURE"] = False
+      - pattern: $APP.config["SESSION_COOKIE_HTTPONLY"] = False
+      - pattern: $APP.config["SESSION_COOKIE_SAMESITE"] = None
+      # Django session settings
+      - pattern: SESSION_COOKIE_SECURE = False
+      - pattern: SESSION_COOKIE_HTTPONLY = False
+      - pattern: CSRF_COOKIE_SECURE = False
+    metadata:
+      category: security
+      owasp: "A05:2021"
+      cwe: CWE-614
+      confidence: high
+      subcategory: configuration
+
+  # Exposed error messages
+  - id: python-error-exposure
+    message: "Error details exposed to client - can leak sensitive information"
+    severity: MEDIUM
+    languages: [python]
+    pattern-either:
+      - pattern: |
+          try:
+            ...
+          except $EXC as $E:
+            ...
+            return ..., str($E), ...
+      - pattern: |
+          try:
+            ...
+          except $EXC as $E:
+            ...
+            flask.jsonify(..., error=str($E), ...)
+      - pattern: |
+          try:
+            ...
+          except $EXC as $E:
+            ...
+            print($E)
+    metadata:
+      category: security
+      owasp: "A05:2021"
+      cwe: CWE-209
+      confidence: medium
+      subcategory: configuration
+
+  # Insecure file permissions
+  - id: python-insecure-file-permissions
+    message: "File created with insecure permissions"
+    severity: HIGH
+    languages: [python]
+    pattern-either:
+      - pattern: os.chmod($PATH, 0o777)
+      - pattern: os.chmod($PATH, 0o666)
+      - pattern: os.chmod($PATH, 511)
+      - pattern: os.chmod($PATH, 438)
+      - pattern: os.open($PATH, $FLAGS, 0o777)
+    metadata:
+      category: security
+      owasp: "A05:2021"
+      cwe: CWE-732
+      confidence: high
+      subcategory: configuration
+
+  # Binding to all interfaces
+  - id: python-bind-all-interfaces
+    message: "Binding to all interfaces (0.0.0.0) - consider using localhost"
+    severity: LOW
+    languages: [python]
+    pattern-either:
+      - pattern: $APP.run(..., host="0.0.0.0", ...)
+      - pattern: $SOCK.bind(("0.0.0.0", $PORT))
+      - pattern: $SERVER.serve_forever(host="0.0.0.0")
+    metadata:
+      category: security
+      owasp: "A05:2021"
+      cwe: CWE-200
+      confidence: medium
+      subcategory: configuration
+
+  # ===================================================================== 
+  # A06:2021 - Vulnerable and Outdated Components
+  # =====================================================================
+
+  # Deprecated functions
+  - id: python-deprecated-functions
+    message: "Deprecated function - use modern alternatives"
+    severity: LOW
+    languages: [python]
+    pattern-either:
+      - pattern: os.tempnam()
+      - pattern: os.tmpnam()
+      - pattern: platform.popen(...)
+      - pattern: imp.load_source(...)
+    metadata:
+      category: security
+      owasp: "A06:2021"
+      cwe: CWE-477
+      confidence: high
+      subcategory: deprecated
+
+  # ===================================================================== 
+  # A07:2021 - Identification and Authentication Failures
+  # =====================================================================
+
+  # Weak password validation
+  - id: python-weak-password-validation
+    message: "Weak password validation - enforce strong password policy"
+    severity: MEDIUM
+    languages: [python]
+    patterns:
+      - pattern: |
+          if len($PASSWORD) < $N:
+            ...
+      - metavariable-comparison:
+          metavariable: $N
+          comparison: $N < 8
+    metadata:
+      category: security
+      owasp: "A07:2021"
+      cwe: CWE-521
+      confidence: low
+      subcategory: authentication
+
+  # JWT without verification
+  - id: python-jwt-no-verify
+    message: "JWT decoded without signature verification - use jwt.decode() with verify=True"
+    severity: HIGH
+    languages: [python]
+    pattern-either:
+      - pattern: 'jwt.decode($TOKEN, options={"verify_signature": False})'
+      - pattern: jwt.decode($TOKEN, verify=False)
+      - pattern: 'jwt.decode($TOKEN, ..., options={..., "verify_signature": False, ...})'
+    metadata:
+      category: security
+      owasp: "A07:2021"
+      cwe: CWE-347
+      confidence: high
+      subcategory: authentication
+
+  # Weak JWT algorithm
+  - id: python-weak-jwt-algorithm
+    message: "Weak or no JWT algorithm - should use RS256 or HS256"
+    severity: HIGH
+    languages: [python]
+    pattern-either:
+      - pattern: jwt.encode(..., algorithm="none")
+      - pattern: jwt.decode(..., algorithms=["none"])
+      - pattern: 'jwt.decode($TOKEN, ..., options={..., "verify_signature": False, ...})'
+    metadata:
+      category: security
+      owasp: "A07:2021"
+      cwe: CWE-347
+      confidence: high
+      subcategory: authentication
+
+  # Missing password hashing
+  - id: python-plain-text-password
+    message: "Password stored or compared in plain text - use bcrypt, argon2, or pbkdf2"
+    severity: CRITICAL
+    languages: [python]
+    patterns:
+      - pattern-either:
+          - pattern: $USER.password = $REQ.$W.get(...)
+          - pattern: $USER.password == $INPUT
+          - pattern: $PASSWORD == $REQ.$W.get(...)
+      - pattern-not-inside: |
+          ...
+          bcrypt.hashpw(...)
+          ...
+      - pattern-not-inside: |
+          ...
+          hashlib.pbkdf2_hmac(...)
+          ...
+      - pattern-not-inside: |
+          ...
+          werkzeug.security.generate_password_hash(...)
+          ...
+    metadata:
+      category: security
+      owasp: "A07:2021"
+      cwe: CWE-916
+      confidence: medium
+      subcategory: authentication
+
+  # ===================================================================== 
+  # A08:2021 - Software and Data Integrity Failures
+  # =====================================================================
+
+  # Unsafe deserialization
+  - id: python-unsafe-deserialization
+    message: "Unsafe deserialization - can lead to remote code execution"
+    severity: CRITICAL
+    languages: [python]
+    pattern-either:
+      # Pickle
+      - pattern: pickle.loads($DATA)
+      - pattern: pickle.load($FILE)
+      - pattern: cPickle.loads($DATA)
+      # Marshal
+      - pattern: marshal.loads($DATA)
+      - pattern: marshal.load($FILE)
+      # Shelve
+      - pattern: shelve.open($FILE)
+    metadata:
+      category: security
+      owasp: "A08:2021"
+      cwe: CWE-502
+      confidence: high
+      subcategory: integrity
+
+  # Missing integrity check
+  - id: python-missing-integrity-check
+    message: "Downloaded file without integrity verification"
+    severity: MEDIUM
+    languages: [python]
+    patterns:
+      - pattern-either:
+          - pattern: requests.get($URL).content
+          - pattern: urllib.request.urlretrieve($URL, ...)
+      - pattern-not-inside: |
+          ...
+          hashlib.sha256(...).hexdigest()
+          ...
+      - pattern-not-inside: |
+          ...
+          if $HASH == ...:
+            ...
+    metadata:
+      category: security
+      owasp: "A08:2021"
+      cwe: CWE-353
+      confidence: low
+      subcategory: integrity
+
+  # ===================================================================== 
+  # A09:2021 - Security Logging and Monitoring Failures
+  # =====================================================================
+
+  # Sensitive data in logs
+  - id: python-sensitive-data-in-logs
+    message: "Sensitive data logged - can expose credentials or personal information"
+    severity: MEDIUM
+    languages: [python]
+    pattern-either:
+      - pattern: logging.info(..., $PASSWORD, ...)
+      - pattern: logging.debug(..., $TOKEN, ...)
+      - pattern: logging.error(..., $SECRET, ...)
+      - pattern: print(..., $REQ.$W.get("password"), ...)
+      - pattern: logger.info(..., $REQ.$W.get("token"), ...)
+    metadata:
+      category: security
+      owasp: "A09:2021"
+      cwe: CWE-532
+      confidence: low
+      subcategory: logging
+
+  # Missing error logging
+  - id: python-missing-error-logging
+    message: "Error caught but not logged - can hide security issues"
+    severity: LOW
+    languages: [python]
+    patterns:
+      - pattern: |
+          try:
+            ...
+          except $EXC:
+            pass
+      - pattern-not-inside: |
+          try:
+            ...
+          except $EXC:
+            logging.error(...)
+      - pattern-not-inside: |
+          try:
+            ...
+          except $EXC:
+            logger.exception(...)
+    metadata:
+      category: security
+      owasp: "A09:2021"
+      cwe: CWE-778
+      confidence: low
+      subcategory: logging
+
+  # ===================================================================== 
+  # A10:2021 - Server-Side Request Forgery (SSRF)
+  # =====================================================================
+
+  # SSRF via user-controlled URL
+  - id: python-ssrf-vulnerability
+    message: "SSRF vulnerability - validate and whitelist URLs before making requests"
+    severity: HIGH
+    languages: [python]
+    pattern-either:
+      - pattern: requests.get($REQ.$W.get(...))
+      - pattern: requests.post($REQ.$W.get(...), ...)
+      - pattern: urllib.request.urlopen($REQ.$W.get(...))
+      - pattern: urllib.request.urlretrieve($REQ.$W.get(...), ...)
+      - pattern: httpx.get($REQ.$W.get(...))
+      - pattern: aiohttp.ClientSession().get($REQ.$W.get(...))
+    metadata:
+      category: security
+      owasp: "A10:2021"
+      cwe: CWE-918
+      confidence: high
+      subcategory: ssrf
+
+  # =====================================================================
+  # Python Best Practices
+  # =====================================================================
+
+  # Assert in production code
   - id: python-assert-used
-    message: "Use of assert detected. Assert statements are removed when compiling to optimized bytecode"
-    severity: WARNING
+    message: "Assert statement in code - removed when compiling to optimized bytecode"
+    severity: LOW
     languages: [python]
     pattern: assert $CONDITION
     metadata:
-      category: security
-      bandit_equivalent: B101
+      category: best-practice
       cwe: CWE-703
       confidence: high
+      subcategory: error-handling
 
-  # === Bandit B102: Exec used ===
-  - id: python-exec-used
-    message: "Use of exec detected. This can be dangerous if used with untrusted input"
-    severity: ERROR
+  # Bare except clause
+  - id: python-bare-except
+    message: "Bare except clause catches all exceptions including system exits"
+    severity: MEDIUM
     languages: [python]
-    pattern-either:
-      - pattern: exec($EXPR)
-      - pattern: exec($EXPR, ...)
+    pattern: |
+      try:
+        ...
+      except:
+        ...
     metadata:
-      category: security
-      bandit_equivalent: B102
-      cwe: CWE-94
+      category: best-practice
+      cwe: CWE-396
       confidence: high
+      subcategory: error-handling
 
-  # === Bandit B103: File permissions ===
-  - id: python-bad-file-permissions
-    message: "File created with potentially unsafe permissions"
-    severity: ERROR
+  # Use of exec/eval
+  - id: python-dangerous-eval-exec
+    message: "Use of eval/exec can execute arbitrary code - avoid if possible"
+    severity: HIGH
     languages: [python]
-    pattern-either:
-      - pattern: os.chmod($PATH, $PERMS)
-      - pattern: os.fchmod($FD, $PERMS)
-      - pattern: os.lchmod($PATH, $PERMS)
-    where:
-      # Check for overly permissive permissions (world writable)
-      - metavariable-pattern:
-          metavariable: $PERMS
-          pattern-either:
-            - pattern: 0o777
-            - pattern: 0o666
-            - pattern: 0o644
-            - pattern: 511  # 0o777 in decimal
-            - pattern: 438  # 0o666 in decimal
+    patterns:
+      - pattern-either:
+          - pattern: eval(...)
+          - pattern: exec(...)
+      # Exclude hardcoded strings
+      - pattern-not: eval("...")
+      - pattern-not: exec("...")
     metadata:
       category: security
-      bandit_equivalent: B103
-      cwe: CWE-732
+      cwe: CWE-95
+      confidence: high
+      subcategory: injection
 
-  # === Bandit B104: Hardcoded bind all interfaces ===
-  - id: python-hardcoded-bind-all-interfaces
-    message: "Possible binding to all interfaces. Consider using localhost"
-    severity: WARNING
+  # SQL format string
+  - id: python-sql-format-string
+    message: "SQL query using string formatting - use parameterized queries"
+    severity: CRITICAL
     languages: [python]
     pattern-either:
-      - pattern: $SOCK.bind(("0.0.0.0", $PORT))
-      - pattern: $SOCK.bind(('0.0.0.0', $PORT))
-      - pattern: $SERVER.serve_forever(host="0.0.0.0")
-      - pattern: $SERVER.serve_forever(host='0.0.0.0')
+      - pattern: $DB.execute("SELECT ..." % ...)
+      - pattern: $DB.execute("INSERT ..." % ...)
+      - pattern: $DB.execute("UPDATE ..." % ...)
+      - pattern: $DB.execute("DELETE ..." % ...)
     metadata:
       category: security
-      bandit_equivalent: B104
-      cwe: CWE-200
+      cwe: CWE-89
+      confidence: high
+      subcategory: injection
 
-  # === Bandit B105: Hardcoded password string ===
-  - id: python-hardcoded-password-string
-    message: "Possible hardcoded password detected"
-    severity: ERROR
+  # Tempfile without secure flags
+  - id: python-insecure-temp-file
+    message: "Temporary file created insecurely - use tempfile.mkstemp() or TemporaryFile()"
+    severity: MEDIUM
     languages: [python]
     pattern-either:
-      - pattern: $VAR = "$VALUE"
-    where:
-      # Match variable names that are likely intended to be secrets.
-      # Require word boundaries or common separators to avoid matching names like PYPI_API or API_KEY_VERSION.
-      - metavariable-regex:
-          metavariable: $VAR
-          # match whole word or common snake/camel variants, case-insensitive
-          regex: (?i)^(?:.*\b(password|passwd|pwd|secret|token|key|api_key)\b.*|.*(?:_password|_passwd|_pwd|_secret|_token|_key|_api_key)$|^(?:password|passwd|pwd|secret|token|key|api_key)$)
+      - pattern: open("/tmp/...", ...)
+      - pattern: open("/var/tmp/...", ...)
+      - pattern: tempfile.mktemp()
     metadata:
       category: security
-      bandit_equivalent: B105
-      cwe: CWE-259
+      cwe: CWE-377
+      confidence: high
+      subcategory: file-operations
 
-  # === Bandit B106: Hardcoded password function argument ===
-  - id: python-hardcoded-password-funcarg
-    message: "Possible hardcoded password in function argument"
-    severity: WARNING
+  # ReDoS vulnerability
+  - id: python-regex-dos
+    message: "Complex regex pattern with user input - potential ReDoS vulnerability"
+    severity: MEDIUM
     languages: [python]
     pattern-either:
-      - pattern: $FUNC(..., password="...", ...)
-      - pattern: $FUNC(..., passwd="...", ...)
-      - pattern: $FUNC(..., secret="...", ...)
-      - pattern: $FUNC(..., token="...", ...)
-      - pattern: $FUNC(..., api_key="...", ...)
+      # User input as regex pattern
+      - pattern: re.compile($REQ.$W.get(...))
+      - pattern: re.match($REQ.$W.get(...), ...)
+      - pattern: re.search($REQ.$W.get(...), ...)
+      # Dangerous regex patterns
+      - pattern: re.compile(r"(.+)+")
+      - pattern: re.compile(r"(.*)+")
+      - pattern: re.compile(r"(.*)\\*")
+      - pattern: re.compile(r"(a+)+")
     metadata:
       category: security
-      bandit_equivalent: B106
-      cwe: CWE-259
+      cwe: CWE-1333
+      confidence: medium
+      subcategory: dos
+
+  # Unvalidated file upload
+  - id: python-unvalidated-file-upload
+    message: "File upload without validation - validate file type, size, and content"
+    severity: HIGH
+    languages: [python]
+    patterns:
+      - pattern-either:
+          - pattern: $FILE.save($PATH)
+          - pattern: open($PATH, "wb").write($REQ.files.get(...).read())
+      - pattern-not-inside: |
+          ...
+          if $FILE.filename.endswith(...):
+            ...
+      - pattern-not-inside: |
+          ...
+          if $FILE.content_type in [...]:
+            ...
+    metadata:
+      category: security
+      cwe: CWE-434
+      confidence: low
+      subcategory: upload
 
   # === Bandit B107: Hardcoded password default ===
   - id: python-hardcoded-password-default
     message: "Possible hardcoded password in function default"
-    severity: WARNING
+    severity: MEDIUM
     languages: [python]
     pattern-either:
       - pattern: |
@@ -122,7 +1188,7 @@ rules:
   # === Bandit B301: Pickle usage ===
   - id: python-pickle-usage
     message: "Pickle usage detected. Pickle can be unsafe when loading untrusted data"
-    severity: ERROR
+    severity: CRITICAL
     languages: [python]
     pattern-either:
       - pattern: pickle.loads($DATA)
@@ -140,7 +1206,7 @@ rules:
   # === Bandit B303: MD5 hash usage ===
   - id: python-md5-usage
     message: "Use of insecure MD5 hash function detected"
-    severity: WARNING
+    severity: MEDIUM
     languages: [python]
     pattern-either:
       - pattern: hashlib.md5(...)
@@ -155,7 +1221,7 @@ rules:
   # === Bandit B304: SHA1 hash usage ===
   - id: python-sha1-usage
     message: "Use of insecure SHA1 hash function detected"
-    severity: WARNING
+    severity: MEDIUM
     languages: [python]
     pattern-either:
       - pattern: hashlib.sha1(...)
@@ -170,9 +1236,12 @@ rules:
   # === Bandit B307: Eval usage ===
   - id: python-eval-usage
     message: "Use of eval() detected. This can execute arbitrary code"
-    severity: ERROR
+    severity: CRITICAL
     languages: [python]
-    pattern: eval($EXPR)
+    patterns:
+      - pattern: eval($EXPR)
+      # Exclude hardcoded strings
+      - pattern-not: eval("...")
     metadata:
       category: security
       bandit_equivalent: B307
@@ -182,7 +1251,7 @@ rules:
   # === Bandit B501: Request without cert validation ===
   - id: python-request-without-cert-validation
     message: "Request made without certificate verification"
-    severity: ERROR
+    severity: HIGH
     languages: [python]
     pattern-either:
       - pattern: requests.get(..., verify=False, ...)
@@ -199,7 +1268,7 @@ rules:
   # === Bandit B502: SSL with bad version ===
   - id: python-ssl-bad-version
     message: "Use of insecure SSL/TLS version detected"
-    severity: ERROR
+    severity: HIGH
     languages: [python]
     pattern-either:
       - pattern: ssl.PROTOCOL_SSLv2
@@ -216,7 +1285,7 @@ rules:
   # === Bandit B601: Paramiko calls ===
   - id: python-paramiko-calls
     message: "Paramiko call detected. Ensure proper key verification"
-    severity: WARNING
+    severity: MEDIUM
     languages: [python]
     pattern-either:
       - pattern: paramiko.SSHClient().set_missing_host_key_policy(paramiko.AutoAddPolicy())
@@ -229,7 +1298,7 @@ rules:
   # === Bandit B602: Subprocess with shell=True ===
   - id: python-subprocess-shell-true
     message: "Subprocess call with shell=True detected. This can be dangerous with user input"
-    severity: ERROR
+    severity: CRITICAL
     languages: [python]
     pattern-either:
       - pattern: subprocess.call(..., shell=True, ...)
@@ -248,7 +1317,7 @@ rules:
   # === Bandit B605: Start process with shell ===
   - id: python-start-process-with-shell
     message: "Starting a process with a shell, possible injection detected"
-    severity: ERROR
+    severity: CRITICAL
     languages: [python]
     pattern-either:
       - pattern: os.system($CMD)
@@ -266,7 +1335,7 @@ rules:
   # === Bandit B608: SQL injection ===
   - id: python-sql-injection-format
     message: "Possible SQL injection vector through string formatting"
-    severity: ERROR
+    severity: CRITICAL
     languages: [python]
     pattern-either:
       - pattern: $CURSOR.execute("..." % ...)
@@ -284,7 +1353,7 @@ rules:
   # === Flask debug mode ===
   - id: python-flask-debug-true
     message: "Flask app with debug=True detected. This should not be used in production"
-    severity: WARNING
+    severity: MEDIUM
     languages: [python]
     pattern-either:
       - pattern: $APP.run(debug=True, ...)
@@ -298,7 +1367,7 @@ rules:
   # === Jinja2 autoescape false ===
   - id: python-jinja2-autoescape-false
     message: "Jinja2 autoescape is set to false. This can lead to XSS vulnerabilities"
-    severity: ERROR
+    severity: HIGH
     languages: [python]
     pattern-either:
       - pattern: jinja2.Environment(autoescape=False, ...)
@@ -311,7 +1380,7 @@ rules:
   # === Weak random ===
   - id: python-weak-random
     message: "Use of insecure random number generator. Consider using secrets module"
-    severity: WARNING
+    severity: MEDIUM
     languages: [python]
     pattern-either:
       - pattern: random.random()
@@ -325,9 +1394,9 @@ rules:
       confidence: high
 
   # === Temporary file creation ===
-  - id: python-insecure-temp-file
+  - id: python-tempfile-mktemp
     message: "Insecure temporary file creation detected"
-    severity: WARNING
+    severity: LOW
     languages: [python]
     pattern-either:
       - pattern: tempfile.mktemp(...)

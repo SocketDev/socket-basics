@@ -39,7 +39,7 @@ git clone https://github.com/SocketDev/socket-basics.git
 cd socket-basics
 
 # Build the Docker image with version tag
-docker build -t socket-basics:1.0.21 .
+docker build -t socket-basics:1.0.23 .
 ```
 
 **2. Create pre-commit hook:**
@@ -194,8 +194,7 @@ source .venv/bin/activate  # On Windows: .venv\Scripts\activate
 
 **Socket Basics:**
 ```bash
-pip install socket-basics
-# Or for development:
+# Install from source (Socket Basics is not on PyPI)
 git clone https://github.com/SocketDev/socket-basics.git
 cd socket-basics
 pip install -e .
@@ -206,7 +205,7 @@ pip install -e .
 See [Local Installation Guide](local-installation.md) for detailed instructions on installing:
 - Socket CLI
 - Trivy
-- Semgrep (OpenGrep)
+- OpenGrep
 - TruffleHog
 
 ### Setup Steps

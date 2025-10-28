@@ -18,17 +18,22 @@ Complete guide to installing Socket Basics and all security tools for native exe
 For experienced users on macOS/Linux with Homebrew:
 
 ```bash
-# Install Socket Basics
-pip install socket-basics
+# Install Socket Basics (from source)
+git clone https://github.com/SocketDev/socket-basics.git
+cd socket-basics
+pip install -e .
 
 # Install security tools
-brew install socket trivy semgrep trufflehog
+brew install socket trivy trufflehog
+
+# Install OpenGrep (SAST scanning)
+curl -fsSL https://raw.githubusercontent.com/opengrep/opengrep/main/install.sh | bash
 
 # Verify installation
 socket-basics --version
 socket --version
 trivy --version
-semgrep --version
+opengrep --version
 trufflehog --version
 ```
 
@@ -99,21 +104,9 @@ curl -LsSf https://astral.sh/uv/install.sh | sh
 
 ## Socket Basics Installation
 
-### Method 1: From PyPI (Recommended for Users)
+### Method 1: From Source (Required - Not on PyPI)
 
-```bash
-# Create and activate virtual environment (recommended)
-python -m venv .venv
-source .venv/bin/activate  # On Windows: .venv\Scripts\activate
-
-# Install Socket Basics
-pip install socket-basics
-
-# Verify installation
-socket-basics --version
-```
-
-### Method 2: From Source (Recommended for Development)
+Socket Basics is not published to PyPI. You must install from source:
 
 ```bash
 # Clone the repository
@@ -136,7 +129,7 @@ pip install -e .
 socket-basics --version
 ```
 
-### Method 3: Using uv (Fastest)
+### Method 2: Using uv (Faster Alternative)
 
 ```bash
 # Install uv
@@ -228,37 +221,28 @@ trivy --version
 
 **Documentation:** https://github.com/aquasecurity/trivy
 
-### Semgrep/OpenGrep (SAST)
+### OpenGrep (SAST)
 
 **Required for:** Static Application Security Testing (SAST) for all languages
 
 **Installation:**
 
 ```bash
-# macOS/Linux with Homebrew:
-brew install semgrep
+# Install OpenGrep using the official installer:
+curl -fsSL https://raw.githubusercontent.com/opengrep/opengrep/main/install.sh | bash
 
-# Using pip:
-pip install semgrep
-
-# Using Docker (alternative):
-docker pull semgrep/semgrep:latest
+# Add to PATH (if not automatically added):
+export PATH="$HOME/.opengrep/cli/latest:$PATH"
 
 # Verify installation
-semgrep --version
+opengrep --version
 ```
 
 **Configuration:**
 
-```bash
-# Login to Semgrep (optional, for custom rules):
-semgrep login
+OpenGrep works with the bundled Socket Basics SAST rules. No additional configuration is required for basic usage.
 
-# Or run without login using bundled rules
-semgrep --config=auto
-```
-
-**Documentation:** https://semgrep.dev/docs/
+**Documentation:** https://github.com/opengrep/opengrep
 
 ### TruffleHog (Secret Scanning)
 
@@ -318,9 +302,9 @@ socket cdxgen --help
 trivy --version
 trivy image --help
 
-# Test Semgrep
-semgrep --version
-semgrep --help
+# Test OpenGrep
+opengrep --version
+opengrep --help
 
 # Test TruffleHog
 trufflehog --version
@@ -368,11 +352,11 @@ else
     echo "✅ trivy found: $(trivy --version | head -1)"
 fi
 
-# Check Semgrep
-if ! command -v semgrep &> /dev/null; then
-    echo "⚠️  semgrep not found (needed for SAST)"
+# Check OpenGrep
+if ! command -v opengrep &> /dev/null; then
+    echo "⚠️  opengrep not found (needed for SAST)"
 else
-    echo "✅ semgrep found: $(semgrep --version)"
+    echo "✅ opengrep found: $(opengrep --version)"
 fi
 
 # Check TruffleHog
@@ -607,7 +591,7 @@ pip install -e .
 **Solutions:**
 ```bash
 # Check if tool is in PATH
-which trivy  # or semgrep, trufflehog, socket
+which trivy  # or opengrep, trufflehog, socket
 
 # Add to PATH if needed
 export PATH="/usr/local/bin:$PATH"
@@ -669,20 +653,20 @@ export SOCKET_SECURITY_API_KEY="your-api-key"
 socket info
 ```
 
-### Semgrep/OpenGrep Errors
+### OpenGrep Errors
 
-**Problem:** Semgrep crashes or fails
+**Problem:** OpenGrep crashes or fails
 
 **Solutions:**
 ```bash
-# Update Semgrep
-pip install --upgrade semgrep
+# Reinstall OpenGrep
+curl -fsSL https://raw.githubusercontent.com/opengrep/opengrep/main/install.sh | bash
 
-# Clear Semgrep cache
-rm -rf ~/.semgrep/cache
+# Ensure OpenGrep is in PATH
+export PATH="$HOME/.opengrep/cli/latest:$PATH"
 
-# Test Semgrep standalone
-semgrep --config=auto --test test_file.py
+# Test OpenGrep standalone
+opengrep --version
 ```
 
 ### Python Version Conflicts
@@ -694,7 +678,7 @@ semgrep --config=auto --test test_file.py
 # Always use python3 explicitly
 python3 -m venv .venv
 source .venv/bin/activate
-python3 -m pip install socket-basics
+python3 -m pip install -e .
 
 # Or set Python 3 as default
 alias python=python3

@@ -1,21 +1,62 @@
 rules:
   # === Critical Severity Rules ===
 
-  # SQL injection
+  # SQL injection - using taint mode for accurate detection
   - id: dotnet-sql-injection
-    message: "SQL injection vulnerability detected"
+    message: "SQL injection vulnerability detected. User-controlled data flows into SQL command without proper sanitization. Use parameterized queries with Parameters.Add() or Parameters.AddWithValue() to prevent SQL injection."
     severity: CRITICAL
     languages: [csharp]
-    pattern-either:
-      # C#
-      - pattern: $CMD.CommandText = $QUERY + $USER_INPUT
-      - pattern: new SqlCommand($QUERY + $USER_INPUT, ...)
-      - pattern: $CMD.ExecuteQuery($QUERY + $USER_INPUT)
-      - pattern: string.Format($SQL, $USER_INPUT)
-      - pattern: $"...{$USER_INPUT}..."
+    mode: taint
+    pattern-sources:
+      - patterns:
+          - pattern: |
+              (string $X)
+          - pattern-not: |
+              "..."
+    pattern-propagators:
+      # StringBuilder propagation
+      - pattern: (StringBuilder $B).$ANY(...,(string $X),...)
+        from: $X
+        to: $B
+      # String.Format propagation
+      - pattern: String.Format($FMT, ..., (string $X), ...)
+        from: $X
+        to: $FMT
+      # String concatenation
+      - pattern: (string $A) + (string $B)
+        from: $B
+        to: $A
+    pattern-sinks:
+      - patterns:
+          - pattern-either:
+            # Command object instantiation
+            - patterns:
+              - pattern: |
+                  new $PATTERN($CMD,...)
+              - focus-metavariable: $CMD
+            # CommandText property assignment
+            - patterns:
+              - pattern: |
+                  $OBJ.$PATTERN = $VALUE;
+              - focus-metavariable: $VALUE
+          - metavariable-regex:
+              metavariable: $PATTERN
+              regex: ^(SqlCommand|CommandText|OleDbCommand|OdbcCommand|OracleCommand|MySqlCommand|NpgsqlCommand|SQLiteCommand|SqlCeCommand)$
+    pattern-sanitizers:
+      # Parameterized query usage
+      - pattern-either:
+          - pattern: |
+              $CMD.Parameters.Add(...)
+          - pattern: |
+              $CMD.Parameters.AddWithValue(...)
+          - pattern: |
+              $CMD.Parameters[$IDX] = ...
+        by-side-effect: true
     metadata:
       category: security
       cwe: CWE-89
+      owasp:
+        - A03:2021 - Injection
       confidence: high
 
   # Command injection
@@ -86,15 +127,15 @@ rules:
     message: "Hardcoded credentials detected"
     severity: HIGH
     languages: [csharp]
-    pattern-either:
-      # C#
-      - pattern: |
-          private const string $VAR = "...";
-      - pattern: |
-          public const string $VAR = "...";
-      - pattern: |
-          string $VAR = "...";
-    where:
+    patterns:
+      - pattern-either:
+          # C#
+          - pattern: |
+              private const string $VAR = "...";
+          - pattern: |
+              public const string $VAR = "...";
+          - pattern: |
+              string $VAR = "...";
       - metavariable-regex:
           metavariable: $VAR
           regex: (?i).*(password|passwd|pwd|secret|token|key|api_key|connection_string).*
@@ -252,14 +293,14 @@ rules:
     message: "Weak cryptographic key size detected"
     severity: MEDIUM
     languages: [csharp]
-    pattern-either:
-      - pattern: RSACryptoServiceProvider($SIZE)
-      - pattern: RSA.Create($SIZE)
-      - pattern: DSACryptoServiceProvider($SIZE)
-    where:
-      - metavariable-comparison:
-          metavariable: $SIZE
-          comparison: int($SIZE) < 2048
+    patterns:
+      - pattern-either:
+          - pattern: RSACryptoServiceProvider(512)
+          - pattern: RSACryptoServiceProvider(1024)
+          - pattern: RSA.Create(512)
+          - pattern: RSA.Create(1024)
+          - pattern: DSACryptoServiceProvider(512)
+          - pattern: DSACryptoServiceProvider(1024)
     metadata:
       category: security
       cwe: CWE-310
@@ -312,12 +353,12 @@ rules:
     message: "Debug information disclosure detected"
     severity: LOW
     languages: [csharp]
-    pattern-either:
-      - pattern: Console.WriteLine($USER_INPUT)
-      - pattern: Debug.WriteLine($USER_INPUT)
-      - pattern: Trace.WriteLine($USER_INPUT)
-      - pattern: System.Diagnostics.Debug.Write($USER_INPUT)
-    where:
+    patterns:
+      - pattern-either:
+          - pattern: Console.WriteLine($USER_INPUT)
+          - pattern: Debug.WriteLine($USER_INPUT)
+          - pattern: Trace.WriteLine($USER_INPUT)
+          - pattern: System.Diagnostics.Debug.Write($USER_INPUT)
       - metavariable-regex:
           metavariable: $USER_INPUT
           regex: (?i).*(password|token|secret|key|credential).*
@@ -512,10 +553,10 @@ rules:
     message: "Insecure session management design"
     severity: MEDIUM
     languages: [csharp]
-    pattern-either:
-      - pattern: Session[$KEY] = $SENSITIVE_DATA
-      - pattern: HttpContext.Session.SetString($KEY, $SENSITIVE_DATA)
-    where:
+    patterns:
+      - pattern-either:
+          - pattern: Session[$KEY] = $SENSITIVE_DATA
+          - pattern: HttpContext.Session.SetString($KEY, $SENSITIVE_DATA)
       - metavariable-regex:
           metavariable: $SENSITIVE_DATA
           regex: (?i).*(password|credit_card|ssn|social_security).*

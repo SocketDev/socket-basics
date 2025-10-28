@@ -110,11 +110,11 @@ rules:
     message: "Integer overflow vulnerability detected"
     severity: HIGH
     languages: [c, cpp]
-    pattern-either:
-      - pattern: malloc($SIZE * $COUNT)
-      - pattern: calloc($SIZE, $COUNT)
-      - pattern: $BUF[$INDEX + $OFFSET]
-    where:
+    patterns:
+      - pattern-either:
+          - pattern: malloc($SIZE * $COUNT)
+          - pattern: calloc($SIZE, $COUNT)
+          - pattern: $BUF[$INDEX + $OFFSET]
       - metavariable-pattern:
           metavariable: $SIZE
           pattern: $VAR
@@ -432,10 +432,10 @@ rules:
     message: "Socket security issue detected"
     severity: MEDIUM
     languages: [c, cpp]
-    pattern-either:
-      - pattern: bind($SOCK, $ADDR, sizeof($ADDR))
-      - pattern: connect($SOCK, $ADDR, sizeof($ADDR))
-    where:
+    patterns:
+      - pattern-either:
+          - pattern: bind($SOCK, $ADDR, sizeof($ADDR))
+          - pattern: connect($SOCK, $ADDR, sizeof($ADDR))
       - metavariable-pattern:
           metavariable: $ADDR
           pattern: $VAR
