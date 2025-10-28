@@ -4,17 +4,22 @@ rules:
     message: "Potential hardcoded credentials detected"
     severity: HIGH
     languages: [go]
-    patterns:
-      - pattern-either:
-          - pattern: |
-              const $VAR = "..."
-          - pattern: |
-              var $VAR = "..."
-          - pattern: |
-              $VAR := "..."
-      - metavariable-regex:
-          metavariable: $VAR
-          regex: (?i).*(password|passwd|pwd|secret|token|key|api_key|auth).*
+    pattern-either:
+      - patterns:
+          - pattern: const $VAR = "..."
+          - metavariable-regex:
+              metavariable: $VAR
+              regex: (?i).*(password|passwd|pwd|secret|token|api_key|apikey|auth_key|authkey).*
+      - patterns:
+          - pattern: var $VAR = "..."
+          - metavariable-regex:
+              metavariable: $VAR
+              regex: (?i).*(password|passwd|pwd|secret|token|api_key|apikey|auth_key|authkey).*
+      - patterns:
+          - pattern: $VAR := "..."
+          - metavariable-regex:
+              metavariable: $VAR
+              regex: (?i).*(password|passwd|pwd|secret|token|api_key|apikey|auth_key|authkey).*
     metadata:
       category: security
       gosec_equivalent: G101
