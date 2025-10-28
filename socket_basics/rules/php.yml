@@ -3,25 +3,44 @@ rules:
 
   # Code injection
   - id: php-code-injection
-    message: "Code injection vulnerability detected"
+    message: "Code injection vulnerability detected - user input flows to code execution functions"
+    severity: CRITICAL
+    languages: [php]
+    mode: taint
+    pattern-sources:
+      - pattern: $_GET
+      - pattern: $_POST
+      - pattern: $_REQUEST
+      - pattern: $_COOKIE
+      - pattern: $_SERVER['REQUEST_URI']
+      - pattern: $_SERVER['QUERY_STRING']
+      - pattern: file_get_contents('php://input')
+    pattern-sinks:
+      - pattern: eval($CODE)
+      - pattern: assert($CODE)
+      - pattern: assert($CODE, ...)
+      - pattern: create_function($ARGS, $CODE)
+    pattern-sanitizers:
+      - pattern: preg_quote($STR)
+      - pattern: addslashes($STR)
+    metadata:
+      category: security
+      cwe: CWE-94
+      confidence: high
+
+  # preg_replace with /e modifier (separate rule due to specific vulnerability)
+  - id: php-preg-replace-e-modifier
+    message: "Dangerous preg_replace with /e modifier detected"
     severity: CRITICAL
     languages: [php]
     pattern-either:
-      - pattern: eval($USER_INPUT)
-      - pattern: assert($USER_INPUT)
-      - pattern: preg_replace($PATTERN, $USER_INPUT, $SUBJECT)
-      - pattern: create_function($ARGS, $USER_INPUT)
-      - pattern: $USER_INPUT($ARGS)
-    where:
-      - metavariable-pattern:
-          metavariable: $USER_INPUT
-          pattern: $_GET[...]
-      - metavariable-pattern:
-          metavariable: $USER_INPUT
-          pattern: $_POST[...]
-      - metavariable-pattern:
-          metavariable: $USER_INPUT
-          pattern: $_REQUEST[...]
+      - pattern: preg_replace('/.../e', $REPLACEMENT, $SUBJECT)
+      - pattern: preg_replace("/.../e", $REPLACEMENT, $SUBJECT)
+      - pattern: preg_replace($PATTERN, $REPLACEMENT, $SUBJECT)
+    pattern-inside: |
+      ...
+      $PATTERN = '/.../e';
+      ...
     metadata:
       category: security
       cwe: CWE-94
@@ -29,17 +48,42 @@ rules:
 
   # SQL injection
   - id: php-sql-injection
-    message: "SQL injection vulnerability detected"
+    message: "SQL injection vulnerability detected - user input flows to SQL query without parameterization"
     severity: CRITICAL
     languages: [php]
-    pattern-either:
-      - pattern: mysql_query($QUERY . $USER_INPUT)
-      - pattern: mysqli_query($CONN, $QUERY . $USER_INPUT)
-      - pattern: $PDO->query($QUERY . $USER_INPUT)
-      - pattern: $PDO->exec($QUERY . $USER_INPUT)
-      - pattern: '"SELECT * FROM users WHERE id = " . $USER_INPUT'
-      - pattern: |
-          "SELECT * FROM users WHERE id = '$USER_INPUT'"
+    mode: taint
+    pattern-sources:
+      - pattern: $_GET
+      - pattern: $_POST
+      - pattern: $_REQUEST
+      - pattern: $_COOKIE
+      - pattern: $_SERVER['REQUEST_URI']
+      - pattern: $_SERVER['QUERY_STRING']
+      - pattern: file_get_contents('php://input')
+    pattern-sinks:
+      - pattern: mysql_query($QUERY)
+      - pattern: mysqli_query($CONN, $QUERY)
+      - pattern: mysqli_query(..., $QUERY)
+      - pattern: $PDO->query($QUERY)
+      - pattern: $PDO->exec($QUERY)
+      - pattern: $MYSQLI->query($QUERY)
+      - pattern: $MYSQLI->multi_query($QUERY)
+      - pattern: mysqli_multi_query($CONN, $QUERY)
+      - pattern: $WPDB->query($QUERY)
+      - pattern: $DB->query($QUERY)
+    pattern-sanitizers:
+      - pattern: $PDO->prepare($QUERY)
+      - pattern: $MYSQLI->prepare($QUERY)
+      - pattern: mysqli_prepare($CONN, $QUERY)
+      - pattern: $WPDB->prepare($QUERY, ...)
+      - pattern: mysqli_real_escape_string($CONN, $STR)
+      - pattern: mysqli_real_escape_string(..., $STR)
+      - pattern: mysql_real_escape_string($STR)
+      - pattern: addslashes($STR)
+      - pattern: intval($STR)
+      - pattern: floatval($STR)
+      - pattern: (int)$STR
+      - pattern: (float)$STR
     metadata:
       category: security
       cwe: CWE-89
@@ -47,17 +91,32 @@ rules:
 
   # Command injection
   - id: php-command-injection
-    message: "Command injection vulnerability detected"
+    message: "Command injection vulnerability detected - user input flows to system command execution"
     severity: CRITICAL
     languages: [php]
-    pattern-either:
-      - pattern: system($USER_INPUT)
-      - pattern: exec($USER_INPUT)
-      - pattern: shell_exec($USER_INPUT)
-      - pattern: passthru($USER_INPUT)
-      - pattern: '`$USER_INPUT`'
-      - pattern: popen($USER_INPUT, $...ARGS)
-      - pattern: proc_open($USER_INPUT, $...ARGS)
+    mode: taint
+    pattern-sources:
+      - pattern: $_GET
+      - pattern: $_POST
+      - pattern: $_REQUEST
+      - pattern: $_COOKIE
+      - pattern: $_SERVER['REQUEST_URI']
+      - pattern: $_SERVER['QUERY_STRING']
+      - pattern: file_get_contents('php://input')
+    pattern-sinks:
+      - pattern: system($CMD)
+      - pattern: exec($CMD)
+      - pattern: exec($CMD, ...)
+      - pattern: shell_exec($CMD)
+      - pattern: passthru($CMD)
+      - pattern: passthru($CMD, ...)
+      - pattern: popen($CMD, ...)
+      - pattern: proc_open($CMD, ...)
+      - pattern: '`$CMD`'
+      - pattern: pcntl_exec($CMD, ...)
+    pattern-sanitizers:
+      - pattern: escapeshellarg($STR)
+      - pattern: escapeshellcmd($STR)
     metadata:
       category: security
       cwe: CWE-78
@@ -68,16 +127,16 @@ rules:
     message: "Unsafe deserialization detected"
     severity: CRITICAL
     languages: [php]
-    pattern-either:
-      - pattern: unserialize($USER_INPUT)
-      - pattern: serialize($USER_INPUT)
-    where:
+    patterns:
+      - pattern-either:
+          - pattern: unserialize($USER_INPUT)
+          - pattern: serialize($USER_INPUT)
       - metavariable-pattern:
           metavariable: $USER_INPUT
-          pattern: $_GET[...]
-      - metavariable-pattern:
-          metavariable: $USER_INPUT
-          pattern: $_POST[...]
+          patterns:
+            - pattern-either:
+                - pattern: $_GET[...]
+                - pattern: $_POST[...]
     metadata:
       category: security
       cwe: CWE-502
@@ -119,19 +178,57 @@ rules:
 
   # XSS vulnerabilities
   - id: php-xss
-    message: "XSS vulnerability detected"
+    message: "XSS vulnerability detected - user input not sanitized before output"
     severity: HIGH
     languages: [php]
     pattern-either:
-      - pattern: echo $USER_INPUT;
-      - pattern: print $USER_INPUT;
-      - pattern: printf($USER_INPUT, $...ARGS);
-      - pattern: "'<div>' . $USER_INPUT . '</div>'"
-      - pattern: print_r($USER_INPUT)
+      # Direct superglobal usage in output
+      - pattern: echo $_GET[$KEY];
+      - pattern: echo $_POST[$KEY];
+      - pattern: echo $_REQUEST[$KEY];
+      - pattern: echo $_COOKIE[$KEY];
+      - pattern: print $_GET[$KEY];
+      - pattern: print $_POST[$KEY];
+      - pattern: print $_REQUEST[$KEY];
+      - pattern: print $_COOKIE[$KEY];
+      - pattern: printf($_GET[$KEY], $...ARGS);
+      - pattern: printf($_POST[$KEY], $...ARGS);
+      - pattern: printf($_REQUEST[$KEY], $...ARGS);
+      # Concatenation with superglobals in output
+      - pattern: echo "..." . $_GET[$KEY] . "...";
+      - pattern: echo "..." . $_POST[$KEY] . "...";
+      - pattern: echo "..." . $_REQUEST[$KEY] . "...";
+      - pattern: echo '...' . $_GET[$KEY] . '...';
+      - pattern: echo '...' . $_POST[$KEY] . '...';
+      - pattern: echo '...' . $_REQUEST[$KEY] . '...';
+      - pattern: print "..." . $_GET[$KEY] . "...";
+      - pattern: print "..." . $_POST[$KEY] . "...";
+      - pattern: print "..." . $_REQUEST[$KEY] . "...";
+      - pattern: print '...' . $_GET[$KEY] . '...';
+      - pattern: print '...' . $_POST[$KEY] . '...';
+      - pattern: print '...' . $_REQUEST[$KEY] . '...';
+      # Assignment to HTML variables (common XSS pattern)
+      - pattern: $HTML .= "..." . $_GET[$KEY] . "...";
+      - pattern: $HTML .= "..." . $_POST[$KEY] . "...";
+      - pattern: $HTML .= "..." . $_REQUEST[$KEY] . "...";
+      - pattern: $HTML .= '...' . $_GET[$KEY] . '...';
+      - pattern: $HTML .= '...' . $_POST[$KEY] . '...';
+      - pattern: $HTML .= '...' . $_REQUEST[$KEY] . '...';
+      - pattern: $HTML = "..." . $_GET[$KEY] . "...";
+      - pattern: $HTML = "..." . $_POST[$KEY] . "...";
+      - pattern: $HTML = "..." . $_REQUEST[$KEY] . "...";
+      - pattern: $HTML = '...' . $_GET[$KEY] . '...';
+      - pattern: $HTML = '...' . $_POST[$KEY] . '...';
+      - pattern: $HTML = '...' . $_REQUEST[$KEY] . '...';
+      # print_r with superglobals
+      - pattern: print_r($_GET)
+      - pattern: print_r($_POST)
+      - pattern: print_r($_REQUEST)
+      - pattern: print_r($_COOKIE)
     metadata:
       category: security
       cwe: CWE-79
-      confidence: low
+      confidence: high
 
   # Hardcoded secrets
   - id: php-hardcoded-secrets
@@ -152,34 +249,72 @@ rules:
 
   # Path traversal
   - id: php-path-traversal
-    message: "Path traversal vulnerability detected"
+    message: "Path traversal vulnerability detected - user input flows to file operations without validation"
     severity: HIGH
     languages: [php]
-    pattern-either:
-      - pattern: file_get_contents($PATH . $USER_INPUT)
-      - pattern: fopen($PATH . $USER_INPUT, ...)
-      - pattern: include($PATH . $USER_INPUT)
-      - pattern: readfile($PATH . $USER_INPUT)
-      - pattern: unlink($PATH . $USER_INPUT)
+    mode: taint
+    pattern-sources:
+      - pattern: $_GET
+      - pattern: $_POST
+      - pattern: $_REQUEST
+      - pattern: $_COOKIE
+      - pattern: $_SERVER['REQUEST_URI']
+      - pattern: $_SERVER['QUERY_STRING']
+      - pattern: file_get_contents('php://input')
+    pattern-sinks:
+      - pattern: file_get_contents($PATH)
+      - pattern: fopen($PATH, ...)
+      - pattern: include($PATH)
+      - pattern: include_once($PATH)
+      - pattern: require($PATH)
+      - pattern: require_once($PATH)
+      - pattern: readfile($PATH)
+      - pattern: unlink($PATH)
+      - pattern: file($PATH)
+      - pattern: file_put_contents($PATH, ...)
+      - pattern: copy($SRC, $DEST)
+      - pattern: rename($OLD, $NEW)
+      - pattern: mkdir($PATH, ...)
+      - pattern: rmdir($PATH)
+      - pattern: is_file($PATH)
+      - pattern: is_dir($PATH)
+      - pattern: scandir($PATH)
+      - pattern: glob($PATH)
+    pattern-sanitizers:
+      - pattern: basename($PATH)
+      - pattern: realpath($PATH)
     metadata:
       category: security
       cwe: CWE-22
-      confidence: medium
+      confidence: high
 
   # Open redirect
   - id: php-open-redirect
-    message: "Open redirect vulnerability detected"
+    message: "Open redirect vulnerability detected - user input flows to redirect location"
     severity: HIGH
     languages: [php]
-    pattern-either:
-      - pattern: "header('Location: ' . $USER_INPUT)"
-      - pattern: 'header("Location: $USER_INPUT")'
-      - pattern: "header('Location: ' . $_GET[$PARAM])"
-      - pattern: "header('Location: ' . $_POST[$PARAM])"
+    mode: taint
+    pattern-sources:
+      - pattern: $_GET
+      - pattern: $_POST
+      - pattern: $_REQUEST
+      - pattern: $_COOKIE
+      - pattern: $_SERVER['REQUEST_URI']
+      - pattern: $_SERVER['QUERY_STRING']
+      - pattern: $_SERVER['HTTP_REFERER']
+    pattern-sinks:
+      - pattern: |
+          header('Location: ' . $URL)
+      - pattern: |
+          header("Location: $URL")
+      - pattern: header($HEADER)
+    pattern-sanitizers:
+      - pattern: filter_var($URL, FILTER_VALIDATE_URL)
+      - pattern: parse_url($URL)
     metadata:
       category: security
       cwe: CWE-601
-      confidence: medium
+      confidence: high
 
   # XXE vulnerabilities
   - id: php-xxe-vulnerability
@@ -277,10 +412,11 @@ rules:
     message: "Use of HTTP instead of HTTPS"
     severity: MEDIUM
     languages: [php]
-    pattern: $URL
-    metavariable-regex:
-      metavariable: $URL
-      regex: "http://.*"
+    pattern-either:
+      - pattern: file_get_contents("http://...")
+      - pattern: curl_setopt($CH, CURLOPT_URL, "http://...")
+      - pattern: |
+          $VAR = "http://...";
     metadata:
       category: security
       cwe: CWE-319
@@ -308,13 +444,13 @@ rules:
     message: "Debug information disclosure detected"
     severity: LOW
     languages: [php]
-    pattern-either:
-      - pattern: var_dump($USER_INPUT)
-      - pattern: print_r($USER_INPUT)
-      - pattern: error_reporting(E_ALL)
-      - pattern: ini_set('display_errors', 1)
-      - pattern: phpinfo()
-    where:
+    patterns:
+      - pattern-either:
+          - pattern: var_dump($USER_INPUT)
+          - pattern: print_r($USER_INPUT)
+          - pattern: error_reporting(E_ALL)
+          - pattern: ini_set('display_errors', 1)
+          - pattern: phpinfo()
       - metavariable-regex:
           metavariable: $USER_INPUT
           regex: (?i).*(password|token|secret|key|credential).*
@@ -328,10 +464,11 @@ rules:
     message: "Hardcoded IP address detected"
     severity: LOW
     languages: [php]
-    pattern: $IP_ADDRESS
-    metavariable-regex:
-      metavariable: $IP_ADDRESS
-      regex: "(192\\.168\\.\\d{1,3}\\.\\d{1,3})|(10\\.\\d{1,3}\\.\\d{1,3}\\.\\d{1,3})|(172\\.16\\.\\d{1,3}\\.\\d{1,3})|127\\.0\\.0\\.1|localhost"
+    pattern-either:
+      - pattern: $VAR = "192.168.$X.$Y";
+      - pattern: $VAR = "10.$X.$Y.$Z";
+      - pattern: $VAR = "127.0.0.1";
+      - pattern: $VAR = "localhost";
     metadata:
       category: security
       cwe: CWE-798

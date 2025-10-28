@@ -102,3 +102,5 @@ logs/
 
 .python-version
 .socket.fact.json
+
+custom_rules/

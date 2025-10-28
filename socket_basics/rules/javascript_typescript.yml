@@ -71,54 +71,55 @@ rules:
       confidence: medium
       subcategory: access-control
 
-  # Path traversal
+  # Path traversal - using taint mode for accurate detection
   - id: js-path-traversal
-    message: "Path traversal vulnerability - user input used in file operations"
+    message: "Path traversal vulnerability detected. User-controlled data flows into file operations without proper validation. Use path.resolve() and validate that result is within allowed directory."
     severity: HIGH
     languages: [javascript, typescript]
-    pattern-either:
-      # File system operations with concatenated paths
-      - pattern: fs.readFile($PATH + $USER_INPUT, ...)
-      - pattern: fs.readFileSync($PATH + $USER_INPUT)
-      - pattern: fs.writeFile($PATH + $USER_INPUT, ...)
-      - pattern: fs.writeFileSync($PATH + $USER_INPUT, ...)
-      - pattern: fs.createReadStream($PATH + $USER_INPUT)
-      - pattern: fs.createWriteStream($PATH + $USER_INPUT)
-      - pattern: fs.readFile(`${$PATH}${$USER_INPUT}`, ...)
-      - pattern: fs.readFileSync(`${$PATH}${$USER_INPUT}`)
-      - pattern: fs.writeFile(`${$PATH}${$USER_INPUT}`, ...)
-      - pattern: fs.writeFileSync(`${$PATH}${$USER_INPUT}`)
-      # User input directly in file operations (common with req.query/params/body)
-      - pattern: fs.readFile($REQ.query.$PARAM, ...)
-      - pattern: fs.readFileSync($REQ.query.$PARAM)
-      - pattern: fs.writeFile($REQ.query.$PARAM, ...)
-      - pattern: fs.writeFileSync($REQ.query.$PARAM)
-      - pattern: fs.readFile($REQ.params.$PARAM, ...)
-      - pattern: fs.readFileSync($REQ.params.$PARAM)
-      - pattern: fs.readFile($REQ.body.$PARAM, ...)
-      - pattern: fs.readFileSync($REQ.body.$PARAM)
-      - pattern: fs.createReadStream($REQ.query.$PARAM)
-      - pattern: fs.createReadStream($REQ.params.$PARAM)
-      - pattern: fs.createWriteStream($REQ.query.$PARAM)
-      - pattern: fs.createWriteStream($REQ.params.$PARAM)
-      # Path module with user input
-      - pattern: path.join($BASE, $REQ.query.$PARAM)
-      - pattern: path.join($BASE, $REQ.params.$PARAM)
-      - pattern: path.join($BASE, $REQ.body.$PARAM)
-      - pattern: path.resolve($BASE, $REQ.query.$PARAM)
-      - pattern: path.resolve($BASE, $REQ.params.$PARAM)
-      - pattern: path.resolve($BASE, $REQ.body.$PARAM)
-      # Dynamic require/import with request parameters (not static strings)
-      - pattern: require($REQ.query.$PARAM)
-      - pattern: require($REQ.params.$PARAM)
-      - pattern: require($REQ.body.$PARAM)
-      - pattern: import($REQ.query.$PARAM)
-      - pattern: import($REQ.params.$PARAM)
-      - pattern: import($REQ.body.$PARAM)
-      # Template literals with user input
-      - pattern: fs.readFile(`...${$REQ.query.$PARAM}...`, ...)
-      - pattern: fs.readFile(`...${$REQ.params.$PARAM}...`, ...)
-      - pattern: fs.readFile(`...${$REQ.body.$PARAM}...`, ...)
+    mode: taint
+    pattern-sources:
+      # User-controlled input sources
+      - pattern: req.query
+      - pattern: req.params
+      - pattern: req.body
+      - pattern: req.cookies
+      - pattern: ctx.query
+      - pattern: ctx.params
+      - pattern: ctx.request.body
+      - pattern: request.query
+      - pattern: request.params
+      - pattern: request.body
+    pattern-propagators:
+      # String concatenation
+      - pattern: $A + $B
+        from: $B
+        to: $A
+      # Path operations that propagate taint
+      - pattern: path.join(...)
+        from: $A
+        to: $A
+      - pattern: path.resolve(...)
+        from: $A
+        to: $A
+    pattern-sinks:
+      # File system operations
+      - pattern: fs.readFile(...)
+      - pattern: fs.readFileSync(...)
+      - pattern: fs.writeFile(...)
+      - pattern: fs.writeFileSync(...)
+      - pattern: fs.createReadStream(...)
+      - pattern: fs.createWriteStream(...)
+      - pattern: fs.appendFile(...)
+      - pattern: fs.appendFileSync(...)
+      - pattern: fs.unlink(...)
+      - pattern: fs.unlinkSync(...)
+      # Dynamic imports
+      - pattern: require(...)
+      - pattern: import(...)
+    pattern-sanitizers:
+      # Validation that checks path is within allowed directory
+      - pattern: path.normalize(...).startsWith(...)
+      - pattern: $PATH.indexOf("..") === -1
     metadata:
       category: security
       owasp: "A01:2021"
@@ -126,24 +127,48 @@ rules:
       confidence: high
       subcategory: access-control
 
-  # Unvalidated redirect
+  # Unvalidated redirect - using taint mode for accurate detection
   - id: js-open-redirect
-    message: "Open redirect vulnerability - user input used in redirect without validation"
+    message: "Open redirect vulnerability detected. User-controlled data flows into redirect without validation. Validate redirect URLs against allowlist."
     severity: MEDIUM
     languages: [javascript, typescript]
-    pattern-either:
-      # Server-side redirects with user input
-      - pattern: res.redirect($REQ.query.$PARAM)
-      - pattern: res.redirect($REQ.params.$PARAM)
-      - pattern: res.redirect($REQ.body.$PARAM)
-      # Client-side redirects with request data (more specific)
-      - pattern: window.location = $REQ.query.$PARAM
-      - pattern: window.location.href = $REQ.query.$PARAM
-      - pattern: document.location = $REQ.query.$PARAM
-      - pattern: document.location.href = $REQ.query.$PARAM
-      # URL concatenation with user input
-      - pattern: res.redirect($BASE + $REQ.query.$PARAM)
-      - pattern: res.redirect(`${$BASE}${$REQ.query.$PARAM}`)
+    mode: taint
+    pattern-sources:
+      # User-controlled input sources
+      - pattern: req.query
+      - pattern: req.params
+      - pattern: req.body
+      - pattern: ctx.query
+      - pattern: ctx.params
+      - pattern: ctx.request.body
+      - pattern: request.query
+      - pattern: request.params
+      - pattern: request.body
+      # Client-side sources
+      - pattern: location.search
+      - pattern: window.location.search
+    pattern-propagators:
+      # String concatenation
+      - pattern: $A + $B
+        from: $B
+        to: $A
+    pattern-sinks:
+      # Server-side redirects
+      - pattern: res.redirect(...)
+      - pattern: res.location(...)
+      - pattern: ctx.redirect(...)
+      # Client-side redirects
+      - pattern: window.location = ...
+      - pattern: window.location.href = ...
+      - pattern: document.location = ...
+      - pattern: document.location.href = ...
+      - pattern: location.assign(...)
+      - pattern: location.replace(...)
+    pattern-sanitizers:
+      # URL validation
+      - pattern: $URL.startsWith("http://")
+      - pattern: $URL.startsWith("https://")
+      - pattern: new URL(...)
     metadata:
       category: security
       owasp: "A01:2021"
@@ -183,7 +208,8 @@ rules:
       - pattern: crypto.createHash("md5")
       - pattern: crypto.createHash('md5')
       - pattern: require('md5')
-      - pattern: import ... from 'md5'
+      - pattern: import $X from 'md5'
+      - pattern: import * as $X from 'md5'
     metadata:
       category: security
       owasp: "A02:2021"
@@ -199,7 +225,8 @@ rules:
       - pattern: crypto.createHash("sha1")
       - pattern: crypto.createHash('sha1')
       - pattern: require('sha1')
-      - pattern: import ... from 'sha1'
+      - pattern: import $X from 'sha1'
+      - pattern: import * as $X from 'sha1'
     metadata:
       category: security
       owasp: "A02:2021"
@@ -241,10 +268,7 @@ rules:
           - pattern: var $VAR = "..."
       - metavariable-regex:
           metavariable: $VAR
-          regex: ^(password|passwd|pwd|secret|apiKey|api_key|privateKey|private_key|accessToken|access_token|authToken|auth_token|sessionKey|session_key)$
-      - metavariable-comparison:
-          metavariable: $VAR
-          comparison: str($VAR).length > 8
+          regex: (?i).*(password|passwd|pwd|secret|api[_-]?key|private[_-]?key|access[_-]?token|auth[_-]?token|session[_-]?key).*
     metadata:
       category: security
       owasp: "A02:2021"
@@ -355,26 +379,29 @@ rules:
     message: "Code injection via eval() - can execute arbitrary code"
     severity: CRITICAL
     languages: [javascript, typescript]
-    pattern-either:
-      # Direct eval usage
-      - pattern: eval($EXPR)
-      - pattern: eval($REQ.$PROP)
-      # Function constructor with user input
-      - pattern: Function($REQ.$PROP)
-      - pattern: new Function($REQ.$PROP)
-      # setTimeout/setInterval with string (not function)
-      - patterns:
-          - pattern-either:
-              - pattern: setTimeout($CODE_STR, ...)
-              - pattern: setInterval($CODE_STR, ...)
-          - metavariable-pattern:
-              metavariable: $CODE_STR
-              patterns:
-                - pattern-not: $FUNC
-                - pattern: "..."
-      # VM module with user input
-      - pattern: vm.runInNewContext($REQ.$PROP)
-      - pattern: vm.runInThisContext($REQ.$PROP)
+    patterns:
+      - pattern-either:
+          # Direct eval usage
+          - pattern: eval($EXPR)
+          - pattern: eval($REQ.$PROP)
+          # Function constructor with user input
+          - pattern: Function($REQ.$PROP)
+          - pattern: new Function($REQ.$PROP)
+          # setTimeout/setInterval with string (not function)
+          - patterns:
+              - pattern-either:
+                  - pattern: setTimeout($CODE_STR, ...)
+                  - pattern: setInterval($CODE_STR, ...)
+              - metavariable-pattern:
+                  metavariable: $CODE_STR
+                  patterns:
+                    - pattern-not: $FUNC
+                    - pattern: "..."
+          # VM module with user input
+          - pattern: vm.runInNewContext($REQ.$PROP)
+          - pattern: vm.runInThisContext($REQ.$PROP)
+      # Exclude hardcoded strings
+      - pattern-not: eval("...")
     metadata:
       category: security
       owasp: "A03:2021"
@@ -382,22 +409,58 @@ rules:
       confidence: high
       subcategory: injection
 
-  # SQL injection
+  # SQL injection - using taint mode for accurate detection
   - id: js-sql-injection
-    message: "SQL injection vulnerability - use parameterized queries"
+    message: "SQL injection vulnerability detected. User-controlled data flows into SQL query without proper sanitization. Use parameterized queries with placeholders (?, $1, etc.) to prevent SQL injection."
     severity: CRITICAL
     languages: [javascript, typescript]
-    pattern-either:
-      - pattern: $DB.query("..." + $VAR + "...")
-      - pattern: $DB.query(`...${$VAR}...`)
-      - pattern: $DB.execute("..." + $VAR + "...")
-      - pattern: $DB.execute(`...${$VAR}...`)
-      - pattern: $DB.raw("..." + $VAR + "...")
-      - pattern: $DB.raw(`...${$VAR}...`)
-      - pattern: $CONN.query("..." + $REQ.$PROP + "...")
-      - pattern: $CONN.query(`...${$REQ.$PROP}...`)
-      - pattern: mysql.query("..." + $VAR + "...")
-      - pattern: pg.query("..." + $VAR + "...")
+    mode: taint
+    pattern-sources:
+      # User-controlled input sources (Express/Node.js)
+      - pattern: req.query
+      - pattern: req.params
+      - pattern: req.body
+      - pattern: req.cookies
+      - pattern: req.headers
+      # Koa framework
+      - pattern: ctx.query
+      - pattern: ctx.params
+      - pattern: ctx.request.body
+      # Fastify framework
+      - pattern: request.query
+      - pattern: request.params
+      - pattern: request.body
+    pattern-propagators:
+      # String concatenation
+      - pattern: $A + $B
+        from: $B
+        to: $A
+      # Template literals are implicitly tracked
+    pattern-sinks:
+      # MySQL/PostgreSQL/SQLite query methods
+      - pattern: $DB.query(...)
+      - pattern: $DB.execute(...)
+      - pattern: $DB.raw(...)
+      - pattern: $CONN.query(...)
+      - pattern: $CONN.execute(...)
+      - pattern: mysql.query(...)
+      - pattern: mysql2.query(...)
+      - pattern: pg.query(...)
+      - pattern: sqlite3.run(...)
+      - pattern: $DB.exec(...)
+      # Sequelize raw queries
+      - pattern: sequelize.query(...)
+      - pattern: $MODEL.sequelize.query(...)
+      # Knex raw queries
+      - pattern: knex.raw(...)
+      - pattern: $KNEX.raw(...)
+    pattern-sanitizers:
+      # Parameterized queries with placeholders
+      - pattern: $DB.query("...", [...])
+      - pattern: $DB.execute("...", [...])
+      # ORM methods that use parameters  
+      - pattern: $MODEL.findAll(...)
+      - pattern: $MODEL.findOne(...)
     metadata:
       category: security
       owasp: "A03:2021"
@@ -433,20 +496,45 @@ rules:
       confidence: high
       subcategory: injection
 
-  # Command injection
+  # Command injection - using taint mode for accurate detection
   - id: js-command-injection
-    message: "Command injection vulnerability - avoid shell execution with user input"
+    message: "Command injection vulnerability detected. User-controlled data flows into system command without proper sanitization. Use child_process.spawn with array arguments or proper escaping."
     severity: CRITICAL
     languages: [javascript, typescript]
-    pattern-either:
-      - pattern: child_process.exec($CMD + $VAR)
-      - pattern: child_process.exec(`${$CMD}${$VAR}`)
-      - pattern: child_process.exec($REQ.$PROP)
-      - pattern: cp.exec($CMD + $VAR)
-      - pattern: require('child_process').exec($CMD + $VAR)
-      - pattern: execSync($CMD + $VAR)
-      - pattern: child_process.execSync($CMD + $VAR)
-      - pattern: "child_process.spawn($CMD, ..., { shell: true })"
+    mode: taint
+    pattern-sources:
+      # User-controlled input sources
+      - pattern: req.query
+      - pattern: req.params
+      - pattern: req.body
+      - pattern: req.cookies
+      - pattern: req.headers
+      - pattern: ctx.query
+      - pattern: ctx.params
+      - pattern: ctx.request.body
+      - pattern: request.query
+      - pattern: request.params
+      - pattern: request.body
+    pattern-propagators:
+      # String concatenation
+      - pattern: $A + $B
+        from: $B
+        to: $A
+    pattern-sinks:
+      # Command execution methods
+      - pattern: child_process.exec(...)
+      - pattern: child_process.execSync(...)
+      - pattern: cp.exec(...)
+      - pattern: exec(...)
+      - pattern: execSync(...)
+      - pattern: child_process.execFile(...)
+      - pattern: execFile(...)
+      # Shell option enabled - spawn with shell is dangerous
+      - pattern: child_process.spawn(...)
+      - pattern: spawn(...)
+    pattern-sanitizers:
+      # Array-based spawn without shell is safe (no shell interpretation)
+      - pattern: child_process.spawnSync($CMD, [...])
     metadata:
       category: security
       owasp: "A03:2021"
@@ -454,16 +542,38 @@ rules:
       confidence: high
       subcategory: injection
 
-  # LDAP injection
+  # LDAP injection - using taint mode for accurate detection
   - id: js-ldap-injection
-    message: "LDAP injection vulnerability - sanitize user input in LDAP queries"
+    message: "LDAP injection vulnerability detected. User-controlled data flows into LDAP query without sanitization. Escape LDAP special characters."
     severity: HIGH
     languages: [javascript, typescript]
-    pattern-either:
-      - pattern: $CLIENT.search($FILTER + $USER_INPUT, ...)
-      - pattern: $CLIENT.search(`${$FILTER}${$USER_INPUT}`, ...)
-      - pattern: $CLIENT.bind($DN + $USER_INPUT, ...)
-      - pattern: $CLIENT.bind(`${$DN}${$USER_INPUT}`, ...)
+    mode: taint
+    pattern-sources:
+      # User-controlled input sources
+      - pattern: req.query
+      - pattern: req.params
+      - pattern: req.body
+      - pattern: req.cookies
+      - pattern: ctx.query
+      - pattern: ctx.params
+      - pattern: request.query
+      - pattern: request.params
+      - pattern: request.body
+    pattern-propagators:
+      # String concatenation
+      - pattern: $A + $B
+        from: $B
+        to: $A
+    pattern-sinks:
+      # LDAP query methods
+      - pattern: $CLIENT.search(...)
+      - pattern: $CLIENT.bind(...)
+      - pattern: $CLIENT.add(...)
+      - pattern: $CLIENT.modify(...)
+    pattern-sanitizers:
+      # LDAP escaping functions
+      - pattern: ldap.escapeDN(...)
+      - pattern: ldap.escapeFilter(...)
     metadata:
       category: security
       owasp: "A03:2021"
@@ -471,27 +581,51 @@ rules:
       confidence: high
       subcategory: injection
 
-  # XSS via innerHTML
+  # XSS via innerHTML - using taint mode for accurate detection
   - id: js-xss-innerhtml
-    message: "XSS vulnerability via innerHTML with user input - use textContent or sanitize"
+    message: "XSS vulnerability detected. User-controlled data flows into innerHTML/outerHTML/document.write without sanitization. Use textContent for plain text or DOMPurify.sanitize() for HTML."
     severity: HIGH
     languages: [javascript, typescript]
-    pattern-either:
-      # innerHTML with request data
-      - pattern: $ELEMENT.innerHTML = $REQ.query.$PARAM
-      - pattern: $ELEMENT.innerHTML = $REQ.body.$PARAM
-      - pattern: $ELEMENT.innerHTML = $REQ.params.$PARAM
-      - pattern: $ELEMENT.outerHTML = $REQ.query.$PARAM
-      - pattern: $ELEMENT.outerHTML = $REQ.body.$PARAM
-      # insertAdjacentHTML with request data
-      - pattern: $ELEMENT.insertAdjacentHTML(..., $REQ.query.$PARAM)
-      - pattern: $ELEMENT.insertAdjacentHTML(..., $REQ.body.$PARAM)
-      # document.write with request data
-      - pattern: document.write($REQ.query.$PARAM)
-      - pattern: document.writeln($REQ.body.$PARAM)
-      # Template literals with user input in innerHTML
-      - pattern: $ELEMENT.innerHTML = `...${$REQ.query.$PARAM}...`
-      - pattern: $ELEMENT.innerHTML = `...${$REQ.body.$PARAM}...`
+    mode: taint
+    pattern-sources:
+      # User-controlled input sources
+      - pattern: req.query
+      - pattern: req.params
+      - pattern: req.body
+      - pattern: req.cookies
+      - pattern: ctx.query
+      - pattern: ctx.params
+      - pattern: ctx.request.body
+      - pattern: request.query
+      - pattern: request.params
+      - pattern: request.body
+      # Client-side sources
+      - pattern: location.search
+      - pattern: location.hash
+      - pattern: window.location.search
+      - pattern: window.location.hash
+      - pattern: document.URL
+      - pattern: document.documentURI
+      - pattern: document.referrer
+    pattern-propagators:
+      # String concatenation
+      - pattern: $A + $B
+        from: $B
+        to: $A
+    pattern-sinks:
+      # DOM manipulation methods
+      - pattern: $ELEMENT.innerHTML = ...
+      - pattern: $ELEMENT.outerHTML = ...
+      - pattern: $ELEMENT.insertAdjacentHTML(...)
+      - pattern: document.write(...)
+      - pattern: document.writeln(...)
+    pattern-sanitizers:
+      # Sanitization libraries
+      - pattern: DOMPurify.sanitize(...)
+      - pattern: sanitizeHtml(...)
+      # Safe text-only methods
+      - pattern: $ELEMENT.textContent = ...
+      - pattern: $ELEMENT.innerText = ...
     metadata:
       category: security
       owasp: "A03:2021"
@@ -499,25 +633,53 @@ rules:
       confidence: high
       subcategory: injection
 
-  # DOM-based XSS
+  # DOM-based XSS - using taint mode for accurate detection
   - id: js-dom-xss
-    message: "DOM XSS vulnerability - validate and sanitize user input before using in DOM"
+    message: "DOM XSS vulnerability detected. User-controlled data flows into dangerous DOM property without validation. Validate and sanitize user input before using in DOM."
     severity: HIGH
     languages: [javascript, typescript]
-    pattern-either:
-      # Setting dangerous attributes with request data
-      - pattern: $ELEMENT.setAttribute("href", $REQ.query.$PARAM)
-      - pattern: $ELEMENT.setAttribute("src", $REQ.query.$PARAM)
-      - pattern: $ELEMENT.setAttribute("action", $REQ.body.$PARAM)
-      - pattern: $ELEMENT.setAttribute("formaction", $REQ.body.$PARAM)
-      - pattern: $ELEMENT.src = $REQ.query.$PARAM
-      - pattern: $ELEMENT.href = $REQ.query.$PARAM
-      # Location manipulation with user input
-      - pattern: location = $REQ.query.$PARAM
-      - pattern: location.href = $REQ.query.$PARAM
-      - pattern: location.assign($REQ.query.$PARAM)
-      - pattern: window.location = $REQ.query.$PARAM
-      - pattern: window.location.href = $REQ.query.$PARAM
+    mode: taint
+    pattern-sources:
+      # User-controlled input sources
+      - pattern: req.query
+      - pattern: req.params
+      - pattern: req.body
+      - pattern: ctx.query
+      - pattern: ctx.params
+      - pattern: request.query
+      - pattern: request.params
+      - pattern: request.body
+      # Client-side sources
+      - pattern: location.search
+      - pattern: location.hash
+      - pattern: window.location.search
+      - pattern: window.location.hash
+      - pattern: document.URL
+      - pattern: document.referrer
+    pattern-propagators:
+      # String concatenation
+      - pattern: $A + $B
+        from: $B
+        to: $A
+    pattern-sinks:
+      # Dangerous DOM properties
+      - pattern: $ELEMENT.setAttribute("href", ...)
+      - pattern: $ELEMENT.setAttribute("src", ...)
+      - pattern: $ELEMENT.setAttribute("action", ...)
+      - pattern: $ELEMENT.setAttribute("formaction", ...)
+      - pattern: $ELEMENT.src = ...
+      - pattern: $ELEMENT.href = ...
+      # Location manipulation
+      - pattern: location = ...
+      - pattern: location.href = ...
+      - pattern: location.assign(...)
+      - pattern: window.location = ...
+      - pattern: window.location.href = ...
+    pattern-sanitizers:
+      # Sanitization functions
+      - pattern: encodeURIComponent(...)
+      - pattern: encodeURI(...)
+      - pattern: DOMPurify.sanitize(...)
     metadata:
       category: security
       owasp: "A03:2021"
@@ -547,24 +709,37 @@ rules:
       confidence: medium
       subcategory: injection
 
-  # Server-side template injection
+  # Server-side template injection - using taint mode for accurate detection
   - id: js-template-injection
-    message: "Template injection vulnerability - sanitize user input in templates"
+    message: "Template injection vulnerability detected. User-controlled data flows into template compilation/rendering. Use pre-compiled templates or sanitize input."
     severity: HIGH
     languages: [javascript, typescript]
-    pattern-either:
-      # Eval in template context
-      - pattern: eval($TEMPLATE_STR)
-      # Lodash template with user input
-      - pattern: _.template($REQ.query.$PARAM)
-      - pattern: _.template($REQ.body.$PARAM)
-      - pattern: lodash.template($REQ.query.$PARAM)
-      # Handlebars compile with user input
-      - pattern: Handlebars.compile($REQ.body.$PARAM)
-      - pattern: Handlebars.compile($REQ.query.$PARAM)
-      # Template engines rendering user-controlled template strings
-      - pattern: $ENGINE.renderString($REQ.body.$PARAM, ...)
-      - pattern: pug.compile($REQ.body.$PARAM)
+    mode: taint
+    pattern-sources:
+      # User-controlled input sources
+      - pattern: req.query
+      - pattern: req.params
+      - pattern: req.body
+      - pattern: req.cookies
+      - pattern: ctx.query
+      - pattern: ctx.params
+      - pattern: request.query
+      - pattern: request.params
+      - pattern: request.body
+    pattern-propagators:
+      # String concatenation
+      - pattern: $A + $B
+        from: $B
+        to: $A
+    pattern-sinks:
+      # Template compilation and rendering
+      - pattern: eval(...)
+      - pattern: _.template(...)
+      - pattern: lodash.template(...)
+      - pattern: Handlebars.compile(...)
+      - pattern: pug.compile(...)
+      - pattern: $ENGINE.renderString(...)
+      - pattern: $ENGINE.compile(...)
     metadata:
       category: security
       owasp: "A03:2021"
@@ -878,7 +1053,7 @@ rules:
       - pattern: jwt.sign(..., $SECRET, ...)
       - metavariable-regex:
           metavariable: $SECRET
-          regex: ^["'](secret|test|dev|password|123)["']$
+          regex: (?i)^["']?(secret|test|dev|password|123|abc|qwerty|admin|changeme|default)["']?$
     metadata:
       category: security
       owasp: "A07:2021"
@@ -938,7 +1113,7 @@ rules:
   - id: js-missing-sri
     message: "External resource loaded without Subresource Integrity (SRI) check"
     severity: MEDIUM
-    languages: [javascript, typescript]
+    languages: [html]
     patterns:
       - pattern-either:
           - pattern: |
@@ -1041,20 +1216,47 @@ rules:
   # A10:2021 - Server-Side Request Forgery (SSRF)
   # =====================================================================
 
-  # SSRF via user-controlled URL
+  # SSRF via user-controlled URL - using taint mode for accurate detection
   - id: js-ssrf-vulnerability
-    message: "SSRF vulnerability - validate and whitelist URLs before making requests"
+    message: "SSRF vulnerability detected. User-controlled data flows into HTTP request URL. Validate and whitelist URLs before making requests."
     severity: HIGH
     languages: [javascript, typescript]
-    pattern-either:
-      - pattern: fetch($REQ.query.$PARAM)
-      - pattern: fetch($REQ.body.$PARAM)
-      - pattern: axios.get($REQ.query.$PARAM)
-      - pattern: axios.post($REQ.body.$PARAM, ...)
-      - pattern: request($REQ.query.$PARAM)
-      - pattern: http.get($REQ.query.$PARAM)
-      - pattern: https.get($REQ.query.$PARAM)
-      - pattern: got($REQ.body.$PARAM)
+    mode: taint
+    pattern-sources:
+      # User-controlled input sources
+      - pattern: req.query
+      - pattern: req.params
+      - pattern: req.body
+      - pattern: req.headers
+      - pattern: ctx.query
+      - pattern: ctx.params
+      - pattern: request.query
+      - pattern: request.params
+      - pattern: request.body
+    pattern-propagators:
+      # String concatenation
+      - pattern: $A + $B
+        from: $B
+        to: $A
+    pattern-sinks:
+      # HTTP client methods
+      - pattern: fetch(...)
+      - pattern: axios.get(...)
+      - pattern: axios.post(...)
+      - pattern: axios.request(...)
+      - pattern: request(...)
+      - pattern: http.get(...)
+      - pattern: http.request(...)
+      - pattern: https.get(...)
+      - pattern: https.request(...)
+      - pattern: got(...)
+      - pattern: superagent.get(...)
+      - pattern: needle.get(...)
+    pattern-sanitizers:
+      # URL validation and whitelisting
+      - pattern: new URL(...)
+      - pattern: $URL.startsWith("http://localhost")
+      - pattern: $URL.startsWith("https://trusted-domain.com")
     metadata:
       category: security
       owasp: "A10:2021"
@@ -1118,12 +1320,10 @@ rules:
               await $ASYNC_CALL
       - pattern-not: |
           $PROMISE.then(...).catch(...)
-      - pattern-not: |
+      - pattern-not-inside: |
           try {
             ...
-            await $ASYNC_CALL
-            ...
-          } catch (...) {
+          } catch ($E) {
             ...
           }
     metadata:
@@ -1182,7 +1382,9 @@ rules:
     message: "React dangerouslySetInnerHTML can introduce XSS vulnerabilities"
     severity: HIGH
     languages: [javascript, typescript]
-    pattern: "dangerouslySetInnerHTML={{ __html: $HTML }}"
+    patterns:
+      - pattern: <$EL dangerouslySetInnerHTML={...} />
+      - pattern-not: <$EL dangerouslySetInnerHTML={"..."} />
     metadata:
       category: security
       framework: react
@@ -1271,7 +1473,7 @@ rules:
           export async function getServerSideProps(...) {
             try {
               ...
-            } catch (...) {
+            } catch ($E) {
               ...
             }
           }
@@ -1363,9 +1565,9 @@ rules:
       - pattern: |
           $APP.post($PATH, $UPLOAD.single(...), ...)
       - pattern-not-inside: |
-          ...
-          if ($FILE.mimetype ...) { ... }
-          ...
+          if ($FILE.mimetype === "...") { ... }
+      - pattern-not-inside: |
+          if ($FILE.size > ...) { ... }
     metadata:
       category: security
       cwe: CWE-434

@@ -16,6 +16,31 @@ rules:
       cwe: CWE-89
       confidence: high
 
+  # Zip Slip / Path Traversal in ZIP extraction
+  - id: scala-zip-slip
+    message: "Zip Slip vulnerability - ZIP extraction without path validation"
+    severity: CRITICAL
+    languages: [scala]
+    pattern-either:
+      - pattern: $ZIP.extractAll(...)
+      - pattern: new ZipFile(...).extractAll(...)
+      - pattern: |
+          val $ZIP = new ZipFile(...)
+          ...
+          $ZIP.extractAll(...)
+    pattern-not-inside: |
+      ...
+      if ($ENTRY.getName().contains("..")) {
+        ...
+      }
+      ...
+    metadata:
+      category: security
+      cwe: CWE-22
+      confidence: high
+      references:
+        - https://snyk.io/research/zip-slip-vulnerability
+
   # Code injection via eval or compilation
   - id: scala-code-injection
     message: "Code injection via eval or compilation"
@@ -36,11 +61,19 @@ rules:
     message: "Command injection vulnerability detected"
     severity: CRITICAL
     languages: [scala]
-    pattern-either:
-      - pattern: Runtime.getRuntime().exec($CMD + $USER_INPUT)
-      - pattern: ProcessBuilder($CMD + $USER_INPUT)
-      - pattern: sys.process.Process($CMD + $USER_INPUT)
-      - pattern: $CMD.!($USER_INPUT)
+    patterns:
+      - pattern-either:
+          - pattern: Runtime.getRuntime().exec($CMD + $USER_INPUT)
+          - pattern: ProcessBuilder($CMD + $USER_INPUT)
+          - pattern: sys.process.Process($CMD + $USER_INPUT)
+          - pattern: $CMD.!
+          - pattern: $CMD.!!
+          - pattern: Seq($SH, "-c", $CMD).!
+          - pattern: Seq($SH, "-c", $CMD).!!
+      - pattern-not: '"...".!'
+      - pattern-not: '"...".!!'
+      - pattern-not: 'Seq($SH, "-c", "...").!'
+      - pattern-not: 'Seq($SH, "-c", "...").!!'
     metadata:
       category: security
       cwe: CWE-78
@@ -67,16 +100,16 @@ rules:
     message: "Hardcoded secrets detected"
     severity: HIGH
     languages: [scala]
-    pattern-either:
-      - pattern: |
-          val $VAR = "..."
-      - pattern: |
-          var $VAR = "..."
-      - pattern: |
-          final val $VAR = "..."
-      - pattern: |
-          private val $VAR = "..."
-    where:
+    patterns:
+      - pattern-either:
+          - pattern: |
+              val $VAR = "..."
+          - pattern: |
+              var $VAR = "..."
+          - pattern: |
+              final val $VAR = "..."
+          - pattern: |
+              private val $VAR = "..."
       - metavariable-regex:
           metavariable: $VAR
           regex: (?i).*(password|secret|token|key|api_key|apikey|private_key|auth).*
@@ -227,12 +260,12 @@ rules:
     message: "Debug information disclosure detected"
     severity: LOW
     languages: [scala]
-    pattern-either:
-      - pattern: println($USER_INPUT)
-      - pattern: print($USER_INPUT)
-      - pattern: Console.println($USER_INPUT)
-      - pattern: System.out.println($USER_INPUT)
-    where:
+    patterns:
+      - pattern-either:
+          - pattern: println($USER_INPUT)
+          - pattern: print($USER_INPUT)
+          - pattern: Console.println($USER_INPUT)
+          - pattern: System.out.println($USER_INPUT)
       - metavariable-regex:
           metavariable: $USER_INPUT
           regex: (?i).*(password|token|secret|key|credential).*

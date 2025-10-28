@@ -25,3 +25,9 @@
 [submodule "app_tests/scala-woof"]
 	path = app_tests/scala-woof
 	url = https://github.com/snyk/scala-woof.git
+[submodule "app_tests/govwa"]
+	path = app_tests/govwa
+	url = https://github.com/0c34/govwa
+[submodule "app_tests/play-webgoat"]
+	path = app_tests/play-webgoat
+	url = https://github.com/playframework/play-webgoat

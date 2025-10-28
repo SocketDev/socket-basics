@@ -50,16 +50,16 @@ rules:
     message: "Hardcoded secrets detected"
     severity: HIGH
     languages: [swift]
-    pattern-either:
-      - pattern: |
-          let $VAR = "..."
-      - pattern: |
-          var $VAR = "..."
-      - pattern: |
-          private let $VAR = "..."
-      - pattern: |
-          static let $VAR = "..."
-    where:
+    patterns:
+      - pattern-either:
+          - pattern: |
+              let $VAR = "..."
+          - pattern: |
+              var $VAR = "..."
+          - pattern: |
+              private let $VAR = "..."
+          - pattern: |
+              static let $VAR = "..."
       - metavariable-regex:
           metavariable: $VAR
           regex: (?i).*(password|secret|token|key|apiKey|api_key|privateKey|private_key|auth|credential).*
@@ -163,10 +163,13 @@ rules:
     message: "Use of HTTP instead of HTTPS"
     severity: MEDIUM
     languages: [swift]
-    pattern: $URL
-    metavariable-regex:
-      metavariable: $URL
-      regex: "http://.*"
+    pattern-either:
+      - pattern: |
+          URL(string: "http://...")
+      - pattern: |
+          URLRequest(url: URL(string: "http://..."))
+      - pattern: |
+          let $URL = "http://..."
     metadata:
       category: security
       cwe: CWE-319
@@ -229,12 +232,12 @@ rules:
     message: "Debug information disclosure detected"
     severity: LOW
     languages: [swift]
-    pattern-either:
-      - pattern: print($USER_INPUT)
-      - pattern: NSLog($USER_INPUT)
-      - pattern: os_log($USER_INPUT, ...)
-      - pattern: debugPrint($USER_INPUT)
-    where:
+    patterns:
+      - pattern-either:
+          - pattern: print($USER_INPUT)
+          - pattern: NSLog($USER_INPUT)
+          - pattern: os_log($USER_INPUT, ...)
+          - pattern: debugPrint($USER_INPUT)
       - metavariable-regex:
           metavariable: $USER_INPUT
           regex: (?i).*(password|token|secret|key|credential).*
@@ -248,10 +251,15 @@ rules:
     message: "Hardcoded IP address detected"
     severity: LOW
     languages: [swift]
-    pattern: $IP_ADDRESS
-    metavariable-regex:
-      metavariable: $IP_ADDRESS
-      regex: "(192\\.168\\.\\d{1,3}\\.\\d{1,3})|(10\\.\\d{1,3}\\.\\d{1,3}\\.\\d{1,3})|(172\\.16\\.\\d{1,3}\\.\\d{1,3})|127\\.0\\.0\\.1|localhost"
+    pattern-either:
+      - pattern: |
+          let $VAR = "192.168.$X.$Y"
+      - pattern: |
+          let $VAR = "10.$X.$Y.$Z"
+      - pattern: |
+          let $VAR = "127.0.0.1"
+      - pattern: |
+          let $VAR = "localhost"
     metadata:
       category: security
       cwe: CWE-798
@@ -293,11 +301,11 @@ rules:
     message: "Insecure data storage detected"
     severity: HIGH
     languages: [swift]
-    pattern-either:
-      - pattern: 'UserDefaults.standard.set($SENSITIVE_DATA, forKey: $...KEY)'
-      - pattern: 'NSUserDefaults.standard.set($SENSITIVE_DATA, forKey: $...KEY)'
-      - pattern: '$SENSITIVE_DATA.write(to: URL($...ARGS), atomically: true)'
-    where:
+    patterns:
+      - pattern-either:
+          - pattern: 'UserDefaults.standard.set($SENSITIVE_DATA, forKey: $...KEY)'
+          - pattern: 'NSUserDefaults.standard.set($SENSITIVE_DATA, forKey: $...KEY)'
+          - pattern: '$SENSITIVE_DATA.write(to: URL($...ARGS), atomically: true)'
       - metavariable-regex:
           metavariable: $SENSITIVE_DATA
           regex: (?i).*(password|token|secret|key|credential|credit_card|ssn).*

@@ -16,19 +16,93 @@ rules:
       cwe: CWE-94
       confidence: medium
 
-  # SQL injection
+  # SQL injection - using taint mode for accurate detection
   - id: java-sql-injection
-    message: "SQL injection vulnerability detected"
+    message: "SQL injection vulnerability detected. User-controlled data flows into SQL execution without proper sanitization. Use PreparedStatement with parameter binding to prevent SQL injection."
     severity: CRITICAL
     languages: [java]
-    pattern-either:
-      - pattern: $STMT.executeQuery($QUERY + $USER_INPUT)
-      - pattern: $STMT.execute($QUERY + $USER_INPUT)
-      - pattern: $STMT.executeUpdate($QUERY + $USER_INPUT)
-      - pattern: String.format($SQL, $USER_INPUT)
+    mode: taint
+    pattern-sources:
+      # Servlet request sources
+      - pattern: $REQ.getParameter(...)
+      - pattern: $REQ.getParameterValues(...)
+      - pattern: $REQ.getHeader(...)
+      - pattern: $REQ.getQueryString()
+      - pattern: $REQ.getRequestURI()
+      - pattern: $REQ.getCookies()
+      - pattern: $REQ.getInputStream()
+      - pattern: $REQ.getReader()
+      # User object getters that typically return user input
+      - pattern: $OBJ.getUsername()
+      - pattern: $OBJ.getName()
+      - pattern: $OBJ.getEmail()
+      - pattern: $OBJ.getPassword()
+      - pattern: $OBJ.getValue()
+      - pattern: $OBJ.getData()
+      - pattern: $OBJ.getInput()
+      - pattern: $OBJ.getContent()
+      - pattern: $OBJ.getText()
+    pattern-propagators:
+      # StringBuilder/StringBuffer propagation
+      - pattern: $B.append(...)
+        from: $B
+        to: $B
+      - pattern: $B.append($X)
+        from: $X
+        to: $B
+      - pattern: (StringBuilder $B).toString()
+        from: $B
+        to: (StringBuilder $B).toString()
+      - pattern: (StringBuffer $B).toString()
+        from: $B
+        to: (StringBuffer $B).toString()
+      # String.format propagation
+      - pattern: String.format($FMT, ..., $X, ...)
+        from: $X
+        to: String.format
+      # String concatenation
+      - pattern: (String $A) + (String $B)
+        from: $B
+        to: $A
+      - pattern: (String $A).concat($B)
+        from: $B
+        to: $A
+    pattern-sinks:
+      # JDBC statement execution
+      - pattern: $STMT.executeQuery(...)
+      - pattern: $STMT.execute(...)
+      - pattern: $STMT.executeUpdate(...)
+      - pattern: $STMT.executeLargeUpdate(...)
+      # JPA/Hibernate query creation
+      - pattern: $EM.createQuery(...)
+      - pattern: $EM.createNativeQuery(...)
+      - pattern: $SESSION.createQuery(...)
+      - pattern: $SESSION.createSQLQuery(...)
+      # JDBC template methods
+      - pattern: $TEMPLATE.query(...)
+      - pattern: $TEMPLATE.queryForObject(...)
+      - pattern: $TEMPLATE.queryForList(...)
+      - pattern: $TEMPLATE.execute(...)
+      - pattern: $TEMPLATE.update(...)
+    pattern-sanitizers:
+      # PreparedStatement parameter binding
+      - pattern: $STMT.setString(...)
+        by-side-effect: true
+      - pattern: $STMT.setInt(...)
+        by-side-effect: true
+      - pattern: $STMT.setObject(...)
+        by-side-effect: true
+      # JPA parameter binding
+      - pattern: $QUERY.setParameter(...)
+        by-side-effect: true
+      # Spring named parameter binding
+      - pattern: $SOURCE.addValue(...)
+        by-side-effect: true
     metadata:
       category: security
       cwe: CWE-89
+      owasp:
+        - A03:2021 - Injection
       confidence: high
 
   # Deserialization vulnerabilities
@@ -46,15 +120,56 @@ rules:
       cwe: CWE-502
       confidence: high
 
-  # Command injection
+  # Command injection - using taint mode for accurate detection
   - id: java-command-injection
-    message: "Command injection vulnerability detected"
+    message: "Command injection vulnerability detected. User-controlled data flows into system command execution without proper validation. Avoid command execution with user input; if necessary, use strict allowlisting."
     severity: CRITICAL
     languages: [java]
-    pattern-either:
-      - pattern: Runtime.getRuntime().exec($CMD + $USER_INPUT)
-      - pattern: ProcessBuilder($CMD + $USER_INPUT)
-      - pattern: new ProcessBuilder($CMD, $USER_INPUT)
+    mode: taint
+    pattern-sources:
+      # Servlet request sources
+      - pattern: $REQ.getParameter(...)
+      - pattern: $REQ.getParameterValues(...)
+      - pattern: $REQ.getHeader(...)
+      - pattern: $REQ.getQueryString()
+      - pattern: $REQ.getRequestURI()
+      # User object getters
+      - pattern: $OBJ.getCommand()
+      - pattern: $OBJ.getFilename()
+      - pattern: $OBJ.getName()
+      - pattern: $OBJ.getValue()
+      - pattern: $OBJ.getData()
+      - pattern: $OBJ.getInput()
+    pattern-propagators:
+      # String concatenation
+      - pattern: (String $A) + (String $B)
+        from: $B
+        to: $A
+      - pattern: (String $A).concat($B)
+        from: $B
+        to: $A
+      # StringBuilder/StringBuffer
+      - pattern: $B.append($X)
+        from: $X
+        to: $B
+      # String.format
+      - pattern: String.format($FMT, ..., $X, ...)
+        from: $X
+        to: String.format
+      # Array creation with tainted elements
+      - pattern: new String[] {..., $X, ...}
+        from: $X
+        to: new String[]
+    pattern-sinks:
+      # Runtime exec
+      - pattern: Runtime.getRuntime().exec(...)
+      - pattern: $RUNTIME.exec(...)
+      # ProcessBuilder
+      - pattern: new ProcessBuilder(...)
+      - pattern: $BUILDER.command(...)
+      - pattern: ProcessBuilder.start()
+      # Legacy Process API
+      - pattern: Process.start(...)
     metadata:
       category: security
       cwe: CWE-78
@@ -81,14 +196,14 @@ rules:
     message: "Hardcoded credentials detected"
     severity: HIGH
     languages: [java]
-    pattern-either:
-      - pattern: |
-          private static final String $VAR = "...";
-      - pattern: |
-          public static final String $VAR = "...";
-      - pattern: |
-          String $VAR = "...";
-    where:
+    patterns:
+      - pattern-either:
+          - pattern: |
+              private static final String $VAR = "...";
+          - pattern: |
+              public static final String $VAR = "...";
+          - pattern: |
+              String $VAR = "...";
       - metavariable-regex:
           metavariable: $VAR
           regex: (?i).*(password|passwd|pwd|secret|token|key|api_key).*
@@ -164,21 +279,77 @@ rules:
       cwe: CWE-611
       confidence: medium
 
-  # Path traversal
+  # Path traversal - using taint mode for accurate detection
   - id: java-path-traversal
-    message: "Path traversal vulnerability detected"
+    message: "Path traversal vulnerability detected. User-controlled data flows into file operations without proper validation. Use Path.normalize() and validate the result is within allowed directory."
     severity: HIGH
     languages: [java]
-    pattern-either:
-      - pattern: new File($PATH + $USER_INPUT)
-      - pattern: new FileInputStream($PATH + $USER_INPUT)
-      - pattern: new FileOutputStream($PATH + $USER_INPUT)
-      - pattern: Files.readAllBytes(Paths.get($PATH + $USER_INPUT))
-      - pattern: Paths.get($PATH + $USER_INPUT)
+    mode: taint
+    pattern-sources:
+      # Servlet request sources
+      - pattern: $REQ.getParameter(...)
+      - pattern: $REQ.getParameterValues(...)
+      - pattern: $REQ.getHeader(...)
+      - pattern: $REQ.getQueryString()
+      - pattern: $REQ.getRequestURI()
+      - pattern: $REQ.getPathInfo()
+      # User object getters that typically return user input
+      - pattern: $OBJ.getFilename()
+      - pattern: $OBJ.getName()
+      - pattern: $OBJ.getPath()
+      - pattern: $OBJ.getValue()
+      - pattern: $OBJ.getData()
+    pattern-propagators:
+      # String concatenation
+      - pattern: (String $A) + (String $B)
+        from: $B
+        to: $A
+      - pattern: (String $A).concat($B)
+        from: $B
+        to: $A
+      # Path operations that propagate taint
+      - pattern: Paths.get(..., $X, ...)
+        from: $X
+        to: Paths.get
+      - pattern: Path.resolve($X)
+        from: $X
+        to: Path.resolve
+      # File path operations
+      - pattern: new File($X)
+        from: $X
+        to: new File
+      - pattern: new File($DIR, $X)
+        from: $X
+        to: new File
+    pattern-sinks:
+      # File operations
+      - pattern: new File(...)
+      - pattern: new FileInputStream(...)
+      - pattern: new FileOutputStream(...)
+      - pattern: new FileReader(...)
+      - pattern: new FileWriter(...)
+      - pattern: new RandomAccessFile(...)
+      - pattern: Files.readAllBytes(...)
+      - pattern: Files.readAllLines(...)
+      - pattern: Files.write(...)
+      - pattern: Files.copy(...)
+      - pattern: Files.move(...)
+      - pattern: Files.delete(...)
+      - pattern: Files.deleteIfExists(...)
+      - pattern: Paths.get(...)
+      # Legacy IO operations
+      - pattern: $FILE.createNewFile(...)
+      - pattern: $FILE.delete()
+      - pattern: $FILE.renameTo(...)
+    pattern-sanitizers:
+      # Path validation
+      - pattern: $PATH.normalize()
+      - pattern: $PATH.toRealPath(...)
+      - pattern: FilenameUtils.normalize(...)
     metadata:
       category: security
       cwe: CWE-22
-      confidence: medium
+      confidence: high
 
   # SSL/TLS bypass
   - id: java-ssl-bypass
@@ -259,13 +430,12 @@ rules:
     message: "Weak key generation detected"
     severity: MEDIUM
     languages: [java]
-    pattern-either:
-      - pattern: KeyPairGenerator.getInstance("RSA").initialize($SIZE)
-      - pattern: KeyGenerator.getInstance(...).init($SIZE)
-    where:
-      - metavariable-comparison:
-          metavariable: $SIZE
-          comparison: int($SIZE) < 2048
+    patterns:
+      - pattern-either:
+          - pattern: KeyPairGenerator.getInstance("RSA").initialize(512)
+          - pattern: KeyPairGenerator.getInstance("RSA").initialize(1024)
+          - pattern: KeyGenerator.getInstance(...).init(512)
+          - pattern: KeyGenerator.getInstance(...).init(1024)
     metadata:
       category: security
       cwe: CWE-310

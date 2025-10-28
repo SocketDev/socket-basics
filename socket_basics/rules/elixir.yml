@@ -212,12 +212,12 @@ rules:
     message: "Debug information disclosure detected"
     severity: LOW
     languages: [elixir]
-    pattern-either:
-      - pattern: IO.puts($USER_INPUT)
-      - pattern: IO.inspect($USER_INPUT)
-      - pattern: Logger.debug($USER_INPUT)
-      - pattern: Logger.info($USER_INPUT)
-    where:
+    patterns:
+      - pattern-either:
+          - pattern: IO.puts($USER_INPUT)
+          - pattern: IO.inspect($USER_INPUT)
+          - pattern: Logger.debug($USER_INPUT)
+          - pattern: Logger.info($USER_INPUT)
       - metavariable-regex:
           metavariable: $USER_INPUT
           regex: (?i).*(password|token|secret|key|credential).*
