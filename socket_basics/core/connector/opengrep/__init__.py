@@ -338,24 +338,16 @@ class OpenGrepScanner(BaseConnector):
 						check_id = original_check_id
 						# Remove internal namespace prefix if present; connectors own
 						# their emitted identifiers and must not expose internal pkg IDs
+						# We only want to show the actual rule name from the rules file, not any path/package prefix
 						try:
-							if isinstance(check_id, str):
-								# Remove socket_basics.rules. prefix from bundled rules
-								if check_id.startswith('socket_basics.rules.'):
-									check_id = check_id.replace('socket_basics.rules.', '', 1)
-								# Remove temp directory path prefix from custom rules
-								# Pattern: var.folders.nl.zptkx4wd7sv5kn9lbp_vbm980000gn.T.socket_custom_rules_XXXX.rule-name
-								# We want to extract just the rule-name part
-								elif '.socket_custom_rules_' in check_id:
-									# Find the last dot after socket_custom_rules_ to get the rule name
-									parts = check_id.split('.')
-									# Find index of part containing socket_custom_rules_
-									for i, part in enumerate(parts):
-										if part.startswith('socket_custom_rules_'):
-											# Rule name is everything after this part
-											if i + 1 < len(parts):
-												check_id = '.'.join(parts[i+1:])
-											break
+							if isinstance(check_id, str) and '.' in check_id:
+								# Extract just the rule name by taking the last segment after the final dot
+								# This handles all patterns:
+								#   - socket_basics.rules.rule-name -> rule-name
+								#   - socket-basics.socket_basics.rules.rule-name -> rule-name
+								#   - /tmp/path.socket_custom_rules_XXXX.rule-name -> rule-name
+								#   - any.other.prefix.rule-name -> rule-name
+								check_id = check_id.split('.')[-1]
 						except Exception:
 							pass
 						severity = ((r.get('extra') or {}).get('severity') or r.get('severity') or '')
