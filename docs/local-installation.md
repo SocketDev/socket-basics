@@ -158,7 +158,7 @@ Socket Basics orchestrates multiple security tools. Install the ones you need:
 
 ```bash
 # Using npm (if you have Node.js):
-npm install -g @socketsecurity/cli
+npm install -g socket
 
 # Verify installation
 socket --version
