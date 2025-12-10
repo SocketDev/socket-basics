@@ -157,9 +157,6 @@ Socket Basics orchestrates multiple security tools. Install the ones you need:
 **Installation:**
 
 ```bash
-# macOS/Linux with Homebrew:
-brew install socket
-
 # Using npm (if you have Node.js):
 npm install -g @socketsecurity/cli
 
