@@ -1275,7 +1275,9 @@ def create_config_from_args(args) -> Config:
                                     for disabled_param in param['disables']:
                                         config_dict[disabled_param] = False
                                         
-                            elif param.get('type') != 'bool':
+                            elif param.get('type') != 'bool' and arg_value:
+                                # Only override config for non-bool types if CLI arg has a value
+                                # This prevents empty string defaults from wiping out env/API config
                                 config_dict[param_name] = arg_value
     except Exception as e:
         logging.getLogger(__name__).warning("Warning: Error processing dynamic CLI args: %s", e)
