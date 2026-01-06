@@ -21,6 +21,66 @@ class TrivyScanner(BaseConnector):
     def __init__(self, config):
         super().__init__(config)
 
+    def _discover_dockerfiles(self) -> List[str]:
+        """Auto-discover Dockerfiles in the workspace.
+
+        Searches for files matching common Dockerfile naming patterns while
+        excluding directories that typically contain third-party or test code.
+
+        Returns:
+            List of relative paths to discovered Dockerfiles
+        """
+        workspace = self.config.workspace
+        if not workspace or not workspace.exists():
+            return []
+
+        # Directories to exclude from search
+        exclude_dirs = {
+            'node_modules', 'vendor', '.git', '.svn', '.hg',
+            'test', 'tests', 'testing', '__tests__',
+            'spec', 'specs',
+            'fixture', 'fixtures', 'testdata', 'test_data',
+            'example', 'examples', 'sample', 'samples',
+            'mock', 'mocks',
+            'dist', 'build', 'out', 'target',
+            '.cache', '.tox', '.nox', '.pytest_cache',
+            'venv', '.venv', 'env', '.env',
+            'app_tests',  # Socket Basics test fixtures
+        }
+
+        discovered = []
+
+        try:
+            for root, dirs, files in os.walk(workspace):
+                # Skip excluded directories
+                dirs[:] = [d for d in dirs if d.lower() not in exclude_dirs]
+
+                for filename in files:
+                    # Match Dockerfile patterns:
+                    # - Dockerfile (exact)
+                    # - Dockerfile.* (e.g., Dockerfile.prod, Dockerfile.dev)
+                    # - *.dockerfile (e.g., app.dockerfile)
+                    lower_name = filename.lower()
+                    if (filename == 'Dockerfile' or
+                        lower_name == 'dockerfile' or
+                        lower_name.startswith('dockerfile.') or
+                        lower_name.endswith('.dockerfile')):
+
+                        full_path = Path(root) / filename
+                        # Get path relative to workspace
+                        try:
+                            rel_path = full_path.relative_to(workspace)
+                            discovered.append(str(rel_path))
+                        except ValueError:
+                            # Path is not relative to workspace, use as-is
+                            discovered.append(str(full_path))
+
+        except Exception as e:
+            logger.warning(f"Error during Dockerfile auto-discovery: {e}")
+            return []
+
+        return discovered
+
     def is_enabled(self) -> bool:
         """Check if container scanning should be enabled.
 
@@ -160,8 +220,14 @@ class TrivyScanner(BaseConnector):
             if possible:
                 dockerfiles = possible
 
+        # Auto-discover Dockerfiles if none specified and none in changed files
         if not dockerfiles:
-            logger.info("No Dockerfiles specified, skipping Trivy Dockerfile scanning")
+            dockerfiles = self._discover_dockerfiles()
+            if dockerfiles:
+                logger.info(f"Auto-discovered {len(dockerfiles)} Dockerfile(s): {', '.join(dockerfiles)}")
+
+        if not dockerfiles:
+            logger.info("No Dockerfiles specified or discovered, skipping Trivy Dockerfile scanning")
             return {}
 
         logger.info("Running Trivy Dockerfile scanning")
