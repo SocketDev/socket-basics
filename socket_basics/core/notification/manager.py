@@ -209,11 +209,11 @@ class NotificationManager:
                         env_var = p.get('env_variable')
                         p_type = p.get('type', 'str')
 
-                        # Resolve value: app_config -> env var -> default
-                        val = None
-                        if self.app_config and pname in self.app_config:
-                            val = self.app_config.get(pname)
-                        if env_var and os.getenv(env_var) is not None:
+                        # Resolve value priority: app_config (highest) -> env var -> default (lowest)
+                        val = p_default
+
+                        # Check env var (overrides default)
+                        if env_var:
                             ev = os.getenv(env_var)
                             if ev is not None:
                                 if p_type == 'bool':
@@ -223,13 +223,14 @@ class NotificationManager:
                                         val = int(ev)
                                     except Exception:
                                         logger.warning("Failed to convert notifier param %s=%s to int for notifier %s; using default %s", pname, ev, name, p_default)
-                                        val = p_default
                                 else:
                                     val = ev
-                            else:
-                                val = p_default
-                        else:
-                            val = p_default
+
+                        # Check app_config (highest priority, overrides env var)
+                        if self.app_config and pname in self.app_config:
+                            app_val = self.app_config.get(pname)
+                            if app_val is not None:
+                                val = app_val
 
                         params[pname] = val
                 else:
