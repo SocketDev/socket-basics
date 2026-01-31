@@ -275,7 +275,8 @@ class SecurityScanner:
                     'commit_hash': commit_hash,
                     'make_default_branch': is_default_branch,
                     'set_as_pending_head': is_default_branch,
-                    'integration_type': "api"
+                    'integration_type': "api",
+                    'scan_type': "socket_basics"
                 }
                 
                 # Always include pull_request (0 if not a PR)
