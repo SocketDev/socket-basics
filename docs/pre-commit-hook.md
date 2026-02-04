@@ -48,7 +48,6 @@ Create `.git/hooks/pre-commit` in your project:
 
 ```bash
 #!/bin/bash
-set -e
 
 echo "🔍 Running Socket Basics security scan..."
 
