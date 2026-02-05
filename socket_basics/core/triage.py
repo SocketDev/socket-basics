@@ -34,8 +34,17 @@ def fetch_triage_data(sdk: Any, org_slug: str) -> List[Dict[str, Any]]:
                 org_slug,
                 {"per_page": per_page, "page": page},
             )
-        except Exception:
-            logger.exception("Failed to fetch triage data (page %d)", page)
+        except Exception as exc:
+            # Handle insufficient permissions gracefully so the scan
+            # continues without triage filtering.
+            exc_name = type(exc).__name__
+            if "AccessDenied" in exc_name or "Forbidden" in exc_name:
+                logger.info(
+                    "Triage API access denied (insufficient permissions). "
+                    "Skipping triage filtering for this run."
+                )
+            else:
+                logger.warning("Failed to fetch triage data (page %d): %s", page, exc)
             break
 
         if not isinstance(response, dict):
