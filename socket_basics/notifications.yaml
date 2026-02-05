@@ -90,6 +90,60 @@ notifiers:
         option: --github-api-url
         env_variable: GITHUB_API_URL
         type: str
+      - name: pr_comment_links_enabled
+        option: --pr-comment-links
+        env_variable: INPUT_PR_COMMENT_LINKS_ENABLED
+        type: bool
+        default: true
+        description: "Enable clickable file/line links in PR comments"
+      - name: pr_comment_collapse_enabled
+        option: --pr-comment-collapse
+        env_variable: INPUT_PR_COMMENT_COLLAPSE_ENABLED
+        type: bool
+        default: true
+        description: "Enable collapsible sections in PR comments"
+      - name: pr_comment_collapse_non_critical
+        option: --pr-comment-collapse-non-critical
+        env_variable: INPUT_PR_COMMENT_COLLAPSE_NON_CRITICAL
+        type: bool
+        default: true
+        description: "Auto-collapse non-critical findings (critical stays expanded)"
+      - name: pr_comment_code_fencing_enabled
+        option: --pr-comment-code-fencing
+        env_variable: INPUT_PR_COMMENT_CODE_FENCING_ENABLED
+        type: bool
+        default: true
+        description: "Enable language-aware code fencing for trace output"
+      - name: pr_comment_show_rule_names
+        option: --pr-comment-show-rules
+        env_variable: INPUT_PR_COMMENT_SHOW_RULE_NAMES
+        type: bool
+        default: true
+        description: "Show explicit rule names for each finding"
+      - name: pr_labels_enabled
+        option: --pr-labels
+        env_variable: INPUT_PR_LABELS_ENABLED
+        type: bool
+        default: true
+        description: "Add severity-based labels to PRs"
+      - name: pr_label_critical
+        option: --pr-label-critical
+        env_variable: INPUT_PR_LABEL_CRITICAL
+        type: str
+        default: "security: critical"
+        description: "Label name for critical severity findings"
+      - name: pr_label_high
+        option: --pr-label-high
+        env_variable: INPUT_PR_LABEL_HIGH
+        type: str
+        default: "security: high"
+        description: "Label name for high severity findings"
+      - name: pr_label_medium
+        option: --pr-label-medium
+        env_variable: INPUT_PR_LABEL_MEDIUM
+        type: str
+        default: "security: medium"
+        description: "Label name for medium severity findings"
 
   msteams:
     module_path: "socket_basics.core.notification.ms_teams_notifier"
