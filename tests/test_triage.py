@@ -310,6 +310,30 @@ class TestFetchTriageData:
         entries = fetch_triage_data(FakeSDK(), "my-org")
         assert len(entries) == 1
 
+    def test_access_denied_returns_empty_and_logs_info(self, caplog):
+        """Insufficient permissions should log an info message (not an error) and return empty."""
+
+        class APIAccessDenied(Exception):
+            pass
+
+        class FakeTriageAPI:
+            def list_alert_triage(self, org, params):
+                raise APIAccessDenied("Insufficient permissions.")
+
+        class FakeSDK:
+            triage = FakeTriageAPI()
+
+        import logging
+        with caplog.at_level(logging.DEBUG):
+            entries = fetch_triage_data(FakeSDK(), "my-org")
+
+        assert entries == []
+        info_messages = [r for r in caplog.records if r.levelno == logging.INFO]
+        assert any("access denied" in m.message.lower() for m in info_messages)
+        # Should NOT produce an ERROR-level record
+        error_messages = [r for r in caplog.records if r.levelno >= logging.ERROR]
+        assert not error_messages
+
 
 # ---------------------------------------------------------------------------
 # SecurityScanner._connector_name_from_generated_by
