@@ -605,7 +605,10 @@ class SocketTier1Scanner(BaseConnector):
         
         # Build notifications for each notifier type using Socket Tier1-specific modules
         notifications_by_notifier = {}
-        notifications_by_notifier['github_pr'] = github_pr.format_notifications(filtered_components)
+        notifications_by_notifier['github_pr'] = github_pr.format_notifications(
+            filtered_components,
+            config=self.config  # Pass config for repository metadata and feature flags
+        )
         notifications_by_notifier['slack'] = slack.format_notifications(filtered_components)
         notifications_by_notifier['msteams'] = ms_teams.format_notifications(filtered_components)
         notifications_by_notifier['ms_sentinel'] = ms_sentinel.format_notifications(filtered_components)
