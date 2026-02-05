@@ -137,6 +137,152 @@ Include these in your workflow's `jobs.<job_id>.permissions` section.
     verbose: 'true'
 ```
 
+## PR Comment Customization
+
+Socket Basics automatically posts enhanced PR comments with **smart defaults that work out of the box**. All features are enabled by default for the best developer experience.
+
+### Default Behavior (Zero Config)
+
+With the minimal configuration, you automatically get:
+
+```yaml
+- uses: SocketDev/socket-basics@1.0.26
+  env:
+    GITHUB_PR_NUMBER: ${{ github.event.pull_request.number }}
+  with:
+    github_token: ${{ secrets.GITHUB_TOKEN }}
+    socket_tier_1_enabled: 'true'
+    # That's it! PR comments are automatically enhanced
+```
+
+**What you get by default:**
+- ✅ **Clickable file links** — Jump directly to vulnerable code in GitHub
+- ✅ **Collapsible sections** — Critical findings expanded, others collapsed
+- ✅ **Syntax highlighting** — Language-aware code blocks
+- ✅ **Rule names** — Clear identification of security rules
+- ✅ **Quick access link** — Full scan report at the top
+- ✅ **Auto-labels** — PRs tagged with `security: critical`, `security: high`, or `security: medium`
+
+### Customization Examples
+
+#### Disable Specific Features
+
+```yaml
+- uses: SocketDev/socket-basics@1.0.26
+  env:
+    GITHUB_PR_NUMBER: ${{ github.event.pull_request.number }}
+  with:
+    github_token: ${{ secrets.GITHUB_TOKEN }}
+    socket_tier_1_enabled: 'true'
+    # Customize specific features
+    pr_comment_links_enabled: 'false'        # Disable clickable links
+    pr_labels_enabled: 'false'               # Don't add labels
+```
+
+#### Custom Label Names
+
+```yaml
+- uses: SocketDev/socket-basics@1.0.26
+  env:
+    GITHUB_PR_NUMBER: ${{ github.event.pull_request.number }}
+  with:
+    github_token: ${{ secrets.GITHUB_TOKEN }}
+    socket_tier_1_enabled: 'true'
+    # Use organization-specific label taxonomy
+    pr_label_critical: 'socket: critical'
+    pr_label_high: 'socket: high'
+    pr_label_medium: 'socket: medium'
+```
+
+#### Show All Findings Expanded
+
+```yaml
+- uses: SocketDev/socket-basics@1.0.26
+  env:
+    GITHUB_PR_NUMBER: ${{ github.event.pull_request.number }}
+  with:
+    github_token: ${{ secrets.GITHUB_TOKEN }}
+    socket_tier_1_enabled: 'true'
+    # Keep collapsible UI but expand everything
+    pr_comment_collapse_enabled: 'true'
+    pr_comment_collapse_non_critical: 'false'
+```
+
+#### Minimal/Plaintext Mode
+
+```yaml
+- uses: SocketDev/socket-basics@1.0.26
+  env:
+    GITHUB_PR_NUMBER: ${{ github.event.pull_request.number }}
+  with:
+    github_token: ${{ secrets.GITHUB_TOKEN }}
+    socket_tier_1_enabled: 'true'
+    # Disable all enhancements for simple text output
+    pr_comment_links_enabled: 'false'
+    pr_comment_collapse_enabled: 'false'
+    pr_comment_code_fencing_enabled: 'false'
+    pr_comment_show_rule_names: 'false'
+    pr_labels_enabled: 'false'
+```
+
+### Complete PR Comment Options
+
+| Option | Default | Description |
+|--------|---------|-------------|
+| `pr_comment_links_enabled` | `true` | Enable clickable file/line links |
+| `pr_comment_collapse_enabled` | `true` | Enable collapsible sections |
+| `pr_comment_collapse_non_critical` | `true` | Auto-collapse non-critical (critical stays expanded) |
+| `pr_comment_code_fencing_enabled` | `true` | Enable language-aware syntax highlighting |
+| `pr_comment_show_rule_names` | `true` | Show explicit rule names |
+| `pr_labels_enabled` | `true` | Add severity-based labels to PRs |
+| `pr_label_critical` | `"security: critical"` | Label name for critical findings |
+| `pr_label_high` | `"security: high"` | Label name for high findings |
+| `pr_label_medium` | `"security: medium"` | Label name for medium findings |
+
+### Real-World Examples
+
+**Example 1: Enterprise with Custom Taxonomy**
+```yaml
+- uses: SocketDev/socket-basics@1.0.26
+  env:
+    GITHUB_PR_NUMBER: ${{ github.event.pull_request.number }}
+  with:
+    github_token: ${{ secrets.GITHUB_TOKEN }}
+    socket_security_api_key: ${{ secrets.SOCKET_SECURITY_API_KEY }}
+    # Match your organization's label taxonomy
+    pr_label_critical: 'vulnerability: critical'
+    pr_label_high: 'vulnerability: high'
+    pr_label_medium: 'vulnerability: medium'
+```
+
+**Example 2: OSS Project (Minimize Noise)**
+```yaml
+- uses: SocketDev/socket-basics@1.0.26
+  env:
+    GITHUB_PR_NUMBER: ${{ github.event.pull_request.number }}
+  with:
+    github_token: ${{ secrets.GITHUB_TOKEN }}
+    socket_tier_1_enabled: 'true'
+    # Keep it clean - collapse everything by default
+    pr_comment_collapse_non_critical: 'true'
+    # Use simple labels
+    pr_label_critical: 'security'
+    pr_label_high: 'security'
+    pr_label_medium: 'security'
+```
+
+**Example 3: Security Team (All Details Visible)**
+```yaml
+- uses: SocketDev/socket-basics@1.0.26
+  env:
+    GITHUB_PR_NUMBER: ${{ github.event.pull_request.number }}
+  with:
+    github_token: ${{ secrets.GITHUB_TOKEN }}
+    socket_tier_1_enabled: 'true'
+    # Show everything expanded for thorough review
+    pr_comment_collapse_non_critical: 'false'
+```
+
 ## Enterprise Features
 
 Socket Basics Enterprise features require a [Socket Enterprise](https://socket.dev/enterprise) subscription.
