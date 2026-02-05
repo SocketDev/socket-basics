@@ -51,14 +51,11 @@ class GithubPRNotifier(BaseNotifier):
         valid_notifications = []
         for item in notifications:
             if isinstance(item, dict) and 'title' in item and 'content' in item:
-                # Append full scan URL to content if available
-                content = item['content']
-                if self.full_scan_url:
-                    content += f"\n\n---\n\n🔗 [View Full Socket Scan]({self.full_scan_url})\n"
-                valid_notifications.append({'title': item['title'], 'content': content})
+                # Full scan URL is now handled in the formatter itself
+                valid_notifications.append({'title': item['title'], 'content': item['content']})
             else:
                 logger.warning('GithubPRNotifier: skipping invalid notification item: %s', type(item))
-        
+
         if not valid_notifications:
             return
 
@@ -117,6 +114,12 @@ class GithubPRNotifier(BaseNotifier):
                 logger.info('GithubPRNotifier: posted individual comment for section')
             else:
                 logger.error('GithubPRNotifier: failed to post individual comment')
+
+        # Add labels to PR if enabled
+        if self.config.get('pr_labels_enabled', True) and pr_number:
+            labels = self._determine_pr_labels(valid_notifications)
+            if labels:
+                self._add_pr_labels(pr_number, labels)
 
     def _send_pr_comment(self, facts: Dict[str, Any], title: str, content: str) -> None:
         """Send a single PR comment with title and content."""
@@ -373,3 +376,80 @@ class GithubPRNotifier(BaseNotifier):
         except Exception as e:
             logger.error('GithubPRNotifier: exception posting comment: %s', e)
             return False
+
+    def _add_pr_labels(self, pr_number: int, labels: List[str]) -> bool:
+        """Add labels to a PR.
+
+        Args:
+            pr_number: PR number
+            labels: List of label names to add
+
+        Returns:
+            True if successful, False otherwise
+        """
+        if not self.repository or not labels:
+            return False
+
+        try:
+            import requests
+            headers = {
+                'Authorization': f'token {self.token}',
+                'Accept': 'application/vnd.github.v3+json'
+            }
+
+            url = f"{self.api_base}/repos/{self.repository}/issues/{pr_number}/labels"
+            payload = {'labels': labels}
+
+            resp = requests.post(url, headers=headers, json=payload, timeout=10)
+            if resp.status_code == 200:
+                logger.info('GithubPRNotifier: added labels to PR %s: %s', pr_number, ', '.join(labels))
+                return True
+            else:
+                logger.warning('GithubPRNotifier: failed to add labels: %s', resp.status_code)
+                return False
+        except Exception as e:
+            logger.error('GithubPRNotifier: exception adding labels: %s', e)
+            return False
+
+    def _determine_pr_labels(self, notifications: List[Dict[str, Any]]) -> List[str]:
+        """Determine which labels to add based on notifications.
+
+        Args:
+            notifications: List of notification dictionaries
+
+        Returns:
+            List of label names to add
+        """
+        severities_found = set()
+
+        # Scan notifications for severity indicators
+        for notif in notifications:
+            content = notif.get('content', '')
+
+            # Look for severity indicators in content
+            # Pattern: "Critical: X" where X > 0
+            import re
+            critical_match = re.search(r'Critical:\s*(\d+)', content)
+            high_match = re.search(r'High:\s*(\d+)', content)
+            medium_match = re.search(r'Medium:\s*(\d+)', content)
+
+            if critical_match and int(critical_match.group(1)) > 0:
+                severities_found.add('critical')
+            if high_match and int(high_match.group(1)) > 0:
+                severities_found.add('high')
+            if medium_match and int(medium_match.group(1)) > 0:
+                severities_found.add('medium')
+
+        # Map severities to label names (using configurable labels)
+        labels = []
+        if 'critical' in severities_found:
+            label_name = self.config.get('pr_label_critical', 'security: critical')
+            labels.append(label_name)
+        elif 'high' in severities_found:
+            label_name = self.config.get('pr_label_high', 'security: high')
+            labels.append(label_name)
+        elif 'medium' in severities_found:
+            label_name = self.config.get('pr_label_medium', 'security: medium')
+            labels.append(label_name)
+
+        return labels
