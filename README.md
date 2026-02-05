@@ -72,10 +72,133 @@ Socket Basics can also run locally or in other CI/CD environments:
 - Auto-enablement for container scanning when images or Dockerfiles are specified
 - Support for both standard and GitHub Actions `INPUT_*` environment variables
 
+## 🎨 Enhanced PR Comments
+
+Socket Basics delivers **beautifully formatted, actionable PR comments** with smart defaults that work out of the box:
+
+### What You Get (Enabled by Default)
+
+- 🔗 **Clickable File Links** — Jump directly to the vulnerable code in GitHub
+- 📋 **Collapsible Sections** — Critical findings auto-expand, others collapse for easy scanning
+- 🎨 **Syntax Highlighting** — Language-aware code blocks for better readability
+- 🏷️ **Explicit Rule Names** — Clear identification of which security rule was triggered
+- 🚀 **Quick Access Links** — Full scan report link prominently displayed at the top
+- 🏷️ **Auto-Labels** — PRs automatically tagged with severity-based labels (e.g., `security: critical`)
+
+### Using the Defaults
+
+**Zero configuration needed!** Just use the standard GitHub Actions setup:
+
+```yaml
+- uses: SocketDev/socket-basics@1.0.26
+  env:
+    GITHUB_PR_NUMBER: ${{ github.event.pull_request.number || github.event.issue.number }}
+  with:
+    github_token: ${{ secrets.GITHUB_TOKEN }}
+    socket_security_api_key: ${{ secrets.SOCKET_SECURITY_API_KEY }}
+```
+
+All PR comment enhancements are **enabled by default** with sensible settings:
+- Critical findings: **Auto-expanded** ✅
+- High/Medium/Low findings: **Collapsed** (click to expand)
+- File links: **Clickable** with line numbers
+- Code blocks: **Syntax highlighted** based on file type
+- Labels: **`security: critical`**, **`security: high`**, **`security: medium`**
+
+### Customizing PR Comments
+
+Need different behavior? Every feature can be customized:
+
+#### Example: Disable Specific Features
+
+```yaml
+- uses: SocketDev/socket-basics@1.0.26
+  env:
+    GITHUB_PR_NUMBER: ${{ github.event.pull_request.number || github.event.issue.number }}
+  with:
+    github_token: ${{ secrets.GITHUB_TOKEN }}
+    socket_security_api_key: ${{ secrets.SOCKET_SECURITY_API_KEY }}
+    # Customize PR comment behavior
+    pr_comment_links_enabled: 'false'        # Disable clickable links
+    pr_comment_collapse_enabled: 'false'     # Show all findings expanded
+    pr_labels_enabled: 'false'               # Don't add labels to PRs
+```
+
+#### Example: Custom Label Names
+
+```yaml
+- uses: SocketDev/socket-basics@1.0.26
+  env:
+    GITHUB_PR_NUMBER: ${{ github.event.pull_request.number || github.event.issue.number }}
+  with:
+    github_token: ${{ secrets.GITHUB_TOKEN }}
+    socket_security_api_key: ${{ secrets.SOCKET_SECURITY_API_KEY }}
+    # Use custom label names
+    pr_label_critical: 'socket: critical'    # Instead of 'security: critical'
+    pr_label_high: 'socket: high'            # Instead of 'security: high'
+    pr_label_medium: 'socket: medium'        # Instead of 'security: medium'
+```
+
+#### Example: Show All Findings Expanded
+
+```yaml
+- uses: SocketDev/socket-basics@1.0.26
+  env:
+    GITHUB_PR_NUMBER: ${{ github.event.pull_request.number || github.event.issue.number }}
+  with:
+    github_token: ${{ secrets.GITHUB_TOKEN }}
+    socket_security_api_key: ${{ secrets.SOCKET_SECURITY_API_KEY }}
+    # Keep collapsible sections but expand everything
+    pr_comment_collapse_enabled: 'true'
+    pr_comment_collapse_non_critical: 'false'  # Don't collapse non-critical
+```
+
+### All PR Comment Configuration Options
+
+| Option | Default | Description |
+|--------|---------|-------------|
+| `pr_comment_links_enabled` | `true` | Enable clickable file/line links in PR comments |
+| `pr_comment_collapse_enabled` | `true` | Enable collapsible sections in PR comments |
+| `pr_comment_collapse_non_critical` | `true` | Auto-collapse non-critical findings (critical stays expanded) |
+| `pr_comment_code_fencing_enabled` | `true` | Enable language-aware syntax highlighting |
+| `pr_comment_show_rule_names` | `true` | Show explicit rule names for each finding |
+| `pr_labels_enabled` | `true` | Add severity-based labels to PRs |
+| `pr_label_critical` | `"security: critical"` | Label name for critical severity findings |
+| `pr_label_high` | `"security: high"` | Label name for high severity findings |
+| `pr_label_medium` | `"security: medium"` | Label name for medium severity findings |
+
+### CLI Usage
+
+These options are also available via CLI:
+
+```bash
+socket-basics \
+  --pr-comment-links \
+  --pr-comment-collapse \
+  --pr-labels \
+  --pr-label-critical "custom: critical" \
+  --workspace /path/to/repo
+```
+
+### Environment Variables
+
+Or via environment variables:
+
+```bash
+export INPUT_PR_COMMENT_LINKS_ENABLED=true
+export INPUT_PR_COMMENT_COLLAPSE_ENABLED=true
+export INPUT_PR_LABELS_ENABLED=true
+export INPUT_PR_LABEL_CRITICAL="security: critical"
+socket-basics --workspace /path/to/repo
+```
+
+📖 **[Complete PR Comment Features Guide →](docs/pr-comment-features.md)**
+
 ## 📖 Documentation
 
 ### Getting Started
 - [GitHub Actions Integration](docs/github-action.md) — Complete guide with workflow examples
+- [PR Comment Features Guide](docs/pr-comment-features.md) — Detailed guide to PR comment customization
 - [Pre-Commit Hook Setup](docs/pre-commit-hook.md) — Two installation methods (Docker vs native)
 - [Local Docker Installation](docs/local-install-docker.md) — Run with Docker, no tools to install
 - [Local Installation](docs/local-installation.md) — Install Socket CLI, Trivy, and other tools natively
@@ -265,8 +388,135 @@ We welcome contributions! To add new features:
 1. **New Connectors:** Implement under `socket_basics/core/connector/`
 2. **New Notifiers:** Implement under `socket_basics/core/notification/`
 3. **Configuration:** Add entries to `socket_basics/connectors.yaml` or `socket_basics/notifications.yaml`
-4. **Tests:** Add test cases to `app_tests/`
+4. **Tests:** See [Testing](#-testing) section below
 
+## 🧪 Testing
+
+Socket Basics uses a two-tier testing strategy to ensure code quality and scanner accuracy.
+
+### Test Structure
+
+```
+socket-basics/
+├── tests/              # Unit & integration tests (pytest)
+│   └── test_*.py      # Fast, isolated tests of functions/modules
+└── app_tests/         # End-to-end test fixtures
+    ├── juice-shop/    # Node.js vulnerable app
+    ├── pygoat/        # Python vulnerable app
+    ├── NodeGoat/      # Node.js vulnerable app
+    ├── DVWA/          # PHP vulnerable app
+    └── ...            # Other deliberately vulnerable apps
+```
+
+### Running Unit Tests
+
+**Quick test run:**
+```bash
+# Setup (first time only)
+python3 -m venv venv
+source venv/bin/activate
+pip install -e ".[dev]"
+
+# Run all unit tests
+pytest
+
+# Run specific test file
+pytest tests/test_github_helpers.py
+
+# Run with verbose output
+pytest -v
+
+# Run with coverage report
+pytest --cov=socket_basics tests/
+```
+
+**Characteristics:**
+- ⚡ **Fast** — Milliseconds to seconds
+- 🎯 **Isolated** — No external dependencies
+- 🔄 **Frequent** — Run on every commit
+- ✅ **Validates** — Code logic and functions
+
+### End-to-End Testing with Real Apps
+
+The `app_tests/` directory contains deliberately vulnerable applications (git submodules) for validating scanner accuracy.
+
+**Purpose:**
+- Verify scanners detect **known vulnerabilities**
+- Test against **real-world code patterns**
+- Ensure **multi-language coverage**
+- Validate **entire scan pipeline**
+
+**Run E2E tests:**
+```bash
+# Scan a vulnerable Node.js app
+socket-basics --workspace app_tests/juice-shop \
+  --javascript-sast-enabled \
+  --secret-scanning-enabled
+
+# Scan a vulnerable Python app
+socket-basics --workspace app_tests/pygoat \
+  --python-sast-enabled \
+  --secret-scanning-enabled
+
+# Compare results against known vulnerabilities
+# (Manual verification of findings)
+```
+
+**Characteristics:**
+- 🐢 **Slow** — Minutes per app
+- 📦 **Large** — Git submodules with full apps
+- 🎯 **Ground truth** — Known vulnerabilities to detect
+- ✅ **Validates** — Scanner accuracy and coverage
+
+### Adding Tests
+
+**Adding Unit Tests:**
+```python
+# tests/test_new_feature.py
+import pytest
+from socket_basics.module import new_function
+
+def test_new_feature():
+    result = new_function(input_data)
+    assert result == expected_output
+```
+
+**Adding E2E Test Fixtures:**
+```bash
+# Add a new vulnerable app as a git submodule
+cd app_tests/
+git submodule add https://github.com/org/vulnerable-app
+git submodule update --init
+```
+
+### Test Best Practices
+
+**For contributors:**
+1. ✅ Add unit tests for new functions/modules
+2. ✅ Run `pytest` before committing
+3. ✅ Validate changes against `app_tests/` fixtures
+4. ✅ Keep unit tests fast (mock external dependencies)
+
+**For security researchers:**
+1. 🔍 Use `app_tests/` to validate scanner accuracy
+2. 📊 Compare findings against CVE databases
+3. 🎯 Add new vulnerable apps as needed
+4. 📝 Document expected findings for regression testing
+
+### CI/CD Testing
+
+```yaml
+# Example GitHub Actions workflow
+- name: Run Unit Tests
+  run: |
+    pip install -e ".[dev]"
+    pytest tests/ --cov=socket_basics
+
+- name: Run E2E Tests (Selected)
+  run: |
+    # Run against specific vulnerable apps
+    socket-basics --workspace app_tests/pygoat --python
+```
 
 ---
 
