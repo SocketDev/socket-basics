@@ -25,6 +25,11 @@ test.py
 *.cpython-312.pyc
 file_generator.py
 .env
+# Allow only specific markdown files (documentation), ignore all others
+# Negations must come BEFORE the ignore rule
+!README.md
+!docs/*.md
+!tests/README.md
 *.md
 test_results
 local_tests/
