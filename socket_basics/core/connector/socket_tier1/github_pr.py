@@ -1,6 +1,8 @@
 """GitHub PR notifier formatting for Socket Tier1 reachability analysis."""
 
+import re
 from typing import Dict, Any, List
+from . import github_helpers
 
 
 def _make_purl(comp: Dict[str, Any]) -> str:
@@ -26,7 +28,19 @@ def _make_purl(comp: Dict[str, Any]) -> str:
 def format_notifications(components_list: List[Dict[str, Any]], config=None) -> List[Dict[str, Any]]:
     """Format for GitHub PR comments - grouped by PURL and reachability."""
     from collections import defaultdict
-    
+
+    # Get feature flags from config
+    enable_links = config.get('pr_comment_links_enabled', True) if config else True
+    enable_collapse = config.get('pr_comment_collapse_enabled', True) if config else True
+    collapse_non_critical = config.get('pr_comment_collapse_non_critical', True) if config else True
+    enable_code_fencing = config.get('pr_comment_code_fencing_enabled', True) if config else True
+    show_rule_names = config.get('pr_comment_show_rule_names', True) if config else True
+
+    # Get GitHub metadata for links
+    repository = config.repo if config else ''
+    commit_hash = config.commit_hash if config else ''
+    full_scan_url = config.get('full_scan_html_url') if config else None
+
     severity_order = {'critical': 0, 'high': 1, 'medium': 2, 'low': 3}
     severity_emoji = {
         'critical': '🔴',
@@ -69,7 +83,8 @@ def format_notifications(components_list: List[Dict[str, Any]], config=None) -> 
                 'cve_id': cve_id,
                 'severity': severity,
                 'severity_order': severity_order.get(severity, 4),
-                'trace': trace_str
+                'trace': trace_str,
+                'rule_name': a.get('title') or cve_id  # Add rule name
             }
             
             # Group by reachability
@@ -109,10 +124,40 @@ def format_notifications(components_list: List[Dict[str, Any]], config=None) -> 
         
         purl_severity_list.sort(key=lambda x: x[0])
         
-        for _, purl in purl_severity_list:
-            content_lines.append(f"#### `{purl}`")
-            content_lines.append("")
-            
+        for min_sev, purl in purl_severity_list:
+            # Calculate severity summary for this PURL
+            purl_severities = {'critical': 0, 'high': 0, 'medium': 0, 'low': 0}
+            for reach_type in ['reachable', 'unknown', 'error', 'unreachable']:
+                for finding in purl_groups[purl][reach_type]:
+                    sev = finding['severity']
+                    if sev in purl_severities:
+                        purl_severities[sev] += 1
+
+            # Determine if this section should be auto-expanded
+            has_critical = purl_severities['critical'] > 0
+
+            if enable_collapse:
+                # Build severity summary for section header
+                severity_parts = []
+                if purl_severities['critical'] > 0:
+                    severity_parts.append(f"{severity_emoji['critical']} Critical: {purl_severities['critical']}")
+                if purl_severities['high'] > 0:
+                    severity_parts.append(f"{severity_emoji['high']} High: {purl_severities['high']}")
+                if purl_severities['medium'] > 0:
+                    severity_parts.append(f"{severity_emoji['medium']} Medium: {purl_severities['medium']}")
+                if purl_severities['low'] > 0:
+                    severity_parts.append(f"{severity_emoji['low']} Low: {purl_severities['low']}")
+
+                severity_summary = " | ".join(severity_parts) if severity_parts else "No issues"
+
+                open_attr = ' open' if (not collapse_non_critical or has_critical) else ''
+                content_lines.append(f"<details{open_attr}>")
+                content_lines.append(f"<summary><strong>{purl}</strong> ({severity_summary})</summary>")
+                content_lines.append("")
+            else:
+                content_lines.append(f"#### `{purl}`")
+                content_lines.append("")
+
             # Reachable findings (highest priority)
             if purl_groups[purl]['reachable']:
                 content_lines.append("**Reachable**")
@@ -120,9 +165,34 @@ def format_notifications(components_list: List[Dict[str, Any]], config=None) -> 
                 for finding in purl_groups[purl]['reachable']:
                     emoji = severity_emoji.get(finding['severity'], '⚪')
                     content_lines.append(f"{emoji} **{finding['cve_id']}**: *{finding['severity'].upper()}*")
+
+                    # Add rule name if enabled
+                    if show_rule_names:
+                        rule_name = finding.get('rule_name', '')
+                        if rule_name and rule_name != finding['cve_id']:
+                            content_lines.append(f"**Rule**: `{rule_name}`")
+
                     if finding['trace']:
-                        content_lines.append("```")
-                        content_lines.append(finding['trace'])
+                        trace_str = finding['trace']
+
+                        # Add clickable links
+                        if enable_links and repository and commit_hash:
+                            trace_lines = trace_str.split('\n')
+                            trace_str = github_helpers.format_trace_with_links(
+                                trace_lines, repository, commit_hash, enable_links
+                            )
+
+                        # Language-aware code fencing
+                        lang = ''
+                        if enable_code_fencing:
+                            # Detect from first filename in trace
+                            first_line = trace_str.split('\n')[0] if trace_str else ''
+                            match = re.search(r'([^\s]+\.[\w]+)', first_line)
+                            if match:
+                                lang = github_helpers.detect_language_from_filename(match.group(1))
+
+                        content_lines.append(f"```{lang}")
+                        content_lines.append(trace_str)
                         content_lines.append("```")
                     content_lines.append("")
             
@@ -133,8 +203,14 @@ def format_notifications(components_list: List[Dict[str, Any]], config=None) -> 
                 for finding in purl_groups[purl]['unknown']:
                     emoji = severity_emoji.get(finding['severity'], '⚪')
                     content_lines.append(f"{emoji} **{finding['cve_id']}**: *{finding['severity'].upper()}*")
+
+                    # Add rule name if enabled
+                    if show_rule_names:
+                        rule_name = finding.get('rule_name', '')
+                        if rule_name and rule_name != finding['cve_id']:
+                            content_lines.append(f"**Rule**: `{rule_name}`")
                 content_lines.append("")
-            
+
             # Error reachability findings
             if purl_groups[purl]['error']:
                 content_lines.append("**Error**")
@@ -142,8 +218,14 @@ def format_notifications(components_list: List[Dict[str, Any]], config=None) -> 
                 for finding in purl_groups[purl]['error']:
                     emoji = severity_emoji.get(finding['severity'], '⚪')
                     content_lines.append(f"{emoji} **{finding['cve_id']}**: *{finding['severity'].upper()}*")
+
+                    # Add rule name if enabled
+                    if show_rule_names:
+                        rule_name = finding.get('rule_name', '')
+                        if rule_name and rule_name != finding['cve_id']:
+                            content_lines.append(f"**Rule**: `{rule_name}`")
                 content_lines.append("")
-            
+
             # Unreachable findings (lowest priority)
             if purl_groups[purl]['unreachable']:
                 content_lines.append("**Unreachable**")
@@ -151,6 +233,17 @@ def format_notifications(components_list: List[Dict[str, Any]], config=None) -> 
                 for finding in purl_groups[purl]['unreachable']:
                     emoji = severity_emoji.get(finding['severity'], '⚪')
                     content_lines.append(f"{emoji} **{finding['cve_id']}**: *{finding['severity'].upper()}*")
+
+                    # Add rule name if enabled
+                    if show_rule_names:
+                        rule_name = finding.get('rule_name', '')
+                        if rule_name and rule_name != finding['cve_id']:
+                            content_lines.append(f"**Rule**: `{rule_name}`")
+                content_lines.append("")
+
+            # Close collapsible section
+            if enable_collapse:
+                content_lines.append("</details>")
                 content_lines.append("")
         
         content = '\n'.join(content_lines)
@@ -169,14 +262,19 @@ def format_notifications(components_list: List[Dict[str, Any]], config=None) -> 
     
     # Count total findings
     total_findings = sum(severity_counts.values())
-    
+
     # Content already includes summary and details sections
     summary_content = content
-    
+
+    # Add full scan link at top if available
+    scan_link_section = ''
+    if full_scan_url:
+        scan_link_section = f"\n\n🔗 **[View Full Socket Scan Report]({full_scan_url})**\n\n---\n"
+
     # Wrap content with HTML comment markers for section updates
     wrapped_content = f"""<!-- socket-tier1 start -->
 # {title}
-
+{scan_link_section}
 {summary_content}
 <!-- socket-tier1 end -->"""
     
