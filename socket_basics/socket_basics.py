@@ -419,15 +419,29 @@ class SecurityScanner:
             return results
 
         triage_filter = TriageFilter(triage_entries)
+        original_components = results.get('components', [])
+        original_alert_count = sum(
+            len(c.get('alerts', [])) for c in original_components
+        )
         filtered_components, triaged_count = triage_filter.filter_components(
-            results.get('components', [])
+            original_components
         )
 
         if triaged_count == 0:
-            logger.debug("No findings matched triage entries")
+            logger.info(
+                "Triage filter matched 0 of %d finding(s); no changes applied",
+                original_alert_count,
+            )
             return results
 
-        logger.info("Filtered %d triaged finding(s) from results", triaged_count)
+        remaining_alert_count = sum(
+            len(c.get('alerts', [])) for c in filtered_components
+        )
+        logger.info(
+            "Triage filter removed %d finding(s); %d finding(s) remain",
+            triaged_count,
+            remaining_alert_count,
+        )
         results['components'] = filtered_components
         results['triaged_count'] = triaged_count
 
@@ -448,22 +462,47 @@ class SecurityScanner:
         field on alerts), calls each connector's ``generate_notifications``,
         merges the results, and injects a triage summary into github_pr
         content.
+
+        Always replaces ``results['notifications']`` so stale pre-filter
+        notifications are never forwarded to notifiers.
         """
         connector_components: Dict[str, List[Dict[str, Any]]] = {}
+        unmapped_count = 0
         for comp in filtered_components:
+            mapped = False
             for alert in comp.get('alerts', []):
                 gen = alert.get('generatedBy') or ''
                 connector_name = self._connector_name_from_generated_by(gen)
                 if connector_name:
                     connector_components.setdefault(connector_name, []).append(comp)
+                    mapped = True
                     break  # one mapping per component is enough
+            if not mapped:
+                unmapped_count += 1
+
+        if unmapped_count:
+            logger.debug(
+                "Triage regen: %d component(s) could not be mapped to a connector",
+                unmapped_count,
+            )
+
+        logger.info(
+            "Regenerating notifications for %d connector(s): %s",
+            len(connector_components),
+            ", ".join(connector_components.keys()) or "(none)",
+        )
 
         merged_notifications: Dict[str, list] = {}
 
         for connector_name, comps in connector_components.items():
             connector = self.connector_manager.loaded_connectors.get(connector_name)
             if connector is None:
-                logger.debug("Connector %s not loaded; skipping notification regen", connector_name)
+                logger.warning(
+                    "Connector %s not in loaded_connectors (available: %s); "
+                    "cannot regenerate its notifications",
+                    connector_name,
+                    ", ".join(self.connector_manager.loaded_connectors.keys()),
+                )
                 continue
 
             if not hasattr(connector, 'generate_notifications'):
@@ -483,6 +522,13 @@ class SecurityScanner:
             if not isinstance(notifs, dict):
                 continue
 
+            notifier_keys = [k for k, v in notifs.items() if v]
+            logger.debug(
+                "Connector %s produced notifications for: %s",
+                connector_name,
+                ", ".join(notifier_keys) or "(empty)",
+            )
+
             for notifier_key, payload in notifs.items():
                 if notifier_key not in merged_notifications:
                     merged_notifications[notifier_key] = payload
@@ -493,8 +539,10 @@ class SecurityScanner:
         full_scan_url = results.get('full_scan_html_url', '')
         self._inject_triage_summary(merged_notifications, triaged_count, full_scan_url)
 
-        if merged_notifications:
-            results['notifications'] = merged_notifications
+        # Always replace notifications so stale pre-filter content is never
+        # forwarded to notifiers.  An empty dict is valid and means every
+        # finding was triaged.
+        results['notifications'] = merged_notifications
 
     @staticmethod
     def _connector_name_from_generated_by(generated_by: str) -> str | None:
