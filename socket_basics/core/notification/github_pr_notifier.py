@@ -103,6 +103,18 @@ class GithubPRNotifier(BaseNotifier):
         
         # Update existing comments with new section content
         for comment_id, updated_body in comment_updates.items():
+            # Detect whether content actually changed before making the API call
+            original_body = next(
+                (c.get('body', '') for c in existing_comments if c.get('id') == comment_id),
+                '',
+            )
+            if original_body == updated_body:
+                logger.info(
+                    'GithubPRNotifier: comment %s content unchanged; skipping update',
+                    comment_id,
+                )
+                continue
+
             success = self._update_comment(pr_number, comment_id, updated_body)
             if success:
                 logger.info('GithubPRNotifier: updated existing comment %s', comment_id)
