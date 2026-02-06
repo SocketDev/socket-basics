@@ -7,16 +7,29 @@ Formats results with markdown for better GitHub display using the new grouped fo
 from typing import Dict, Any, List
 from collections import defaultdict
 from .utils import logger, get_notifier_result_limit
+from socket_basics.core.notification import github_pr_helpers as helpers
 
 
-def format_notifications(mapping: Dict[str, Any], item_name: str = "Unknown", scan_type: str = "image") -> List[Dict[str, Any]]:
+def format_notifications(mapping: Dict[str, Any], item_name: str = "Unknown", scan_type: str = "image", config=None) -> List[Dict[str, Any]]:
     """Format for GitHub PR comments - grouped format with markdown formatting.
-    
+
     Args:
         mapping: Component mapping with alerts
         item_name: Name of the scanned item
         scan_type: Type of scan - 'vuln', 'image', or 'dockerfile'
+        config: Optional configuration object with feature flags
     """
+    # Get feature flags from config (using shared helper)
+    flags = helpers.get_feature_flags(config)
+    enable_links = flags['enable_links']
+    enable_collapse = flags['enable_collapse']
+    collapse_non_critical = flags['collapse_non_critical']
+    enable_code_fencing = flags['enable_code_fencing']
+    show_rule_names = flags['show_rule_names']
+    repository = flags['repository']
+    commit_hash = flags['commit_hash']
+    full_scan_url = flags['full_scan_url']
+
     # Group vulnerabilities by package and severity
     package_groups = defaultdict(lambda: defaultdict(set))  # Use set to avoid duplicates
     
@@ -63,7 +76,8 @@ def format_notifications(mapping: Dict[str, Any], item_name: str = "Unknown", sc
     
     # Create rows with proper formatting
     rows = []
-    severity_order = {'critical': 0, 'high': 1, 'medium': 2, 'low': 3}
+    severity_order = helpers.SEVERITY_ORDER
+    severity_emoji = helpers.SEVERITY_EMOJI
 
     if scan_type == 'dockerfile':
         # Dockerfile format: Rule ID | Severity | Message | Resolution
@@ -208,14 +222,8 @@ def format_notifications(mapping: Dict[str, Any], item_name: str = "Unknown", sc
         # Panel format for vulnerability scanning
         panels = []
         for vuln in rows:
-            # Determine panel color based on severity
-            severity_icons = {
-                'critical': '🔴',
-                'high': '🟠',
-                'medium': '🟡',
-                'low': '🟢'
-            }
-            icon = severity_icons.get(vuln['severity'], '⚪')
+            # Use shared severity emoji
+            icon = severity_emoji.get(vuln['severity'], '⚪')
             severity_label = vuln['severity'].upper()
             
             # Create expandable panel for each CVE
@@ -272,10 +280,10 @@ def format_notifications(mapping: Dict[str, Any], item_name: str = "Unknown", sc
         scanner_name = "Trivy Container"
     
     title = f"{title_base}: {item_name}"
-    
+
     # Count total findings for summary
     total_findings = len(rows)
-    
+
     # Add summary section with scanner findings
     summary_content = f"""## Summary
 
@@ -286,11 +294,14 @@ def format_notifications(mapping: Dict[str, Any], item_name: str = "Unknown", sc
 ## Details
 
 {content}"""
-    
+
+    # Add full scan link at top if available (using shared helper)
+    scan_link_section = helpers.format_scan_link_section(full_scan_url)
+
     # Wrap content with HTML comment markers for section updates
     wrapped_content = f"""<!-- trivy-container start -->
 # {title}
-
+{scan_link_section}
 {summary_content}
 <!-- trivy-container end -->"""
     

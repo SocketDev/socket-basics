@@ -2,7 +2,7 @@
 
 import re
 from typing import Dict, Any, List
-from . import github_helpers
+from socket_basics.core.notification import github_pr_helpers as helpers
 
 
 def _make_purl(comp: Dict[str, Any]) -> str:
@@ -29,25 +29,20 @@ def format_notifications(components_list: List[Dict[str, Any]], config=None) -> 
     """Format for GitHub PR comments - grouped by PURL and reachability."""
     from collections import defaultdict
 
-    # Get feature flags from config
-    enable_links = config.get('pr_comment_links_enabled', True) if config else True
-    enable_collapse = config.get('pr_comment_collapse_enabled', True) if config else True
-    collapse_non_critical = config.get('pr_comment_collapse_non_critical', True) if config else True
-    enable_code_fencing = config.get('pr_comment_code_fencing_enabled', True) if config else True
-    show_rule_names = config.get('pr_comment_show_rule_names', True) if config else True
+    # Get feature flags from config (using shared helper)
+    flags = helpers.get_feature_flags(config)
+    enable_links = flags['enable_links']
+    enable_collapse = flags['enable_collapse']
+    collapse_non_critical = flags['collapse_non_critical']
+    enable_code_fencing = flags['enable_code_fencing']
+    show_rule_names = flags['show_rule_names']
+    repository = flags['repository']
+    commit_hash = flags['commit_hash']
+    full_scan_url = flags['full_scan_url']
 
-    # Get GitHub metadata for links
-    repository = config.repo if config else ''
-    commit_hash = config.commit_hash if config else ''
-    full_scan_url = config.get('full_scan_html_url') if config else None
-
-    severity_order = {'critical': 0, 'high': 1, 'medium': 2, 'low': 3}
-    severity_emoji = {
-        'critical': '🔴',
-        'high': '🟠',
-        'medium': '🟡',
-        'low': '⚪'
-    }
+    # Use shared severity constants
+    severity_order = helpers.SEVERITY_ORDER
+    severity_emoji = helpers.SEVERITY_EMOJI
     
     # Group by PURL -> Reachability -> Findings
     purl_groups = defaultdict(lambda: {'reachable': [], 'unknown': [], 'error': [], 'unreachable': []})
@@ -178,7 +173,7 @@ def format_notifications(components_list: List[Dict[str, Any]], config=None) -> 
                         # Add clickable links
                         if enable_links and repository and commit_hash:
                             trace_lines = trace_str.split('\n')
-                            trace_str = github_helpers.format_trace_with_links(
+                            trace_str = helpers.format_trace_with_links(
                                 trace_lines, repository, commit_hash, enable_links
                             )
 
@@ -189,7 +184,7 @@ def format_notifications(components_list: List[Dict[str, Any]], config=None) -> 
                             first_line = trace_str.split('\n')[0] if trace_str else ''
                             match = re.search(r'([^\s]+\.[\w]+)', first_line)
                             if match:
-                                lang = github_helpers.detect_language_from_filename(match.group(1))
+                                lang = helpers.detect_language_from_filename(match.group(1))
 
                         content_lines.append(f"```{lang}")
                         content_lines.append(trace_str)
@@ -266,10 +261,8 @@ def format_notifications(components_list: List[Dict[str, Any]], config=None) -> 
     # Content already includes summary and details sections
     summary_content = content
 
-    # Add full scan link at top if available
-    scan_link_section = ''
-    if full_scan_url:
-        scan_link_section = f"\n\n🔗 **[View Full Socket Scan Report]({full_scan_url})**\n\n---\n"
+    # Add full scan link at top if available (using shared helper)
+    scan_link_section = helpers.format_scan_link_section(full_scan_url)
 
     # Wrap content with HTML comment markers for section updates
     wrapped_content = f"""<!-- socket-tier1 start -->

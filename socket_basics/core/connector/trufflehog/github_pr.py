@@ -5,11 +5,22 @@ Formats results with markdown for better GitHub display of secret detection find
 """
 
 from typing import Dict, Any, List
+from socket_basics.core.notification import github_pr_helpers as helpers
 
 
 def format_notifications(mapping: Dict[str, Any], config=None) -> List[Dict[str, Any]]:
     """Format for GitHub PR comments - detailed with markdown formatting."""
-    severity_order = {'critical': 0, 'high': 1, 'medium': 2, 'low': 3}
+    # Get feature flags from config (using shared helper)
+    flags = helpers.get_feature_flags(config)
+    enable_links = flags['enable_links']
+    repository = flags['repository']
+    commit_hash = flags['commit_hash']
+    full_scan_url = flags['full_scan_url']
+
+    # Use shared severity constants
+    severity_order = helpers.SEVERITY_ORDER
+    severity_emoji = helpers.SEVERITY_EMOJI
+
     rows = []
     
     for comp in mapping.values():
@@ -24,15 +35,25 @@ def format_notifications(mapping: Dict[str, Any], config=None) -> List[Dict[str,
             
             # Format with markdown for better GitHub display
             status = '✅ **VERIFIED**' if verified else '⚠️ *Unverified*'
-            file_display = f"`{file_path}`"
-            if line:
-                file_display += f":{line}"
-            
+
+            # Create clickable file location link
+            line_num = int(line) if line and line.isdigit() else None
+            file_display = helpers.format_file_location_link(
+                file_path,
+                line_start=line_num,
+                repository=repository,
+                commit_hash=commit_hash,
+                enable_links=enable_links
+            )
+
+            # Add severity emoji
+            emoji = severity_emoji.get(severity, '⚪')
+
             rows.append((
                 severity_order.get(severity, 4),
                 [
                     f"**{detector}**",
-                    f"*{severity.upper()}*",
+                    f"{emoji} *{severity.upper()}*",
                     status,
                     file_display,
                     f"`{redacted}`" if redacted else '-'
@@ -81,11 +102,14 @@ def format_notifications(mapping: Dict[str, Any], config=None) -> List[Dict[str,
 ## Details
 
 {content}"""
-    
+
+    # Add full scan link at top if available (using shared helper)
+    scan_link_section = helpers.format_scan_link_section(full_scan_url)
+
     # Wrap content with HTML comment markers for section updates
     wrapped_content = f"""<!-- trufflehog-secrets start -->
 # {title}
-
+{scan_link_section}
 {summary_content}
 <!-- trufflehog-secrets end -->"""
     
