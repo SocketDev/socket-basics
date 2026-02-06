@@ -148,8 +148,31 @@ def build_github_file_url(
     if not repository or not commit_hash:
         return ''
 
-    # Clean filepath (remove leading ./ or /)
-    clean_path = filepath.lstrip('./')
+    # Clean filepath - remove GitHub Actions workspace prefixes
+    clean_path = filepath
+
+    # Strip common GitHub Actions workspace prefixes
+    workspace_prefixes = [
+        '/github/workspace/',
+        'github/workspace/',
+        '/home/runner/work/',
+    ]
+
+    for prefix in workspace_prefixes:
+        if clean_path.startswith(prefix):
+            clean_path = clean_path[len(prefix):]
+            break
+
+    # For /home/runner/work/{owner}/{repo}/ pattern, strip the repo path
+    # Pattern: /home/runner/work/owner/repo/path/to/file.js
+    if clean_path.startswith('/home/runner/work/') or clean_path.startswith('home/runner/work/'):
+        parts = clean_path.split('/')
+        # Find where the actual file path starts (after owner/repo)
+        if len(parts) > 4:  # ['', 'home', 'runner', 'work', 'owner', 'repo', ...]
+            clean_path = '/'.join(parts[6:]) if parts[0] == '' else '/'.join(parts[5:])
+
+    # Remove leading ./ or /
+    clean_path = clean_path.lstrip('./')
 
     # Base URL
     url = f"https://github.com/{repository}/blob/{commit_hash}/{clean_path}"
