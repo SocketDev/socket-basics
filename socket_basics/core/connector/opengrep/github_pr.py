@@ -198,10 +198,11 @@ def format_notifications(groups: Dict[str, List[Dict[str, Any]]], config=None) -
                 if enable_collapse:
                     # Determine if this should be auto-expanded
                     has_critical = file_severities['critical'] > 0
-                    auto_expand = has_critical and not collapse_non_critical
+                    # Auto-expand if: no collapse requested OR has critical findings
+                    auto_expand = (not collapse_non_critical) or has_critical
 
                     collapsible = helpers.create_collapsible_section(
-                        f"`{file_path}`",
+                        file_path,  # Don't use backticks in summary - they don't render in GitHub
                         file_content,
                         severity_counts=file_severities,
                         auto_expand=auto_expand
