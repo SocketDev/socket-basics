@@ -1,21 +1,30 @@
 """Tests for socket_basics.core.triage module."""
 
+import logging
 import pytest
-from socket_basics.core.triage import TriageFilter, fetch_triage_data
+from socket_basics.core.triage import (
+    TriageFilter,
+    fetch_triage_data,
+    stream_full_scan_alerts,
+)
 
 
 # ---------------------------------------------------------------------------
 # Fixtures / helpers
 # ---------------------------------------------------------------------------
 
+ARTIFACT_ID = "abc123"
+
+
 def _make_component(
+    comp_id: str = ARTIFACT_ID,
     name: str = "lodash",
     comp_type: str = "npm",
     version: str = "4.17.21",
     alerts: list | None = None,
 ) -> dict:
     return {
-        "id": f"pkg:{comp_type}/{name}@{version}",
+        "id": comp_id,
         "name": name,
         "version": version,
         "type": comp_type,
@@ -24,9 +33,9 @@ def _make_component(
     }
 
 
-def _make_alert(
+def _make_local_alert(
     title: str = "badEncoding",
-    alert_type: str = "supplyChainRisk",
+    alert_type: str = "badEncoding",
     severity: str = "high",
     rule_id: str | None = None,
     detector_name: str | None = None,
@@ -52,153 +61,144 @@ def _make_alert(
 def _make_triage_entry(
     alert_key: str,
     state: str = "ignore",
-    package_name: str | None = None,
-    package_type: str | None = None,
-    package_version: str | None = None,
-    package_namespace: str | None = None,
 ) -> dict:
     return {
         "uuid": "test-uuid",
         "alert_key": alert_key,
         "state": state,
-        "package_name": package_name,
-        "package_type": package_type,
-        "package_version": package_version,
-        "package_namespace": package_namespace,
         "note": "",
         "organization_id": "test-org",
     }
 
 
+def _make_artifact_alerts(
+    artifact_id: str = ARTIFACT_ID,
+    alerts: list[dict] | None = None,
+    name: str = "lodash",
+    version: str = "4.17.21",
+    pkg_type: str = "npm",
+) -> dict[str, list[dict]]:
+    """Build an artifact_alerts mapping with enriched _artifact metadata."""
+    meta = {
+        "artifact_id": artifact_id,
+        "artifact_name": name,
+        "artifact_version": version,
+        "artifact_type": pkg_type,
+        "artifact_namespace": None,
+        "artifact_subpath": None,
+    }
+    enriched = [{**a, "_artifact": meta} for a in (alerts or [])]
+    return {artifact_id: enriched}
+
+
+def _socket_alert(key: str, alert_type: str) -> dict:
+    """Create a minimal Socket alert dict (as returned by the full scan stream)."""
+    return {"key": key, "type": alert_type}
+
+
 # ---------------------------------------------------------------------------
-# TriageFilter.is_alert_triaged
+# TriageFilter construction
 # ---------------------------------------------------------------------------
 
-class TestIsAlertTriaged:
-    """Tests for the alert matching logic."""
-
-    def test_broad_match_by_title(self):
-        """Triage entry with no package info matches any component with matching alert_key."""
-        entry = _make_triage_entry(alert_key="badEncoding")
-        tf = TriageFilter([entry])
-        comp = _make_component()
-        alert = _make_alert(title="badEncoding")
-        assert tf.is_alert_triaged(comp, alert) is True
-
-    def test_broad_match_by_rule_id(self):
-        entry = _make_triage_entry(alert_key="python.lang.security.audit.xss")
-        tf = TriageFilter([entry])
-        comp = _make_component()
-        alert = _make_alert(title="XSS Vulnerability", rule_id="python.lang.security.audit.xss")
-        assert tf.is_alert_triaged(comp, alert) is True
-
-    def test_broad_match_by_detector_name(self):
-        entry = _make_triage_entry(alert_key="AWS")
-        tf = TriageFilter([entry])
-        comp = _make_component()
-        alert = _make_alert(title="AWS Key Detected", detector_name="AWS")
-        assert tf.is_alert_triaged(comp, alert) is True
-
-    def test_broad_match_by_cve(self):
-        entry = _make_triage_entry(alert_key="CVE-2024-1234")
-        tf = TriageFilter([entry])
-        comp = _make_component()
-        alert = _make_alert(title="Some Vuln", cve_id="CVE-2024-1234")
-        assert tf.is_alert_triaged(comp, alert) is True
-
-    def test_no_match_different_key(self):
-        entry = _make_triage_entry(alert_key="differentRule")
-        tf = TriageFilter([entry])
-        comp = _make_component()
-        alert = _make_alert(title="badEncoding")
-        assert tf.is_alert_triaged(comp, alert) is False
-
-    def test_package_scoped_match(self):
-        """Triage entry with package info only matches the specific package."""
-        entry = _make_triage_entry(
-            alert_key="badEncoding",
-            package_name="lodash",
-            package_type="npm",
+class TestTriageFilterInit:
+    def test_builds_triaged_keys_for_ignore(self):
+        entries = [_make_triage_entry("hash-1", state="ignore")]
+        artifact_alerts = _make_artifact_alerts(
+            alerts=[_socket_alert("hash-1", "badEncoding")]
         )
-        tf = TriageFilter([entry])
+        tf = TriageFilter(entries, artifact_alerts)
+        assert "hash-1" in tf.triaged_keys
 
-        comp_match = _make_component(name="lodash", comp_type="npm")
-        comp_no_match = _make_component(name="express", comp_type="npm")
-        alert = _make_alert(title="badEncoding")
-
-        assert tf.is_alert_triaged(comp_match, alert) is True
-        assert tf.is_alert_triaged(comp_no_match, alert) is False
-
-    def test_package_version_exact_match(self):
-        entry = _make_triage_entry(
-            alert_key="badEncoding",
-            package_name="lodash",
-            package_type="npm",
-            package_version="4.17.21",
+    def test_builds_triaged_keys_for_monitor(self):
+        entries = [_make_triage_entry("hash-2", state="monitor")]
+        artifact_alerts = _make_artifact_alerts(
+            alerts=[_socket_alert("hash-2", "cve")]
         )
-        tf = TriageFilter([entry])
+        tf = TriageFilter(entries, artifact_alerts)
+        assert "hash-2" in tf.triaged_keys
 
-        comp_match = _make_component(name="lodash", comp_type="npm", version="4.17.21")
-        comp_no_match = _make_component(name="lodash", comp_type="npm", version="4.17.20")
-        alert = _make_alert(title="badEncoding")
-
-        assert tf.is_alert_triaged(comp_match, alert) is True
-        assert tf.is_alert_triaged(comp_no_match, alert) is False
-
-    def test_version_wildcard(self):
-        entry = _make_triage_entry(
-            alert_key="badEncoding",
-            package_name="lodash",
-            package_type="npm",
-            package_version="4.17.*",
+    def test_excludes_block_warn_inherit_states(self):
+        entries = [
+            _make_triage_entry("h1", state="block"),
+            _make_triage_entry("h2", state="warn"),
+            _make_triage_entry("h3", state="inherit"),
+        ]
+        artifact_alerts = _make_artifact_alerts(
+            alerts=[
+                _socket_alert("h1", "a"),
+                _socket_alert("h2", "b"),
+                _socket_alert("h3", "c"),
+            ]
         )
-        tf = TriageFilter([entry])
-        alert = _make_alert(title="badEncoding")
+        tf = TriageFilter(entries, artifact_alerts)
+        assert tf.triaged_keys == set()
 
-        assert tf.is_alert_triaged(
-            _make_component(name="lodash", comp_type="npm", version="4.17.21"), alert
-        ) is True
-        assert tf.is_alert_triaged(
-            _make_component(name="lodash", comp_type="npm", version="4.17.0"), alert
-        ) is True
-        assert tf.is_alert_triaged(
-            _make_component(name="lodash", comp_type="npm", version="4.18.0"), alert
-        ) is False
-
-    def test_version_star_matches_all(self):
-        entry = _make_triage_entry(
-            alert_key="badEncoding",
-            package_name="lodash",
-            package_type="npm",
-            package_version="*",
+    def test_builds_triaged_by_artifact_mapping(self):
+        entries = [_make_triage_entry("hash-1", state="ignore")]
+        artifact_alerts = _make_artifact_alerts(
+            artifact_id="art-1",
+            alerts=[_socket_alert("hash-1", "badEncoding")],
         )
-        tf = TriageFilter([entry])
-        alert = _make_alert(title="badEncoding")
-        assert tf.is_alert_triaged(
-            _make_component(name="lodash", comp_type="npm", version="99.0.0"), alert
-        ) is True
+        tf = TriageFilter(entries, artifact_alerts)
+        assert "art-1" in tf._triaged_by_artifact
+        assert "badEncoding" in tf._triaged_by_artifact["art-1"]
 
-    def test_states_block_and_warn_not_suppressed(self):
-        """Triage entries with block/warn/inherit states should not filter findings."""
-        for state in ("block", "warn", "inherit"):
-            entry = _make_triage_entry(alert_key="badEncoding", state=state)
-            tf = TriageFilter([entry])
-            assert tf.entries == [], f"state={state} should be excluded from filter entries"
+    def test_no_entries_means_empty_triaged_keys(self):
+        tf = TriageFilter([], {})
+        assert tf.triaged_keys == set()
 
-    def test_state_monitor_suppressed(self):
-        entry = _make_triage_entry(alert_key="badEncoding", state="monitor")
-        tf = TriageFilter([entry])
-        comp = _make_component()
-        alert = _make_alert(title="badEncoding")
-        assert tf.is_alert_triaged(comp, alert) is True
+    def test_entry_without_alert_key_ignored(self):
+        entries = [{"state": "ignore", "alert_key": None}]
+        tf = TriageFilter(entries, {})
+        assert tf.triaged_keys == set()
 
-    def test_alert_with_no_matchable_keys(self):
-        """Alert with no title, type, or relevant props should not match."""
-        entry = _make_triage_entry(alert_key="something")
-        tf = TriageFilter([entry])
-        comp = _make_component()
-        alert = {"severity": "high", "props": {}}
-        assert tf.is_alert_triaged(comp, alert) is False
+
+# ---------------------------------------------------------------------------
+# TriageFilter._local_alert_is_triaged
+# ---------------------------------------------------------------------------
+
+class TestLocalAlertIsTriaged:
+    def test_direct_type_match(self):
+        triaged_types = {"badEncoding"}
+        alert = _make_local_alert(alert_type="badEncoding")
+        assert TriageFilter._local_alert_is_triaged(alert, triaged_types) is True
+
+    def test_direct_type_no_match(self):
+        triaged_types = {"badEncoding"}
+        alert = _make_local_alert(alert_type="cve")
+        assert TriageFilter._local_alert_is_triaged(alert, triaged_types) is False
+
+    def test_generic_type_falls_back_to_title(self):
+        triaged_types = {"badEncoding"}
+        alert = _make_local_alert(title="badEncoding", alert_type="generic")
+        assert TriageFilter._local_alert_is_triaged(alert, triaged_types) is True
+
+    def test_vulnerability_type_falls_back_to_cve(self):
+        triaged_types = {"CVE-2024-1234"}
+        alert = _make_local_alert(
+            title="Some Vuln", alert_type="vulnerability", cve_id="CVE-2024-1234"
+        )
+        assert TriageFilter._local_alert_is_triaged(alert, triaged_types) is True
+
+    def test_generic_type_falls_back_to_rule_id(self):
+        triaged_types = {"python.lang.security.audit.xss"}
+        alert = _make_local_alert(
+            title="XSS", alert_type="generic",
+            rule_id="python.lang.security.audit.xss",
+        )
+        assert TriageFilter._local_alert_is_triaged(alert, triaged_types) is True
+
+    def test_generic_type_falls_back_to_detector_name(self):
+        triaged_types = {"AWS"}
+        alert = _make_local_alert(
+            title="AWS Key", alert_type="generic", detector_name="AWS"
+        )
+        assert TriageFilter._local_alert_is_triaged(alert, triaged_types) is True
+
+    def test_no_fallback_candidates_returns_false(self):
+        triaged_types = {"something"}
+        alert = {"type": "generic", "props": {}}
+        assert TriageFilter._local_alert_is_triaged(alert, triaged_types) is False
 
 
 # ---------------------------------------------------------------------------
@@ -206,47 +206,87 @@ class TestIsAlertTriaged:
 # ---------------------------------------------------------------------------
 
 class TestFilterComponents:
-    def test_removes_triaged_alerts(self):
-        entry = _make_triage_entry(alert_key="badEncoding")
-        tf = TriageFilter([entry])
+    def test_removes_triaged_alert_by_type(self):
+        """Component ID matches artifact, triaged alert type matches local alert type."""
+        entries = [_make_triage_entry("hash-1")]
+        artifact_alerts = _make_artifact_alerts(
+            alerts=[_socket_alert("hash-1", "badEncoding")]
+        )
+        tf = TriageFilter(entries, artifact_alerts)
 
-        alert_triaged = _make_alert(title="badEncoding")
-        alert_kept = _make_alert(title="otherIssue")
-        comp = _make_component(alerts=[alert_triaged, alert_kept])
-
+        comp = _make_component(
+            comp_id=ARTIFACT_ID,
+            alerts=[
+                _make_local_alert(alert_type="badEncoding"),
+                _make_local_alert(title="kept", alert_type="otherIssue"),
+            ],
+        )
         filtered, count = tf.filter_components([comp])
         assert count == 1
         assert len(filtered) == 1
         assert len(filtered[0]["alerts"]) == 1
-        assert filtered[0]["alerts"][0]["title"] == "otherIssue"
+        assert filtered[0]["alerts"][0]["title"] == "kept"
 
     def test_removes_component_when_all_alerts_triaged(self):
-        entry = _make_triage_entry(alert_key="badEncoding")
-        tf = TriageFilter([entry])
+        entries = [_make_triage_entry("hash-1")]
+        artifact_alerts = _make_artifact_alerts(
+            alerts=[_socket_alert("hash-1", "badEncoding")]
+        )
+        tf = TriageFilter(entries, artifact_alerts)
 
-        comp = _make_component(alerts=[_make_alert(title="badEncoding")])
+        comp = _make_component(
+            comp_id=ARTIFACT_ID,
+            alerts=[_make_local_alert(alert_type="badEncoding")],
+        )
         filtered, count = tf.filter_components([comp])
         assert count == 1
         assert len(filtered) == 0
 
     def test_no_triage_entries_returns_original(self):
-        tf = TriageFilter([])
-        comp = _make_component(alerts=[_make_alert()])
+        tf = TriageFilter([], {})
+        comp = _make_component(alerts=[_make_local_alert()])
         filtered, count = tf.filter_components([comp])
         assert count == 0
-        assert filtered is [comp] or filtered == [comp]
+        assert filtered == [comp]
+
+    def test_component_id_mismatch_keeps_all_alerts(self):
+        """When local component ID doesn't match any artifact, nothing is filtered."""
+        entries = [_make_triage_entry("hash-1")]
+        artifact_alerts = _make_artifact_alerts(
+            artifact_id="different-artifact",
+            alerts=[_socket_alert("hash-1", "badEncoding")],
+        )
+        tf = TriageFilter(entries, artifact_alerts)
+
+        comp = _make_component(
+            comp_id="unrelated-comp-id",
+            alerts=[_make_local_alert(alert_type="badEncoding")],
+        )
+        filtered, count = tf.filter_components([comp])
+        assert count == 0
+        assert len(filtered) == 1
 
     def test_multiple_components_mixed(self):
-        entry = _make_triage_entry(alert_key="badEncoding")
-        tf = TriageFilter([entry])
+        entries = [_make_triage_entry("hash-1")]
+        artifact_alerts = _make_artifact_alerts(
+            artifact_id="art-a",
+            alerts=[_socket_alert("hash-1", "badEncoding")],
+        )
+        tf = TriageFilter(entries, artifact_alerts)
 
-        comp1 = _make_component(name="a", alerts=[_make_alert(title="badEncoding")])
-        comp2 = _make_component(name="b", alerts=[_make_alert(title="otherIssue")])
+        comp1 = _make_component(
+            comp_id="art-a", name="a",
+            alerts=[_make_local_alert(alert_type="badEncoding")],
+        )
+        comp2 = _make_component(
+            comp_id="art-b", name="b",
+            alerts=[_make_local_alert(alert_type="otherIssue")],
+        )
         comp3 = _make_component(
-            name="c",
+            comp_id="art-a", name="c",
             alerts=[
-                _make_alert(title="badEncoding"),
-                _make_alert(title="keepMe"),
+                _make_local_alert(alert_type="badEncoding"),
+                _make_local_alert(title="keepMe", alert_type="keepMe"),
             ],
         )
 
@@ -257,6 +297,153 @@ class TestFilterComponents:
         assert "a" not in names
         assert "b" in names
         assert "c" in names
+
+    def test_multiple_triaged_alert_types_on_same_artifact(self):
+        entries = [
+            _make_triage_entry("hash-1", state="ignore"),
+            _make_triage_entry("hash-2", state="monitor"),
+        ]
+        artifact_alerts = _make_artifact_alerts(
+            alerts=[
+                _socket_alert("hash-1", "badEncoding"),
+                _socket_alert("hash-2", "cve"),
+            ],
+        )
+        tf = TriageFilter(entries, artifact_alerts)
+
+        comp = _make_component(
+            comp_id=ARTIFACT_ID,
+            alerts=[
+                _make_local_alert(alert_type="badEncoding"),
+                _make_local_alert(alert_type="cve"),
+                _make_local_alert(title="safe", alert_type="safe"),
+            ],
+        )
+        filtered, count = tf.filter_components([comp])
+        assert count == 2
+        assert len(filtered[0]["alerts"]) == 1
+        assert filtered[0]["alerts"][0]["type"] == "safe"
+
+
+# ---------------------------------------------------------------------------
+# stream_full_scan_alerts
+# ---------------------------------------------------------------------------
+
+class TestStreamFullScanAlerts:
+    def test_parses_artifacts_and_alerts(self):
+        class FakeFullscansAPI:
+            def stream(self, org, scan_id, use_types=False):
+                return {
+                    "artifact-1": {
+                        "name": "lodash",
+                        "version": "4.17.21",
+                        "type": "npm",
+                        "namespace": None,
+                        "alerts": [
+                            {"key": "hash-a", "type": "badEncoding"},
+                            {"key": "hash-b", "type": "cve"},
+                        ],
+                    },
+                    "artifact-2": {
+                        "name": "express",
+                        "version": "4.18.0",
+                        "type": "npm",
+                        "namespace": None,
+                        "alerts": [],
+                    },
+                }
+
+        class FakeSDK:
+            fullscans = FakeFullscansAPI()
+
+        result = stream_full_scan_alerts(FakeSDK(), "my-org", "scan-123")
+        assert "artifact-1" in result
+        assert "artifact-2" not in result  # empty alerts filtered out
+        assert len(result["artifact-1"]) == 2
+        assert result["artifact-1"][0]["key"] == "hash-a"
+        assert result["artifact-1"][0]["_artifact"]["artifact_name"] == "lodash"
+
+    def test_skips_alerts_without_key(self):
+        class FakeFullscansAPI:
+            def stream(self, org, scan_id, use_types=False):
+                return {
+                    "art-1": {
+                        "name": "pkg",
+                        "version": "1.0.0",
+                        "type": "npm",
+                        "alerts": [
+                            {"key": "hash-a", "type": "badEncoding"},
+                            {"type": "noKey"},  # missing key
+                            {"key": "", "type": "emptyKey"},  # empty key
+                        ],
+                    },
+                }
+
+        class FakeSDK:
+            fullscans = FakeFullscansAPI()
+
+        result = stream_full_scan_alerts(FakeSDK(), "org", "scan")
+        assert len(result["art-1"]) == 1
+
+    def test_access_denied_returns_empty(self, caplog):
+        class APIAccessDenied(Exception):
+            pass
+
+        class FakeFullscansAPI:
+            def stream(self, org, scan_id, use_types=False):
+                raise APIAccessDenied("Forbidden")
+
+        class FakeSDK:
+            fullscans = FakeFullscansAPI()
+
+        with caplog.at_level(logging.DEBUG):
+            result = stream_full_scan_alerts(FakeSDK(), "org", "scan")
+
+        assert result == {}
+        info_msgs = [r for r in caplog.records if r.levelno == logging.INFO]
+        assert any("access denied" in m.message.lower() for m in info_msgs)
+
+    def test_api_error_returns_empty(self):
+        class FakeFullscansAPI:
+            def stream(self, org, scan_id, use_types=False):
+                raise RuntimeError("Network failure")
+
+        class FakeSDK:
+            fullscans = FakeFullscansAPI()
+
+        result = stream_full_scan_alerts(FakeSDK(), "org", "scan")
+        assert result == {}
+
+    def test_non_dict_response_returns_empty(self):
+        class FakeFullscansAPI:
+            def stream(self, org, scan_id, use_types=False):
+                return "unexpected string"
+
+        class FakeSDK:
+            fullscans = FakeFullscansAPI()
+
+        result = stream_full_scan_alerts(FakeSDK(), "org", "scan")
+        assert result == {}
+
+    def test_subpath_handling(self):
+        """Supports both camelCase and lowercase subpath field names."""
+        class FakeFullscansAPI:
+            def stream(self, org, scan_id, use_types=False):
+                return {
+                    "art-1": {
+                        "name": "pkg",
+                        "version": "1.0",
+                        "type": "npm",
+                        "subPath": "src/lib",
+                        "alerts": [{"key": "k1", "type": "t1"}],
+                    },
+                }
+
+        class FakeSDK:
+            fullscans = FakeFullscansAPI()
+
+        result = stream_full_scan_alerts(FakeSDK(), "org", "scan")
+        assert result["art-1"][0]["_artifact"]["artifact_subpath"] == "src/lib"
 
 
 # ---------------------------------------------------------------------------
@@ -323,14 +510,12 @@ class TestFetchTriageData:
         class FakeSDK:
             triage = FakeTriageAPI()
 
-        import logging
         with caplog.at_level(logging.DEBUG):
             entries = fetch_triage_data(FakeSDK(), "my-org")
 
         assert entries == []
         info_messages = [r for r in caplog.records if r.levelno == logging.INFO]
         assert any("access denied" in m.message.lower() for m in info_messages)
-        # Should NOT produce an ERROR-level record
         error_messages = [r for r in caplog.records if r.levelno >= logging.ERROR]
         assert not error_messages
 
@@ -385,7 +570,6 @@ class TestInjectTriageSummary:
         content = notifications["github_pr"][0]["content"]
         assert "3 finding(s) triaged" in content
         assert "Socket Dashboard" in content
-        # Summary line should appear after the # heading
         lines = content.split("\n")
         heading_idx = next(i for i, l in enumerate(lines) if l.strip().startswith("# "))
         summary_idx = next(i for i, l in enumerate(lines) if "triaged" in l)
