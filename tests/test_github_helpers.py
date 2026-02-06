@@ -1,7 +1,7 @@
 """Unit tests for GitHub PR comment helper functions."""
 
 import pytest
-from socket_basics.core.connector.socket_tier1 import github_helpers
+from socket_basics.core.notification import github_pr_helpers as github_helpers
 
 
 class TestDetectLanguageFromFilename:
