@@ -369,10 +369,10 @@ class SecurityScanner:
     def apply_triage_filter(self, results: Dict[str, Any]) -> Dict[str, Any]:
         """Filter out triaged alerts and regenerate notifications.
 
-        Fetches triage entries from the Socket API, removes alerts with
-        state ``ignore`` or ``monitor``, regenerates connector notifications
-        for the remaining components, and injects a triage summary line into
-        github_pr notification content.
+        Streams the full scan from the Socket API to obtain alert keys,
+        cross-references them with triage entries, removes suppressed
+        alerts from local components, regenerates connector notifications,
+        and injects a triage summary into github_pr content.
 
         Args:
             results: Current scan results dict (components + notifications).
@@ -382,9 +382,14 @@ class SecurityScanner:
         """
         socket_api_key = self.config.get('socket_api_key')
         socket_org = self.config.get('socket_org')
+        full_scan_id = results.get('full_scan_id')
 
         if not socket_api_key or not socket_org:
             logger.debug("Skipping triage filter: missing socket_api_key or socket_org")
+            return results
+
+        if not full_scan_id:
+            logger.debug("Skipping triage filter: no full_scan_id in results")
             return results
 
         # Import SDK and triage helpers
@@ -395,18 +400,34 @@ class SecurityScanner:
             return results
 
         try:
-            from .core.triage import TriageFilter, fetch_triage_data
+            from .core.triage import TriageFilter, fetch_triage_data, stream_full_scan_alerts
         except ImportError:
-            from socket_basics.core.triage import TriageFilter, fetch_triage_data
+            from socket_basics.core.triage import TriageFilter, fetch_triage_data, stream_full_scan_alerts
 
         sdk = socketdev(token=socket_api_key, timeout=100)
-        triage_entries = fetch_triage_data(sdk, socket_org)
 
+        # Fetch triage entries and stream full scan alert keys in sequence
+        triage_entries = fetch_triage_data(sdk, socket_org)
         if not triage_entries:
-            logger.debug("No triage entries found; skipping filter")
+            logger.info("No triage entries found; skipping filter")
             return results
 
-        triage_filter = TriageFilter(triage_entries)
+        suppressed_count = sum(
+            1 for e in triage_entries
+            if (e.get("state") or "").lower() in ("ignore", "monitor")
+        )
+        logger.info(
+            "Fetched %d triage entries (%d with suppressed state)",
+            len(triage_entries),
+            suppressed_count,
+        )
+
+        artifact_alerts = stream_full_scan_alerts(sdk, socket_org, full_scan_id)
+        if not artifact_alerts:
+            logger.info("No alert keys returned from full scan stream; skipping filter")
+            return results
+
+        triage_filter = TriageFilter(triage_entries, artifact_alerts)
         original_components = results.get('components', [])
         original_alert_count = sum(
             len(c.get('alerts', [])) for c in original_components
