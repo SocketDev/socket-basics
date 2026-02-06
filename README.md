@@ -74,7 +74,15 @@ Socket Basics can also run locally or in other CI/CD environments:
 
 ## 🎨 Enhanced PR Comments
 
-Socket Basics delivers **beautifully formatted, actionable PR comments** with smart defaults that work out of the box:
+Socket Basics delivers **beautifully formatted, actionable PR comments** with smart defaults that work out of the box.
+
+### Universal Enhancements
+
+These features work across **all scanner types** for a consistent experience:
+- ✅ Socket Tier 1 (Reachability Analysis)
+- ✅ SAST (OpenGrep/Semgrep)
+- ✅ Container Scanning (Trivy)
+- ✅ Secret Detection (TruffleHog)
 
 ### What You Get (Enabled by Default)
 
