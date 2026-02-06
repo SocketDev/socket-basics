@@ -1,6 +1,6 @@
 [project]
 name = "socket_basics"
-version = "1.0.27"
+version = "1.0.28"
 description = "Socket Basics with integrated SAST, secret scanning, and container analysis"
 readme = "README.md"
 requires-python = ">=3.10"
