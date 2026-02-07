@@ -537,6 +537,10 @@ socket-basics \
   --verbose
 ```
 
+### CI/CD Integration
+
+> **Using GitHub Actions?** Socket Basics has first-class GitHub Actions support with automatic PR comments, labels, and more — no local installation needed. See the [Quick Start](../README.md#-quick-start---github-actions) or the [GitHub Actions Guide](github-action.md).
+
 ### Continuous Scanning
 
 Watch for file changes and re-scan:

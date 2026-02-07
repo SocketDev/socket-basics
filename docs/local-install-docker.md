@@ -335,6 +335,10 @@ done
 
 ### CI/CD Integration
 
+> **Using GitHub Actions?** Socket Basics has first-class GitHub Actions support with automatic PR comments, labels, and more — no Docker setup needed. See the [Quick Start](../README.md#-quick-start---github-actions) or the [GitHub Actions Guide](github-action.md).
+
+For other CI/CD platforms, use the Docker image directly:
+
 **Example: Jenkins**
 
 ```groovy
