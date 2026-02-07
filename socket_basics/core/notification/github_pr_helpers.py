@@ -197,6 +197,8 @@ def format_file_location_link(
 ) -> str:
     """Format a file location as plain text or clickable markdown link.
 
+    Uses common file:line convention (e.g., "file.js:72" or "file.js:72-85")
+
     Args:
         filepath: File path
         line_start: Starting line number
@@ -208,26 +210,27 @@ def format_file_location_link(
     Returns:
         Formatted string (plain or markdown link)
     """
-    # Build display text
-    location_text = f"`{filepath}`"
+    # Build display text using file:line convention
     if line_start is not None:
         if line_end is not None and line_end != line_start:
-            location_text += f" **Lines {line_start}-{line_end}**"
+            location_text = f"`{filepath}:{line_start}-{line_end}`"
         else:
-            location_text += f" **Line {line_start}**"
+            location_text = f"`{filepath}:{line_start}`"
+    else:
+        location_text = f"`{filepath}`"
 
     # Add link if enabled and metadata available
     if enable_links and repository and commit_hash:
         url = build_github_file_url(repository, commit_hash, filepath, line_start, line_end)
         if url:
-            # Make the filepath clickable
+            # Make the entire location clickable (no backticks inside link text)
             if line_start is not None:
                 if line_end is not None and line_end != line_start:
-                    return f"[`{filepath}` Lines {line_start}-{line_end}]({url})"
+                    return f"[{filepath}:{line_start}-{line_end}]({url})"
                 else:
-                    return f"[`{filepath}` Line {line_start}]({url})"
+                    return f"[{filepath}:{line_start}]({url})"
             else:
-                return f"[`{filepath}`]({url})"
+                return f"[{filepath}]({url})"
 
     return location_text
 
@@ -461,3 +464,61 @@ def format_scan_link_section(full_scan_url: Optional[str]) -> str:
         return ''
 
     return f"\n\n🔗 **[View Full Socket Scan Report]({full_scan_url})**\n\n---\n"
+
+
+# ============================================================================
+# CVE/Vulnerability Formatting
+# ============================================================================
+
+def format_cve_link(cve_id: str) -> str:
+    """Format a CVE ID as a clickable link to NVD.
+
+    Args:
+        cve_id: CVE identifier (e.g., "CVE-2021-23337")
+
+    Returns:
+        Markdown link to NVD, or plain text if not a valid CVE ID
+    """
+    if not cve_id:
+        return ''
+
+    # Check if it's a CVE ID (format: CVE-YYYY-NNNNN)
+    if cve_id.upper().startswith('CVE-'):
+        return f"[{cve_id}](https://nvd.nist.gov/vuln/detail/{cve_id})"
+
+    # Not a CVE, return as-is
+    return cve_id
+
+
+def format_vulnerability_header(
+    vuln_id: str,
+    severity: str,
+    cvss_score: Optional[float] = None,
+    emoji: Optional[str] = None
+) -> str:
+    """Format a vulnerability header with severity and optional CVSS score.
+
+    Args:
+        vuln_id: Vulnerability ID (CVE, GHSA, etc.)
+        severity: Severity level (critical, high, medium, low)
+        cvss_score: Optional CVSS score (0.0-10.0)
+        emoji: Optional severity emoji (will use SEVERITY_EMOJI if not provided)
+
+    Returns:
+        Formatted header string
+    """
+    # Get emoji if not provided
+    if not emoji:
+        emoji = SEVERITY_EMOJI.get(severity.lower(), '⚪')
+
+    # Format CVE as link if applicable
+    vuln_display = format_cve_link(vuln_id) if vuln_id else 'Unknown'
+
+    # Build header
+    header = f"{emoji} **{vuln_display}** • {severity.upper()}"
+
+    # Add CVSS score if available
+    if cvss_score is not None:
+        header += f" (CVSS {cvss_score})"
+
+    return header
