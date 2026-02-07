@@ -377,8 +377,65 @@ class GithubPRNotifier(BaseNotifier):
             logger.error('GithubPRNotifier: exception posting comment: %s', e)
             return False
 
+    def _ensure_label_exists_with_color(self, label_name: str, color: str, description: str = '') -> bool:
+        """Ensure a label exists in the repository with the specified color.
+
+        If the label doesn't exist, it will be created with the given color.
+        If it already exists, we leave it alone (don't update existing labels).
+
+        Args:
+            label_name: Name of the label
+            color: Hex color code (without #), e.g., 'D73A4A'
+            description: Optional description for the label
+
+        Returns:
+            True if label exists/was created, False otherwise
+        """
+        if not self.repository:
+            return False
+
+        try:
+            import requests
+            headers = {
+                'Authorization': f'token {self.token}',
+                'Accept': 'application/vnd.github.v3+json'
+            }
+
+            # Check if label exists
+            check_url = f"{self.api_base}/repos/{self.repository}/labels/{label_name}"
+            resp = requests.get(check_url, headers=headers, timeout=10)
+
+            if resp.status_code == 200:
+                # Label already exists, don't modify it
+                logger.debug('GithubPRNotifier: label "%s" already exists', label_name)
+                return True
+            elif resp.status_code == 404:
+                # Label doesn't exist, create it
+                create_url = f"{self.api_base}/repos/{self.repository}/labels"
+                payload = {
+                    'name': label_name,
+                    'color': color,
+                    'description': description
+                }
+
+                create_resp = requests.post(create_url, headers=headers, json=payload, timeout=10)
+                if create_resp.status_code == 201:
+                    logger.info('GithubPRNotifier: created label "%s" with color #%s', label_name, color)
+                    return True
+                else:
+                    logger.warning('GithubPRNotifier: failed to create label "%s": %s',
+                                 label_name, create_resp.status_code)
+                    return False
+            else:
+                logger.warning('GithubPRNotifier: unexpected response checking label: %s', resp.status_code)
+                return False
+
+        except Exception as e:
+            logger.debug('GithubPRNotifier: exception ensuring label exists: %s', e)
+            return False
+
     def _add_pr_labels(self, pr_number: int, labels: List[str]) -> bool:
-        """Add labels to a PR.
+        """Add labels to a PR, ensuring they exist with appropriate colors.
 
         Args:
             pr_number: PR number
@@ -389,6 +446,34 @@ class GithubPRNotifier(BaseNotifier):
         """
         if not self.repository or not labels:
             return False
+
+        # Color mapping for severity labels (matching emoji colors)
+        label_colors = {
+            'security: critical': ('D73A4A', 'Critical security vulnerabilities'),
+            'security: high': ('D93F0B', 'High severity security issues'),
+            'security: medium': ('FBCA04', 'Medium severity security issues'),
+            'security: low': ('E4E4E4', 'Low severity security issues'),
+        }
+
+        # Ensure labels exist with correct colors
+        for label in labels:
+            # Get color and description if this is a known severity label
+            color_info = label_colors.get(label)
+            if color_info:
+                color, description = color_info
+                self._ensure_label_exists_with_color(label, color, description)
+            # For custom label names, use a default color
+            elif ':' in label:
+                # Try to infer severity from label name
+                label_lower = label.lower()
+                if 'critical' in label_lower:
+                    self._ensure_label_exists_with_color(label, 'D73A4A', 'Critical security vulnerabilities')
+                elif 'high' in label_lower:
+                    self._ensure_label_exists_with_color(label, 'D93F0B', 'High severity security issues')
+                elif 'medium' in label_lower:
+                    self._ensure_label_exists_with_color(label, 'FBCA04', 'Medium severity security issues')
+                elif 'low' in label_lower:
+                    self._ensure_label_exists_with_color(label, 'E4E4E4', 'Low severity security issues')
 
         try:
             import requests
