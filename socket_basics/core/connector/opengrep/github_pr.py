@@ -215,24 +215,16 @@ def format_notifications(groups: Dict[str, List[Dict[str, Any]]], config=None) -
             
             content = '\n'.join(content_lines)
         
-        # Build title
-        title_parts = [display_name]
-        if config:
-            if config.repo:
-                title_parts.append(config.repo)
-            if config.branch:
-                title_parts.append(config.branch)
-            if config.commit_hash:
-                title_parts.append(config.commit_hash[:8])  # Short hash
-        
-        title = " - ".join(title_parts)
+        # Build title - just scanner name (repo/branch context already visible in PR)
+        title = display_name
 
         # Add full scan link at top if available (using shared helper)
         scan_link_section = helpers.format_scan_link_section(full_scan_url)
 
         # Wrap content with HTML comment markers for section updates
         wrapped_content = f"""<!-- {subtype} start -->
-# {title}
+## {title}
+
 {scan_link_section}
 {content}
 <!-- {subtype} end -->"""

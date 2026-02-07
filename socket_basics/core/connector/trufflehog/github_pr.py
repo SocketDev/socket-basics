@@ -77,29 +77,20 @@ def format_notifications(mapping: Dict[str, Any], config=None) -> List[Dict[str,
         
         content = '\n'.join([header_row, separator_row] + content_rows)
     
-    # Build title with repo/branch/commit info from config
-    title_parts = ["Socket Security Results"]
-    if config:
-        if config.repo:
-            title_parts.append(config.repo)
-        if config.branch:
-            title_parts.append(config.branch)
-        if config.commit_hash:
-            title_parts.append(config.commit_hash)
-    
-    title = " - ".join(title_parts)
-    
+    # Build title - just scanner name (repo/branch context already visible in PR)
+    title = "Socket Secret Scanning"
+
     # Count total findings for summary
     total_findings = len(rows)
-    
+
     # Add summary section with scanner findings
-    summary_content = f"""## Summary
+    summary_content = f"""### Summary
 
 | Scanner | Findings |
 |---------|----------|
 | TruffleHog Secrets | {total_findings} |
 
-## Details
+### Details
 
 {content}"""
 
@@ -108,7 +99,8 @@ def format_notifications(mapping: Dict[str, Any], config=None) -> List[Dict[str,
 
     # Wrap content with HTML comment markers for section updates
     wrapped_content = f"""<!-- trufflehog-secrets start -->
-# {title}
+## {title}
+
 {scan_link_section}
 {summary_content}
 <!-- trufflehog-secrets end -->"""

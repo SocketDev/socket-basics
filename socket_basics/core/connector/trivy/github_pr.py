@@ -132,17 +132,25 @@ def format_notifications(mapping: Dict[str, Any], item_name: str = "Unknown", sc
                 cve_id = str(props.get('vulnerabilityId', ''))
                 severity = str(alert.get('severity', '')).lower()
                 description = str(alert.get('description', 'No description available'))
-                
+
+                # Get CVSS score if available
+                cvss_score = None
+                if 'cvssScore' in props:
+                    try:
+                        cvss_score = float(props['cvssScore'])
+                    except (ValueError, TypeError):
+                        pass
+
                 # Build package identifier
                 if comp_version:
                     package = f"pkg:{ecosystem}/{comp_name}@{comp_version}"
                 else:
                     package = f"pkg:{ecosystem}/{comp_name}"
-                
+
                 # Get additional metadata
                 fixed_version = str(props.get('fixedVersion', 'Not available'))
                 installed_version = comp_version or 'Unknown'
-                
+
                 vuln_details.append({
                     'cve_id': cve_id,
                     'severity': severity,
@@ -152,7 +160,8 @@ def format_notifications(mapping: Dict[str, Any], item_name: str = "Unknown", sc
                     'ecosystem': ecosystem,
                     'installed_version': installed_version,
                     'fixed_version': fixed_version,
-                    'description': description
+                    'description': description,
+                    'cvss_score': cvss_score
                 })
         
         # Sort by severity
@@ -174,17 +183,25 @@ def format_notifications(mapping: Dict[str, Any], item_name: str = "Unknown", sc
                 cve_id = str(props.get('vulnerabilityId', ''))
                 severity = str(alert.get('severity', '')).lower()
                 description = str(alert.get('description', 'No description available'))
-                
+
+                # Get CVSS score if available
+                cvss_score = None
+                if 'cvssScore' in props:
+                    try:
+                        cvss_score = float(props['cvssScore'])
+                    except (ValueError, TypeError):
+                        pass
+
                 # Build package identifier
                 if comp_version:
                     package = f"pkg:{ecosystem}/{comp_name}@{comp_version}"
                 else:
                     package = f"pkg:{ecosystem}/{comp_name}"
-                
+
                 # Get additional metadata
                 fixed_version = str(props.get('fixedVersion', 'Not available'))
                 installed_version = comp_version or 'Unknown'
-                
+
                 vuln_details.append({
                     'cve_id': cve_id,
                     'severity': severity,
@@ -194,7 +211,8 @@ def format_notifications(mapping: Dict[str, Any], item_name: str = "Unknown", sc
                     'ecosystem': ecosystem,
                     'installed_version': installed_version,
                     'fixed_version': fixed_version,
-                    'description': description
+                    'description': description,
+                    'cvss_score': cvss_score
                 })
         
         # Sort by severity
@@ -222,15 +240,17 @@ def format_notifications(mapping: Dict[str, Any], item_name: str = "Unknown", sc
         # Panel format for vulnerability scanning
         panels = []
         for vuln in rows:
-            # Use shared severity emoji
-            icon = severity_emoji.get(vuln['severity'], '⚪')
-            severity_label = vuln['severity'].upper()
-            
+            # Create vulnerability header with CVE link and CVSS score
+            vuln_header = helpers.format_vulnerability_header(
+                vuln['cve_id'],
+                vuln['severity'],
+                vuln.get('cvss_score')
+            )
+
             # Create expandable panel for each CVE
             panel = f"""<details>
-<summary>{icon} <b>{vuln['cve_id']}</b></summary>
+<summary>{vuln_header}</summary>
 
-**Severity:** {severity_label}
 
 **Package:** `{vuln['package']}`
 
@@ -270,28 +290,26 @@ def format_notifications(mapping: Dict[str, Any], item_name: str = "Unknown", sc
     
     # Build title based on scan type
     if scan_type == 'vuln':
-        title_base = "Socket CVE Scanning Results"
+        title = "Socket CVE Scanning"
         scanner_name = "Trivy Vuln Scanning"
     elif scan_type == 'dockerfile':
-        title_base = "Socket Dockerfile Results"
+        title = "Socket Dockerfile Scan"
         scanner_name = "Trivy Dockerfile"
     else:  # image
-        title_base = "Socket Image Scanning Results"
+        title = "Socket Container Scan"
         scanner_name = "Trivy Container"
-    
-    title = f"{title_base}: {item_name}"
 
     # Count total findings for summary
     total_findings = len(rows)
 
     # Add summary section with scanner findings
-    summary_content = f"""## Summary
+    summary_content = f"""### Summary
 
 | Scanner | Findings |
 |---------|----------|
 | {scanner_name} | {total_findings} |
 
-## Details
+### Details
 
 {content}"""
 
@@ -300,7 +318,8 @@ def format_notifications(mapping: Dict[str, Any], item_name: str = "Unknown", sc
 
     # Wrap content with HTML comment markers for section updates
     wrapped_content = f"""<!-- trivy-container start -->
-# {title}
+## {title}
+
 {scan_link_section}
 {summary_content}
 <!-- trivy-container end -->"""

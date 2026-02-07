@@ -57,11 +57,19 @@ def format_notifications(components_list: List[Dict[str, Any]], config=None) -> 
             cve_id = str(props.get('ghsaId') or props.get('cveId') or a.get('title') or '')
             severity = str(a.get('severity') or props.get('severity') or '').lower()
             reachability = str(props.get('reachability') or 'unknown').lower()
-            
+
+            # Get CVSS score if available
+            cvss_score = None
+            if 'cvssScore' in props:
+                try:
+                    cvss_score = float(props['cvssScore'])
+                except (ValueError, TypeError):
+                    pass
+
             # Count by severity
             if severity in severity_counts:
                 severity_counts[severity] += 1
-            
+
             # Get trace data
             trace_raw = props.get('trace') or ''
             trace_str = ''
@@ -69,17 +77,18 @@ def format_notifications(components_list: List[Dict[str, Any]], config=None) -> 
                 trace_str = '\n'.join(str(x) for x in trace_raw)
             elif isinstance(trace_raw, str):
                 trace_str = trace_raw
-            
+
             # Truncate long traces
             if trace_str and len(trace_str) > 500:
                 trace_str = trace_str[:500] + '\n...'
-            
+
             finding = {
                 'cve_id': cve_id,
                 'severity': severity,
                 'severity_order': severity_order.get(severity, 4),
                 'trace': trace_str,
-                'rule_name': a.get('title') or cve_id  # Add rule name
+                'rule_name': a.get('title') or cve_id,
+                'cvss_score': cvss_score
             }
             
             # Group by reachability
@@ -158,10 +167,15 @@ def format_notifications(components_list: List[Dict[str, Any]], config=None) -> 
                 content_lines.append("**Reachable**")
                 content_lines.append("")
                 for finding in purl_groups[purl]['reachable']:
-                    emoji = severity_emoji.get(finding['severity'], '⚪')
-                    content_lines.append(f"{emoji} **{finding['cve_id']}**: *{finding['severity'].upper()}*")
+                    # Use new vulnerability header format with CVE link and CVSS score
+                    header = helpers.format_vulnerability_header(
+                        finding['cve_id'],
+                        finding['severity'],
+                        finding.get('cvss_score')
+                    )
+                    content_lines.append(header)
 
-                    # Add rule name if enabled
+                    # Add rule name if enabled and different from CVE ID
                     if show_rule_names:
                         rule_name = finding.get('rule_name', '')
                         if rule_name and rule_name != finding['cve_id']:
@@ -196,10 +210,15 @@ def format_notifications(components_list: List[Dict[str, Any]], config=None) -> 
                 content_lines.append("**Unknown**")
                 content_lines.append("")
                 for finding in purl_groups[purl]['unknown']:
-                    emoji = severity_emoji.get(finding['severity'], '⚪')
-                    content_lines.append(f"{emoji} **{finding['cve_id']}**: *{finding['severity'].upper()}*")
+                    # Use new vulnerability header format
+                    header = helpers.format_vulnerability_header(
+                        finding['cve_id'],
+                        finding['severity'],
+                        finding.get('cvss_score')
+                    )
+                    content_lines.append(header)
 
-                    # Add rule name if enabled
+                    # Add rule name if enabled and different from CVE ID
                     if show_rule_names:
                         rule_name = finding.get('rule_name', '')
                         if rule_name and rule_name != finding['cve_id']:
@@ -211,10 +230,15 @@ def format_notifications(components_list: List[Dict[str, Any]], config=None) -> 
                 content_lines.append("**Error**")
                 content_lines.append("")
                 for finding in purl_groups[purl]['error']:
-                    emoji = severity_emoji.get(finding['severity'], '⚪')
-                    content_lines.append(f"{emoji} **{finding['cve_id']}**: *{finding['severity'].upper()}*")
+                    # Use new vulnerability header format
+                    header = helpers.format_vulnerability_header(
+                        finding['cve_id'],
+                        finding['severity'],
+                        finding.get('cvss_score')
+                    )
+                    content_lines.append(header)
 
-                    # Add rule name if enabled
+                    # Add rule name if enabled and different from CVE ID
                     if show_rule_names:
                         rule_name = finding.get('rule_name', '')
                         if rule_name and rule_name != finding['cve_id']:
@@ -226,10 +250,15 @@ def format_notifications(components_list: List[Dict[str, Any]], config=None) -> 
                 content_lines.append("**Unreachable**")
                 content_lines.append("")
                 for finding in purl_groups[purl]['unreachable']:
-                    emoji = severity_emoji.get(finding['severity'], '⚪')
-                    content_lines.append(f"{emoji} **{finding['cve_id']}**: *{finding['severity'].upper()}*")
+                    # Use new vulnerability header format
+                    header = helpers.format_vulnerability_header(
+                        finding['cve_id'],
+                        finding['severity'],
+                        finding.get('cvss_score')
+                    )
+                    content_lines.append(header)
 
-                    # Add rule name if enabled
+                    # Add rule name if enabled and different from CVE ID
                     if show_rule_names:
                         rule_name = finding.get('rule_name', '')
                         if rule_name and rule_name != finding['cve_id']:
@@ -243,18 +272,9 @@ def format_notifications(components_list: List[Dict[str, Any]], config=None) -> 
         
         content = '\n'.join(content_lines)
     
-    # Build title with repo/branch/commit info from config
-    title_parts = ["Socket Security Tier 1 Results"]
-    if config:
-        if config.repo:
-            title_parts.append(config.repo)
-        if config.branch:
-            title_parts.append(config.branch)
-        if config.commit_hash:
-            title_parts.append(config.commit_hash)
-    
-    title = " - ".join(title_parts)
-    
+    # Build title - just scanner name (repo/branch context already visible in PR)
+    title = "Socket Security Tier 1"
+
     # Count total findings
     total_findings = sum(severity_counts.values())
 
@@ -266,7 +286,8 @@ def format_notifications(components_list: List[Dict[str, Any]], config=None) -> 
 
     # Wrap content with HTML comment markers for section updates
     wrapped_content = f"""<!-- socket-tier1 start -->
-# {title}
+## {title}
+
 {scan_link_section}
 {summary_content}
 <!-- socket-tier1 end -->"""
