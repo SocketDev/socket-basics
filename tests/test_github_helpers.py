@@ -327,3 +327,102 @@ class TestExtractRuleName:
             }
         }
         assert github_helpers.extract_rule_name(alert) == ''
+
+
+class TestFormatCveLink:
+    """Tests for format_cve_link function."""
+
+    def test_valid_cve_id(self):
+        result = github_helpers.format_cve_link('CVE-2021-23337')
+        assert result == '[CVE-2021-23337](https://nvd.nist.gov/vuln/detail/CVE-2021-23337)'
+
+    def test_cve_id_lowercase(self):
+        result = github_helpers.format_cve_link('cve-2021-44228')
+        assert result == '[cve-2021-44228](https://nvd.nist.gov/vuln/detail/cve-2021-44228)'
+
+    def test_non_cve_id(self):
+        result = github_helpers.format_cve_link('GHSA-abcd-1234-efgh')
+        assert result == 'GHSA-abcd-1234-efgh'
+
+    def test_empty_string(self):
+        result = github_helpers.format_cve_link('')
+        assert result == ''
+
+    def test_none_value(self):
+        result = github_helpers.format_cve_link(None)
+        assert result == ''
+
+
+class TestFormatVulnerabilityHeader:
+    """Tests for format_vulnerability_header function."""
+
+    def test_with_cvss_score(self):
+        result = github_helpers.format_vulnerability_header(
+            'CVE-2021-23337',
+            'critical',
+            cvss_score=9.8
+        )
+        assert '🔴' in result
+        assert '[CVE-2021-23337](https://nvd.nist.gov/vuln/detail/CVE-2021-23337)' in result
+        assert 'CRITICAL' in result
+        assert 'CVSS 9.8' in result
+
+    def test_without_cvss_score(self):
+        result = github_helpers.format_vulnerability_header(
+            'CVE-2021-23338',
+            'high'
+        )
+        assert '🟠' in result
+        assert '[CVE-2021-23338](https://nvd.nist.gov/vuln/detail/CVE-2021-23338)' in result
+        assert 'HIGH' in result
+        assert 'CVSS' not in result
+
+    def test_with_custom_emoji(self):
+        result = github_helpers.format_vulnerability_header(
+            'CVE-2021-23337',
+            'critical',
+            cvss_score=9.8,
+            emoji='⚠️'
+        )
+        assert '⚠️' in result
+        assert '🔴' not in result
+
+    def test_non_cve_vulnerability(self):
+        result = github_helpers.format_vulnerability_header(
+            'GHSA-abcd-1234-efgh',
+            'high',
+            cvss_score=7.5
+        )
+        assert '🟠' in result
+        assert 'GHSA-abcd-1234-efgh' in result
+        assert 'https://nvd.nist.gov' not in result
+        assert 'HIGH' in result
+        assert 'CVSS 7.5' in result
+
+    def test_medium_severity(self):
+        result = github_helpers.format_vulnerability_header(
+            'CVE-2021-12345',
+            'medium',
+            cvss_score=5.0
+        )
+        assert '🟡' in result
+        assert 'MEDIUM' in result
+        assert 'CVSS 5.0' in result
+
+    def test_low_severity(self):
+        result = github_helpers.format_vulnerability_header(
+            'CVE-2021-67890',
+            'low'
+        )
+        assert '⚪' in result
+        assert 'LOW' in result
+
+    def test_empty_vuln_id(self):
+        result = github_helpers.format_vulnerability_header(
+            '',
+            'critical',
+            cvss_score=10.0
+        )
+        assert 'Unknown' in result
+        assert 'CRITICAL' in result
+        assert 'CVSS 10.0' in result
