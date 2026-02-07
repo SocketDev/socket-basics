@@ -28,6 +28,59 @@ SEVERITY_EMOJI = {
     'low': '⚪'
 }
 
+# 32px logo for PR comment headers (PNG file stored in assets/)
+# TODO: Switch back to main branch URL once assets/socket-logo.png before merging.
+# Using feature branch URL for now so the logo renders during PR testing.
+# SOCKET_LOGO_URL = 'https://raw.githubusercontent.com/SocketDev/socket-basics/main/assets/socket-logo.png'
+SOCKET_LOGO_URL = 'https://raw.githubusercontent.com/SocketDev/socket-basics/lelia/pr-comment-enhancements/assets/socket-logo.png'
+SOCKET_LOGO_IMG = f'<img src="{SOCKET_LOGO_URL}" alt="" width="24" height="24">'
+
+
+def format_title_with_logo(title: str) -> str:
+    """Format an H2 title with the Socket logo inline.
+
+    Args:
+        title: The title text (e.g., "Socket SAST JavaScript")
+
+    Returns:
+        Markdown H2 header with inline logo image
+    """
+    return f"## {SOCKET_LOGO_IMG} {title}"
+
+
+def wrap_pr_comment_section(
+    section_id: str,
+    title: str,
+    body: str,
+    full_scan_url: Optional[str] = None
+) -> str:
+    """Wrap scanner output in the standard PR comment structure.
+
+    Every scanner section gets the same wrapper: HTML comment markers for
+    idempotent updates, a branded H2 title with logo, an optional scan
+    report link, and the scanner-specific body content.
+
+    Args:
+        section_id: Unique identifier for this section (e.g., "socket-tier1",
+                    "trivy-container", "sast-javascript"). Used in HTML comment
+                    markers so the notifier can find and update existing sections.
+        title: Display title (e.g., "Socket SAST JavaScript")
+        body: Scanner-specific markdown content (summary tables, findings, etc.)
+        full_scan_url: Optional URL to full scan report
+
+    Returns:
+        Complete markdown section ready to post as a PR comment
+    """
+    title_header = format_title_with_logo(title)
+    scan_link = format_scan_link_section(full_scan_url)
+
+    return f"""<!-- {section_id} start -->
+{title_header}
+
+{scan_link}
+{body}
+<!-- {section_id} end -->"""
+
 
 # ============================================================================
 # Configuration Helper
