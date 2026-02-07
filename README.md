@@ -11,10 +11,16 @@ Socket Basics orchestrates multiple security scanners, normalizes their outputs 
 The easiest way to use Socket Basics is through GitHub Actions. Add it to your workflow in minutes:
 
 ```yaml
-name: Security Scan
+# .github/workflows/socket.yml
+
+name: ⚡️ Security Scan
+
 on:
   pull_request:
     types: [opened, synchronize, reopened]
+
+permissions:
+  contents: read
 
 jobs:
   security-scan:
@@ -22,11 +28,11 @@ jobs:
       issues: write
       contents: read
       pull-requests: write
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
     steps:
-      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
-      
-      - name: Run Socket Basics
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+      - name: ⚡️ Run Socket Basics
         uses: SocketDev/socket-basics@1.0.28
         env:
           GITHUB_PR_NUMBER: ${{ github.event.pull_request.number || github.event.issue.number }}
@@ -74,139 +80,24 @@ Socket Basics can also run locally or in other CI/CD environments:
 
 ## 🎨 Enhanced PR Comments
 
-Socket Basics delivers **beautifully formatted, actionable PR comments** with smart defaults that work out of the box.
-
-### Universal Enhancements
-
-These features work across **all scanner types** for a consistent experience:
-- ✅ Socket Tier 1 (Reachability Analysis)
-- ✅ SAST (OpenGrep/Semgrep)
-- ✅ Container Scanning (Trivy)
-- ✅ Secret Detection (TruffleHog)
-
-### What You Get (Enabled by Default)
+Socket Basics delivers **beautifully formatted, actionable PR comments** with smart defaults — all enabled by default, zero configuration needed.
 
 - 🔗 **Clickable File Links** — Jump directly to the vulnerable code in GitHub
-- 📋 **Collapsible Sections** — Critical findings auto-expand, others collapse for easy scanning
-- 🎨 **Syntax Highlighting** — Language-aware code blocks for better readability
-- 🏷️ **Explicit Rule Names** — Clear identification of which security rule was triggered
-- 🚀 **Quick Access Links** — Full scan report link prominently displayed at the top
-- 🏷️ **Auto-Labels** — PRs automatically tagged with severity-based labels (e.g., `security: critical`)
+- 📋 **Collapsible Sections** — Critical findings auto-expand, others collapse
+- 🎨 **Syntax Highlighting** — Language-aware code blocks
+- 🏷️ **Auto-Labels** — PRs tagged with severity-based labels (e.g., `security: critical`)
+- 🔴 **CVE Links & CVSS Scores** — One-click access to NVD with risk context
+- 🚀 **Full Scan Link** — Report link prominently displayed at the top
 
-### Using the Defaults
+Every feature is customizable via GitHub Actions inputs, CLI flags, or environment variables.
 
-**Zero configuration needed!** Just use the standard GitHub Actions setup:
-
-```yaml
-- uses: SocketDev/socket-basics@1.0.26
-  env:
-    GITHUB_PR_NUMBER: ${{ github.event.pull_request.number || github.event.issue.number }}
-  with:
-    github_token: ${{ secrets.GITHUB_TOKEN }}
-    socket_security_api_key: ${{ secrets.SOCKET_SECURITY_API_KEY }}
-```
-
-All PR comment enhancements are **enabled by default** with sensible settings:
-- Critical findings: **Auto-expanded** ✅
-- High/Medium/Low findings: **Collapsed** (click to expand)
-- File links: **Clickable** with line numbers
-- Code blocks: **Syntax highlighted** based on file type
-- Labels: **`security: critical`**, **`security: high`**, **`security: medium`**
-
-### Customizing PR Comments
-
-Need different behavior? Every feature can be customized:
-
-#### Example: Disable Specific Features
-
-```yaml
-- uses: SocketDev/socket-basics@1.0.26
-  env:
-    GITHUB_PR_NUMBER: ${{ github.event.pull_request.number || github.event.issue.number }}
-  with:
-    github_token: ${{ secrets.GITHUB_TOKEN }}
-    socket_security_api_key: ${{ secrets.SOCKET_SECURITY_API_KEY }}
-    # Customize PR comment behavior
-    pr_comment_links_enabled: 'false'        # Disable clickable links
-    pr_comment_collapse_enabled: 'false'     # Show all findings expanded
-    pr_labels_enabled: 'false'               # Don't add labels to PRs
-```
-
-#### Example: Custom Label Names
-
-```yaml
-- uses: SocketDev/socket-basics@1.0.26
-  env:
-    GITHUB_PR_NUMBER: ${{ github.event.pull_request.number || github.event.issue.number }}
-  with:
-    github_token: ${{ secrets.GITHUB_TOKEN }}
-    socket_security_api_key: ${{ secrets.SOCKET_SECURITY_API_KEY }}
-    # Use custom label names
-    pr_label_critical: 'socket: critical'    # Instead of 'security: critical'
-    pr_label_high: 'socket: high'            # Instead of 'security: high'
-    pr_label_medium: 'socket: medium'        # Instead of 'security: medium'
-```
-
-#### Example: Show All Findings Expanded
-
-```yaml
-- uses: SocketDev/socket-basics@1.0.26
-  env:
-    GITHUB_PR_NUMBER: ${{ github.event.pull_request.number || github.event.issue.number }}
-  with:
-    github_token: ${{ secrets.GITHUB_TOKEN }}
-    socket_security_api_key: ${{ secrets.SOCKET_SECURITY_API_KEY }}
-    # Keep collapsible sections but expand everything
-    pr_comment_collapse_enabled: 'true'
-    pr_comment_collapse_non_critical: 'false'  # Don't collapse non-critical
-```
-
-### All PR Comment Configuration Options
-
-| Option | Default | Description |
-|--------|---------|-------------|
-| `pr_comment_links_enabled` | `true` | Enable clickable file/line links in PR comments |
-| `pr_comment_collapse_enabled` | `true` | Enable collapsible sections in PR comments |
-| `pr_comment_collapse_non_critical` | `true` | Auto-collapse non-critical findings (critical stays expanded) |
-| `pr_comment_code_fencing_enabled` | `true` | Enable language-aware syntax highlighting |
-| `pr_comment_show_rule_names` | `true` | Show explicit rule names for each finding |
-| `pr_labels_enabled` | `true` | Add severity-based labels to PRs |
-| `pr_label_critical` | `"security: critical"` | Label name for critical severity findings |
-| `pr_label_high` | `"security: high"` | Label name for high severity findings |
-| `pr_label_medium` | `"security: medium"` | Label name for medium severity findings |
-
-### CLI Usage
-
-These options are also available via CLI:
-
-```bash
-socket-basics \
-  --pr-comment-links \
-  --pr-comment-collapse \
-  --pr-labels \
-  --pr-label-critical "custom: critical" \
-  --workspace /path/to/repo
-```
-
-### Environment Variables
-
-Or via environment variables:
-
-```bash
-export INPUT_PR_COMMENT_LINKS_ENABLED=true
-export INPUT_PR_COMMENT_COLLAPSE_ENABLED=true
-export INPUT_PR_LABELS_ENABLED=true
-export INPUT_PR_LABEL_CRITICAL="security: critical"
-socket-basics --workspace /path/to/repo
-```
-
-📖 **[Complete PR Comment Features Guide →](docs/pr-comment-features.md)**
+📖 **[PR Comment Guide →](docs/github-pr-comment-guide.md)** — Full customization options, examples, and configuration reference
 
 ## 📖 Documentation
 
 ### Getting Started
 - [GitHub Actions Integration](docs/github-action.md) — Complete guide with workflow examples
-- [PR Comment Features Guide](docs/pr-comment-features.md) — Detailed guide to PR comment customization
+- [PR Comment Guide](docs/github-pr-comment-guide.md) — Detailed guide to PR comment customization
 - [Pre-Commit Hook Setup](docs/pre-commit-hook.md) — Two installation methods (Docker vs native)
 - [Local Docker Installation](docs/local-install-docker.md) — Run with Docker, no tools to install
 - [Local Installation](docs/local-installation.md) — Install Socket CLI, Trivy, and other tools natively
@@ -245,34 +136,9 @@ Configure scanning policies, notification channels, and rule sets for your entir
 
 ![Socket Basics Section Config](docs/screenshots/socket_basics_section_config.png)
 
-## 💻 Usage Examples
+## 💻 Other Usage Methods
 
-### GitHub Actions (Recommended)
-
-**Dashboard-Configured (Enterprise):**
-```yaml
-- uses: SocketDev/socket-basics@1.0.28
-  env:
-    GITHUB_PR_NUMBER: ${{ github.event.pull_request.number || github.event.issue.number }}
-  with:
-    github_token: ${{ secrets.GITHUB_TOKEN }}
-    socket_security_api_key: ${{ secrets.SOCKET_SECURITY_API_KEY }}
-    # All configuration managed in Socket Dashboard
-```
-
-**CLI-Configured:**
-```yaml
-- uses: SocketDev/socket-basics@1.0.28
-  env:
-    GITHUB_PR_NUMBER: ${{ github.event.pull_request.number || github.event.issue.number }}
-  with:
-    github_token: ${{ secrets.GITHUB_TOKEN }}
-    python_sast_enabled: 'true'
-    secret_scanning_enabled: 'true'
-    container_images: 'myapp:latest'
-```
-
-📖 **[View Complete GitHub Actions Documentation](docs/github-action.md)**
+For GitHub Actions, see the [Quick Start](#-quick-start---github-actions) above or the **[Complete GitHub Actions Guide](docs/github-action.md)** for advanced workflows.
 
 ### Docker
 
