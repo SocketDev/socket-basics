@@ -28,31 +28,29 @@ on:
   pull_request:
     types: [opened, synchronize, reopened]
 
+permissions:
+  contents: read
+
 jobs:
   security-scan:
     permissions:
       issues: write
       contents: read
       pull-requests: write
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
     steps:
-      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
-      
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
       - name: Run Socket Basics
         uses: SocketDev/socket-basics@1.0.28
         env:
           GITHUB_PR_NUMBER: ${{ github.event.pull_request.number || github.event.issue.number }}
         with:
           github_token: ${{ secrets.GITHUB_TOKEN }}
-          python_sast_enabled: 'true'
-          secret_scanning_enabled: 'true'
+          socket_security_api_key: ${{ secrets.SOCKET_SECURITY_API_KEY }}
 ```
 
-This will:
-- ✅ Run Python SAST on all `.py` files
-- ✅ Scan for leaked secrets
-- ✅ Post results as a PR comment
-- ✅ Post results as a PR comment
+With just your `SOCKET_SECURITY_API_KEY`, all scanning configurations are managed through the [Socket Dashboard](https://socket.dev/dashboard) — no workflow changes needed.
 
 ## Basic Configuration
 
@@ -139,149 +137,9 @@ Include these in your workflow's `jobs.<job_id>.permissions` section.
 
 ## PR Comment Customization
 
-Socket Basics automatically posts enhanced PR comments with **smart defaults that work out of the box**. All features are enabled by default for the best developer experience.
+Socket Basics automatically posts enhanced PR comments with **smart defaults that work out of the box** — clickable file links, collapsible sections, syntax highlighting, CVE links, CVSS scores, and auto-labels are all enabled by default.
 
-### Default Behavior (Zero Config)
-
-With the minimal configuration, you automatically get:
-
-```yaml
-- uses: SocketDev/socket-basics@1.0.26
-  env:
-    GITHUB_PR_NUMBER: ${{ github.event.pull_request.number }}
-  with:
-    github_token: ${{ secrets.GITHUB_TOKEN }}
-    socket_tier_1_enabled: 'true'
-    # That's it! PR comments are automatically enhanced
-```
-
-**What you get by default:**
-- ✅ **Clickable file links** — Jump directly to vulnerable code in GitHub
-- ✅ **Collapsible sections** — Critical findings expanded, others collapsed
-- ✅ **Syntax highlighting** — Language-aware code blocks
-- ✅ **Rule names** — Clear identification of security rules
-- ✅ **Quick access link** — Full scan report at the top
-- ✅ **Auto-labels** — PRs tagged with `security: critical`, `security: high`, or `security: medium`
-
-### Customization Examples
-
-#### Disable Specific Features
-
-```yaml
-- uses: SocketDev/socket-basics@1.0.26
-  env:
-    GITHUB_PR_NUMBER: ${{ github.event.pull_request.number }}
-  with:
-    github_token: ${{ secrets.GITHUB_TOKEN }}
-    socket_tier_1_enabled: 'true'
-    # Customize specific features
-    pr_comment_links_enabled: 'false'        # Disable clickable links
-    pr_labels_enabled: 'false'               # Don't add labels
-```
-
-#### Custom Label Names
-
-```yaml
-- uses: SocketDev/socket-basics@1.0.26
-  env:
-    GITHUB_PR_NUMBER: ${{ github.event.pull_request.number }}
-  with:
-    github_token: ${{ secrets.GITHUB_TOKEN }}
-    socket_tier_1_enabled: 'true'
-    # Use organization-specific label taxonomy
-    pr_label_critical: 'socket: critical'
-    pr_label_high: 'socket: high'
-    pr_label_medium: 'socket: medium'
-```
-
-#### Show All Findings Expanded
-
-```yaml
-- uses: SocketDev/socket-basics@1.0.26
-  env:
-    GITHUB_PR_NUMBER: ${{ github.event.pull_request.number }}
-  with:
-    github_token: ${{ secrets.GITHUB_TOKEN }}
-    socket_tier_1_enabled: 'true'
-    # Keep collapsible UI but expand everything
-    pr_comment_collapse_enabled: 'true'
-    pr_comment_collapse_non_critical: 'false'
-```
-
-#### Minimal/Plaintext Mode
-
-```yaml
-- uses: SocketDev/socket-basics@1.0.26
-  env:
-    GITHUB_PR_NUMBER: ${{ github.event.pull_request.number }}
-  with:
-    github_token: ${{ secrets.GITHUB_TOKEN }}
-    socket_tier_1_enabled: 'true'
-    # Disable all enhancements for simple text output
-    pr_comment_links_enabled: 'false'
-    pr_comment_collapse_enabled: 'false'
-    pr_comment_code_fencing_enabled: 'false'
-    pr_comment_show_rule_names: 'false'
-    pr_labels_enabled: 'false'
-```
-
-### Complete PR Comment Options
-
-| Option | Default | Description |
-|--------|---------|-------------|
-| `pr_comment_links_enabled` | `true` | Enable clickable file/line links |
-| `pr_comment_collapse_enabled` | `true` | Enable collapsible sections |
-| `pr_comment_collapse_non_critical` | `true` | Auto-collapse non-critical (critical stays expanded) |
-| `pr_comment_code_fencing_enabled` | `true` | Enable language-aware syntax highlighting |
-| `pr_comment_show_rule_names` | `true` | Show explicit rule names |
-| `pr_labels_enabled` | `true` | Add severity-based labels to PRs |
-| `pr_label_critical` | `"security: critical"` | Label name for critical findings |
-| `pr_label_high` | `"security: high"` | Label name for high findings |
-| `pr_label_medium` | `"security: medium"` | Label name for medium findings |
-
-### Real-World Examples
-
-**Example 1: Enterprise with Custom Taxonomy**
-```yaml
-- uses: SocketDev/socket-basics@1.0.26
-  env:
-    GITHUB_PR_NUMBER: ${{ github.event.pull_request.number }}
-  with:
-    github_token: ${{ secrets.GITHUB_TOKEN }}
-    socket_security_api_key: ${{ secrets.SOCKET_SECURITY_API_KEY }}
-    # Match your organization's label taxonomy
-    pr_label_critical: 'vulnerability: critical'
-    pr_label_high: 'vulnerability: high'
-    pr_label_medium: 'vulnerability: medium'
-```
-
-**Example 2: OSS Project (Minimize Noise)**
-```yaml
-- uses: SocketDev/socket-basics@1.0.26
-  env:
-    GITHUB_PR_NUMBER: ${{ github.event.pull_request.number }}
-  with:
-    github_token: ${{ secrets.GITHUB_TOKEN }}
-    socket_tier_1_enabled: 'true'
-    # Keep it clean - collapse everything by default
-    pr_comment_collapse_non_critical: 'true'
-    # Use simple labels
-    pr_label_critical: 'security'
-    pr_label_high: 'security'
-    pr_label_medium: 'security'
-```
-
-**Example 3: Security Team (All Details Visible)**
-```yaml
-- uses: SocketDev/socket-basics@1.0.26
-  env:
-    GITHUB_PR_NUMBER: ${{ github.event.pull_request.number }}
-  with:
-    github_token: ${{ secrets.GITHUB_TOKEN }}
-    socket_tier_1_enabled: 'true'
-    # Show everything expanded for thorough review
-    pr_comment_collapse_non_critical: 'false'
-```
+📖 **[PR Comment Guide →](github-pr-comment-guide.md)** — Complete customization options, configuration examples, and reference table
 
 ## Enterprise Features
 
@@ -415,7 +273,7 @@ jobs:
       pull-requests: write
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
       
       - name: Run Socket Basics
         uses: SocketDev/socket-basics@1.0.28
@@ -461,7 +319,7 @@ jobs:
       pull-requests: write
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
       
       - name: Run Full Security Scan
         uses: SocketDev/socket-basics@1.0.28
@@ -512,7 +370,7 @@ jobs:
       pull-requests: write
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
       
       - name: Build Docker Image
         run: docker build -t myapp:1.0.28:${{ github.sha }} .
@@ -550,7 +408,7 @@ jobs:
     outputs:
       dockerfiles: ${{ steps.discover.outputs.dockerfiles }}
     steps:
-      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
 
       - name: Discover Dockerfiles
         id: discover
@@ -578,7 +436,7 @@ jobs:
       pull-requests: write
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
 
       - name: Run Socket Basics
         uses: SocketDev/socket-basics@1.0.28
@@ -630,7 +488,7 @@ jobs:
       pull-requests: write
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
       
       - name: Run Socket Basics
         uses: SocketDev/socket-basics@1.0.28
@@ -722,10 +580,10 @@ env:
 
 **Problem:** Scanner reports no files found.
 
-**Solution:** Ensure `actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683` runs before Socket Basics:
+**Solution:** Ensure `actions/checkout` runs before Socket Basics:
 ```yaml
 steps:
-  - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2 - Must be first
+  - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2 - Must be first
   - uses: SocketDev/socket-basics@1.0.28
 ```
 
