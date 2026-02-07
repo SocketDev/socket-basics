@@ -1,66 +1,53 @@
-
-.idea
-venv
-.venv
-build
-dist
-*.build
-*.dist
-*.egg-info
-test
-*.env
-run_container.sh
-*.zip
-bin
-scripts/*.py
-*.json
-markdown_overview_temp.md
-markdown_security_temp.md
+# OS files
 .DS_Store
-*.pyc
-test.py
 
-# Note: requirements.txt is no longer needed - using pyproject.toml + uv.lock instead
-# Version files are auto-managed by .hooks/version-check.py
-*.cpython-312.pyc
-file_generator.py
-.env
-# Allow only specific markdown files (documentation), ignore all others
-# Negations must come BEFORE the ignore rule
-!README.md
-!docs/*.md
-!tests/README.md
-*.md
-test_results
-local_tests/
-custom_rules/
+# IDEs and editors
+.idea/
+.vscode/
+*.sublime-workspace
+*.sublime-project
+*.swp
+*~
 
-# Common Python ignores
+# Python
 __pycache__/
 *.py[cod]
 *$py.class
-.pytest_cache/
-.mypy_cache/
-.coverage
-.coverage.*
-htmlcov/
-pip-wheel-metadata/
-pip-log.txt
-pip-delete-this-directory.txt
+.python-version
 
 # Virtual environments
+venv/
+.venv/
 env/
 ENV/
 env.bak/
 venv.bak/
 
-# IDEs and editors
-.vscode/
-.idea/
-*.sublime-workspace
-*.sublime-project
-*.swp
-*~
+# Build and distribution
+build/
+dist/
+*.build
+*.dist
+*.egg-info
+.eggs/
+*.egg
+
+# Testing and coverage
+.pytest_cache/
+.mypy_cache/
+.coverage
+.coverage.*
+htmlcov/
+coverage/
+coverage.xml
+nosetests.xml
+test-results/
+test_results/
+
+# pip
+pip-wheel-metadata/
+pip-log.txt
+pip-delete-this-directory.txt
 
 # Node
 node_modules/
@@ -69,26 +56,19 @@ yarn-debug.log*
 yarn-error.log*
 .pnp/
 
-# Build and distribution
-.eggs/
-*.egg
-dist/
-build/
-
-# Coverage and test output
-coverage/
-coverage.xml
-nosetests.xml
-test-results/
+# Jupyter
+.ipynb_checkpoints/
 
 # Logs and runtime files
-logs/
-
+*.log
 *.pid
 *.sock
+logs/
 
-# OS files
-.DS_Store
+# Temporary files
+*.tmp
+*.temp
+*.zip
 
 # Binary and compiled
 *.exe
@@ -96,16 +76,25 @@ logs/
 *.so
 *.dylib
 
-# Jupyter
-.ipynb_checkpoints/
+# Environment and secrets
+*.env
 
-# Local temporary files
-*.tmp
-*.temp
-# Ignore output logs and generated src files
-*.log
-
-.python-version
+# Data files (generated)
+*.json
 .socket.fact.json
 
+# Markdown: ignore all except documentation
+*.md
+!README.md
+!docs/*.md
+!tests/README.md
+
+# Project-specific (local scripts and test files)
+test/
+test.py
+run_container.sh
+bin/
+scripts/*.py
+file_generator.py
+local_tests/
 custom_rules/
