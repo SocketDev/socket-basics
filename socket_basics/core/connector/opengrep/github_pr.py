@@ -218,16 +218,10 @@ def format_notifications(groups: Dict[str, List[Dict[str, Any]]], config=None) -
         # Build title - just scanner name (repo/branch context already visible in PR)
         title = display_name
 
-        # Add full scan link at top if available (using shared helper)
-        scan_link_section = helpers.format_scan_link_section(full_scan_url)
-
-        # Wrap content with HTML comment markers for section updates
-        wrapped_content = f"""<!-- {subtype} start -->
-## {title}
-
-{scan_link_section}
-{content}
-<!-- {subtype} end -->"""
+        # Wrap in standard PR comment section
+        wrapped_content = helpers.wrap_pr_comment_section(
+            subtype, title, content, full_scan_url
+        )
         
         tables.append({
             'title': title,

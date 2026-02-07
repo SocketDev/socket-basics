@@ -313,16 +313,10 @@ def format_notifications(mapping: Dict[str, Any], item_name: str = "Unknown", sc
 
 {content}"""
 
-    # Add full scan link at top if available (using shared helper)
-    scan_link_section = helpers.format_scan_link_section(full_scan_url)
-
-    # Wrap content with HTML comment markers for section updates
-    wrapped_content = f"""<!-- trivy-container start -->
-## {title}
-
-{scan_link_section}
-{summary_content}
-<!-- trivy-container end -->"""
+    # Wrap in standard PR comment section
+    wrapped_content = helpers.wrap_pr_comment_section(
+        'trivy-container', title, summary_content, full_scan_url
+    )
     
     return [{
         'title': title,

@@ -94,16 +94,10 @@ def format_notifications(mapping: Dict[str, Any], config=None) -> List[Dict[str,
 
 {content}"""
 
-    # Add full scan link at top if available (using shared helper)
-    scan_link_section = helpers.format_scan_link_section(full_scan_url)
-
-    # Wrap content with HTML comment markers for section updates
-    wrapped_content = f"""<!-- trufflehog-secrets start -->
-## {title}
-
-{scan_link_section}
-{summary_content}
-<!-- trufflehog-secrets end -->"""
+    # Wrap in standard PR comment section
+    wrapped_content = helpers.wrap_pr_comment_section(
+        'trufflehog-secrets', title, summary_content, full_scan_url
+    )
     
     return [{
         'title': title,

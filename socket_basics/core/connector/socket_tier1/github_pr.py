@@ -281,16 +281,10 @@ def format_notifications(components_list: List[Dict[str, Any]], config=None) -> 
     # Content already includes summary and details sections
     summary_content = content
 
-    # Add full scan link at top if available (using shared helper)
-    scan_link_section = helpers.format_scan_link_section(full_scan_url)
-
-    # Wrap content with HTML comment markers for section updates
-    wrapped_content = f"""<!-- socket-tier1 start -->
-## {title}
-
-{scan_link_section}
-{summary_content}
-<!-- socket-tier1 end -->"""
+    # Wrap in standard PR comment section
+    wrapped_content = helpers.wrap_pr_comment_section(
+        'socket-tier1', title, summary_content, full_scan_url
+    )
     
     return [{
         'title': title,
