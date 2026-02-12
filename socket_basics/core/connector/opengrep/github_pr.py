@@ -131,10 +131,12 @@ def format_notifications(groups: Dict[str, List[Dict[str, Any]]], config=None) -
             file_severity_list.sort(key=lambda x: (x[0], x[1]))
             
             for _, file_path in file_severity_list:
+                # Clean workspace prefixes for display
+                display_path = helpers.clean_filepath(file_path)
                 try:
-                    file_name = Path(file_path).name
+                    file_name = Path(display_path).name
                 except Exception:
-                    file_name = file_path
+                    file_name = display_path
 
                 # Calculate severity counts for this file (for collapsible summary)
                 file_severities = {'critical': 0, 'high': 0, 'medium': 0, 'low': 0}
@@ -202,14 +204,14 @@ def format_notifications(groups: Dict[str, List[Dict[str, Any]]], config=None) -
                     auto_expand = (not collapse_non_critical) or has_critical
 
                     collapsible = helpers.create_collapsible_section(
-                        file_path,  # Don't use backticks in summary - they don't render in GitHub
+                        display_path,  # Don't use backticks in summary - they don't render in GitHub
                         file_content,
                         severity_counts=file_severities,
                         auto_expand=auto_expand
                     )
                     content_lines.append(collapsible)
                 else:
-                    content_lines.append(f"#### `{file_path}`")
+                    content_lines.append(f"#### `{display_path}`")
                     content_lines.append("")
                     content_lines.append(file_content)
             

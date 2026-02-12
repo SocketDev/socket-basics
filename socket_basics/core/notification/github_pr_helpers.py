@@ -179,6 +179,44 @@ def detect_language_from_filename(filename: str) -> str:
 # GitHub URL Building
 # ============================================================================
 
+def clean_filepath(filepath: str) -> str:
+    """Strip CI workspace prefixes from a filepath for display and URL building.
+
+    Removes common GitHub Actions (and other CI) workspace prefixes so that
+    file paths appear as repo-relative (e.g., ``src/app.js`` instead of
+    ``/github/workspace/src/app.js``).
+
+    Args:
+        filepath: Raw file path, possibly with workspace prefix
+
+    Returns:
+        Cleaned repo-relative path
+    """
+    clean_path = filepath
+
+    workspace_prefixes = [
+        '/github/workspace/',
+        'github/workspace/',
+        '/home/runner/work/',
+    ]
+
+    for prefix in workspace_prefixes:
+        if clean_path.startswith(prefix):
+            clean_path = clean_path[len(prefix):]
+            break
+
+    # For /home/runner/work/{owner}/{repo}/ pattern, strip the repo path
+    if clean_path.startswith('/home/runner/work/') or clean_path.startswith('home/runner/work/'):
+        parts = clean_path.split('/')
+        if len(parts) > 4:
+            clean_path = '/'.join(parts[6:]) if parts[0] == '' else '/'.join(parts[5:])
+
+    # Remove leading ./ or /
+    clean_path = clean_path.lstrip('./')
+
+    return clean_path
+
+
 def build_github_file_url(
     repository: str,
     commit_hash: str,
@@ -201,31 +239,7 @@ def build_github_file_url(
     if not repository or not commit_hash:
         return ''
 
-    # Clean filepath - remove GitHub Actions workspace prefixes
-    clean_path = filepath
-
-    # Strip common GitHub Actions workspace prefixes
-    workspace_prefixes = [
-        '/github/workspace/',
-        'github/workspace/',
-        '/home/runner/work/',
-    ]
-
-    for prefix in workspace_prefixes:
-        if clean_path.startswith(prefix):
-            clean_path = clean_path[len(prefix):]
-            break
-
-    # For /home/runner/work/{owner}/{repo}/ pattern, strip the repo path
-    # Pattern: /home/runner/work/owner/repo/path/to/file.js
-    if clean_path.startswith('/home/runner/work/') or clean_path.startswith('home/runner/work/'):
-        parts = clean_path.split('/')
-        # Find where the actual file path starts (after owner/repo)
-        if len(parts) > 4:  # ['', 'home', 'runner', 'work', 'owner', 'repo', ...]
-            clean_path = '/'.join(parts[6:]) if parts[0] == '' else '/'.join(parts[5:])
-
-    # Remove leading ./ or /
-    clean_path = clean_path.lstrip('./')
+    clean_path = clean_filepath(filepath)
 
     # Base URL
     url = f"https://github.com/{repository}/blob/{commit_hash}/{clean_path}"
@@ -263,14 +277,17 @@ def format_file_location_link(
     Returns:
         Formatted string (plain or markdown link)
     """
+    # Clean workspace prefixes from display path
+    display_path = clean_filepath(filepath)
+
     # Build display text using file:line convention
     if line_start is not None:
         if line_end is not None and line_end != line_start:
-            location_text = f"`{filepath}:{line_start}-{line_end}`"
+            location_text = f"`{display_path}:{line_start}-{line_end}`"
         else:
-            location_text = f"`{filepath}:{line_start}`"
+            location_text = f"`{display_path}:{line_start}`"
     else:
-        location_text = f"`{filepath}`"
+        location_text = f"`{display_path}`"
 
     # Add link if enabled and metadata available
     if enable_links and repository and commit_hash:
@@ -279,11 +296,11 @@ def format_file_location_link(
             # Make the entire location clickable (no backticks inside link text)
             if line_start is not None:
                 if line_end is not None and line_end != line_start:
-                    return f"[{filepath}:{line_start}-{line_end}]({url})"
+                    return f"[{display_path}:{line_start}-{line_end}]({url})"
                 else:
-                    return f"[{filepath}:{line_start}]({url})"
+                    return f"[{display_path}:{line_start}]({url})"
             else:
-                return f"[{filepath}]({url})"
+                return f"[{display_path}]({url})"
 
     return location_text
 
@@ -350,6 +367,9 @@ def format_trace_with_links(
                 repository, commit_hash, filename, line_start, line_end
             )
 
+            # Clean workspace prefixes for display
+            display_name = clean_filepath(filename)
+
             if github_url:
                 # Create markdown link
                 location = f"{line_start}:{col_start}"
@@ -360,11 +380,11 @@ def format_trace_with_links(
                 if ' - ' in line or line.strip().startswith('->'):
                     # Preserve original structure
                     if '-> ' in prefix:
-                        formatted = f"{prefix} {package} [{filename} {location}]({github_url})"
+                        formatted = f"{prefix} {package} [{display_name} {location}]({github_url})"
                     else:
-                        formatted = f"{prefix}{package} - [{filename} {location}]({github_url})"
+                        formatted = f"{prefix}{package} - [{display_name} {location}]({github_url})"
                 else:
-                    formatted = f"{prefix}{package} - [{filename} {location}]({github_url})"
+                    formatted = f"{prefix}{package} - [{display_name} {location}]({github_url})"
 
                 formatted_lines.append(formatted)
             else:
