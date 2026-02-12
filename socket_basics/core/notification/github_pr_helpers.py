@@ -241,6 +241,16 @@ def build_github_file_url(
 
     clean_path = clean_filepath(filepath)
 
+    # Coerce line numbers to int (callers may pass strings or empty values)
+    try:
+        line_start = int(line_start) if line_start is not None and str(line_start).strip() else None
+    except (ValueError, TypeError):
+        line_start = None
+    try:
+        line_end = int(line_end) if line_end is not None and str(line_end).strip() else None
+    except (ValueError, TypeError):
+        line_end = None
+
     # Base URL
     url = f"https://github.com/{repository}/blob/{commit_hash}/{clean_path}"
 
@@ -279,6 +289,16 @@ def format_file_location_link(
     """
     # Clean workspace prefixes from display path
     display_path = clean_filepath(filepath)
+
+    # Coerce line numbers to int (callers may pass strings or empty values)
+    try:
+        line_start = int(line_start) if line_start is not None and str(line_start).strip() else None
+    except (ValueError, TypeError):
+        line_start = None
+    try:
+        line_end = int(line_end) if line_end is not None and str(line_end).strip() else None
+    except (ValueError, TypeError):
+        line_end = None
 
     # Build display text using file:line convention
     if line_start is not None:

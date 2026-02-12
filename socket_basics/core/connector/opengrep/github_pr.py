@@ -74,8 +74,10 @@ def format_notifications(groups: Dict[str, List[Dict[str, Any]]], config=None) -
             full_path = props.get('filePath', a.get('location', {}).get('path')) or '-'
             rule_id = props.get('ruleId', a.get('title', ''))
             severity = a.get('severity', '').lower()
-            start_line = props.get('startLine', '')
-            end_line = props.get('endLine', '')
+            raw_start = props.get('startLine', '')
+            raw_end = props.get('endLine', '')
+            start_line = int(raw_start) if raw_start and str(raw_start).isdigit() else None
+            end_line = int(raw_end) if raw_end and str(raw_end).isdigit() else None
             code_snippet = props.get('codeSnippet', '') or ''
             
             # Count by severity
