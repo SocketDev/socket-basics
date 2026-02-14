@@ -89,6 +89,14 @@ All configuration can be managed through:
 
 See [Configuration Documentation](docs/configuration.md) for details on all available options.
 
+#### Integration Environment Variables
+
+Socket Basics supports special environment variables for integration with other tools:
+
+- **`SKIP_SOCKET_REACH=1`** — Skip Socket Tier 1 reachability analysis. This allows external tools (like the Node.js Socket CLI) to skip redundant reachability scans when the analysis will be performed separately or is not needed for a particular workflow.
+
+- **`SKIP_SOCKET_SUBMISSION=1`** — Skip submission to Socket API while still generating `.socket.facts.json`. This allows external tools (like the Node.js Socket CLI) to collect the facts file and submit it along with other data in a unified API call. When this is set, Socket Basics will complete all scanning and generate the facts file, but will not make the API submission call.
+
 ## 🎯 What Socket Basics Does
 
 1. **Scans** your codebase using multiple security tools in parallel
