@@ -100,6 +100,13 @@ class SocketTier1Scanner(BaseConnector):
         return shlex.split(raw)
 
     def scan(self) -> Dict[str, Any]:
+        # Check if Socket Tier 1 reachability scan should be skipped (for Node.js Socket CLI integration).
+        # When SKIP_SOCKET_REACH=1, Socket Basics skips the reachability analysis. This allows the Node.js
+        # Socket CLI to skip redundant scans when reachability analysis will be performed separately.
+        if os.getenv('SKIP_SOCKET_REACH') == '1':
+            logger.info("Skipping Socket Tier 1 reachability scan (SKIP_SOCKET_REACH=1)")
+            return {}
+
         # Verify auth
         auth_env = self._get_auth_env()
         if not auth_env.get('SOCKET_ORG') or not auth_env.get('SOCKET_SECURITY_API_KEY'):
