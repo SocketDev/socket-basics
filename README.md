@@ -272,7 +272,7 @@ Socket Basics uses a two-tier testing strategy to ensure code quality and scanne
 
 ```
 socket-basics/
-├── tests/             # Unit & integration tests (pytest)
+├── tests/              # Unit & integration tests (pytest)
 │   └── test_*.py      # Fast, isolated tests of functions/modules
 └── app_tests/         # End-to-end test fixtures
     ├── juice-shop/    # Node.js vulnerable app
