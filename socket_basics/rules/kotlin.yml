@@ -3,7 +3,7 @@ rules:
 
   # SQL injection
   - id: kotlin-sql-injection
-    message: "SQL injection vulnerability detected"
+    message: "SQL injection vulnerability detected. User-supplied input is included in a SQL query without sanitization, potentially allowing attackers to read, modify, or delete database contents. Use parameterized queries or an ORM instead of string concatenation."
     severity: CRITICAL
     languages: [kotlin]
     pattern-either:
@@ -16,10 +16,14 @@ rules:
       category: security
       cwe: CWE-89
       confidence: high
+      subcategory: injection
+      vulnerability_class: "Injection Vulnerability"
+      owasp: "A03:2021"
+      fix: "Use PreparedStatement with parameter binding or use an ORM like Exposed or Room with parameterized queries."
 
   # Command injection
   - id: kotlin-command-injection
-    message: "Command injection vulnerability detected"
+    message: "OS command injection vulnerability detected. User-controlled data flows into a system command without proper sanitization, allowing attackers to execute arbitrary commands. Use safe APIs with argument lists instead of shell execution."
     severity: CRITICAL
     languages: [kotlin]
     pattern-either:
@@ -31,10 +35,14 @@ rules:
       category: security
       cwe: CWE-78
       confidence: high
+      subcategory: injection
+      vulnerability_class: "Injection Vulnerability"
+      owasp: "A03:2021"
+      fix: "Use ProcessBuilder with separate arguments: ProcessBuilder('cmd', arg1, arg2). Never concatenate user input into command strings."
 
   # Code injection
   - id: kotlin-code-injection
-    message: "Code injection vulnerability detected"
+    message: "Code injection vulnerability detected. User-controlled input is passed to a code evaluation function, allowing arbitrary code execution. Avoid eval/exec with user input; use safe alternatives."
     severity: CRITICAL
     languages: [kotlin]
     pattern-either:
@@ -45,10 +53,14 @@ rules:
       category: security
       cwe: CWE-94
       confidence: high
+      subcategory: injection
+      vulnerability_class: "Injection Vulnerability"
+      owasp: "A03:2021"
+      fix: "Avoid ScriptEngine.eval() or javax.tools.JavaCompiler with user input. Use a sandboxed interpreter or expression parser."
 
   # Deserialization vulnerabilities
   - id: kotlin-unsafe-deserialization
-    message: "Unsafe deserialization detected"
+    message: "Unsafe deserialization detected. Deserializing untrusted data can lead to remote code execution or denial of service. Use safe serialization formats like JSON or validate data before deserializing."
     severity: CRITICAL
     languages: [kotlin]
     pattern-either:
@@ -59,12 +71,16 @@ rules:
       category: security
       cwe: CWE-502
       confidence: high
+      subcategory: integrity
+      vulnerability_class: "Insecure Deserialization"
+      owasp: "A08:2021"
+      fix: "Use kotlinx.serialization with JSON format. Avoid Java ObjectInputStream for untrusted data. Use ObjectInputFilter if needed."
 
   # === High Severity Rules ===
 
   # Hardcoded secrets
   - id: kotlin-hardcoded-secrets
-    message: "Hardcoded secrets detected"
+    message: "Hard-coded credentials detected. Embedding secrets in source code makes them easily discoverable and impossible to rotate. Use environment variables or a secrets manager instead."
     severity: HIGH
     languages: [kotlin]
     pattern-either:
@@ -84,10 +100,14 @@ rules:
       category: security
       cwe: CWE-798
       confidence: medium
+      subcategory: authentication
+      vulnerability_class: "Authentication Weakness"
+      owasp: "A07:2021"
+      fix: "Store secrets in environment variables (System.getenv('KEY')) or use Android Keystore / a secrets manager. Never commit secrets to source control."
 
   # Weak cryptography - MD5
   - id: kotlin-weak-crypto-md5
-    message: "Use of weak MD5 hash algorithm"
+    message: "Weak cryptographic algorithm detected. Using broken or outdated algorithms may allow attackers to decrypt data or forge signatures. Use modern algorithms like AES-256, SHA-256, or Ed25519."
     severity: HIGH
     languages: [kotlin]
     pattern-either:
@@ -98,10 +118,14 @@ rules:
       category: security
       cwe: CWE-327
       confidence: high
+      subcategory: crypto
+      vulnerability_class: "Cryptographic Weakness"
+      owasp: "A02:2021"
+      fix: "Use MessageDigest.getInstance('SHA-256') instead of MD5/SHA1. Use Cipher with 'AES/GCM/NoPadding' for encryption."
 
   # Weak cryptography - SHA1
   - id: kotlin-weak-crypto-sha1
-    message: "Use of weak SHA1 hash algorithm"
+    message: "Weak cryptographic algorithm detected. Using broken or outdated algorithms may allow attackers to decrypt data or forge signatures. Use modern algorithms like AES-256, SHA-256, or Ed25519."
     severity: HIGH
     languages: [kotlin]
     pattern-either:
@@ -113,10 +137,14 @@ rules:
       category: security
       cwe: CWE-327
       confidence: high
+      subcategory: crypto
+      vulnerability_class: "Cryptographic Weakness"
+      owasp: "A02:2021"
+      fix: "Use MessageDigest.getInstance('SHA-256') instead of MD5/SHA1. Use Cipher with 'AES/GCM/NoPadding' for encryption."
 
   # SSL/TLS bypass
   - id: kotlin-ssl-bypass
-    message: "SSL/TLS certificate validation bypassed"
+    message: "TLS/SSL certificate validation is disabled or bypassed. This allows man-in-the-middle attacks where attackers can intercept encrypted communications. Always validate certificates in production."
     severity: HIGH
     languages: [kotlin]
     pattern-either:
@@ -131,10 +159,14 @@ rules:
       category: security
       cwe: CWE-295
       confidence: high
+      subcategory: crypto
+      vulnerability_class: "Cryptographic Weakness"
+      owasp: "A07:2021"
+      fix: "Never override TrustManager to accept all certificates. Use the default SSLContext or OkHttp's CertificatePinner for pinning."
 
   # Path traversal
   - id: kotlin-path-traversal
-    message: "Path traversal vulnerability detected"
+    message: "Path traversal vulnerability detected. User input is used in file paths without validation, allowing attackers to access files outside the intended directory. Validate and canonicalize paths before use."
     severity: HIGH
     languages: [kotlin]
     pattern-either:
@@ -146,10 +178,14 @@ rules:
       category: security
       cwe: CWE-22
       confidence: medium
+      subcategory: access-control
+      vulnerability_class: "Access Control Violation"
+      owasp: "A01:2021"
+      fix: "Use File.canonicalPath and verify it starts with the allowed base directory. Use java.nio.file.Path.normalize()."
 
   # XSS vulnerabilities
   - id: kotlin-xss
-    message: "XSS vulnerability detected"
+    message: "Cross-site scripting (XSS) vulnerability detected. User input is rendered in HTML output without proper escaping, allowing attackers to inject malicious scripts. Sanitize or escape all user input before rendering."
     severity: HIGH
     languages: [kotlin]
     pattern-either:
@@ -160,12 +196,16 @@ rules:
       category: security
       cwe: CWE-79
       confidence: medium
+      subcategory: xss
+      vulnerability_class: "Cross-Site Scripting (XSS)"
+      owasp: "A03:2021"
+      fix: "Use context-aware output encoding. Enable auto-escaping in template engines. Use OWASP Java Encoder for manual escaping."
 
   # === Medium Severity Rules ===
 
   # Insecure random
   - id: kotlin-insecure-random
-    message: "Use of insecure Random class for cryptographic purposes"
+    message: "Insecure random number generator used. Non-cryptographic PRNGs produce predictable values that attackers can guess. Use a cryptographically secure random generator for security-sensitive operations."
     severity: MEDIUM
     languages: [kotlin]
     pattern-either:
@@ -177,10 +217,13 @@ rules:
       category: security
       cwe: CWE-338
       confidence: medium
+      subcategory: crypto
+      vulnerability_class: "Cryptographic Weakness"
+      owasp: "A02:2021"
 
   # HTTP instead of HTTPS
   - id: kotlin-insecure-http
-    message: "Use of HTTP instead of HTTPS"
+    message: "Sensitive data transmitted over an unencrypted channel. Using HTTP instead of HTTPS allows network attackers to intercept data in transit. Use HTTPS for all communications containing sensitive data."
     severity: MEDIUM
     languages: [kotlin]
     pattern-either:
@@ -190,10 +233,13 @@ rules:
       category: security
       cwe: CWE-319
       confidence: low
+      subcategory: crypto
+      vulnerability_class: "Cryptographic Weakness"
+      owasp: "A02:2021"
 
   # Open redirect
   - id: kotlin-open-redirect
-    message: "Open redirect vulnerability detected"
+    message: "Open redirect vulnerability detected. The application redirects to a user-controlled URL without validation, enabling phishing attacks. Validate redirect targets against an allowlist."
     severity: MEDIUM
     languages: [kotlin]
     pattern-either:
@@ -203,10 +249,13 @@ rules:
       category: security
       cwe: CWE-601
       confidence: low
+      subcategory: access-control
+      vulnerability_class: "Access Control Violation"
+      owasp: "A01:2021"
 
   # Weak cipher algorithms
   - id: kotlin-weak-cipher
-    message: "Use of weak cipher algorithm"
+    message: "Weak cryptographic algorithm detected. Using broken or outdated algorithms may allow attackers to decrypt data or forge signatures. Use modern algorithms like AES-256, SHA-256, or Ed25519."
     severity: MEDIUM
     languages: [kotlin]
     pattern-either:
@@ -218,12 +267,15 @@ rules:
       category: security
       cwe: CWE-327
       confidence: high
+      subcategory: crypto
+      vulnerability_class: "Cryptographic Weakness"
+      owasp: "A02:2021"
 
   # === Low Severity Rules ===
 
   # Debug information disclosure
   - id: kotlin-debug-info-disclosure
-    message: "Debug information disclosure detected"
+    message: "Sensitive information written to log files. Passwords, tokens, or personal data in logs can be exposed to unauthorized parties. Redact sensitive values before logging."
     severity: LOW
     languages: [kotlin]
     patterns:
@@ -239,10 +291,13 @@ rules:
       category: security
       cwe: CWE-532
       confidence: low
+      subcategory: logging
+      vulnerability_class: "Sensitive Data Exposure"
+      owasp: "A09:2021"
 
   # Hardcoded IP addresses
   - id: kotlin-hardcoded-ip
-    message: "Hardcoded IP address detected"
+    message: "Hard-coded credentials detected. Embedding secrets in source code makes them easily discoverable and impossible to rotate. Use environment variables or a secrets manager instead."
     severity: LOW
     languages: [kotlin]
     pattern-either:
@@ -258,12 +313,15 @@ rules:
       category: security
       cwe: CWE-798
       confidence: low
+      subcategory: authentication
+      vulnerability_class: "Authentication Weakness"
+      owasp: "A07:2021"
 
   # === Android-specific Rules ===
 
   # WebView with JavaScript enabled
   - id: kotlin-android-webview-js
-    message: "WebView with JavaScript enabled - potential XSS"
+    message: "Cross-site scripting (XSS) vulnerability detected. User input is rendered in HTML output without proper escaping, allowing attackers to inject malicious scripts. Sanitize or escape all user input before rendering."
     severity: MEDIUM
     languages: [kotlin]
     pattern-either:
@@ -274,6 +332,9 @@ rules:
       platform: android
       cwe: CWE-79
       confidence: medium
+      subcategory: xss
+      vulnerability_class: "Cross-Site Scripting (XSS)"
+      owasp: "A03:2021"
 
   # External storage usage
   - id: kotlin-android-external-storage
@@ -289,10 +350,13 @@ rules:
       platform: android
       cwe: CWE-200
       confidence: medium
+      subcategory: configuration
+      vulnerability_class: "Security Misconfiguration"
+      owasp: "A01:2021"
 
   # Intent with user input
   - id: kotlin-android-intent-user-input
-    message: "Intent created with user input - potential intent injection"
+    message: "Improperly exported Android component. The component is accessible to other apps without restrictions. Set android:exported=false or add permission checks."
     severity: HIGH
     languages: [kotlin]
     pattern-either:
@@ -304,10 +368,13 @@ rules:
       platform: android
       cwe: CWE-926
       confidence: low
+      subcategory: configuration
+      vulnerability_class: "Security Misconfiguration"
+      fix: "Set android:exported='false' in AndroidManifest.xml for internal components. Add permission checks for exported components."
 
   # Exported components without permission
   - id: kotlin-android-exported-component
-    message: "Component exported without proper permission checks"
+    message: "Missing authorization check. The application does not verify user permissions before granting access to resources. Add authorization checks to all protected endpoints."
     severity: MEDIUM
     languages: [kotlin]
     pattern-either:
@@ -330,10 +397,13 @@ rules:
       platform: android
       cwe: CWE-862
       confidence: low
+      subcategory: access-control
+      vulnerability_class: "Access Control Violation"
+      owasp: "A01:2021"
 
   # Insecure permissions
   - id: kotlin-android-dangerous-permissions
-    message: "Request for dangerous Android permissions"
+    message: "Code runs with unnecessary privileges. Excess permissions increase the impact of exploits. Apply the principle of least privilege."
     severity: MEDIUM
     languages: [kotlin]
     pattern-either:
@@ -347,12 +417,14 @@ rules:
       platform: android
       cwe: CWE-250
       confidence: low
+      subcategory: configuration
+      vulnerability_class: "Security Misconfiguration"
 
   # === Spring/Web Framework Rules ===
 
   # Spring Security bypass
   - id: kotlin-spring-security-bypass
-    message: "Spring Security potentially bypassed"
+    message: "Cross-site request forgery (CSRF) vulnerability. The application does not verify that requests originate from its own interface. Implement CSRF tokens on all state-changing operations."
     severity: HIGH
     languages: [kotlin]
     pattern-either:
@@ -366,10 +438,16 @@ rules:
       framework: spring
       cwe: CWE-352
       confidence: medium
+      subcategory: access-control
+      vulnerability_class: "Access Control Violation"
+      owasp: "A01:2021"
+      references:
+        - https://docs.spring.io/spring-security/reference/
+      fix: "Enable Spring Security CSRF protection or use a framework-provided CSRF middleware. Include CSRF tokens in all state-changing requests."
 
   # JPA/Hibernate query injection
   - id: kotlin-jpa-query-injection
-    message: "JPA/Hibernate query injection vulnerability"
+    message: "SQL injection vulnerability detected. User-supplied input is included in a SQL query without sanitization, potentially allowing attackers to read, modify, or delete database contents. Use parameterized queries or an ORM instead of string concatenation."
     severity: CRITICAL
     languages: [kotlin]
     pattern-either:
@@ -381,10 +459,14 @@ rules:
       framework: jpa
       cwe: CWE-89
       confidence: high
+      subcategory: injection
+      vulnerability_class: "Injection Vulnerability"
+      owasp: "A03:2021"
+      fix: "Use PreparedStatement with parameter binding or use an ORM like Exposed or Room with parameterized queries."
 
   # JWT without verification
   - id: kotlin-jwt-no-verification
-    message: "JWT token used without proper verification"
+    message: "Cryptographic signature verification is missing or improper. Unverified signatures allow attackers to tamper with data. Always verify signatures before trusting signed data."
     severity: MEDIUM
     languages: [kotlin]
     pattern-either:
@@ -399,10 +481,13 @@ rules:
       category: security
       cwe: CWE-347
       confidence: medium
+      subcategory: crypto
+      vulnerability_class: "Cryptographic Weakness"
+      owasp: "A02:2021"
 
   # Template injection
   - id: kotlin-template-injection
-    message: "Template injection vulnerability detected"
+    message: "Code injection vulnerability detected. User-controlled input is passed to a code evaluation function, allowing arbitrary code execution. Avoid eval/exec with user input; use safe alternatives."
     severity: HIGH
     languages: [kotlin]
     pattern-either:
@@ -413,10 +498,14 @@ rules:
       category: security
       cwe: CWE-94
       confidence: medium
+      subcategory: injection
+      vulnerability_class: "Injection Vulnerability"
+      owasp: "A03:2021"
+      fix: "Avoid ScriptEngine.eval() or javax.tools.JavaCompiler with user input. Use a sandboxed interpreter or expression parser."
 
   # LDAP injection
   - id: kotlin-ldap-injection
-    message: "LDAP injection vulnerability detected"
+    message: "LDAP injection vulnerability detected. User input in LDAP queries without sanitization allows attackers to modify query logic. Escape special characters in LDAP filters."
     severity: CRITICAL
     languages: [kotlin]
     pattern-either:
@@ -426,10 +515,14 @@ rules:
       category: security
       cwe: CWE-90
       confidence: medium
+      subcategory: injection
+      vulnerability_class: "Injection Vulnerability"
+      owasp: "A03:2021"
+      fix: "Use javax.naming.ldap with properly escaped filter values. Use Spring LDAP's LdapEncoder.filterEncode() for escaping."
 
   # File upload without validation
   - id: kotlin-file-upload-no-validation
-    message: "File upload without proper validation"
+    message: "Unrestricted file upload detected. Accepting uploads without validating file type and content can allow execution of malicious code. Validate file type, size, and content before storing."
     severity: HIGH
     languages: [kotlin]
     pattern-either:
@@ -450,10 +543,14 @@ rules:
       category: security
       cwe: CWE-434
       confidence: low
+      subcategory: upload
+      vulnerability_class: "Unrestricted File Upload"
+      owasp: "A04:2021"
+      fix: "Validate file extension, MIME type, and content. Store uploads outside the web root. Use Apache Tika for content-type detection."
 
   # XXE vulnerability
   - id: kotlin-xxe-vulnerability
-    message: "XML parsing vulnerable to XXE attacks"
+    message: "XML External Entity (XXE) vulnerability. The XML parser processes external entity references that can read local files or make network requests. Disable external entity processing in XML parsers."
     severity: HIGH
     languages: [kotlin]
     pattern-either:
@@ -469,3 +566,7 @@ rules:
       category: security
       cwe: CWE-611
       confidence: medium
+      subcategory: injection
+      vulnerability_class: "Injection Vulnerability"
+      owasp: "A05:2021"
+      fix: "Set XMLConstants.FEATURE_SECURE_PROCESSING and disable DOCTYPE: factory.setFeature('http://apache.org/xml/features/disallow-doctype-decl', true)."

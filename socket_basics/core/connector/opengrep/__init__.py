@@ -22,6 +22,7 @@ from ..base import BaseConnector
 # Import individual notifier modules
 from . import github_pr, slack, ms_teams, ms_sentinel, sumologic, console, jira, webhook, json_notifier
 from .custom_rules import CustomRulesBuilder
+from .cwe_catalog import CWE_CATALOG
 
 # Import shared formatters
 from ...formatters import get_all_formatters
@@ -159,7 +160,7 @@ class OpenGrepScanner(BaseConnector):
 		with tempfile.NamedTemporaryFile(mode='w', suffix='.json', delete=False) as tf:
 			out_file = tf.name
 
-		cmd = ['opengrep', '--json', '--output', out_file]
+		cmd = ['opengrep', '--json', '--dataflow-traces', '--output', out_file]
 		verbose = self.config.get('verbose', False)
 		cmd.append('--verbose' if verbose else '--quiet')
 
@@ -369,12 +370,15 @@ class OpenGrepScanner(BaseConnector):
 							# default if unknown
 							sev_label = 'medium'
 
+						code_snippet = (r.get('extra') or {}).get('lines') or (r.get('extra') or {}).get('snippet') or ''
+
 						alert = {
 							'title': check_id,
 							'description': message,
 							'severity': sev_label,
 							'type': 'generic',
 							'location': {
+								'path': normalized_path,
 								'start': start,
 								'end': end
 							},
@@ -386,8 +390,179 @@ class OpenGrepScanner(BaseConnector):
 								'filePath': normalized_path,
 								'startLine': start,
 								'endLine': end,
-								'codeSnippet': (r.get('extra') or {}).get('lines') or (r.get('extra') or {}).get('snippet') or ''
+								'codeSnippet': code_snippet
 							}
+						}
+
+						# -- Enrich alert with additional metadata --
+						_metadata = (r.get('extra') or {}).get('metadata', {})
+						_cwe = _metadata.get('cwe', '')
+						_owasp_raw = _metadata.get('owasp', '')
+						_subcategory = _metadata.get('subcategory', '')
+						_fix = _metadata.get('fix', '')
+						_rule_refs = _metadata.get('references', [])
+
+						# Normalize owasp to a single string (rules may define it as a list)
+						if isinstance(_owasp_raw, list):
+							_owasp = _owasp_raw[0] if _owasp_raw else ''
+						else:
+							_owasp = _owasp_raw or ''
+						# Strip descriptive suffix like "A03:2021 - Injection" -> "A03:2021"
+						if isinstance(_owasp, str) and ' - ' in _owasp:
+							_owasp = _owasp.split(' - ', 1)[0].strip()
+
+						if _cwe:
+							alert['props']['cwe'] = _cwe
+						if _owasp:
+							alert['props']['owasp'] = _owasp
+						if _subcategory:
+							alert['props']['subcategory'] = _subcategory
+						if _fix:
+							alert['props']['fix'] = _fix
+
+						# Look up CWE in catalog for human-readable name and description
+						_cwe_info = CWE_CATALOG.get(_cwe, {}) if _cwe else {}
+						if _cwe_info:
+							alert['props']['vulnerabilityName'] = _cwe_info.get('name', '')
+							alert['props']['vulnerabilityCategory'] = _cwe_info.get('category', '')
+							# For sparse rule messages, provide an enriched description from the CWE catalog
+							if len(message) < 60:
+								alert['props']['enrichedDescription'] = _cwe_info.get('description', '')
+
+						_vulnerability_class = _metadata.get('vulnerability_class', '')
+						_likelihood = _metadata.get('likelihood', '')
+						_impact = _metadata.get('impact', '')
+						_technology = _metadata.get('technology', '')
+						_framework = _metadata.get('framework', '')
+
+						if _vulnerability_class:
+							alert['props']['vulnerabilityClass'] = _vulnerability_class
+						if _likelihood:
+							alert['props']['likelihood'] = _likelihood
+						if _impact:
+							alert['props']['impact'] = _impact
+						if _technology:
+							alert['props']['technology'] = _technology
+						if _framework:
+							alert['props']['framework'] = _framework
+
+						# Extract dataflow trace (available for taint-mode rules)
+						_dataflow = (r.get('extra') or {}).get('dataflow_trace')
+						if _dataflow:
+							try:
+								def _fmt_trace_loc(trace_item):
+									"""Format a dataflow trace item's location."""
+									if isinstance(trace_item, list):
+										trace_item = trace_item[0] if trace_item else {}
+									if not isinstance(trace_item, dict):
+										return {'content': '', 'file': '', 'line': ''}
+									loc = trace_item.get('location') or {}
+									content = trace_item.get('content', '')
+									path = loc.get('path', '') or ''
+									start_info = loc.get('start', {})
+									line = start_info.get('line', '') if isinstance(start_info, dict) else ''
+									return {'content': content.strip() if content else '', 'file': path, 'line': line}
+
+								_source = _dataflow.get('taint_source') or {}
+								_sink = _dataflow.get('taint_sink') or {}
+								_intermediates = _dataflow.get('intermediate_vars') or []
+
+								_trace_data = {
+									'source': _fmt_trace_loc(_source),
+									'sink': _fmt_trace_loc(_sink),
+								}
+								if _intermediates:
+									_trace_data['intermediates'] = [_fmt_trace_loc(v) for v in _intermediates]
+
+								alert['props']['dataflowTrace'] = _trace_data
+							except Exception:
+								pass  # Skip trace if structure is unexpected
+
+						# Auto-generate reference URLs from CWE / OWASP IDs
+						_references = []
+						if isinstance(_cwe, str) and _cwe.startswith('CWE-'):
+							_cwe_num = _cwe.split('-', 1)[1]
+							_references.append({
+								'title': _cwe,
+								'url': f'https://cwe.mitre.org/data/definitions/{_cwe_num}.html'
+							})
+						if isinstance(_owasp, str) and _owasp:
+							# Extract category code (e.g. "A03" from "A03:2021")
+							_owasp_code = _owasp.split(':')[0] if ':' in _owasp else _owasp
+							_references.append({
+								'title': f'OWASP Top 10 {_owasp}',
+								'url': f'https://owasp.org/Top10/{_owasp_code}/'
+							})
+						if isinstance(_rule_refs, list):
+							for _ref in _rule_refs:
+								if isinstance(_ref, str):
+									_references.append({'title': _ref, 'url': _ref})
+								elif isinstance(_ref, dict):
+									_references.append(_ref)
+						if _references:
+							alert['props']['references'] = _references
+
+						# Build detailedReport markdown blob
+						_report_parts = []
+						_report_parts.append(f'## {check_id}\n')
+						if message:
+							_report_parts.append(f'**Description:** {message}\n')
+						# Location + code snippet
+						_loc_line = f'**Location:** `{normalized_path}`'
+						if start and end:
+							_loc_line += f' (lines {start}\u2013{end})' if start != end else f' (line {start})'
+						elif start:
+							_loc_line += f' (line {start})'
+						_report_parts.append(_loc_line + '\n')
+						if code_snippet:
+							_report_parts.append(f'```\n{code_snippet.rstrip()}\n```\n')
+						# Severity & confidence
+						_conf = alert['props'].get('confidence', '')
+						_sev_line = f'**Severity:** {sev_label}'
+						if _conf:
+							_sev_line += f' | **Confidence:** {_conf}'
+						_report_parts.append(_sev_line + '\n')
+						# CWE explainer from catalog
+						if _cwe_info and _cwe_info.get('description'):
+							_report_parts.append(f'**What is {_cwe}?** {_cwe_info["description"]}\n')
+						# Data Flow section (only for taint-mode rules with traces)
+						if _dataflow and alert['props'].get('dataflowTrace'):
+							_trace = alert['props']['dataflowTrace']
+							_flow_parts = ['### Data Flow\n']
+							_src = _trace.get('source', {})
+							if _src.get('content'):
+								_src_loc = f"`{_src['file']}:{_src['line']}`" if _src.get('file') and _src.get('line') else ''
+								_flow_parts.append(f'1. **Source** {_src_loc}:\n   ```\n   {_src["content"]}\n   ```\n')
+							for i, _inter in enumerate(_trace.get('intermediates', []), 1):
+								if _inter.get('content'):
+									_inter_loc = f"`{_inter['file']}:{_inter['line']}`" if _inter.get('file') and _inter.get('line') else ''
+									_flow_parts.append(f'{i+1}. **Intermediate** {_inter_loc}:\n   ```\n   {_inter["content"]}\n   ```\n')
+							_snk = _trace.get('sink', {})
+							if _snk.get('content'):
+								_snk_loc = f"`{_snk['file']}:{_snk['line']}`" if _snk.get('file') and _snk.get('line') else ''
+								_step = len(_trace.get('intermediates', [])) + 2
+								_flow_parts.append(f'{_step}. **Sink** {_snk_loc}:\n   ```\n   {_snk["content"]}\n   ```\n')
+							if len(_flow_parts) > 1:  # more than just the heading
+								_report_parts.extend(_flow_parts)
+						# CWE / OWASP references
+						if _cwe or _owasp:
+							_ref_items = []
+							if _cwe and isinstance(_cwe, str) and _cwe.startswith('CWE-'):
+								_cwe_num = _cwe.split('-', 1)[1]
+								_ref_items.append(f'[{_cwe}](https://cwe.mitre.org/data/definitions/{_cwe_num}.html)')
+							elif _cwe:
+								_ref_items.append(str(_cwe))
+							if _owasp:
+								_owasp_code = _owasp.split(':')[0] if ':' in _owasp else _owasp
+								_ref_items.append(f'[OWASP Top 10 {_owasp}](https://owasp.org/Top10/{_owasp_code}/)')
+							_report_parts.append('**References:** ' + ' | '.join(_ref_items) + '\n')
+						# Remediation
+						if _fix:
+							_report_parts.append(f'**Remediation:** {_fix}\n')
+
+						alert['props']['detailedReport'] = {
+							'content-type': 'text/markdown',
+							'content': '\n'.join(_report_parts)
 						}
 
 						# Determine a more specific subtype when possible.
