@@ -19,10 +19,12 @@ RUN curl -fsSL https://deb.nodesource.com/setup_22.x | bash - && \
 RUN npm install -g socket
 
 # Install Trivy
-RUN curl -sfL https://raw.githubusercontent.com/aquasecurity/trivy/main/contrib/install.sh | sh -s -- -b /usr/local/bin v0.67.2
+ARG TRIVY_VERSION=v0.67.2
+RUN curl -sfL https://raw.githubusercontent.com/aquasecurity/trivy/main/contrib/install.sh | sh -s -- -b /usr/local/bin "${TRIVY_VERSION}"
 
 # Install Trufflehog
-RUN curl -sSfL https://raw.githubusercontent.com/trufflesecurity/trufflehog/main/scripts/install.sh | sh -s -- -b /usr/local/bin v3.93.3
+ARG TRUFFLEHOG_VERSION=v3.93.3
+RUN curl -sSfL https://raw.githubusercontent.com/trufflesecurity/trufflehog/main/scripts/install.sh | sh -s -- -b /usr/local/bin "${TRUFFLEHOG_VERSION}"
 
 # Install OpenGrep (connector/runtime dependency)
 RUN curl -fsSL https://raw.githubusercontent.com/opengrep/opengrep/main/install.sh | bash
