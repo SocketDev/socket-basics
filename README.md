@@ -157,6 +157,15 @@ docker run --rm -v "$PWD:/workspace" socketdev/socket-basics:1.0.29 \
   --console-tabular-enabled
 ```
 
+Tip: If you need specific Trivy or TruffleHog versions, you can override them at build time:
+
+```bash
+docker build \
+  --build-arg TRIVY_VERSION=v0.67.2 \
+  --build-arg TRUFFLEHOG_VERSION=v3.93.3 \
+  -t socketdev/socket-basics:1.0.29 .
+```
+
 📖 **[View Docker Installation Guide](docs/local-install-docker.md)**
 
 ### CLI
@@ -281,4 +290,3 @@ We welcome contributions! To add new features:
 ---
 
 **Need help?** Visit our [documentation](docs/) or contact [Socket Support](https://socket.dev/support).
-
