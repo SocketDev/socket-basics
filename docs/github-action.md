@@ -8,6 +8,7 @@ Complete guide to integrating Socket Basics into your GitHub Actions workflows f
 - [Basic Configuration](#basic-configuration)
 - [Enterprise Features](#enterprise-features)
 - [Advanced Workflows](#advanced-workflows)
+  - [Dockerfile Auto-Discovery](#dockerfile-auto-discovery)
 - [Configuration Reference](#configuration-reference)
 - [Troubleshooting](#troubleshooting)
 
@@ -38,7 +39,7 @@ jobs:
       - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
       
       - name: Run Socket Basics
-        uses: SocketDev/socket-basics@1.0.26
+        uses: SocketDev/socket-basics@1.0.28
         env:
           GITHUB_PR_NUMBER: ${{ github.event.pull_request.number || github.event.issue.number }}
         with:
@@ -78,7 +79,7 @@ Include these in your workflow's `jobs.<job_id>.permissions` section.
 
 **SAST (Static Analysis):**
 ```yaml
-- uses: SocketDev/socket-basics@1.0.26
+- uses: SocketDev/socket-basics@1.0.28
   with:
     github_token: ${{ secrets.GITHUB_TOKEN }}
     # Enable SAST for specific languages
@@ -92,7 +93,7 @@ Include these in your workflow's `jobs.<job_id>.permissions` section.
 
 **Secret Scanning:**
 ```yaml
-- uses: SocketDev/socket-basics@1.0.26
+- uses: SocketDev/socket-basics@1.0.28
   with:
     github_token: ${{ secrets.GITHUB_TOKEN }}
     secret_scanning_enabled: 'true'
@@ -104,7 +105,7 @@ Include these in your workflow's `jobs.<job_id>.permissions` section.
 
 **Container Scanning:**
 ```yaml
-- uses: SocketDev/socket-basics@1.0.26
+- uses: SocketDev/socket-basics@1.0.28
   with:
     github_token: ${{ secrets.GITHUB_TOKEN }}
     # Scan Docker images (auto-enables container scanning)
@@ -115,7 +116,7 @@ Include these in your workflow's `jobs.<job_id>.permissions` section.
 
 **Socket Tier 1 Reachability:**
 ```yaml
-- uses: SocketDev/socket-basics@1.0.26
+- uses: SocketDev/socket-basics@1.0.28
   with:
     github_token: ${{ secrets.GITHUB_TOKEN }}
     socket_tier_1_enabled: 'true'
@@ -124,7 +125,7 @@ Include these in your workflow's `jobs.<job_id>.permissions` section.
 ### Output Configuration
 
 ```yaml
-- uses: SocketDev/socket-basics@1.0.26
+- uses: SocketDev/socket-basics@1.0.28
   with:
     github_token: ${{ secrets.GITHUB_TOKEN }}
     python_sast_enabled: 'true'
@@ -154,7 +155,7 @@ Configure Socket Basics centrally from the [Socket Dashboard](https://socket.dev
 
 **Enable in workflow:**
 ```yaml
-- uses: SocketDev/socket-basics@1.0.26
+- uses: SocketDev/socket-basics@1.0.28
   env:
     GITHUB_PR_NUMBER: ${{ github.event.pull_request.number || github.event.issue.number }}
   with:
@@ -166,7 +167,7 @@ Configure Socket Basics centrally from the [Socket Dashboard](https://socket.dev
 
 > **Note:** You can also pass credentials using environment variables instead of the `with:` section:
 > ```yaml
-> - uses: SocketDev/socket-basics@1.0.26
+> - uses: SocketDev/socket-basics@1.0.28
 >   env:
 >     SOCKET_SECURITY_API_KEY: ${{ secrets.SOCKET_SECURITY_API_KEY }}
 >   with:
@@ -184,7 +185,7 @@ All notification integrations require Socket Enterprise.
 
 **Slack Notifications:**
 ```yaml
-- uses: SocketDev/socket-basics@1.0.26
+- uses: SocketDev/socket-basics@1.0.28
   with:
     github_token: ${{ secrets.GITHUB_TOKEN }}
     socket_org: ${{ secrets.SOCKET_ORG }}
@@ -196,7 +197,7 @@ All notification integrations require Socket Enterprise.
 
 **Jira Issue Creation:**
 ```yaml
-- uses: SocketDev/socket-basics@1.0.26
+- uses: SocketDev/socket-basics@1.0.28
   with:
     github_token: ${{ secrets.GITHUB_TOKEN }}
     socket_org: ${{ secrets.SOCKET_ORG }}
@@ -211,7 +212,7 @@ All notification integrations require Socket Enterprise.
 
 **Microsoft Teams:**
 ```yaml
-- uses: SocketDev/socket-basics@1.0.26
+- uses: SocketDev/socket-basics@1.0.28
   with:
     github_token: ${{ secrets.GITHUB_TOKEN }}
     socket_org: ${{ secrets.SOCKET_ORG }}
@@ -223,7 +224,7 @@ All notification integrations require Socket Enterprise.
 
 **Generic Webhook:**
 ```yaml
-- uses: SocketDev/socket-basics@1.0.26
+- uses: SocketDev/socket-basics@1.0.28
   with:
     github_token: ${{ secrets.GITHUB_TOKEN }}
     socket_org: ${{ secrets.SOCKET_ORG }}
@@ -235,7 +236,7 @@ All notification integrations require Socket Enterprise.
 
 **SIEM Integration:**
 ```yaml
-- uses: SocketDev/socket-basics@1.0.26
+- uses: SocketDev/socket-basics@1.0.28
   with:
     github_token: ${{ secrets.GITHUB_TOKEN }}
     socket_org: ${{ secrets.SOCKET_ORG }}
@@ -271,7 +272,7 @@ jobs:
       - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
       
       - name: Run Socket Basics
-        uses: SocketDev/socket-basics@1.0.26
+        uses: SocketDev/socket-basics@1.0.28
         env:
           GITHUB_PR_NUMBER: ${{ github.event.pull_request.number || github.event.issue.number }}
         with:
@@ -317,7 +318,7 @@ jobs:
       - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
       
       - name: Run Full Security Scan
-        uses: SocketDev/socket-basics@1.0.26
+        uses: SocketDev/socket-basics@1.0.28
         env:
           GITHUB_PR_NUMBER: ${{ github.event.pull_request.number || github.event.issue.number }}
         with:
@@ -368,10 +369,10 @@ jobs:
       - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
       
       - name: Build Docker Image
-        run: docker build -t myapp:1.0.26:${{ github.sha }} .
+        run: docker build -t myapp:1.0.28:${{ github.sha }} .
       
       - name: Scan Container
-        uses: SocketDev/socket-basics@1.0.26
+        uses: SocketDev/socket-basics@1.0.28
         env:
           GITHUB_PR_NUMBER: ${{ github.event.pull_request.number || github.event.issue.number }}
         with:
@@ -383,6 +384,88 @@ jobs:
           
           # Additional Trivy options
           trivy_vuln_enabled: 'true'
+```
+
+### Dockerfile Auto-Discovery
+
+For repositories with multiple Dockerfiles across different directories, you can automatically discover them instead of manually listing each path.
+
+```yaml
+name: Security Scan with Dockerfile Auto-Discovery
+on:
+  pull_request:
+    types: [opened, synchronize, reopened]
+  push:
+    branches: [main]
+
+jobs:
+  discover-dockerfiles:
+    runs-on: ubuntu-latest
+    outputs:
+      dockerfiles: ${{ steps.discover.outputs.dockerfiles }}
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+
+      - name: Discover Dockerfiles
+        id: discover
+        run: |
+          DOCKERFILES=$(find . -type d \( \
+            -name node_modules -o -name vendor -o -name .git -o \
+            -name test -o -name tests -o -name testing -o -name __tests__ -o \
+            -name fixture -o -name fixtures -o -name testdata -o \
+            -name example -o -name examples -o -name sample -o -name samples -o \
+            -name dist -o -name build -o -name out -o -name target -o \
+            -name venv -o -name .venv -o -name .cache \
+            \) -prune -o \
+            -type f \( -name 'Dockerfile' -o -name 'Dockerfile.*' -o -name '*.dockerfile' \) \
+            -print | sed 's|^./||' | paste -sd ',' -)
+
+          echo "Discovered Dockerfiles: $DOCKERFILES"
+          echo "dockerfiles=$DOCKERFILES" >> $GITHUB_OUTPUT
+
+  security-scan:
+    needs: discover-dockerfiles
+    if: needs.discover-dockerfiles.outputs.dockerfiles != ''
+    permissions:
+      issues: write
+      contents: read
+      pull-requests: write
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+
+      - name: Run Socket Basics
+        uses: SocketDev/socket-basics@1.0.28
+        env:
+          GITHUB_PR_NUMBER: ${{ github.event.pull_request.number || github.event.issue.number }}
+        with:
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          dockerfiles: ${{ needs.discover-dockerfiles.outputs.dockerfiles }}
+          trivy_vuln_enabled: 'true'
+```
+
+**How it works:**
+
+1. **Discovery job** uses `find` to locate Dockerfiles matching common patterns:
+   - `Dockerfile` (exact match)
+   - `Dockerfile.*` (e.g., `Dockerfile.prod`, `Dockerfile.dev`)
+   - `*.dockerfile` (e.g., `backend.dockerfile`)
+
+2. **Excluded directories** prevent scanning test fixtures and build artifacts:
+   - Package managers: `node_modules`, `vendor`, `venv`
+   - Test directories: `test`, `tests`, `__tests__`, `fixtures`
+   - Build outputs: `dist`, `build`, `out`, `target`
+
+3. **Scan job** receives discovered paths via job output and skips if none found
+
+**Customizing discovery patterns:**
+
+```yaml
+# Only scan production Dockerfiles
+-type f -name 'Dockerfile.prod' -print
+
+# Add custom exclusions
+-name custom_test_dir -o -name legacy -o \
 ```
 
 ### Custom Rule Configuration
@@ -404,7 +487,7 @@ jobs:
       - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
       
       - name: Run Socket Basics
-        uses: SocketDev/socket-basics@1.0.26
+        uses: SocketDev/socket-basics@1.0.28
         env:
           GITHUB_PR_NUMBER: ${{ github.event.pull_request.number || github.event.issue.number }}
         with:
@@ -497,7 +580,7 @@ env:
 ```yaml
 steps:
   - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2 - Must be first
-  - uses: SocketDev/socket-basics@1.0.26
+  - uses: SocketDev/socket-basics@1.0.28
 ```
 
 ### PR Comments Not Appearing

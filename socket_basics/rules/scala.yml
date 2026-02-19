@@ -3,7 +3,7 @@ rules:
   
   # SQL injection
   - id: scala-sql-injection
-    message: "SQL injection vulnerability detected"
+    message: "SQL injection vulnerability detected. User-supplied input is included in a SQL query without sanitization, potentially allowing attackers to read, modify, or delete database contents. Use parameterized queries or an ORM instead of string concatenation."
     severity: CRITICAL
     languages: [scala]
     pattern-either:
@@ -15,6 +15,10 @@ rules:
       category: security
       cwe: CWE-89
       confidence: high
+      subcategory: injection
+      vulnerability_class: "Injection Vulnerability"
+      owasp: "A03:2021"
+      fix: "Use Slick's type-safe query DSL or JDBC PreparedStatement with parameter binding."
 
   # Zip Slip / Path Traversal in ZIP extraction
   - id: scala-zip-slip
@@ -40,10 +44,14 @@ rules:
       confidence: high
       references:
         - https://snyk.io/research/zip-slip-vulnerability
+      subcategory: access-control
+      vulnerability_class: "Access Control Violation"
+      owasp: "A01:2021"
+      fix: "Use java.io.File.getCanonicalPath() and verify it starts with the allowed base directory. Use java.nio.file.Path.normalize()."
 
   # Code injection via eval or compilation
   - id: scala-code-injection
-    message: "Code injection via eval or compilation"
+    message: "Code injection vulnerability detected. User-controlled input is passed to a code evaluation function, allowing arbitrary code execution. Avoid eval/exec with user input; use safe alternatives."
     severity: CRITICAL
     languages: [scala]
     pattern-either:
@@ -55,10 +63,14 @@ rules:
       category: security
       cwe: CWE-94
       confidence: high
+      subcategory: injection
+      vulnerability_class: "Injection Vulnerability"
+      owasp: "A03:2021"
+      fix: "Avoid scala.tools.reflect.ToolBox.eval() with user input. Use a sandboxed interpreter or safe expression parser."
 
   # Command injection
   - id: scala-command-injection
-    message: "Command injection vulnerability detected"
+    message: "OS command injection vulnerability detected. User-controlled data flows into a system command without proper sanitization, allowing attackers to execute arbitrary commands. Use safe APIs with argument lists instead of shell execution."
     severity: CRITICAL
     languages: [scala]
     patterns:
@@ -78,10 +90,14 @@ rules:
       category: security
       cwe: CWE-78
       confidence: high
+      subcategory: injection
+      vulnerability_class: "Injection Vulnerability"
+      owasp: "A03:2021"
+      fix: "Use ProcessBuilder or scala.sys.process with separate arguments. Never interpolate user input into shell command strings."
 
   # Deserialization vulnerabilities
   - id: scala-unsafe-deserialization
-    message: "Unsafe deserialization detected"
+    message: "Unsafe deserialization detected. Deserializing untrusted data can lead to remote code execution or denial of service. Use safe serialization formats like JSON or validate data before deserializing."
     severity: CRITICAL
     languages: [scala]
     pattern-either:
@@ -92,12 +108,16 @@ rules:
       category: security
       cwe: CWE-502
       confidence: high
+      subcategory: integrity
+      vulnerability_class: "Insecure Deserialization"
+      owasp: "A08:2021"
+      fix: "Use circe, play-json, or upickle for JSON deserialization. Avoid Java ObjectInputStream for untrusted data."
 
   # === High Severity Rules ===
 
   # Hardcoded secrets
   - id: scala-hardcoded-secrets
-    message: "Hardcoded secrets detected"
+    message: "Hard-coded credentials detected. Embedding secrets in source code makes them easily discoverable and impossible to rotate. Use environment variables or a secrets manager instead."
     severity: HIGH
     languages: [scala]
     patterns:
@@ -117,10 +137,14 @@ rules:
       category: security
       cwe: CWE-798
       confidence: medium
+      subcategory: authentication
+      vulnerability_class: "Authentication Weakness"
+      owasp: "A07:2021"
+      fix: "Store secrets in environment variables or use a secrets manager. Use Typesafe Config with environment variable substitution."
 
   # Weak cryptography - MD5
   - id: scala-weak-crypto-md5
-    message: "Use of weak MD5 hash algorithm"
+    message: "Weak cryptographic algorithm detected. Using broken or outdated algorithms may allow attackers to decrypt data or forge signatures. Use modern algorithms like AES-256, SHA-256, or Ed25519."
     severity: HIGH
     languages: [scala]
     pattern-either:
@@ -132,10 +156,14 @@ rules:
       category: security
       cwe: CWE-327
       confidence: high
+      subcategory: crypto
+      vulnerability_class: "Cryptographic Weakness"
+      owasp: "A02:2021"
+      fix: "Use MessageDigest.getInstance('SHA-256') instead of MD5/SHA1. Use javax.crypto.Cipher with AES-GCM for encryption."
 
   # Weak cryptography - SHA1
   - id: scala-weak-crypto-sha1
-    message: "Use of weak SHA1 hash algorithm"
+    message: "Weak cryptographic algorithm detected. Using broken or outdated algorithms may allow attackers to decrypt data or forge signatures. Use modern algorithms like AES-256, SHA-256, or Ed25519."
     severity: HIGH
     languages: [scala]
     pattern-either:
@@ -147,10 +175,14 @@ rules:
       category: security
       cwe: CWE-327
       confidence: high
+      subcategory: crypto
+      vulnerability_class: "Cryptographic Weakness"
+      owasp: "A02:2021"
+      fix: "Use MessageDigest.getInstance('SHA-256') instead of MD5/SHA1. Use javax.crypto.Cipher with AES-GCM for encryption."
 
   # SSL/TLS bypass
   - id: scala-ssl-bypass
-    message: "SSL/TLS certificate validation bypassed"
+    message: "TLS/SSL certificate validation is disabled or bypassed. This allows man-in-the-middle attacks where attackers can intercept encrypted communications. Always validate certificates in production."
     severity: HIGH
     languages: [scala]
     pattern-either:
@@ -161,10 +193,14 @@ rules:
       category: security
       cwe: CWE-295
       confidence: medium
+      subcategory: crypto
+      vulnerability_class: "Cryptographic Weakness"
+      owasp: "A07:2021"
+      fix: "Never override TrustManager to accept all certificates. Use the default SSLContext or configure trusted CA certificates."
 
   # Path traversal
   - id: scala-path-traversal
-    message: "Path traversal vulnerability detected"
+    message: "Path traversal vulnerability detected. User input is used in file paths without validation, allowing attackers to access files outside the intended directory. Validate and canonicalize paths before use."
     severity: HIGH
     languages: [scala]
     pattern-either:
@@ -176,10 +212,14 @@ rules:
       category: security
       cwe: CWE-22
       confidence: medium
+      subcategory: access-control
+      vulnerability_class: "Access Control Violation"
+      owasp: "A01:2021"
+      fix: "Use java.io.File.getCanonicalPath() and verify it starts with the allowed base directory. Use java.nio.file.Path.normalize()."
 
   # XSS in templates
   - id: scala-xss-template
-    message: "XSS vulnerability in template rendering"
+    message: "Cross-site scripting (XSS) vulnerability detected. User input is rendered in HTML output without proper escaping, allowing attackers to inject malicious scripts. Sanitize or escape all user input before rendering."
     severity: HIGH
     languages: [scala]
     pattern-either:
@@ -191,12 +231,18 @@ rules:
       framework: play
       cwe: CWE-79
       confidence: medium
+      subcategory: xss
+      vulnerability_class: "Cross-Site Scripting (XSS)"
+      owasp: "A03:2021"
+      references:
+        - https://www.playframework.com/documentation/latest/SecurityHeaders
+      fix: "Use Play framework's Twirl templates (auto-escaped by default). Use Html() only for trusted content. Sanitize user input before rendering."
 
   # === Medium Severity Rules ===
 
   # Insecure random
   - id: scala-insecure-random
-    message: "Use of insecure Random class for cryptographic purposes"
+    message: "Insecure random number generator used. Non-cryptographic PRNGs produce predictable values that attackers can guess. Use a cryptographically secure random generator for security-sensitive operations."
     severity: MEDIUM
     languages: [scala]
     pattern-either:
@@ -208,10 +254,13 @@ rules:
       category: security
       cwe: CWE-338
       confidence: medium
+      subcategory: crypto
+      vulnerability_class: "Cryptographic Weakness"
+      owasp: "A02:2021"
 
   # HTTP instead of HTTPS
   - id: scala-insecure-http
-    message: "Use of HTTP instead of HTTPS"
+    message: "Sensitive data transmitted over an unencrypted channel. Using HTTP instead of HTTPS allows network attackers to intercept data in transit. Use HTTPS for all communications containing sensitive data."
     severity: MEDIUM
     languages: [scala]
     pattern-either:
@@ -222,10 +271,13 @@ rules:
       category: security
       cwe: CWE-319
       confidence: low
+      subcategory: crypto
+      vulnerability_class: "Cryptographic Weakness"
+      owasp: "A02:2021"
 
   # Open redirect
   - id: scala-open-redirect
-    message: "Open redirect vulnerability detected"
+    message: "Open redirect vulnerability detected. The application redirects to a user-controlled URL without validation, enabling phishing attacks. Validate redirect targets against an allowlist."
     severity: MEDIUM
     languages: [scala]
     pattern-either:
@@ -237,10 +289,15 @@ rules:
       framework: play
       cwe: CWE-601
       confidence: low
+      subcategory: access-control
+      vulnerability_class: "Access Control Violation"
+      owasp: "A01:2021"
+      references:
+        - https://www.playframework.com/documentation/latest/SecurityHeaders
 
   # Weak cipher algorithms
   - id: scala-weak-cipher
-    message: "Use of weak cipher algorithm"
+    message: "Weak cryptographic algorithm detected. Using broken or outdated algorithms may allow attackers to decrypt data or forge signatures. Use modern algorithms like AES-256, SHA-256, or Ed25519."
     severity: MEDIUM
     languages: [scala]
     pattern-either:
@@ -252,12 +309,15 @@ rules:
       category: security
       cwe: CWE-327
       confidence: high
+      subcategory: crypto
+      vulnerability_class: "Cryptographic Weakness"
+      owasp: "A02:2021"
 
   # === Low Severity Rules ===
 
   # Debug information disclosure
   - id: scala-debug-info-disclosure
-    message: "Debug information disclosure detected"
+    message: "Sensitive information written to log files. Passwords, tokens, or personal data in logs can be exposed to unauthorized parties. Redact sensitive values before logging."
     severity: LOW
     languages: [scala]
     patterns:
@@ -273,10 +333,13 @@ rules:
       category: security
       cwe: CWE-532
       confidence: low
+      subcategory: logging
+      vulnerability_class: "Sensitive Data Exposure"
+      owasp: "A09:2021"
 
   # Hardcoded IP addresses
   - id: scala-hardcoded-ip
-    message: "Hardcoded IP address detected"
+    message: "Hard-coded credentials detected. Embedding secrets in source code makes them easily discoverable and impossible to rotate. Use environment variables or a secrets manager instead."
     severity: LOW
     languages: [scala]
     pattern-either:
@@ -289,12 +352,15 @@ rules:
       category: security
       cwe: CWE-798
       confidence: low
+      subcategory: authentication
+      vulnerability_class: "Authentication Weakness"
+      owasp: "A07:2021"
 
   # === Framework-specific Rules ===
 
   # Play Framework CSRF bypass
   - id: scala-play-csrf-bypass
-    message: "Play Framework CSRF protection bypassed"
+    message: "Cross-site request forgery (CSRF) vulnerability. The application does not verify that requests originate from its own interface. Implement CSRF tokens on all state-changing operations."
     severity: MEDIUM
     languages: [scala]
     pattern-either:
@@ -306,10 +372,15 @@ rules:
       framework: play
       cwe: CWE-352
       confidence: medium
+      subcategory: access-control
+      vulnerability_class: "Access Control Violation"
+      owasp: "A01:2021"
+      references:
+        - https://www.playframework.com/documentation/latest/SecurityHeaders
 
   # Akka HTTP security issues
   - id: scala-akka-http-security
-    message: "Akka HTTP security configuration issue"
+    message: "Uncontrolled resource consumption detected. The application does not limit resource usage, making it vulnerable to denial-of-service attacks. Implement rate limiting and resource caps."
     severity: MEDIUM
     languages: [scala]
     pattern-either:
@@ -321,10 +392,12 @@ rules:
       framework: akka
       cwe: CWE-400
       confidence: low
+      subcategory: dos
+      vulnerability_class: "Denial of Service"
 
   # Slick SQL injection
   - id: scala-slick-sql-injection
-    message: "Slick SQL injection vulnerability"
+    message: "SQL injection vulnerability detected. User-supplied input is included in a SQL query without sanitization, potentially allowing attackers to read, modify, or delete database contents. Use parameterized queries or an ORM instead of string concatenation."
     severity: CRITICAL
     languages: [scala]
     pattern-either:
@@ -336,10 +409,14 @@ rules:
       framework: slick
       cwe: CWE-89
       confidence: medium
+      subcategory: injection
+      vulnerability_class: "Injection Vulnerability"
+      owasp: "A03:2021"
+      fix: "Use Slick's type-safe query DSL or JDBC PreparedStatement with parameter binding."
 
   # JSON injection
   - id: scala-json-injection
-    message: "JSON injection vulnerability detected"
+    message: "Code injection vulnerability detected. User-controlled input is passed to a code evaluation function, allowing arbitrary code execution. Avoid eval/exec with user input; use safe alternatives."
     severity: HIGH
     languages: [scala]
     pattern-either:
@@ -350,10 +427,14 @@ rules:
       category: security
       cwe: CWE-94
       confidence: low
+      subcategory: injection
+      vulnerability_class: "Injection Vulnerability"
+      owasp: "A03:2021"
+      fix: "Avoid scala.tools.reflect.ToolBox.eval() with user input. Use a sandboxed interpreter or safe expression parser."
 
   # File upload without validation
   - id: scala-file-upload-no-validation
-    message: "File upload without proper validation"
+    message: "Unrestricted file upload detected. Accepting uploads without validating file type and content can allow execution of malicious code. Validate file type, size, and content before storing."
     severity: HIGH
     languages: [scala]
     pattern-either:
@@ -374,3 +455,9 @@ rules:
       framework: play
       cwe: CWE-434
       confidence: low
+      subcategory: upload
+      vulnerability_class: "Unrestricted File Upload"
+      owasp: "A04:2021"
+      references:
+        - https://www.playframework.com/documentation/latest/SecurityHeaders
+      fix: "Validate file extension, MIME type, and content. Store uploads outside the web root with randomized names."

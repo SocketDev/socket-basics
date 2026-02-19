@@ -3,7 +3,7 @@ rules:
 
   # Code injection via reflection
   - id: java-reflection-injection
-    message: "Code injection via reflection detected"
+    message: "Code injection vulnerability detected. User-controlled input is passed to a code evaluation function, allowing arbitrary code execution. Avoid eval/exec with user input; use safe alternatives."
     severity: CRITICAL
     languages: [java]
     pattern-either:
@@ -15,6 +15,10 @@ rules:
       category: security
       cwe: CWE-94
       confidence: medium
+      subcategory: injection
+      vulnerability_class: "Injection Vulnerability"
+      owasp: "A03:2021"
+      fix: "Avoid ScriptEngine.eval() with user input. Use a sandboxed interpreter or template engine. Restrict class loading with a SecurityManager."
 
   # SQL injection - using taint mode for accurate detection
   - id: java-sql-injection
@@ -104,10 +108,13 @@ rules:
       owasp:
         - A03:2021 - Injection
       confidence: high
+      subcategory: injection
+      vulnerability_class: "Injection Vulnerability"
+      fix: "Use PreparedStatement with parameter binding: ps = conn.prepareStatement('SELECT * FROM t WHERE id = ?'); ps.setString(1, userId);"
 
   # Deserialization vulnerabilities
   - id: java-unsafe-deserialization
-    message: "Unsafe deserialization detected"
+    message: "Unsafe deserialization detected. Deserializing untrusted data can lead to remote code execution or denial of service. Use safe serialization formats like JSON or validate data before deserializing."
     severity: CRITICAL
     languages: [java]
     pattern-either:
@@ -119,6 +126,10 @@ rules:
       category: security
       cwe: CWE-502
       confidence: high
+      subcategory: integrity
+      vulnerability_class: "Insecure Deserialization"
+      owasp: "A08:2021"
+      fix: "Use ObjectInputFilter (JEP 290) to restrict deserializable classes. Prefer JSON (Jackson/Gson) or Protocol Buffers for data interchange."
 
   # Command injection - using taint mode for accurate detection
   - id: java-command-injection
@@ -174,10 +185,14 @@ rules:
       category: security
       cwe: CWE-78
       confidence: high
+      subcategory: injection
+      vulnerability_class: "Injection Vulnerability"
+      owasp: "A03:2021"
+      fix: "Use ProcessBuilder with separate arguments: new ProcessBuilder('cmd', arg1, arg2). Never concatenate user input into Runtime.exec() strings."
 
   # LDAP injection
   - id: java-ldap-injection
-    message: "LDAP injection vulnerability detected"
+    message: "LDAP injection vulnerability detected. User input in LDAP queries without sanitization allows attackers to modify query logic. Escape special characters in LDAP filters."
     severity: CRITICAL
     languages: [java]
     pattern-either:
@@ -188,12 +203,16 @@ rules:
       category: security
       cwe: CWE-90
       confidence: medium
+      subcategory: injection
+      vulnerability_class: "Injection Vulnerability"
+      owasp: "A03:2021"
+      fix: "Use javax.naming.ldap with properly escaped filter values. Use LdapEncoder.filterEncode() from Spring LDAP for escaping."
 
   # === High Severity Rules ===
 
   # Hardcoded credentials
   - id: java-hardcoded-credentials
-    message: "Hardcoded credentials detected"
+    message: "Hard-coded credentials detected. Embedding secrets in source code makes them easily discoverable and impossible to rotate. Use environment variables or a secrets manager instead."
     severity: HIGH
     languages: [java]
     patterns:
@@ -211,10 +230,14 @@ rules:
       category: security
       cwe: CWE-798
       confidence: medium
+      subcategory: authentication
+      vulnerability_class: "Authentication Weakness"
+      owasp: "A07:2021"
+      fix: "Store secrets in environment variables (System.getenv('KEY')), a secrets manager, or externalized configuration (Spring Vault, AWS Secrets Manager)."
 
   # Weak cryptography
   - id: java-weak-crypto-md5
-    message: "Use of weak MD5 hash algorithm"
+    message: "Weak cryptographic algorithm detected. Using broken or outdated algorithms may allow attackers to decrypt data or forge signatures. Use modern algorithms like AES-256, SHA-256, or Ed25519."
     severity: HIGH
     languages: [java]
     pattern-either:
@@ -225,9 +248,13 @@ rules:
       category: security
       cwe: CWE-327
       confidence: high
+      subcategory: crypto
+      vulnerability_class: "Cryptographic Weakness"
+      owasp: "A02:2021"
+      fix: "Use MessageDigest.getInstance('SHA-256') instead of MD5/SHA1. Use AES/GCM/NoPadding for encryption. Use Cipher from javax.crypto with strong algorithms."
 
   - id: java-weak-crypto-sha1
-    message: "Use of weak SHA1 hash algorithm"
+    message: "Weak cryptographic algorithm detected. Using broken or outdated algorithms may allow attackers to decrypt data or forge signatures. Use modern algorithms like AES-256, SHA-256, or Ed25519."
     severity: HIGH
     languages: [java]
     pattern-either:
@@ -239,10 +266,14 @@ rules:
       category: security
       cwe: CWE-327
       confidence: high
+      subcategory: crypto
+      vulnerability_class: "Cryptographic Weakness"
+      owasp: "A02:2021"
+      fix: "Use MessageDigest.getInstance('SHA-256') instead of MD5/SHA1. Use AES/GCM/NoPadding for encryption. Use Cipher from javax.crypto with strong algorithms."
 
   # Insecure random
   - id: java-insecure-random
-    message: "Use of insecure Random class for cryptographic purposes"
+    message: "Insecure random number generator used. Non-cryptographic PRNGs produce predictable values that attackers can guess. Use a cryptographically secure random generator for security-sensitive operations."
     severity: HIGH
     languages: [java]
     pattern-either:
@@ -257,10 +288,14 @@ rules:
       category: security
       cwe: CWE-338
       confidence: medium
+      subcategory: crypto
+      vulnerability_class: "Cryptographic Weakness"
+      owasp: "A02:2021"
+      fix: "Use java.security.SecureRandom instead of java.util.Random for security-sensitive operations."
 
   # XXE vulnerabilities
   - id: java-xxe-vulnerability
-    message: "XML parsing vulnerable to XXE attacks"
+    message: "XML External Entity (XXE) vulnerability. The XML parser processes external entity references that can read local files or make network requests. Disable external entity processing in XML parsers."
     severity: HIGH
     languages: [java]
     pattern-either:
@@ -278,6 +313,10 @@ rules:
       category: security
       cwe: CWE-611
       confidence: medium
+      subcategory: injection
+      vulnerability_class: "Injection Vulnerability"
+      owasp: "A05:2021"
+      fix: "Set XMLConstants.FEATURE_SECURE_PROCESSING and disable DOCTYPE declarations: factory.setFeature('http://apache.org/xml/features/disallow-doctype-decl', true)."
 
   # Path traversal - using taint mode for accurate detection
   - id: java-path-traversal
@@ -350,10 +389,14 @@ rules:
       category: security
       cwe: CWE-22
       confidence: high
+      subcategory: access-control
+      vulnerability_class: "Access Control Violation"
+      owasp: "A01:2021"
+      fix: "Use File.getCanonicalPath() and verify the result starts with the allowed base directory. Use java.nio.file.Path.normalize() and resolve()."
 
   # SSL/TLS bypass
   - id: java-ssl-bypass
-    message: "SSL/TLS certificate verification bypassed"
+    message: "TLS/SSL certificate validation is disabled or bypassed. This allows man-in-the-middle attacks where attackers can intercept encrypted communications. Always validate certificates in production."
     severity: HIGH
     languages: [java]
     pattern-either:
@@ -375,12 +418,16 @@ rules:
       category: security
       cwe: CWE-295
       confidence: high
+      subcategory: crypto
+      vulnerability_class: "Cryptographic Weakness"
+      owasp: "A07:2021"
+      fix: "Never override TrustManager to accept all certificates. Use the default SSLContext or configure with trusted CA certificates only."
 
   # === Medium Severity Rules ===
 
   # Weak cipher algorithms
   - id: java-weak-cipher
-    message: "Use of weak cipher algorithm"
+    message: "Weak cryptographic algorithm detected. Using broken or outdated algorithms may allow attackers to decrypt data or forge signatures. Use modern algorithms like AES-256, SHA-256, or Ed25519."
     severity: MEDIUM
     languages: [java]
     pattern-either:
@@ -393,10 +440,13 @@ rules:
       category: security
       cwe: CWE-327
       confidence: high
+      subcategory: crypto
+      vulnerability_class: "Cryptographic Weakness"
+      owasp: "A02:2021"
 
   # Weak SSL/TLS versions
   - id: java-weak-ssl-version
-    message: "Use of weak SSL/TLS version"
+    message: "Weak cryptographic algorithm detected. Using broken or outdated algorithms may allow attackers to decrypt data or forge signatures. Use modern algorithms like AES-256, SHA-256, or Ed25519."
     severity: MEDIUM
     languages: [java]
     pattern-either:
@@ -410,10 +460,13 @@ rules:
       category: security
       cwe: CWE-327
       confidence: high
+      subcategory: crypto
+      vulnerability_class: "Cryptographic Weakness"
+      owasp: "A02:2021"
 
   # HTTP usage instead of HTTPS
   - id: java-insecure-http
-    message: "Use of HTTP instead of HTTPS"
+    message: "Sensitive data transmitted over an unencrypted channel. Using HTTP instead of HTTPS allows network attackers to intercept data in transit. Use HTTPS for all communications containing sensitive data."
     severity: MEDIUM
     languages: [java]
     pattern-either:
@@ -424,10 +477,13 @@ rules:
       category: security
       cwe: CWE-319
       confidence: low
+      subcategory: crypto
+      vulnerability_class: "Cryptographic Weakness"
+      owasp: "A02:2021"
 
   # Weak key generation
   - id: java-weak-key-generation
-    message: "Weak key generation detected"
+    message: "Cryptographic weakness detected. Misuse of cryptographic primitives undermines data protection. Use well-tested crypto libraries with recommended configurations."
     severity: MEDIUM
     languages: [java]
     patterns:
@@ -440,10 +496,13 @@ rules:
       category: security
       cwe: CWE-310
       confidence: medium
+      subcategory: crypto
+      vulnerability_class: "Cryptographic Weakness"
+      owasp: "A02:2021"
 
   # Unvalidated redirects
   - id: java-unvalidated-redirect
-    message: "Unvalidated redirect detected"
+    message: "Open redirect vulnerability detected. The application redirects to a user-controlled URL without validation, enabling phishing attacks. Validate redirect targets against an allowlist."
     severity: MEDIUM
     languages: [java]
     pattern-either:
@@ -453,10 +512,13 @@ rules:
       category: security
       cwe: CWE-601
       confidence: low
+      subcategory: access-control
+      vulnerability_class: "Access Control Violation"
+      owasp: "A01:2021"
 
   # Cookie security issues
   - id: java-insecure-cookie
-    message: "Cookie without secure flags"
+    message: "Sensitive cookie missing the Secure flag. The cookie may be transmitted over unencrypted HTTP, allowing interception. Set the Secure flag on all sensitive cookies."
     severity: MEDIUM
     languages: [java]
     pattern-either:
@@ -473,12 +535,15 @@ rules:
       category: security
       cwe: CWE-614
       confidence: low
+      subcategory: configuration
+      vulnerability_class: "Security Misconfiguration"
+      owasp: "A05:2021"
 
   # === Low Severity Rules ===
 
   # System.out usage in production
   - id: java-system-out-usage
-    message: "System.out usage detected - consider using proper logging"
+    message: "Sensitive information written to log files. Passwords, tokens, or personal data in logs can be exposed to unauthorized parties. Redact sensitive values before logging."
     severity: LOW
     languages: [java]
     pattern-either:
@@ -490,10 +555,13 @@ rules:
       category: security
       cwe: CWE-532
       confidence: low
+      subcategory: logging
+      vulnerability_class: "Sensitive Data Exposure"
+      owasp: "A09:2021"
 
   # Empty catch blocks
   - id: java-empty-catch-block
-    message: "Empty catch block detected - exceptions should be handled"
+    message: "Improper error handling detected. The application does not properly handle exceptions, which may cause crashes or information leaks. Catch specific exceptions and handle them gracefully."
     severity: LOW
     languages: [java]
     pattern: |
@@ -505,10 +573,12 @@ rules:
       category: security
       cwe: CWE-703
       confidence: high
+      subcategory: error-handling
+      vulnerability_class: "Improper Error Handling"
 
   # Hardcoded IP addresses
   - id: java-hardcoded-ip
-    message: "Hardcoded IP address detected"
+    message: "Hard-coded credentials detected. Embedding secrets in source code makes them easily discoverable and impossible to rotate. Use environment variables or a secrets manager instead."
     severity: LOW
     languages: [java]
     pattern-either:
@@ -520,12 +590,15 @@ rules:
       category: security
       cwe: CWE-798
       confidence: low
+      subcategory: authentication
+      vulnerability_class: "Authentication Weakness"
+      owasp: "A07:2021"
 
   # === Framework-specific Rules ===
 
   # Spring Security bypass
   - id: java-spring-security-bypass
-    message: "Spring Security potentially bypassed"
+    message: "Cross-site request forgery (CSRF) vulnerability. The application does not verify that requests originate from its own interface. Implement CSRF tokens on all state-changing operations."
     severity: HIGH
     languages: [java]
     pattern-either:
@@ -540,10 +613,16 @@ rules:
       category: security
       framework: spring
       cwe: CWE-352
+      subcategory: access-control
+      vulnerability_class: "Access Control Violation"
+      owasp: "A01:2021"
+      references:
+        - https://docs.spring.io/spring-security/reference/
+      fix: "Enable Spring Security CSRF protection or use a custom CSRF token filter. Include CSRF tokens in all HTML forms and AJAX requests."
 
   # JPA/Hibernate SQL injection
   - id: java-jpa-sql-injection
-    message: "Potential SQL injection in JPA/Hibernate query"
+    message: "SQL injection vulnerability detected. User-supplied input is included in a SQL query without sanitization, potentially allowing attackers to read, modify, or delete database contents. Use parameterized queries or an ORM instead of string concatenation."
     severity: HIGH
     languages: [java]
     pattern-either:
@@ -555,10 +634,14 @@ rules:
       framework: jpa
       cwe: CWE-89
       confidence: high
+      subcategory: injection
+      vulnerability_class: "Injection Vulnerability"
+      owasp: "A03:2021"
+      fix: "Use PreparedStatement with parameter binding: ps = conn.prepareStatement('SELECT * FROM t WHERE id = ?'); ps.setString(1, userId);"
 
   # Struts2 OGNL injection
   - id: java-struts-ognl-injection
-    message: "Potential OGNL injection in Struts2"
+    message: "Code injection vulnerability detected. User-controlled input is passed to a code evaluation function, allowing arbitrary code execution. Avoid eval/exec with user input; use safe alternatives."
     severity: CRITICAL
     languages: [java]
     pattern-either:
@@ -569,10 +652,14 @@ rules:
       framework: struts
       cwe: CWE-94
       confidence: medium
+      subcategory: injection
+      vulnerability_class: "Injection Vulnerability"
+      owasp: "A03:2021"
+      fix: "Avoid ScriptEngine.eval() with user input. Use a sandboxed interpreter or template engine. Restrict class loading with a SecurityManager."
 
   # Android specific vulnerabilities
   - id: java-android-webview-js-enabled
-    message: "WebView with JavaScript enabled - potential XSS"
+    message: "Cross-site scripting (XSS) vulnerability detected. User input is rendered in HTML output without proper escaping, allowing attackers to inject malicious scripts. Sanitize or escape all user input before rendering."
     severity: MEDIUM
     languages: [java]
     pattern: |
@@ -582,6 +669,9 @@ rules:
       platform: android
       cwe: CWE-79
       confidence: medium
+      subcategory: xss
+      vulnerability_class: "Cross-Site Scripting (XSS)"
+      owasp: "A03:2021"
 
   - id: java-android-external-storage
     message: "Use of external storage - data may be readable by other apps"
@@ -596,10 +686,13 @@ rules:
       platform: android
       cwe: CWE-200
       confidence: medium
+      subcategory: configuration
+      vulnerability_class: "Security Misconfiguration"
+      owasp: "A01:2021"
 
   # JNDI injection
   - id: java-jndi-injection
-    message: "JNDI injection vulnerability detected"
+    message: "Injection vulnerability. User input reaches a downstream interpreter without sanitization. Sanitize or parameterize all user-controlled data."
     severity: CRITICAL
     languages: [java]
     pattern-either:
@@ -610,10 +703,14 @@ rules:
       category: security
       cwe: CWE-74
       confidence: medium
+      subcategory: injection
+      vulnerability_class: "Injection Vulnerability"
+      owasp: "A03:2021"
+      fix: "Sanitize or parameterize all user-controlled data before passing to interpreters."
 
   # Expression Language injection
   - id: java-el-injection
-    message: "Expression Language injection detected"
+    message: "Code injection vulnerability detected. User-controlled input is passed to a code evaluation function, allowing arbitrary code execution. Avoid eval/exec with user input; use safe alternatives."
     severity: HIGH
     languages: [java]
     pattern-either:
@@ -623,10 +720,14 @@ rules:
       category: security
       cwe: CWE-94
       confidence: medium
+      subcategory: injection
+      vulnerability_class: "Injection Vulnerability"
+      owasp: "A03:2021"
+      fix: "Avoid ScriptEngine.eval() with user input. Use a sandboxed interpreter or template engine. Restrict class loading with a SecurityManager."
 
   # Template injection
   - id: java-template-injection
-    message: "Template injection vulnerability detected"
+    message: "Code injection vulnerability detected. User-controlled input is passed to a code evaluation function, allowing arbitrary code execution. Avoid eval/exec with user input; use safe alternatives."
     severity: HIGH
     languages: [java]
     pattern-either:
@@ -637,10 +738,14 @@ rules:
       category: security
       cwe: CWE-94
       confidence: medium
+      subcategory: injection
+      vulnerability_class: "Injection Vulnerability"
+      owasp: "A03:2021"
+      fix: "Avoid ScriptEngine.eval() with user input. Use a sandboxed interpreter or template engine. Restrict class loading with a SecurityManager."
 
   # File upload without validation
   - id: java-file-upload-no-validation
-    message: "File upload without proper validation"
+    message: "Unrestricted file upload detected. Accepting uploads without validating file type and content can allow execution of malicious code. Validate file type, size, and content before storing."
     severity: HIGH
     languages: [java]
     pattern-either:
@@ -662,3 +767,7 @@ rules:
       category: security
       cwe: CWE-434
       confidence: low
+      subcategory: upload
+      vulnerability_class: "Unrestricted File Upload"
+      owasp: "A04:2021"
+      fix: "Validate file extension, MIME type, and content. Store uploads outside the web root. Use Apache Tika for content-type detection."

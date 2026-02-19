@@ -27,7 +27,7 @@ jobs:
       - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
       
       - name: Run Socket Basics
-        uses: SocketDev/socket-basics@1.0.26
+        uses: SocketDev/socket-basics@1.0.28
         env:
           GITHUB_PR_NUMBER: ${{ github.event.pull_request.number || github.event.issue.number }}
         with:
@@ -89,6 +89,14 @@ All configuration can be managed through:
 
 See [Configuration Documentation](docs/configuration.md) for details on all available options.
 
+#### Integration Environment Variables
+
+Socket Basics supports special environment variables for integration with other tools:
+
+- **`SKIP_SOCKET_REACH=1`** — Skip Socket Tier 1 reachability analysis. This allows external tools (like the Node.js Socket CLI) to skip redundant reachability scans when the analysis will be performed separately or is not needed for a particular workflow.
+
+- **`SKIP_SOCKET_SUBMISSION=1`** — Skip submission to Socket API while still generating `.socket.facts.json`. This allows external tools (like the Node.js Socket CLI) to collect the facts file and submit it along with other data in a unified API call. When this is set, Socket Basics will complete all scanning and generate the facts file, but will not make the API submission call.
+
 ## 🎯 What Socket Basics Does
 
 1. **Scans** your codebase using multiple security tools in parallel
@@ -112,7 +120,7 @@ Configure scanning policies, notification channels, and rule sets for your entir
 
 **Dashboard-Configured (Enterprise):**
 ```yaml
-- uses: SocketDev/socket-basics@1.0.26
+- uses: SocketDev/socket-basics@1.0.28
   env:
     GITHUB_PR_NUMBER: ${{ github.event.pull_request.number || github.event.issue.number }}
   with:
@@ -123,7 +131,7 @@ Configure scanning policies, notification channels, and rule sets for your entir
 
 **CLI-Configured:**
 ```yaml
-- uses: SocketDev/socket-basics@1.0.26
+- uses: SocketDev/socket-basics@1.0.28
   env:
     GITHUB_PR_NUMBER: ${{ github.event.pull_request.number || github.event.issue.number }}
   with:
@@ -139,10 +147,10 @@ Configure scanning policies, notification channels, and rule sets for your entir
 
 ```bash
 # Build with version tag
-docker build -t socketdev/socket-basics:1.0.26 .
+docker build -t socketdev/socket-basics:1.0.28 .
 
 # Run scan
-docker run --rm -v "$PWD:/workspace" socketdev/socket-basics:1.0.26 \
+docker run --rm -v "$PWD:/workspace" socketdev/socket-basics:1.0.28 \
   --workspace /workspace \
   --python-sast-enabled \
   --secret-scanning-enabled \

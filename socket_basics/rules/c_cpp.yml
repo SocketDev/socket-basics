@@ -3,7 +3,7 @@ rules:
 
   # Buffer overflow vulnerabilities
   - id: c-buffer-overflow
-    message: "Buffer overflow vulnerability detected"
+    message: "Buffer overflow vulnerability. Data is copied without checking buffer size, potentially allowing code execution. Always validate input length before buffer operations."
     severity: CRITICAL
     languages: [c, cpp]
     pattern-either:
@@ -18,10 +18,13 @@ rules:
       category: security
       cwe: CWE-120
       confidence: high
+      subcategory: deprecated
+      vulnerability_class: "Memory Safety Violation"
+      fix: "Use strncpy/strncat with explicit size limits instead of strcpy/strcat. Use snprintf instead of sprintf. Check input length before copying."
 
   # Format string vulnerabilities
   - id: c-format-string-vulnerability
-    message: "Format string vulnerability detected"
+    message: "Format string vulnerability. User input in format strings allows memory read/write. Never pass user input as a format string argument."
     severity: CRITICAL
     languages: [c, cpp]
     pattern-either:
@@ -35,10 +38,14 @@ rules:
       category: security
       cwe: CWE-134
       confidence: high
+      subcategory: injection
+      vulnerability_class: "Injection Vulnerability"
+      owasp: "A03:2021"
+      fix: "Never pass user input as the format string. Use printf(\"%s\", user_input) instead of printf(user_input). Use -Wformat-security compiler flag."
 
   # Command injection
   - id: c-command-injection
-    message: "Command injection vulnerability detected"
+    message: "OS command injection vulnerability detected. User-controlled data flows into a system command without proper sanitization, allowing attackers to execute arbitrary commands. Use safe APIs with argument lists instead of shell execution."
     severity: CRITICAL
     languages: [c, cpp]
     pattern-either:
@@ -52,10 +59,14 @@ rules:
       category: security
       cwe: CWE-78
       confidence: high
+      subcategory: injection
+      vulnerability_class: "Injection Vulnerability"
+      owasp: "A03:2021"
+      fix: "Use execve() or posix_spawn() with separate argument arrays. Never pass user input to system() or popen()."
 
   # SQL injection (for C programs using database libraries)
   - id: c-sql-injection
-    message: "SQL injection vulnerability detected"
+    message: "SQL injection vulnerability detected. User-supplied input is included in a SQL query without sanitization, potentially allowing attackers to read, modify, or delete database contents. Use parameterized queries or an ORM instead of string concatenation."
     severity: CRITICAL
     languages: [c, cpp]
     pattern-either:
@@ -67,12 +78,16 @@ rules:
       category: security
       cwe: CWE-89
       confidence: high
+      subcategory: injection
+      vulnerability_class: "Injection Vulnerability"
+      owasp: "A03:2021"
+      fix: "Use parameterized queries with your database API (e.g., sqlite3_bind_text for SQLite, PQexecParams for PostgreSQL). Never use sprintf to build SQL."
 
   # === High Severity Rules ===
 
   # Memory management issues
   - id: c-memory-management
-    message: "Memory management issue detected"
+    message: "Double free vulnerability. Freeing memory twice corrupts memory management and may allow code execution. Track allocation state and nullify freed pointers."
     severity: HIGH
     languages: [c, cpp]
     pattern-either:
@@ -90,10 +105,13 @@ rules:
       category: security
       cwe: CWE-415
       confidence: medium
+      subcategory: deprecated
+      vulnerability_class: "Memory Safety Violation"
+      fix: "Set pointers to NULL after freeing. Use RAII in C++ (unique_ptr, shared_ptr). Check for double-free with AddressSanitizer (-fsanitize=address)."
 
   # Use after free
   - id: c-use-after-free
-    message: "Use after free vulnerability detected"
+    message: "Use-after-free vulnerability. Accessing freed memory can cause crashes or arbitrary code execution. Nullify pointers after free and use smart pointers where possible."
     severity: HIGH
     languages: [c, cpp]
     pattern: |
@@ -104,10 +122,13 @@ rules:
       category: security
       cwe: CWE-416
       confidence: medium
+      subcategory: deprecated
+      vulnerability_class: "Memory Safety Violation"
+      fix: "Set pointers to NULL after freeing. Use smart pointers (unique_ptr, shared_ptr) in C++. Enable AddressSanitizer for detection."
 
   # Integer overflow
   - id: c-integer-overflow
-    message: "Integer overflow vulnerability detected"
+    message: "Integer overflow risk detected. Arithmetic operations may exceed integer bounds, causing unexpected behavior. Validate arithmetic operands and use safe math functions."
     severity: HIGH
     languages: [c, cpp]
     patterns:
@@ -125,10 +146,13 @@ rules:
       category: security
       cwe: CWE-190
       confidence: low
+      subcategory: deprecated
+      vulnerability_class: "Memory Safety Violation"
+      fix: "Check for overflow before arithmetic: if (a > INT_MAX - b) { error; }. Use compiler built-ins like __builtin_add_overflow() or SafeInt library."
 
   # Null pointer dereference
   - id: c-null-pointer-dereference
-    message: "Null pointer dereference detected"
+    message: "Null pointer dereference risk. Using a null pointer causes crashes. Check pointers for null before dereferencing."
     severity: HIGH
     languages: [c, cpp]
     pattern-either:
@@ -150,10 +174,13 @@ rules:
       category: security
       cwe: CWE-476
       confidence: low
+      subcategory: deprecated
+      vulnerability_class: "Memory Safety Violation"
+      fix: "Always check pointers for NULL before dereferencing. Initialize pointers to NULL. Use static analysis tools to detect null dereference paths."
 
   # Hardcoded secrets
   - id: c-hardcoded-secrets
-    message: "Hardcoded secrets detected"
+    message: "Hard-coded credentials detected. Embedding secrets in source code makes them easily discoverable and impossible to rotate. Use environment variables or a secrets manager instead."
     severity: HIGH
     languages: [c, cpp]
     pattern-either:
@@ -169,10 +196,14 @@ rules:
       category: security
       cwe: CWE-798
       confidence: medium
+      subcategory: authentication
+      vulnerability_class: "Authentication Weakness"
+      owasp: "A07:2021"
+      fix: "Store secrets in environment variables (getenv('KEY')) or read from a protected configuration file. Never embed secrets in source code."
 
   # Race conditions
   - id: c-race-condition
-    message: "Race condition detected - check file operations"
+    message: "Time-of-check time-of-use (TOCTOU) race condition. A resource can change between check and use, allowing bypass. Perform check and use atomically."
     severity: HIGH
     languages: [c, cpp]
     pattern-either:
@@ -188,12 +219,15 @@ rules:
       category: security
       cwe: CWE-367
       confidence: low
+      subcategory: design
+      vulnerability_class: "Insecure Design"
+      fix: "Perform check and use atomically. Use file locks or atomic filesystem operations."
 
   # === Medium Severity Rules ===
 
   # Weak random number generation
   - id: c-weak-random
-    message: "Use of weak random number generator"
+    message: "Insecure random number generator used. Non-cryptographic PRNGs produce predictable values that attackers can guess. Use a cryptographically secure random generator for security-sensitive operations."
     severity: MEDIUM
     languages: [c, cpp]
     pattern-either:
@@ -205,10 +239,13 @@ rules:
       category: security
       cwe: CWE-338
       confidence: medium
+      subcategory: crypto
+      vulnerability_class: "Cryptographic Weakness"
+      owasp: "A02:2021"
 
   # Insecure file permissions
   - id: c-insecure-file-permissions
-    message: "Insecure file permissions detected"
+    message: "Overly permissive file or resource permissions. Resources are accessible to unauthorized users due to incorrect permission settings. Apply the principle of least privilege."
     severity: MEDIUM
     languages: [c, cpp]
     pattern-either:
@@ -221,10 +258,13 @@ rules:
       category: security
       cwe: CWE-732
       confidence: high
+      subcategory: configuration
+      vulnerability_class: "Security Misconfiguration"
+      owasp: "A05:2021"
 
   # Temporary file creation
   - id: c-insecure-temp-file
-    message: "Insecure temporary file creation"
+    message: "Insecure temporary file creation. Predictable temp file names or insecure permissions can be exploited via symlink attacks. Use secure temp file creation functions."
     severity: MEDIUM
     languages: [c, cpp]
     pattern-either:
@@ -236,10 +276,13 @@ rules:
       category: security
       cwe: CWE-377
       confidence: high
+      subcategory: file-operations
+      vulnerability_class: "Insecure File Operation"
+      owasp: "A01:2021"
 
   # Signal handling issues
   - id: c-signal-handling
-    message: "Signal handling issue detected"
+    message: "Signal handler uses non-reentrant function. This causes undefined behavior on signal delivery. Only call async-signal-safe functions in signal handlers."
     severity: MEDIUM
     languages: [c, cpp]
     pattern-either:
@@ -259,12 +302,14 @@ rules:
       category: security
       cwe: CWE-479
       confidence: low
+      subcategory: deprecated
+      vulnerability_class: "Memory Safety Violation"
 
   # === Low Severity Rules ===
 
   # Hardcoded IP addresses
   - id: c-hardcoded-ip
-    message: "Hardcoded IP address detected"
+    message: "Hard-coded credentials detected. Embedding secrets in source code makes them easily discoverable and impossible to rotate. Use environment variables or a secrets manager instead."
     severity: LOW
     languages: [c, cpp]
     pattern-either:
@@ -277,10 +322,13 @@ rules:
       category: security
       cwe: CWE-798
       confidence: low
+      subcategory: authentication
+      vulnerability_class: "Authentication Weakness"
+      owasp: "A07:2021"
 
   # Debug information
   - id: c-debug-info
-    message: "Debug information in production code"
+    message: "Debug mode or debug code is enabled in a production context. Debug features expose sensitive information and increase attack surface. Disable debug mode before deploying to production."
     severity: LOW
     languages: [c, cpp]
     pattern-either:
@@ -294,12 +342,15 @@ rules:
       category: security
       cwe: CWE-489
       confidence: low
+      subcategory: configuration
+      vulnerability_class: "Security Misconfiguration"
+      owasp: "A05:2021"
 
   # === C++ Specific Rules ===
 
   # Unsafe casts
   - id: cpp-unsafe-cast
-    message: "Unsafe cast detected"
+    message: "Incorrect type conversion. Unsafe type casting may cause data loss or memory corruption. Validate types before conversion and handle edge cases."
     severity: HIGH
     languages: [cpp]
     pattern-either:
@@ -311,10 +362,13 @@ rules:
       category: security
       cwe: CWE-704
       confidence: low
+      subcategory: design
+      vulnerability_class: "Insecure Design"
+      fix: "Use explicit casts with bounds checking. In C++, prefer static_cast over C-style casts. Validate value ranges before narrowing conversions."
 
   # Memory management in C++
   - id: cpp-memory-management
-    message: "C++ memory management issue"
+    message: "Double free vulnerability. Freeing memory twice corrupts memory management and may allow code execution. Track allocation state and nullify freed pointers."
     severity: HIGH
     languages: [cpp]
     pattern-either:
@@ -326,10 +380,13 @@ rules:
       category: security
       cwe: CWE-415
       confidence: medium
+      subcategory: deprecated
+      vulnerability_class: "Memory Safety Violation"
+      fix: "Set pointers to NULL after freeing. Use RAII in C++ (unique_ptr, shared_ptr). Check for double-free with AddressSanitizer (-fsanitize=address)."
 
   # Exception safety
   - id: cpp-exception-safety
-    message: "Exception safety issue detected"
+    message: "Memory leak detected. Allocated memory is never freed, leading to resource exhaustion. Free all dynamically allocated memory when no longer needed."
     severity: MEDIUM
     languages: [cpp]
     pattern-either:
@@ -348,10 +405,12 @@ rules:
       category: security
       cwe: CWE-401
       confidence: low
+      subcategory: deprecated
+      vulnerability_class: "Memory Safety Violation"
 
   # STL iterator invalidation
   - id: cpp-iterator-invalidation
-    message: "STL iterator invalidation detected"
+    message: "Use-after-free vulnerability. Accessing freed memory can cause crashes or arbitrary code execution. Nullify pointers after free and use smart pointers where possible."
     severity: MEDIUM
     languages: [cpp]
     pattern-either:
@@ -367,10 +426,12 @@ rules:
       category: security
       cwe: CWE-416
       confidence: low
+      subcategory: deprecated
+      vulnerability_class: "Memory Safety Violation"
 
   # Resource leaks
   - id: cpp-resource-leak
-    message: "Resource leak detected"
+    message: "Memory leak detected. Allocated memory is never freed, leading to resource exhaustion. Free all dynamically allocated memory when no longer needed."
     severity: MEDIUM
     languages: [cpp]
     pattern-either:
@@ -392,12 +453,14 @@ rules:
       category: security
       cwe: CWE-401
       confidence: low
+      subcategory: deprecated
+      vulnerability_class: "Memory Safety Violation"
 
   # === OpenSSL/Crypto Related Rules ===
 
   # Weak cryptographic algorithms
   - id: c-weak-crypto
-    message: "Use of weak cryptographic algorithm"
+    message: "Weak cryptographic algorithm detected. Using broken or outdated algorithms may allow attackers to decrypt data or forge signatures. Use modern algorithms like AES-256, SHA-256, or Ed25519."
     severity: HIGH
     languages: [c, cpp]
     pattern-either:
@@ -410,10 +473,14 @@ rules:
       category: security
       cwe: CWE-327
       confidence: high
+      subcategory: crypto
+      vulnerability_class: "Cryptographic Weakness"
+      owasp: "A02:2021"
+      fix: "Use SHA-256 (e.g., EVP_sha256() from OpenSSL) instead of MD5/SHA-1. Use AES-GCM for authenticated encryption."
 
   # SSL/TLS issues
   - id: c-ssl-issues
-    message: "SSL/TLS security issue detected"
+    message: "TLS/SSL certificate validation is disabled or bypassed. This allows man-in-the-middle attacks where attackers can intercept encrypted communications. Always validate certificates in production."
     severity: HIGH
     languages: [c, cpp]
     pattern-either:
@@ -424,12 +491,16 @@ rules:
       category: security
       cwe: CWE-295
       confidence: high
+      subcategory: crypto
+      vulnerability_class: "Cryptographic Weakness"
+      owasp: "A07:2021"
+      fix: "Always call SSL_CTX_set_verify with SSL_VERIFY_PEER. Never skip certificate or hostname verification in OpenSSL/BoringSSL."
 
   # === Network Security Rules ===
 
   # Socket security issues
   - id: c-socket-security
-    message: "Socket security issue detected"
+    message: "Information exposure detected. The application reveals sensitive internal details to unauthorized users. Remove or restrict access to sensitive information in responses."
     severity: MEDIUM
     languages: [c, cpp]
     patterns:
@@ -443,10 +514,13 @@ rules:
       category: security
       cwe: CWE-200
       confidence: low
+      subcategory: configuration
+      vulnerability_class: "Security Misconfiguration"
+      owasp: "A01:2021"
 
   # Buffer size issues
   - id: c-buffer-size
-    message: "Buffer size calculation issue"
+    message: "Incorrect buffer size calculation. Buffer size miscalculation can cause overflow. Double-check size arithmetic and use safe allocation wrappers."
     severity: MEDIUM
     languages: [c, cpp]
     pattern-either:
@@ -457,10 +531,12 @@ rules:
       category: security
       cwe: CWE-131
       confidence: medium
+      subcategory: deprecated
+      vulnerability_class: "Memory Safety Violation"
 
   # Input validation
   - id: c-input-validation
-    message: "Input validation issue detected"
+    message: "Missing input validation. User input is not sufficiently validated, enabling injection or logic bypass attacks. Validate all inputs against expected format, type, and range."
     severity: HIGH
     languages: [c, cpp]
     pattern-either:
@@ -477,3 +553,7 @@ rules:
       category: security
       cwe: CWE-20
       confidence: high
+      subcategory: design
+      vulnerability_class: "Insecure Design"
+      owasp: "A03:2021"
+      fix: "Validate all inputs against expected format, type, and range."

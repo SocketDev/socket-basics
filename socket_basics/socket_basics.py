@@ -199,14 +199,25 @@ class SecurityScanner:
 
     def submit_socket_facts(self, socket_facts_path: Path, results: Dict[str, Any]) -> Dict[str, Any]:
         """Submit the socket facts file to Socket API and return full scan results.
-        
+
         Args:
             socket_facts_path: Path to the .socket.facts.json file
             results: Current scan results dict to update with full scan info
-            
+
         Returns:
             Updated results dict with full scan information (id, html_url)
         """
+        # Check if Socket submission should be skipped (for Node.js Socket CLI integration).
+        # When SKIP_SOCKET_SUBMISSION=1, socket-basics generates the .socket.facts.json
+        # file but does not submit it to the Socket API. This allows the Node.js Socket CLI to
+        # collect the facts and submit them in a unified API call along with manifest data.
+        if os.getenv('SKIP_SOCKET_SUBMISSION') == '1':
+            logger.info("Skipping Socket API submission (SKIP_SOCKET_SUBMISSION=1)")
+            logger.debug(f"Socket facts file will be available at: {socket_facts_path}")
+            # Include the facts file path in results for downstream tools.
+            results['socket_facts_path'] = str(socket_facts_path)
+            return results
+
         try:
             # Check if socket facts file is empty or has no components
             if not socket_facts_path.exists():
@@ -275,7 +286,8 @@ class SecurityScanner:
                     'commit_hash': commit_hash,
                     'make_default_branch': is_default_branch,
                     'set_as_pending_head': is_default_branch,
-                    'integration_type': "api"
+                    'integration_type': "api",
+                    'scan_type': "socket_basics"
                 }
                 
                 # Always include pull_request (0 if not a PR)

@@ -5,7 +5,7 @@ rules:
 
   # Code injection
   - id: elixir-code-injection
-    message: "Code injection vulnerability detected"
+    message: "Code injection vulnerability detected. User-controlled input is passed to a code evaluation function, allowing arbitrary code execution. Avoid eval/exec with user input; use safe alternatives."
     severity: CRITICAL
     languages: [elixir]
     pattern-either:
@@ -17,10 +17,14 @@ rules:
       category: security
       cwe: CWE-94
       confidence: high
+      subcategory: injection
+      vulnerability_class: "Injection Vulnerability"
+      owasp: "A03:2021"
+      fix: "Remove Code.eval_string/1 calls with user input. Use pattern matching and safe parsing instead. Never evaluate untrusted Elixir code."
 
   # SQL injection
   - id: elixir-sql-injection
-    message: "SQL injection vulnerability detected"
+    message: "SQL injection vulnerability detected. User-supplied input is included in a SQL query without sanitization, potentially allowing attackers to read, modify, or delete database contents. Use parameterized queries or an ORM instead of string concatenation."
     severity: CRITICAL
     languages: [elixir]
     pattern-either:
@@ -32,10 +36,14 @@ rules:
       category: security
       cwe: CWE-89
       confidence: medium
+      subcategory: injection
+      vulnerability_class: "Injection Vulnerability"
+      owasp: "A03:2021"
+      fix: "Use Ecto parameterized queries: Repo.all(from u in User, where: u.id == ^user_id). Never interpolate user input into raw SQL."
 
   # Command injection
   - id: elixir-command-injection
-    message: "Command injection vulnerability detected"
+    message: "OS command injection vulnerability detected. User-controlled data flows into a system command without proper sanitization, allowing attackers to execute arbitrary commands. Use safe APIs with argument lists instead of shell execution."
     severity: CRITICAL
     languages: [elixir]
     pattern-either:
@@ -47,10 +55,14 @@ rules:
       category: security
       cwe: CWE-78
       confidence: medium
+      subcategory: injection
+      vulnerability_class: "Injection Vulnerability"
+      owasp: "A03:2021"
+      fix: "Use System.cmd/2 with separate arguments: System.cmd(\"cmd\", [arg1, arg2]). Never pass user input to :os.cmd/1."
 
   # Unsafe deserialization
   - id: elixir-unsafe-deserialization
-    message: "Unsafe deserialization detected"
+    message: "Unsafe deserialization detected. Deserializing untrusted data can lead to remote code execution or denial of service. Use safe serialization formats like JSON or validate data before deserializing."
     severity: CRITICAL
     languages: [elixir]
     pattern-either:
@@ -62,12 +74,16 @@ rules:
       category: security
       cwe: CWE-502
       confidence: high
+      subcategory: integrity
+      vulnerability_class: "Insecure Deserialization"
+      owasp: "A08:2021"
+      fix: "Use Jason.decode/1 or :erlang.binary_to_term/2 with [:safe] option. Never use :erlang.binary_to_term/1 on untrusted data."
 
   # === High Severity Rules ===
 
   # Hardcoded secrets
   - id: elixir-hardcoded-secrets
-    message: "Hardcoded secrets detected"
+    message: "Hard-coded credentials detected. Embedding secrets in source code makes them easily discoverable and impossible to rotate. Use environment variables or a secrets manager instead."
     severity: HIGH
     languages: [elixir]
     pattern-either:
@@ -81,10 +97,14 @@ rules:
       category: security
       cwe: CWE-798
       confidence: medium
+      subcategory: authentication
+      vulnerability_class: "Authentication Weakness"
+      owasp: "A07:2021"
+      fix: "Store secrets in environment variables (System.get_env/1) or use runtime configuration. Use config/runtime.exs for production secrets."
 
   # Weak cryptography
   - id: elixir-weak-crypto
-    message: "Use of weak cryptographic function"
+    message: "Weak cryptographic algorithm detected. Using broken or outdated algorithms may allow attackers to decrypt data or forge signatures. Use modern algorithms like AES-256, SHA-256, or Ed25519."
     severity: HIGH
     languages: [elixir]
     pattern-either:
@@ -96,10 +116,14 @@ rules:
       category: security
       cwe: CWE-327
       confidence: high
+      subcategory: crypto
+      vulnerability_class: "Cryptographic Weakness"
+      owasp: "A02:2021"
+      fix: "Use :crypto.hash(:sha256, data) instead of :md5/:sha. Use :crypto.crypto_one_time_aead for AES-GCM encryption."
 
   # Path traversal
   - id: elixir-path-traversal
-    message: "Path traversal vulnerability detected"
+    message: "Path traversal vulnerability detected. User input is used in file paths without validation, allowing attackers to access files outside the intended directory. Validate and canonicalize paths before use."
     severity: HIGH
     languages: [elixir]
     pattern-either:
@@ -111,10 +135,14 @@ rules:
       category: security
       cwe: CWE-22
       confidence: medium
+      subcategory: access-control
+      vulnerability_class: "Access Control Violation"
+      owasp: "A01:2021"
+      fix: "Use Path.expand/1 and verify the result starts with the allowed base directory. Reject paths containing '..' components."
 
   # XSS vulnerabilities
   - id: elixir-xss
-    message: "XSS vulnerability detected"
+    message: "Cross-site scripting (XSS) vulnerability detected. User input is rendered in HTML output without proper escaping, allowing attackers to inject malicious scripts. Sanitize or escape all user input before rendering."
     severity: HIGH
     languages: [elixir]
     pattern-either:
@@ -125,10 +153,14 @@ rules:
       category: security
       cwe: CWE-79
       confidence: low
+      subcategory: xss
+      vulnerability_class: "Cross-Site Scripting (XSS)"
+      owasp: "A03:2021"
+      fix: "Phoenix templates auto-escape by default. Never use raw/1 or {:safe, ...} with user input. Use Phoenix.HTML.html_escape/1 for manual escaping."
 
   # Open redirect
   - id: elixir-open-redirect
-    message: "Open redirect vulnerability detected"
+    message: "Open redirect vulnerability detected. The application redirects to a user-controlled URL without validation, enabling phishing attacks. Validate redirect targets against an allowlist."
     severity: HIGH
     languages: [elixir]
     pattern-either:
@@ -138,12 +170,16 @@ rules:
       category: security
       cwe: CWE-601
       confidence: medium
+      subcategory: access-control
+      vulnerability_class: "Access Control Violation"
+      owasp: "A01:2021"
+      fix: "Validate redirect URLs against an allowlist of trusted paths or domains. Use relative paths for internal redirects. Reject external URLs."
 
   # === Medium Severity Rules ===
 
   # Insecure random
   - id: elixir-insecure-random
-    message: "Use of insecure random number generator"
+    message: "Insecure random number generator used. Non-cryptographic PRNGs produce predictable values that attackers can guess. Use a cryptographically secure random generator for security-sensitive operations."
     severity: MEDIUM
     languages: [elixir]
     pattern-either:
@@ -155,10 +191,13 @@ rules:
       category: security
       cwe: CWE-338
       confidence: low
+      subcategory: crypto
+      vulnerability_class: "Cryptographic Weakness"
+      owasp: "A02:2021"
 
   # HTTP instead of HTTPS
   - id: elixir-insecure-http
-    message: "Use of HTTP instead of HTTPS"
+    message: "Sensitive data transmitted over an unencrypted channel. Using HTTP instead of HTTPS allows network attackers to intercept data in transit. Use HTTPS for all communications containing sensitive data."
     severity: MEDIUM
     languages: [elixir]
     pattern-either:
@@ -170,10 +209,13 @@ rules:
       category: security
       cwe: CWE-319
       confidence: low
+      subcategory: crypto
+      vulnerability_class: "Cryptographic Weakness"
+      owasp: "A02:2021"
 
   # Weak session configuration
   - id: elixir-weak-session
-    message: "Weak session configuration detected"
+    message: "Sensitive cookie missing the Secure flag. The cookie may be transmitted over unencrypted HTTP, allowing interception. Set the Secure flag on all sensitive cookies."
     severity: MEDIUM
     languages: [elixir]
     pattern-either:
@@ -191,10 +233,13 @@ rules:
       category: security
       cwe: CWE-614
       confidence: medium
+      subcategory: configuration
+      vulnerability_class: "Security Misconfiguration"
+      owasp: "A05:2021"
 
   # CSRF protection bypass
   - id: elixir-csrf-bypass
-    message: "CSRF protection bypassed"
+    message: "Cross-site request forgery (CSRF) vulnerability. The application does not verify that requests originate from its own interface. Implement CSRF tokens on all state-changing operations."
     severity: MEDIUM
     languages: [elixir]
     pattern-either:
@@ -204,12 +249,15 @@ rules:
       category: security
       cwe: CWE-352
       confidence: medium
+      subcategory: access-control
+      vulnerability_class: "Access Control Violation"
+      owasp: "A01:2021"
 
   # === Low Severity Rules ===
 
   # Debug information disclosure
   - id: elixir-debug-info-disclosure
-    message: "Debug information disclosure detected"
+    message: "Sensitive information written to log files. Passwords, tokens, or personal data in logs can be exposed to unauthorized parties. Redact sensitive values before logging."
     severity: LOW
     languages: [elixir]
     patterns:
@@ -225,10 +273,13 @@ rules:
       category: security
       cwe: CWE-532
       confidence: low
+      subcategory: logging
+      vulnerability_class: "Sensitive Data Exposure"
+      owasp: "A09:2021"
 
   # Hardcoded IP addresses
   - id: elixir-hardcoded-ip
-    message: "Hardcoded IP address detected"
+    message: "Hard-coded credentials detected. Embedding secrets in source code makes them easily discoverable and impossible to rotate. Use environment variables or a secrets manager instead."
     severity: LOW
     languages: [elixir]
     pattern-either:
@@ -241,12 +292,15 @@ rules:
       category: security
       cwe: CWE-798
       confidence: low
+      subcategory: authentication
+      vulnerability_class: "Authentication Weakness"
+      owasp: "A07:2021"
 
   # === Phoenix Framework Rules ===
 
   # Phoenix XSS
   - id: elixir-phoenix-xss
-    message: "Phoenix XSS vulnerability detected"
+    message: "Cross-site scripting (XSS) vulnerability detected. User input is rendered in HTML output without proper escaping, allowing attackers to inject malicious scripts. Sanitize or escape all user input before rendering."
     severity: HIGH
     languages: [elixir]
     pattern-either:
@@ -258,10 +312,16 @@ rules:
       framework: phoenix
       cwe: CWE-79
       confidence: low
+      subcategory: xss
+      vulnerability_class: "Cross-Site Scripting (XSS)"
+      owasp: "A03:2021"
+      references:
+        - https://hexdocs.pm/phoenix/security.html
+      fix: "Phoenix templates auto-escape by default. Never use raw/1 or {:safe, ...} with user input. Use Phoenix.HTML.html_escape/1 for manual escaping."
 
   # Phoenix SQL injection in Ecto
   - id: elixir-phoenix-ecto-injection
-    message: "Phoenix Ecto SQL injection vulnerability"
+    message: "SQL injection vulnerability detected. User-supplied input is included in a SQL query without sanitization, potentially allowing attackers to read, modify, or delete database contents. Use parameterized queries or an ORM instead of string concatenation."
     severity: CRITICAL
     languages: [elixir]
     pattern-either:
@@ -273,10 +333,16 @@ rules:
       framework: phoenix
       cwe: CWE-89
       confidence: high
+      subcategory: injection
+      vulnerability_class: "Injection Vulnerability"
+      owasp: "A03:2021"
+      references:
+        - https://hexdocs.pm/phoenix/security.html
+      fix: "Use Ecto parameterized queries: Repo.all(from u in User, where: u.id == ^user_id). Never interpolate user input into raw SQL."
 
   # Phoenix insecure routes
   - id: elixir-phoenix-insecure-routes
-    message: "Phoenix insecure route configuration"
+    message: "Missing authorization check. The application does not verify user permissions before granting access to resources. Add authorization checks to all protected endpoints."
     severity: MEDIUM
     languages: [elixir]
     pattern-either:
@@ -292,10 +358,15 @@ rules:
       framework: phoenix
       cwe: CWE-862
       confidence: low
+      subcategory: access-control
+      vulnerability_class: "Access Control Violation"
+      owasp: "A01:2021"
+      references:
+        - https://hexdocs.pm/phoenix/security.html
 
   # Phoenix file upload without validation
   - id: elixir-phoenix-file-upload
-    message: "Phoenix file upload without proper validation"
+    message: "Unrestricted file upload detected. Accepting uploads without validating file type and content can allow execution of malicious code. Validate file type, size, and content before storing."
     severity: HIGH
     languages: [elixir]
     pattern-either:
@@ -315,3 +386,9 @@ rules:
       framework: phoenix
       cwe: CWE-434
       confidence: low
+      subcategory: upload
+      vulnerability_class: "Unrestricted File Upload"
+      owasp: "A04:2021"
+      references:
+        - https://hexdocs.pm/phoenix/security.html
+      fix: "Validate file extension, MIME type, and content. Store uploads outside the web root. Use Plug.Upload metadata for validation."

@@ -1,6 +1,6 @@
 [project]
 name = "socket_basics"
-version = "1.0.26"
+version = "1.0.28"
 description = "Socket Basics with integrated SAST, secret scanning, and container analysis"
 readme = "README.md"
 requires-python = ">=3.10"
@@ -28,7 +28,7 @@ dependencies = [
     "light-s3-client~=0.0.30",
     "PyYAML>=6.0.0",
     "tomli; python_version < '3.11'",
-    "socketdev>=3.0.14",
+    "socketdev>=3.0.29",
     "jsonschema>=4.25.1"
 ]
 
