@@ -22,7 +22,7 @@ RUN npm install -g socket
 RUN curl -sfL https://raw.githubusercontent.com/aquasecurity/trivy/main/contrib/install.sh | sh -s -- -b /usr/local/bin v0.67.2
 
 # Install Trufflehog
-RUN curl -sSfL https://raw.githubusercontent.com/trufflesecurity/trufflehog/main/scripts/install.sh | sh -s -- -b /usr/local/bin
+RUN curl -sSfL https://raw.githubusercontent.com/trufflesecurity/trufflehog/main/scripts/install.sh | sh -s -- -b /usr/local/bin v3.93.3
 
 # Install OpenGrep (connector/runtime dependency)
 RUN curl -fsSL https://raw.githubusercontent.com/opengrep/opengrep/main/install.sh | bash
