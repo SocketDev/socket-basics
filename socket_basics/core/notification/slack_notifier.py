@@ -74,9 +74,9 @@ class SlackNotifier(BaseNotifier):
             logger.warning('SlackNotifier: no Slack webhook URL configured')
             return
 
-        # Get repository and branch info from config (discovered by main logic)
-        repo = self.repository
-        branch = self.config.get('branch', 'Unknown')
+        # Get repository and branch info from facts (populated by NotificationManager)
+        repo = facts.get('repository', self.repository)
+        branch = facts.get('branch', 'Unknown')
 
         try:
             # Truncate content if it's too long for a single Slack block (3000 char limit)
