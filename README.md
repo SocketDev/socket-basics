@@ -27,7 +27,7 @@ jobs:
       - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
       
       - name: Run Socket Basics
-        uses: SocketDev/socket-basics@1.0.28
+        uses: SocketDev/socket-basics@1.0.29
         env:
           GITHUB_PR_NUMBER: ${{ github.event.pull_request.number || github.event.issue.number }}
         with:
@@ -120,7 +120,7 @@ Configure scanning policies, notification channels, and rule sets for your entir
 
 **Dashboard-Configured (Enterprise):**
 ```yaml
-- uses: SocketDev/socket-basics@1.0.28
+- uses: SocketDev/socket-basics@1.0.29
   env:
     GITHUB_PR_NUMBER: ${{ github.event.pull_request.number || github.event.issue.number }}
   with:
@@ -131,7 +131,7 @@ Configure scanning policies, notification channels, and rule sets for your entir
 
 **CLI-Configured:**
 ```yaml
-- uses: SocketDev/socket-basics@1.0.28
+- uses: SocketDev/socket-basics@1.0.29
   env:
     GITHUB_PR_NUMBER: ${{ github.event.pull_request.number || github.event.issue.number }}
   with:
@@ -147,14 +147,23 @@ Configure scanning policies, notification channels, and rule sets for your entir
 
 ```bash
 # Build with version tag
-docker build -t socketdev/socket-basics:1.0.28 .
+docker build -t socketdev/socket-basics:1.0.29 .
 
 # Run scan
-docker run --rm -v "$PWD:/workspace" socketdev/socket-basics:1.0.28 \
+docker run --rm -v "$PWD:/workspace" socketdev/socket-basics:1.0.29 \
   --workspace /workspace \
   --python-sast-enabled \
   --secret-scanning-enabled \
   --console-tabular-enabled
+```
+
+Tip: If you need specific Trivy or TruffleHog versions, you can override them at build time:
+
+```bash
+docker build \
+  --build-arg TRIVY_VERSION=v0.67.2 \
+  --build-arg TRUFFLEHOG_VERSION=v3.93.3 \
+  -t socketdev/socket-basics:1.0.29 .
 ```
 
 📖 **[View Docker Installation Guide](docs/local-install-docker.md)**
@@ -281,4 +290,3 @@ We welcome contributions! To add new features:
 ---
 
 **Need help?** Visit our [documentation](docs/) or contact [Socket Support](https://socket.dev/support).
-
