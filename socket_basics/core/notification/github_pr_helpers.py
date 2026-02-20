@@ -31,8 +31,7 @@ SEVERITY_EMOJI = {
 # 32px logo for PR comment headers (PNG file stored in assets/)
 # TODO: Switch back to main branch URL once assets/socket-logo.png before merging.
 # Using feature branch URL for now so the logo renders during PR testing.
-# SOCKET_LOGO_URL = 'https://raw.githubusercontent.com/SocketDev/socket-basics/main/assets/socket-logo.png'
-SOCKET_LOGO_URL = 'https://raw.githubusercontent.com/SocketDev/socket-basics/lelia/pr-comment-enhancements/assets/socket-logo.png'
+SOCKET_LOGO_URL = 'https://raw.githubusercontent.com/SocketDev/socket-basics/main/assets/socket-logo.png'
 SOCKET_LOGO_IMG = f'<img src="{SOCKET_LOGO_URL}" alt="" width="24" height="24">'
 
 
