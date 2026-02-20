@@ -12,7 +12,12 @@ test
 run_container.sh
 *.zip
 bin
+# Note: Ignore any local dev scripts, but include ones used by the project
 scripts/*.py
+!scripts/enrich_rules.py
+!scripts/rewrite_messages.py
+!scripts/update_cwe_catalog.py
+!scripts/verify_jira_dashboard_config.py
 *.json
 markdown_overview_temp.md
 markdown_security_temp.md
@@ -26,6 +31,9 @@ test.py
 file_generator.py
 .env
 *.md
+!README.md
+!docs/*.md
+!tests/README.md
 test_results
 local_tests/
 custom_rules/

@@ -61,11 +61,11 @@ notifiers:
     module_path: "socket_basics.core.notification.jira_notifier"
     class: "JiraNotifier"
     parameters:
-      - name: server
+      - name: jira_url
         option: --jira-url
         env_variable: INPUT_JIRA_URL
         type: str
-      - name: project
+      - name: jira_project
         option: --jira-project
         env_variable: INPUT_JIRA_PROJECT
         type: str
