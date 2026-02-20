@@ -43,9 +43,19 @@ class Config:
             self._config = merge_json_and_env_config()
         
         self._config = self._config
-        
-        # DEBUG: Log final configuration values
+
+        # Log where the configuration is being loaded from
         logger = logging.getLogger(__name__)
+        config_source = self._config.get('_config_source', 'environment')
+        source_descriptions = {
+            'api': 'Socket dashboard (API)',
+            'json_file': 'JSON config file (--config)',
+            'environment': 'environment variables',
+        }
+        source_desc = source_descriptions.get(config_source, config_source)
+        logger.info(f"Configuration loaded from: {source_desc}")
+
+        # DEBUG: Log final configuration values
         logger.debug("Final Config object created with key values:")
         logger.debug(f"  javascript_sast_enabled: {self._config.get('javascript_sast_enabled')}")
         logger.debug(f"  socket_tier_1_enabled: {self._config.get('socket_tier_1_enabled')}")
@@ -992,21 +1002,23 @@ def normalize_api_config(api_config: Dict[str, Any]) -> Dict[str, Any]:
 
 def merge_json_and_env_config(json_config: Dict[str, Any] | None = None) -> Dict[str, Any]:
     """Merge JSON configuration with environment variables
-    
+
     Priority order (highest to lowest):
     1. CLI options (handled separately via argparse, highest priority)
     2. Socket Basics API config / JSON config (dashboard settings)
     3. Environment variables from action.yml (lowest priority - defaults)
-    
+
     Args:
         json_config: Optional dictionary from JSON config file
-        
+
     Returns:
         Merged configuration dictionary
     """
     # Start with environment defaults (lowest priority)
     config = load_config_from_env()
-    
+    # Default source is environment variables
+    config['_config_source'] = 'environment'
+
     # Override with Socket Basics API config if no explicit JSON config provided
     # API config takes precedence over environment defaults
     if not json_config:
@@ -1027,6 +1039,7 @@ def merge_json_and_env_config(json_config: Dict[str, Any] | None = None) -> Dict
                     continue
                 filtered_config[k] = v
             config.update(filtered_config)
+            config['_config_source'] = 'api'
             logging.getLogger(__name__).info("Loaded Socket Basics API configuration (overrides environment defaults)")
         else:
             logger.debug(" No Socket Basics API config loaded")
@@ -1045,6 +1058,7 @@ def merge_json_and_env_config(json_config: Dict[str, Any] | None = None) -> Dict
                 continue
             filtered_json[k] = v
         config.update(filtered_json)
+        config['_config_source'] = 'json_file'
         logging.getLogger(__name__).info("Loaded JSON configuration (overrides environment defaults)")
     
     # Note: CLI arguments are handled separately and take highest priority
