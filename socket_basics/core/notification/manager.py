@@ -215,7 +215,7 @@ class NotificationManager:
                         # Check env var (overrides default)
                         if env_var:
                             ev = os.getenv(env_var)
-                            if ev is not None:
+                            if ev is not None and str(ev).strip() != "":
                                 if p_type == 'bool':
                                     val = ev.lower() == 'true'
                                 elif p_type == 'int':
