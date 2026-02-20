@@ -241,10 +241,13 @@ def format_notifications(mapping: Dict[str, Any], item_name: str = "Unknown", sc
         panels = []
         for vuln in rows:
             # Create vulnerability header with CVE link and CVSS score
+            # Use html=True because this header goes inside <summary> where
+            # GitHub does not render markdown (bold, links, etc.)
             vuln_header = helpers.format_vulnerability_header(
                 vuln['cve_id'],
                 vuln['severity'],
-                vuln.get('cvss_score')
+                vuln.get('cvss_score'),
+                html=True
             )
 
             # Create expandable panel for each CVE

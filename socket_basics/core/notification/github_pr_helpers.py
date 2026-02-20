@@ -563,21 +563,27 @@ def format_scan_link_section(full_scan_url: Optional[str]) -> str:
 # CVE/Vulnerability Formatting
 # ============================================================================
 
-def format_cve_link(cve_id: str) -> str:
+def format_cve_link(cve_id: str, html: bool = False) -> str:
     """Format a CVE ID as a clickable link to NVD.
 
     Args:
         cve_id: CVE identifier (e.g., "CVE-2021-23337")
+        html: If True, return an HTML <a> tag instead of markdown link.
+              Use html=True when the link will appear inside an HTML element
+              like <summary> where GitHub does not render markdown.
 
     Returns:
-        Markdown link to NVD, or plain text if not a valid CVE ID
+        Markdown or HTML link to NVD, or plain text if not a valid CVE ID
     """
     if not cve_id:
         return ''
 
     # Check if it's a CVE ID (format: CVE-YYYY-NNNNN)
     if cve_id.upper().startswith('CVE-'):
-        return f"[{cve_id}](https://nvd.nist.gov/vuln/detail/{cve_id})"
+        url = f"https://nvd.nist.gov/vuln/detail/{cve_id}"
+        if html:
+            return f'<a href="{url}">{cve_id}</a>'
+        return f"[{cve_id}]({url})"
 
     # Not a CVE, return as-is
     return cve_id
@@ -587,7 +593,8 @@ def format_vulnerability_header(
     vuln_id: str,
     severity: str,
     cvss_score: Optional[float] = None,
-    emoji: Optional[str] = None
+    emoji: Optional[str] = None,
+    html: bool = False
 ) -> str:
     """Format a vulnerability header with severity and optional CVSS score.
 
@@ -596,6 +603,9 @@ def format_vulnerability_header(
         severity: Severity level (critical, high, medium, low)
         cvss_score: Optional CVSS score (0.0-10.0)
         emoji: Optional severity emoji (will use SEVERITY_EMOJI if not provided)
+        html: If True, use HTML tags (<b>, <a>) instead of markdown.
+              Use html=True when the header will appear inside an HTML element
+              like <summary> where GitHub does not render markdown.
 
     Returns:
         Formatted header string
@@ -605,10 +615,13 @@ def format_vulnerability_header(
         emoji = SEVERITY_EMOJI.get(severity.lower(), '⚪')
 
     # Format CVE as link if applicable
-    vuln_display = format_cve_link(vuln_id) if vuln_id else 'Unknown'
+    vuln_display = format_cve_link(vuln_id, html=html) if vuln_id else 'Unknown'
 
     # Build header
-    header = f"{emoji} **{vuln_display}** • {severity.upper()}"
+    if html:
+        header = f"{emoji} <b>{vuln_display}</b> &bull; {severity.upper()}"
+    else:
+        header = f"{emoji} **{vuln_display}** • {severity.upper()}"
 
     # Add CVSS score if available
     if cvss_score is not None:
