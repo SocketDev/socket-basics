@@ -249,6 +249,7 @@ pr_label_high: 'security-high'               # Gets orange color automatically
 - First scan checks for critical → high → medium (highest severity wins)
 - Labels are created automatically if they don't exist
 - Existing labels are not modified (preserves your customizations)
+- Requires a token with `repo` scope to create new labels; without it, label creation may fail (comments still post)
 
 **Customize:**
 ```yaml
