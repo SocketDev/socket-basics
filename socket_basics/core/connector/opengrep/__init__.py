@@ -733,7 +733,7 @@ class OpenGrepScanner(BaseConnector):
 		
 		# Build notifications for each notifier type using OpenGrep-specific modules
 		notifications_by_notifier = {}
-		notifications_by_notifier['github_pr'] = github_pr.format_notifications(groups)
+		notifications_by_notifier['github_pr'] = github_pr.format_notifications(groups, config=self.config)
 		notifications_by_notifier['slack'] = slack.format_notifications(groups)
 		notifications_by_notifier['msteams'] = ms_teams.format_notifications(groups)
 		notifications_by_notifier['ms_sentinel'] = ms_sentinel.format_notifications(groups)

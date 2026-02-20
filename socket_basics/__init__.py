@@ -12,7 +12,7 @@ The module includes bundled rules and can be used as a standalone tool or librar
 from .socket_basics import SecurityScanner, main
 from .core.config import load_config_from_env, Config
 
-__version__ = "1.0.29"
+__version__ = "1.1.0"
 __author__ = "Socket.dev"
 __email__ = "support@socket.dev"
 

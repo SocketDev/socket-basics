@@ -87,6 +87,15 @@ runs:
     INPUT_WEBHOOK_URL: ${{ inputs.webhook_url }}
     SOCKET_ADDITIONAL_PARAMS: ${{ inputs.socket_additional_params }}
     SOCKET_TIER_1_ENABLED: ${{ inputs.socket_tier_1_enabled }}
+    INPUT_PR_COMMENT_LINKS_ENABLED: ${{ inputs.pr_comment_links_enabled }}
+    INPUT_PR_COMMENT_COLLAPSE_ENABLED: ${{ inputs.pr_comment_collapse_enabled }}
+    INPUT_PR_COMMENT_COLLAPSE_NON_CRITICAL: ${{ inputs.pr_comment_collapse_non_critical }}
+    INPUT_PR_COMMENT_CODE_FENCING_ENABLED: ${{ inputs.pr_comment_code_fencing_enabled }}
+    INPUT_PR_COMMENT_SHOW_RULE_NAMES: ${{ inputs.pr_comment_show_rule_names }}
+    INPUT_PR_LABELS_ENABLED: ${{ inputs.pr_labels_enabled }}
+    INPUT_PR_LABEL_CRITICAL: ${{ inputs.pr_label_critical }}
+    INPUT_PR_LABEL_HIGH: ${{ inputs.pr_label_high }}
+    INPUT_PR_LABEL_MEDIUM: ${{ inputs.pr_label_medium }}
 
 inputs:
   workspace:
@@ -405,6 +414,42 @@ inputs:
     description: "Generic webhook URL for WebhookNotifier"
     required: false
     default: ""
+  pr_comment_links_enabled:
+    description: "Enable clickable file/line links in PR comments"
+    required: false
+    default: "true"
+  pr_comment_collapse_enabled:
+    description: "Enable collapsible sections in PR comments"
+    required: false
+    default: "true"
+  pr_comment_collapse_non_critical:
+    description: "Auto-collapse non-critical findings (critical stays expanded)"
+    required: false
+    default: "true"
+  pr_comment_code_fencing_enabled:
+    description: "Enable language-aware code fencing for trace output"
+    required: false
+    default: "true"
+  pr_comment_show_rule_names:
+    description: "Show explicit rule names for each finding"
+    required: false
+    default: "true"
+  pr_labels_enabled:
+    description: "Add severity-based labels to PRs"
+    required: false
+    default: "true"
+  pr_label_critical:
+    description: "Label name for critical severity findings"
+    required: false
+    default: "security: critical"
+  pr_label_high:
+    description: "Label name for high severity findings"
+    required: false
+    default: "security: high"
+  pr_label_medium:
+    description: "Label name for medium severity findings"
+    required: false
+    default: "security: medium"
 
 branding:
   icon: "shield"
