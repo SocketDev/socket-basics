@@ -432,6 +432,16 @@ socket-basics \
   --jira-api-token "your-token"
 ```
 
+**Local Verification (No Jira API Calls)**
+Use the helper script to confirm dashboard/env Jira settings are wired into the notifier:
+```bash
+./venv/bin/python scripts/verify_jira_dashboard_config.py
+```
+Notes:
+- The script only loads config and inspects notifier parameters; it does not contact Jira.
+- It requires `SOCKET_SECURITY_API_KEY` (and usually `SOCKET_ORG`) to fetch dashboard config.
+- You can use `INPUT_JIRA_*` env vars to simulate dashboard values.
+
 ### GitHub Pull Request Comments
 
 **CLI Options:**

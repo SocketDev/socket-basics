@@ -17,11 +17,17 @@ pytest
 pytest --cov=socket_basics
 ```
 
+**Notes:**
+- Tests are lightweight and should not require external services.
+- Use the local config-wiring script for Jira setup validation:
+  `./venv/bin/python scripts/verify_jira_dashboard_config.py`
+
 ## Test Structure
 
 ```
 tests/
 ├── test_github_helpers.py    # Helper functions for GitHub PR comments
+├── test_pr_formatters.py     # PR comment formatter output structure
 └── ...                        # Other unit tests
 ```
 
@@ -167,7 +173,7 @@ def test_with_config(mock_config):
 
 ## Testing Best Practices
 
-### ✅ DO:
+### DO:
 - Keep tests fast and isolated
 - Test one thing per test function
 - Use descriptive test names
@@ -175,7 +181,7 @@ def test_with_config(mock_config):
 - Use fixtures for common test data
 - Run tests before committing
 
-### ❌ DON'T:
+### DON'T:
 - Make external API calls (mock them)
 - Depend on test execution order
 - Use hardcoded paths (use fixtures)
