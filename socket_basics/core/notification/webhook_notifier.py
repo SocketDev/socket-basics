@@ -19,7 +19,7 @@ class WebhookNotifier(BaseNotifier):
         super().__init__(params or {})
         # Webhook URL from params, env variable, or app config
         self.url = (
-            self.config.get('url') or
+            self.config.get('webhook_url') or
             get_webhook_url()
         )
 
