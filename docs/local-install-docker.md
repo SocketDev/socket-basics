@@ -65,6 +65,20 @@ docker build -t myorg/security-scanner:1.1.2 .
 docker build --platform linux/amd64 -t socket-basics:1.1.2 .
 ```
 
+### Build with Custom Tool Versions
+
+The image pins Trivy, TruffleHog, and OpenGrep to specific versions. You can override any of them at build time:
+
+```bash
+docker build \
+  --build-arg TRIVY_VERSION=v0.69.2 \
+  --build-arg TRUFFLEHOG_VERSION=v3.93.6 \
+  --build-arg OPENGREP_VERSION=v1.16.2 \
+  -t socket-basics:1.1.2 .
+```
+
+Omit any `--build-arg` to use the default version for that tool. For the app tests image, build from the `app_tests` directory and use the same build args.
+
 ### Verify Installation
 
 ```bash
@@ -75,6 +89,22 @@ docker run --rm socket-basics:1.1.2 trivy --version
 docker run --rm socket-basics:1.1.2 opengrep --version
 docker run --rm socket-basics:1.1.2 trufflehog --version
 ```
+
+### Smoke Test
+
+To test that the pinned tool versions still work (upstream installer scripts can break), run:
+
+```bash
+./scripts/smoke-test-docker-image.sh
+```
+
+With `--app-tests` to also test the app_tests image (requires full build context):
+
+```bash
+./scripts/smoke-test-docker-image.sh --app-tests
+```
+
+This builds the image(s) and verifies Trivy, TruffleHog, and OpenGrep are installed and executable. A GitHub Action runs this on Dockerfile changes and daily.
 
 ## Running Scans
 
