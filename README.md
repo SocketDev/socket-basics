@@ -154,12 +154,13 @@ docker run --rm -v "$PWD:/workspace" socketdev/socket-basics:1.1.2 \
   --console-tabular-enabled
 ```
 
-Tip: If you need specific Trivy or TruffleHog versions, you can override them at build time:
+Tip: If you need specific Trivy, TruffleHog, or OpenGrep versions, you can override them at build time:
 
 ```bash
 docker build \
-  --build-arg TRIVY_VERSION=v0.67.2 \
-  --build-arg TRUFFLEHOG_VERSION=v3.93.3 \
+  --build-arg TRIVY_VERSION=v0.69.2 \
+  --build-arg TRUFFLEHOG_VERSION=v3.93.6 \
+  --build-arg OPENGREP_VERSION=v1.16.2 \
   -t socketdev/socket-basics:1.1.2 .
 ```
 
