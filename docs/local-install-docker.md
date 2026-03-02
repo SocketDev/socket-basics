@@ -92,16 +92,22 @@ docker run --rm socket-basics:1.1.2 trufflehog --version
 
 ### Smoke Test
 
-To test that the pinned tool versions still work (upstream installer scripts can break), run:
+To test that the pinned tool versions still work, run:
 
 ```bash
-./scripts/smoke-test-docker-image.sh
+./scripts/smoke-test-docker.sh
+```
+
+Add `--build-progress plain` when you want verbose Docker build logs:
+
+```bash
+./scripts/smoke-test-docker.sh --build-progress plain
 ```
 
 With `--app-tests` to also test the app_tests image (requires full build context):
 
 ```bash
-./scripts/smoke-test-docker-image.sh --app-tests
+./scripts/smoke-test-docker.sh --app-tests
 ```
 
 This builds the image(s) and verifies Trivy, TruffleHog, and OpenGrep are installed and executable. A GitHub Action runs this on Dockerfile changes and daily.
