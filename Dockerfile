@@ -23,11 +23,12 @@ ARG TRIVY_VERSION=v0.69.2
 RUN curl -sfL https://raw.githubusercontent.com/aquasecurity/trivy/main/contrib/install.sh | sh -s -- -b /usr/local/bin "${TRIVY_VERSION}"
 
 # Install Trufflehog
-ARG TRUFFLEHOG_VERSION=v3.93.3
+ARG TRUFFLEHOG_VERSION=v3.93.6
 RUN curl -sSfL https://raw.githubusercontent.com/trufflesecurity/trufflehog/main/scripts/install.sh | sh -s -- -b /usr/local/bin "${TRUFFLEHOG_VERSION}"
 
 # Install OpenGrep (connector/runtime dependency)
-RUN curl -fsSL https://raw.githubusercontent.com/opengrep/opengrep/main/install.sh | bash
+ARG OPENGREP_VERSION=v1.16.2
+RUN curl -fsSL https://raw.githubusercontent.com/opengrep/opengrep/main/install.sh | bash -s -- -v "${OPENGREP_VERSION}"
 
 # Copy the specific files needed for the project
 COPY socket_basics /socket-basics/socket_basics
