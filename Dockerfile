@@ -19,7 +19,7 @@ RUN curl -fsSL https://deb.nodesource.com/setup_22.x | bash - && \
 RUN npm install -g socket
 
 # Install Trivy
-ARG TRIVY_VERSION=v0.67.2
+ARG TRIVY_VERSION=v0.69.2
 RUN curl -sfL https://raw.githubusercontent.com/aquasecurity/trivy/main/contrib/install.sh | sh -s -- -b /usr/local/bin "${TRIVY_VERSION}"
 
 # Install Trufflehog
