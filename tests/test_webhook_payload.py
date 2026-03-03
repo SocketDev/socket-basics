@@ -102,6 +102,7 @@ class TestTier1WebhookFindings:
         assert f['package'] == 'lodash'
         assert f['version'] == '4.17.20'
         assert f['purl'] == 'pkg:npm/lodash@4.17.20'
+        assert f['cves'] == ['GHSA-xxxx-yyyy']
         assert f['severity'] == 'high'
         assert f['reachability'] == 'reachable'
         assert f['scanner'] == 'socket-tier1'
