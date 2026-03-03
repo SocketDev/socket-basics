@@ -33,7 +33,7 @@ jobs:
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
       - name: Run Socket Basics
-        uses: SocketDev/socket-basics@1.1.2
+        uses: SocketDev/socket-basics@1.1.3
         env:
           GITHUB_PR_NUMBER: ${{ github.event.pull_request.number || github.event.issue.number }}
         with:
@@ -144,10 +144,10 @@ For GitHub Actions, see the [Quick Start](#-quick-start---github-actions) above 
 
 ```bash
 # Build with version tag
-docker build -t socketdev/socket-basics:1.1.2 .
+docker build -t socketdev/socket-basics:1.1.3 .
 
 # Run scan
-docker run --rm -v "$PWD:/workspace" socketdev/socket-basics:1.1.2 \
+docker run --rm -v "$PWD:/workspace" socketdev/socket-basics:1.1.3 \
   --workspace /workspace \
   --python-sast-enabled \
   --secret-scanning-enabled \
@@ -161,7 +161,7 @@ docker build \
   --build-arg TRIVY_VERSION=v0.69.2 \
   --build-arg TRUFFLEHOG_VERSION=v3.93.6 \
   --build-arg OPENGREP_VERSION=v1.16.2 \
-  -t socketdev/socket-basics:1.1.2 .
+  -t socketdev/socket-basics:1.1.3 .
 ```
 
 📖 **[View Docker Installation Guide](docs/local-install-docker.md)**

@@ -18,7 +18,8 @@ def format_notifications(mapping: Dict[str, Any], item_name: str = "Unknown", sc
     """
     # Group vulnerabilities by package and severity
     package_groups = defaultdict(lambda: defaultdict(set))  # Use set to avoid duplicates
-    
+    findings: List[Dict[str, Any]] = []
+
     if scan_type == 'dockerfile':
         # Process dockerfile components
         for comp in mapping.values():
@@ -28,27 +29,45 @@ def format_notifications(mapping: Dict[str, Any], item_name: str = "Unknown", sc
                 severity = str(alert.get('severity', ''))
                 message = str(alert.get('description', ''))
                 resolution = str(props.get('resolution', ''))
-                
+
                 rule_info = f"{rule_id}|{message}|{resolution}"
                 package_groups[rule_id][severity].add(rule_info)
-                
+
+                findings.append({
+                    'rule': rule_id,
+                    'severity': severity,
+                    'message': message,
+                    'resolution': resolution,
+                    'scanner': 'trivy',
+                })
+
     else:  # image or vuln
         # Process package vulnerability components
         for comp in mapping.values():
             comp_name = str(comp.get('name') or comp.get('id') or '-')
             comp_version = str(comp.get('version', ''))
             ecosystem = comp.get('qualifiers', {}).get('ecosystem', 'unknown')
-            
+
             if comp_version:
                 package_key = f"pkg:{ecosystem}/{comp_name}@{comp_version}"
             else:
                 package_key = f"pkg:{ecosystem}/{comp_name}"
-            
+
             for alert in comp.get('alerts', []):
                 props = alert.get('props', {}) or {}
                 cve_id = str(props.get('vulnerabilityId', '') or alert.get('title', ''))
                 severity = str(alert.get('severity', ''))
                 package_groups[package_key][severity].add(cve_id)
+
+                findings.append({
+                    'package': comp_name,
+                    'version': comp_version,
+                    'ecosystem': ecosystem,
+                    'purl': package_key,
+                    'cves': [cve_id],
+                    'severity': severity,
+                    'scanner': 'trivy',
+                })
     
     # Create rows with proper formatting
     rows = []
@@ -111,5 +130,6 @@ def format_notifications(mapping: Dict[str, Any], item_name: str = "Unknown", sc
     
     return [{
         'title': title,
-        'content': content
+        'content': content,
+        'findings': findings,
     }]
