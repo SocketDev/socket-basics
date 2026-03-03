@@ -21,20 +21,23 @@ class JiraNotifier(BaseNotifier):
     def __init__(self, params: Dict[str, Any] | None = None):
         super().__init__(params or {})
         # JIRA configuration from params, env variables, or app config
+        # Parameter names match dashboard config keys (jira_url, jira_project)
         self.server = (
-            self.config.get('server') or
+            self.config.get('jira_url') or
             get_jira_url()
         )
         self.project = (
-            self.config.get('project') or
+            self.config.get('jira_project') or
             get_jira_project()
         )
         self.email = (
-            self.config.get('email') or
+            self.config.get('jira_email') or
+            self.config.get('auth', {}).get('email') or
             get_jira_email()
         )
         self.api_token = (
-            self.config.get('api_token') or
+            self.config.get('jira_api_token') or
+            self.config.get('auth', {}).get('api_token') or
             get_jira_api_token()
         )
         

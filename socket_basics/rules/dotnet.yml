@@ -58,10 +58,13 @@ rules:
       owasp:
         - A03:2021 - Injection
       confidence: high
+      subcategory: injection
+      vulnerability_class: "Injection Vulnerability"
+      fix: "Use parameterized queries with SqlCommand: cmd.Parameters.AddWithValue(\"@id\", userId); or use Entity Framework LINQ queries."
 
   # Command injection
   - id: dotnet-command-injection
-    message: "Command injection vulnerability detected"
+    message: "OS command injection vulnerability detected. User-controlled data flows into a system command without proper sanitization, allowing attackers to execute arbitrary commands. Use safe APIs with argument lists instead of shell execution."
     severity: CRITICAL
     languages: [csharp]
     pattern-either:
@@ -73,10 +76,14 @@ rules:
       category: security
       cwe: CWE-78
       confidence: high
+      subcategory: injection
+      vulnerability_class: "Injection Vulnerability"
+      owasp: "A03:2021"
+      fix: "Use Process.Start() with Arguments set separately. Never concatenate user input into process arguments."
 
   # Code injection via compilation
   - id: dotnet-code-injection
-    message: "Code injection via dynamic compilation detected"
+    message: "Code injection vulnerability detected. User-controlled input is passed to a code evaluation function, allowing arbitrary code execution. Avoid eval/exec with user input; use safe alternatives."
     severity: CRITICAL
     languages: [csharp]
     pattern-either:
@@ -89,10 +96,14 @@ rules:
       category: security
       cwe: CWE-94
       confidence: high
+      subcategory: injection
+      vulnerability_class: "Injection Vulnerability"
+      owasp: "A03:2021"
+      fix: "Avoid CSharpScript.EvaluateAsync() or Roslyn compilation with user input. Use expression parsers or sandboxed environments."
 
   # Deserialization vulnerabilities
   - id: dotnet-unsafe-deserialization
-    message: "Unsafe deserialization detected"
+    message: "Unsafe deserialization detected. Deserializing untrusted data can lead to remote code execution or denial of service. Use safe serialization formats like JSON or validate data before deserializing."
     severity: CRITICAL
     languages: [csharp]
     pattern-either:
@@ -105,10 +116,14 @@ rules:
       category: security
       cwe: CWE-502
       confidence: high
+      subcategory: integrity
+      vulnerability_class: "Insecure Deserialization"
+      owasp: "A08:2021"
+      fix: "Use System.Text.Json or Newtonsoft.Json instead of BinaryFormatter/SoapFormatter. Set TypeNameHandling.None in Newtonsoft.Json."
 
   # LDAP injection
   - id: dotnet-ldap-injection
-    message: "LDAP injection vulnerability detected"
+    message: "LDAP injection vulnerability detected. User input in LDAP queries without sanitization allows attackers to modify query logic. Escape special characters in LDAP filters."
     severity: CRITICAL
     languages: [csharp]
     pattern-either:
@@ -119,12 +134,16 @@ rules:
       category: security
       cwe: CWE-90
       confidence: medium
+      subcategory: injection
+      vulnerability_class: "Injection Vulnerability"
+      owasp: "A03:2021"
+      fix: "Use System.DirectoryServices with parameterized searches. Escape special LDAP characters before inserting into filters."
 
   # === High Severity Rules ===
 
   # Hardcoded credentials
   - id: dotnet-hardcoded-credentials
-    message: "Hardcoded credentials detected"
+    message: "Hard-coded credentials detected. Embedding secrets in source code makes them easily discoverable and impossible to rotate. Use environment variables or a secrets manager instead."
     severity: HIGH
     languages: [csharp]
     patterns:
@@ -143,10 +162,14 @@ rules:
       category: security
       cwe: CWE-798
       confidence: medium
+      subcategory: authentication
+      vulnerability_class: "Authentication Weakness"
+      owasp: "A07:2021"
+      fix: "Store secrets in environment variables, Azure Key Vault, or user-secrets for development. Use IConfiguration to access secrets."
 
   # Weak cryptography - MD5
   - id: dotnet-weak-crypto-md5
-    message: "Use of weak MD5 hash algorithm"
+    message: "Weak cryptographic algorithm detected. Using broken or outdated algorithms may allow attackers to decrypt data or forge signatures. Use modern algorithms like AES-256, SHA-256, or Ed25519."
     severity: HIGH
     languages: [csharp]
     pattern-either:
@@ -158,10 +181,14 @@ rules:
       category: security
       cwe: CWE-327
       confidence: high
+      subcategory: crypto
+      vulnerability_class: "Cryptographic Weakness"
+      owasp: "A02:2021"
+      fix: "Use SHA256.Create() instead of MD5/SHA1. Use Aes.Create() with CipherMode.CBC or AesGcm for encryption."
 
   # Weak cryptography - SHA1
   - id: dotnet-weak-crypto-sha1
-    message: "Use of weak SHA1 hash algorithm"
+    message: "Weak cryptographic algorithm detected. Using broken or outdated algorithms may allow attackers to decrypt data or forge signatures. Use modern algorithms like AES-256, SHA-256, or Ed25519."
     severity: HIGH
     languages: [csharp]
     pattern-either:
@@ -173,10 +200,14 @@ rules:
       category: security
       cwe: CWE-327
       confidence: high
+      subcategory: crypto
+      vulnerability_class: "Cryptographic Weakness"
+      owasp: "A02:2021"
+      fix: "Use SHA256.Create() instead of MD5/SHA1. Use Aes.Create() with CipherMode.CBC or AesGcm for encryption."
 
   # SSL/TLS certificate bypass
   - id: dotnet-ssl-bypass
-    message: "SSL/TLS certificate validation bypassed"
+    message: "TLS/SSL certificate validation is disabled or bypassed. This allows man-in-the-middle attacks where attackers can intercept encrypted communications. Always validate certificates in production."
     severity: HIGH
     languages: [csharp]
     pattern-either:
@@ -187,10 +218,14 @@ rules:
       category: security
       cwe: CWE-295
       confidence: high
+      subcategory: crypto
+      vulnerability_class: "Cryptographic Weakness"
+      owasp: "A07:2021"
+      fix: "Never return true from ServerCertificateCustomValidationCallback. Use the default certificate validation from ServicePointManager."
 
   # XSS vulnerabilities
   - id: dotnet-xss-response-write
-    message: "XSS vulnerability via Response.Write"
+    message: "Cross-site scripting (XSS) vulnerability detected. User input is rendered in HTML output without proper escaping, allowing attackers to inject malicious scripts. Sanitize or escape all user input before rendering."
     severity: HIGH
     languages: [csharp]
     pattern-either:
@@ -201,10 +236,14 @@ rules:
       category: security
       cwe: CWE-79
       confidence: medium
+      subcategory: xss
+      vulnerability_class: "Cross-Site Scripting (XSS)"
+      owasp: "A03:2021"
+      fix: "Use Razor auto-encoding or HtmlEncoder.Default.Encode(). Never use Html.Raw() with user input. Validate input on both client and server."
 
   # Path traversal
   - id: dotnet-path-traversal
-    message: "Path traversal vulnerability detected"
+    message: "Path traversal vulnerability detected. User input is used in file paths without validation, allowing attackers to access files outside the intended directory. Validate and canonicalize paths before use."
     severity: HIGH
     languages: [csharp]
     pattern-either:
@@ -217,10 +256,14 @@ rules:
       category: security
       cwe: CWE-22
       confidence: medium
+      subcategory: access-control
+      vulnerability_class: "Access Control Violation"
+      owasp: "A01:2021"
+      fix: "Use Path.GetFullPath() and verify the result starts with the allowed base directory. Use Path.Combine() instead of string concatenation."
 
   # Insecure random
   - id: dotnet-insecure-random
-    message: "Use of insecure Random class for cryptographic purposes"
+    message: "Insecure random number generator used. Non-cryptographic PRNGs produce predictable values that attackers can guess. Use a cryptographically secure random generator for security-sensitive operations."
     severity: HIGH
     languages: [csharp]
     pattern-either:
@@ -232,10 +275,14 @@ rules:
       category: security
       cwe: CWE-338
       confidence: medium
+      subcategory: crypto
+      vulnerability_class: "Cryptographic Weakness"
+      owasp: "A02:2021"
+      fix: "Use System.Security.Cryptography.RandomNumberGenerator instead of System.Random for security-sensitive operations."
 
   # XXE vulnerabilities
   - id: dotnet-xxe-vulnerability
-    message: "XML parsing vulnerable to XXE attacks"
+    message: "XML External Entity (XXE) vulnerability. The XML parser processes external entity references that can read local files or make network requests. Disable external entity processing in XML parsers."
     severity: HIGH
     languages: [csharp]
     pattern-either:
@@ -253,12 +300,16 @@ rules:
       category: security
       cwe: CWE-611
       confidence: medium
+      subcategory: injection
+      vulnerability_class: "Injection Vulnerability"
+      owasp: "A05:2021"
+      fix: "Set XmlReaderSettings.DtdProcessing = DtdProcessing.Prohibit and XmlReaderSettings.XmlResolver = null."
 
   # === Medium Severity Rules ===
 
   # Weak cipher algorithms
   - id: dotnet-weak-cipher
-    message: "Use of weak cipher algorithm"
+    message: "Weak cryptographic algorithm detected. Using broken or outdated algorithms may allow attackers to decrypt data or forge signatures. Use modern algorithms like AES-256, SHA-256, or Ed25519."
     severity: MEDIUM
     languages: [csharp]
     pattern-either:
@@ -271,10 +322,13 @@ rules:
       category: security
       cwe: CWE-327
       confidence: high
+      subcategory: crypto
+      vulnerability_class: "Cryptographic Weakness"
+      owasp: "A02:2021"
 
   # HTTP instead of HTTPS
   - id: dotnet-insecure-http
-    message: "Use of HTTP instead of HTTPS"
+    message: "Sensitive data transmitted over an unencrypted channel. Using HTTP instead of HTTPS allows network attackers to intercept data in transit. Use HTTPS for all communications containing sensitive data."
     severity: MEDIUM
     languages: [csharp]
     pattern-either:
@@ -287,10 +341,13 @@ rules:
       category: security
       cwe: CWE-319
       confidence: low
+      subcategory: crypto
+      vulnerability_class: "Cryptographic Weakness"
+      owasp: "A02:2021"
 
   # Weak key sizes
   - id: dotnet-weak-key-size
-    message: "Weak cryptographic key size detected"
+    message: "Cryptographic weakness detected. Misuse of cryptographic primitives undermines data protection. Use well-tested crypto libraries with recommended configurations."
     severity: MEDIUM
     languages: [csharp]
     patterns:
@@ -305,10 +362,13 @@ rules:
       category: security
       cwe: CWE-310
       confidence: medium
+      subcategory: crypto
+      vulnerability_class: "Cryptographic Weakness"
+      owasp: "A02:2021"
 
   # Cookie security issues
   - id: dotnet-insecure-cookie
-    message: "Cookie without secure flags"
+    message: "Sensitive cookie missing the Secure flag. The cookie may be transmitted over unencrypted HTTP, allowing interception. Set the Secure flag on all sensitive cookies."
     severity: MEDIUM
     languages: [csharp]
     pattern-either:
@@ -330,10 +390,13 @@ rules:
       category: security
       cwe: CWE-614
       confidence: low
+      subcategory: configuration
+      vulnerability_class: "Security Misconfiguration"
+      owasp: "A05:2021"
 
   # Open redirect
   - id: dotnet-open-redirect
-    message: "Open redirect vulnerability detected"
+    message: "Open redirect vulnerability detected. The application redirects to a user-controlled URL without validation, enabling phishing attacks. Validate redirect targets against an allowlist."
     severity: MEDIUM
     languages: [csharp]
     pattern-either:
@@ -345,12 +408,15 @@ rules:
       category: security
       cwe: CWE-601
       confidence: low
+      subcategory: access-control
+      vulnerability_class: "Access Control Violation"
+      owasp: "A01:2021"
 
   # === Low Severity Rules ===
 
   # Debug information disclosure
   - id: dotnet-debug-info-disclosure
-    message: "Debug information disclosure detected"
+    message: "Sensitive information written to log files. Passwords, tokens, or personal data in logs can be exposed to unauthorized parties. Redact sensitive values before logging."
     severity: LOW
     languages: [csharp]
     patterns:
@@ -366,10 +432,13 @@ rules:
       category: security
       cwe: CWE-532
       confidence: low
+      subcategory: logging
+      vulnerability_class: "Sensitive Data Exposure"
+      owasp: "A09:2021"
 
   # Empty catch blocks
   - id: dotnet-empty-catch-block
-    message: "Empty catch block detected - exceptions should be handled"
+    message: "Improper error handling detected. The application does not properly handle exceptions, which may cause crashes or information leaks. Catch specific exceptions and handle them gracefully."
     severity: LOW
     languages: [csharp]
     pattern-either:
@@ -388,10 +457,12 @@ rules:
       category: security
       cwe: CWE-703
       confidence: high
+      subcategory: error-handling
+      vulnerability_class: "Improper Error Handling"
 
   # Hardcoded IP addresses
   - id: dotnet-hardcoded-ip
-    message: "Hardcoded IP address detected"
+    message: "Hard-coded credentials detected. Embedding secrets in source code makes them easily discoverable and impossible to rotate. Use environment variables or a secrets manager instead."
     severity: LOW
     languages: [csharp]
     pattern-either:
@@ -404,12 +475,15 @@ rules:
       category: security
       cwe: CWE-798
       confidence: low
+      subcategory: authentication
+      vulnerability_class: "Authentication Weakness"
+      owasp: "A07:2021"
 
   # === Framework-specific Rules ===
 
   # ASP.NET specific vulnerabilities
   - id: dotnet-aspnet-validaterequest-false
-    message: "ValidateRequest disabled - potential XSS vulnerability"
+    message: "Cross-site scripting (XSS) vulnerability detected. User input is rendered in HTML output without proper escaping, allowing attackers to inject malicious scripts. Sanitize or escape all user input before rendering."
     severity: HIGH
     languages: [csharp]
     pattern-either:
@@ -421,10 +495,16 @@ rules:
       framework: aspnet
       cwe: CWE-79
       confidence: medium
+      subcategory: xss
+      vulnerability_class: "Cross-Site Scripting (XSS)"
+      owasp: "A03:2021"
+      references:
+        - https://learn.microsoft.com/en-us/aspnet/core/security/
+      fix: "Use Razor auto-encoding or HtmlEncoder.Default.Encode(). Never use Html.Raw() with user input. Validate input on both client and server."
 
   # ASP.NET viewstate MAC disabled
   - id: dotnet-aspnet-viewstate-mac-disabled
-    message: "ViewState MAC verification disabled"
+    message: "Insufficient data authenticity verification. Data is accepted without verifying its source. Validate data origin using signatures or MACs."
     severity: HIGH
     languages: [csharp]
     pattern-either:
@@ -435,10 +515,16 @@ rules:
       framework: aspnet
       cwe: CWE-345
       confidence: high
+      subcategory: integrity
+      vulnerability_class: "Insecure Deserialization"
+      owasp: "A08:2021"
+      references:
+        - https://learn.microsoft.com/en-us/aspnet/core/security/
+      fix: "Validate data origin using cryptographic signatures or MACs."
 
   # ASP.NET Core authorization bypass
   - id: dotnet-aspnetcore-auth-bypass
-    message: "ASP.NET Core authorization potentially bypassed"
+    message: "Missing authorization check. The application does not verify user permissions before granting access to resources. Add authorization checks to all protected endpoints."
     severity: HIGH
     languages: [csharp]
     pattern-either:
@@ -450,10 +536,16 @@ rules:
       framework: aspnetcore
       cwe: CWE-862
       confidence: low
+      subcategory: access-control
+      vulnerability_class: "Access Control Violation"
+      owasp: "A01:2021"
+      references:
+        - https://learn.microsoft.com/en-us/aspnet/core/security/
+      fix: "Add [Authorize] attribute to controller actions. Configure authorization policies in Startup.cs. Use role-based or policy-based authorization."
 
   # Entity Framework SQL injection
   - id: dotnet-ef-sql-injection
-    message: "Entity Framework SQL injection vulnerability"
+    message: "SQL injection vulnerability detected. User-supplied input is included in a SQL query without sanitization, potentially allowing attackers to read, modify, or delete database contents. Use parameterized queries or an ORM instead of string concatenation."
     severity: CRITICAL
     languages: [csharp]
     pattern-either:
@@ -466,10 +558,14 @@ rules:
       framework: entityframework
       cwe: CWE-89
       confidence: high
+      subcategory: injection
+      vulnerability_class: "Injection Vulnerability"
+      owasp: "A03:2021"
+      fix: "Use parameterized queries with SqlCommand: cmd.Parameters.AddWithValue(\"@id\", userId); or use Entity Framework LINQ queries."
 
   # WCF security issues
   - id: dotnet-wcf-insecure-binding
-    message: "WCF insecure binding configuration"
+    message: "Sensitive data transmitted over an unencrypted channel. Using HTTP instead of HTTPS allows network attackers to intercept data in transit. Use HTTPS for all communications containing sensitive data."
     severity: MEDIUM
     languages: [csharp]
     pattern-either:
@@ -481,10 +577,13 @@ rules:
       framework: wcf
       cwe: CWE-319
       confidence: medium
+      subcategory: crypto
+      vulnerability_class: "Cryptographic Weakness"
+      owasp: "A02:2021"
 
   # JWT vulnerabilities
   - id: dotnet-jwt-no-verification
-    message: "JWT token used without proper verification"
+    message: "Cryptographic signature verification is missing or improper. Unverified signatures allow attackers to tamper with data. Always verify signatures before trusting signed data."
     severity: MEDIUM
     languages: [csharp]
     pattern-either:
@@ -496,12 +595,15 @@ rules:
       category: security
       cwe: CWE-347
       confidence: medium
+      subcategory: crypto
+      vulnerability_class: "Cryptographic Weakness"
+      owasp: "A02:2021"
 
   # OWASP Top 10 related rules
 
   # A01: Broken Access Control
   - id: dotnet-broken-access-control
-    message: "Potential broken access control"
+    message: "Incorrect authorization implementation. Authorization checks exist but are flawed. Review and test authorization logic for bypass conditions."
     severity: HIGH
     languages: [csharp]
     pattern-either:
@@ -517,10 +619,13 @@ rules:
       owasp: A01
       cwe: CWE-863
       confidence: low
+      subcategory: access-control
+      vulnerability_class: "Access Control Violation"
+      fix: "Review authorization logic for bypass conditions. Use policy-based authorization with IAuthorizationHandler. Test authorization with different user roles."
 
   # A02: Cryptographic Failures
   - id: dotnet-crypto-failures
-    message: "Cryptographic implementation issues"
+    message: "Weak cryptographic algorithm detected. Using broken or outdated algorithms may allow attackers to decrypt data or forge signatures. Use modern algorithms like AES-256, SHA-256, or Ed25519."
     severity: HIGH
     languages: [csharp]
     pattern-either:
@@ -532,10 +637,13 @@ rules:
       owasp: A02
       cwe: CWE-327
       confidence: medium
+      subcategory: crypto
+      vulnerability_class: "Cryptographic Weakness"
+      fix: "Use SHA256.Create() instead of MD5/SHA1. Use Aes.Create() with CipherMode.CBC or AesGcm for encryption."
 
   # A03: Injection (additional patterns)
   - id: dotnet-xpath-injection
-    message: "XPath injection vulnerability detected"
+    message: "XML/XPath injection detected. User input in XML queries can alter query logic. Use parameterized XPath queries."
     severity: CRITICAL
     languages: [csharp]
     pattern-either:
@@ -547,10 +655,13 @@ rules:
       owasp: A03
       cwe: CWE-91
       confidence: high
+      subcategory: injection
+      vulnerability_class: "Injection Vulnerability"
+      fix: "Use parameterized XPath queries with XPathNavigator.Compile(). Escape special characters in user input before XPath queries."
 
   # A04: Insecure Design
   - id: dotnet-insecure-design-session
-    message: "Insecure session management design"
+    message: "Credentials transmitted or stored with insufficient protection. Weak protection makes credentials recoverable. Use strong encryption and secure channels."
     severity: MEDIUM
     languages: [csharp]
     patterns:
@@ -565,10 +676,12 @@ rules:
       owasp: A04
       cwe: CWE-522
       confidence: low
+      subcategory: crypto
+      vulnerability_class: "Cryptographic Weakness"
 
   # A05: Security Misconfiguration
   - id: dotnet-security-misconfiguration
-    message: "Security misconfiguration detected"
+    message: "Insecure configuration detected. A misconfigured setting weakens the application's security posture. Review and harden security-relevant configuration."
     severity: MEDIUM
     languages: [csharp]
     pattern-either:
@@ -579,10 +692,12 @@ rules:
       owasp: A05
       cwe: CWE-16
       confidence: high
+      subcategory: configuration
+      vulnerability_class: "Security Misconfiguration"
 
   # A06: Vulnerable and Outdated Components
   - id: dotnet-vulnerable-components
-    message: "Usage of potentially vulnerable components"
+    message: "Use of unmaintained third-party component. Unpatched dependencies contain known vulnerabilities. Update to a maintained version or find an alternative."
     severity: MEDIUM
     languages: [csharp]
     pattern-either:
@@ -594,10 +709,12 @@ rules:
       owasp: A06
       cwe: CWE-1104
       confidence: low
+      subcategory: configuration
+      vulnerability_class: "Security Misconfiguration"
 
   # A07: Identification and Authentication Failures
   - id: dotnet-auth-failures
-    message: "Authentication implementation issues"
+    message: "Improper authentication detected. The application does not properly verify user identity before granting access. Implement proper authentication mechanisms."
     severity: HIGH
     languages: [csharp]
     pattern-either:
@@ -609,10 +726,13 @@ rules:
       owasp: A07
       cwe: CWE-287
       confidence: low
+      subcategory: authentication
+      vulnerability_class: "Authentication Weakness"
+      fix: "Use ASP.NET Core Identity or a proven authentication library. Implement multi-factor authentication. Use strong password hashing (BCrypt/Argon2)."
 
   # A08: Software and Data Integrity Failures
   - id: dotnet-integrity-failures
-    message: "Software and data integrity issues"
+    message: "Code downloaded without integrity verification. Executing unverified code allows supply chain attacks. Verify checksums or signatures before execution."
     severity: HIGH
     languages: [csharp]
     pattern-either:
@@ -624,10 +744,13 @@ rules:
       owasp: A08
       cwe: CWE-494
       confidence: medium
+      subcategory: integrity
+      vulnerability_class: "Insecure Deserialization"
+      fix: "Verify assembly signatures using strong naming. Validate checksums of downloaded assemblies before loading."
 
   # A09: Security Logging and Monitoring Failures
   - id: dotnet-logging-failures
-    message: "Security logging and monitoring issues"
+    message: "Insufficient security logging. Critical events are not logged, hindering incident detection. Log authentication, authorization, and data access events."
     severity: LOW
     languages: [csharp]
     pattern-either:
@@ -648,10 +771,12 @@ rules:
       owasp: A09
       cwe: CWE-778
       confidence: low
+      subcategory: logging
+      vulnerability_class: "Sensitive Data Exposure"
 
   # A10: Server-Side Request Forgery (SSRF)
   - id: dotnet-ssrf
-    message: "Server-Side Request Forgery vulnerability"
+    message: "Server-side request forgery (SSRF) detected. The application fetches resources from user-controlled URLs, allowing attackers to access internal services. Validate and restrict URL targets."
     severity: HIGH
     languages: [csharp]
     pattern-either:
@@ -664,12 +789,15 @@ rules:
       owasp: A10
       cwe: CWE-918
       confidence: low
+      subcategory: ssrf
+      vulnerability_class: "Server-Side Request Forgery"
+      fix: "Validate URLs against an allowlist of permitted hosts. Block private IP ranges and localhost. Resolve DNS and check the IP before making requests."
 
   # Additional .NET specific security issues
 
   # Unsafe code usage
   - id: dotnet-unsafe-code
-    message: "Unsafe code usage detected"
+    message: "Memory buffer boundary violation. Operations read or write beyond buffer bounds, causing crashes or code execution. Use bounds-checked functions and validate sizes."
     severity: HIGH
     languages: [csharp]
     pattern-either:
@@ -684,10 +812,13 @@ rules:
       category: security
       cwe: CWE-119
       confidence: medium
+      subcategory: deprecated
+      vulnerability_class: "Memory Safety Violation"
+      fix: "Use safe managed code. Avoid Marshal.Copy and unsafe fixed buffers. Use Span<T> with bounds checking for performance-critical buffer operations."
 
   # Double check locking anti-pattern
   - id: dotnet-double-check-locking
-    message: "Double-checked locking anti-pattern detected"
+    message: "Improper locking detected. Lock mismanagement may cause deadlocks or data corruption. Ensure locks are acquired and released in consistent order."
     severity: MEDIUM
     languages: [csharp]
     pattern: |
@@ -702,10 +833,12 @@ rules:
       category: security
       cwe: CWE-667
       confidence: medium
+      subcategory: design
+      vulnerability_class: "Insecure Design"
 
   # Reflection security issues
   - id: dotnet-reflection-security
-    message: "Potentially dangerous reflection usage"
+    message: "Unsafe reflection detected. User input selects classes or methods dynamically, enabling code execution. Use an allowlist of permitted class names."
     severity: MEDIUM
     languages: [csharp]
     pattern-either:
@@ -717,3 +850,6 @@ rules:
       category: security
       cwe: CWE-470
       confidence: low
+      subcategory: injection
+      vulnerability_class: "Injection Vulnerability"
+      owasp: "A03:2021"

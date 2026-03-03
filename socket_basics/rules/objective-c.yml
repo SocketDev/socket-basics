@@ -3,7 +3,7 @@ rules:
 
   # Format string vulnerabilities
   - id: objc-format-string-vulnerability
-    message: "Format string vulnerability detected"
+    message: "Format string vulnerability. User input in format strings allows memory read/write. Never pass user input as a format string argument."
     severity: CRITICAL
     languages: [objective-c]
     pattern-either:
@@ -16,10 +16,14 @@ rules:
       category: security
       cwe: CWE-134
       confidence: high
+      subcategory: injection
+      vulnerability_class: "Injection Vulnerability"
+      owasp: "A03:2021"
+      fix: "Never pass user input as a format string argument. Use a static format string."
 
   # SQL injection
   - id: objc-sql-injection
-    message: "SQL injection vulnerability detected"
+    message: "SQL injection vulnerability detected. User-supplied input is included in a SQL query without sanitization, potentially allowing attackers to read, modify, or delete database contents. Use parameterized queries or an ORM instead of string concatenation."
     severity: CRITICAL
     languages: [objective-c]
     pattern-either:
@@ -31,10 +35,14 @@ rules:
       category: security
       cwe: CWE-89
       confidence: high
+      subcategory: injection
+      vulnerability_class: "Injection Vulnerability"
+      owasp: "A03:2021"
+      fix: "Use parameterized queries with sqlite3_bind_text() or NSPredicate with substitution variables. Never concatenate user input into SQL strings."
 
   # Command injection
   - id: objc-command-injection
-    message: "Command injection vulnerability detected"
+    message: "OS command injection vulnerability detected. User-controlled data flows into a system command without proper sanitization, allowing attackers to execute arbitrary commands. Use safe APIs with argument lists instead of shell execution."
     severity: CRITICAL
     languages: [objective-c]
     pattern-either:
@@ -47,10 +55,14 @@ rules:
       category: security
       cwe: CWE-78
       confidence: high
+      subcategory: injection
+      vulnerability_class: "Injection Vulnerability"
+      owasp: "A03:2021"
+      fix: "Use NSTask with launchPath and arguments array. Never pass user input to system() or popen()."
 
   # Unsafe deserialization
   - id: objc-unsafe-deserialization
-    message: "Unsafe deserialization detected"
+    message: "Unsafe deserialization detected. Deserializing untrusted data can lead to remote code execution or denial of service. Use safe serialization formats like JSON or validate data before deserializing."
     severity: CRITICAL
     languages: [objective-c]
     pattern-either:
@@ -61,12 +73,16 @@ rules:
       category: security
       cwe: CWE-502
       confidence: high
+      subcategory: integrity
+      vulnerability_class: "Insecure Deserialization"
+      owasp: "A08:2021"
+      fix: "Use NSJSONSerialization instead of NSKeyedUnarchiver for untrusted data. Use NSSecureCoding with allowedClasses for type validation."
 
   # === High Severity Rules ===
 
   # Hardcoded secrets
   - id: objc-hardcoded-secrets
-    message: "Hardcoded secrets detected"
+    message: "Hard-coded credentials detected. Embedding secrets in source code makes them easily discoverable and impossible to rotate. Use environment variables or a secrets manager instead."
     severity: HIGH
     languages: [objective-c]
     pattern-either:
@@ -80,10 +96,14 @@ rules:
       category: security
       cwe: CWE-798
       confidence: medium
+      subcategory: authentication
+      vulnerability_class: "Authentication Weakness"
+      owasp: "A07:2021"
+      fix: "Store secrets in the iOS Keychain or environment variables. Never embed secrets in source code or property lists."
 
   # Weak cryptography - MD5
   - id: objc-weak-crypto-md5
-    message: "Use of weak MD5 hash algorithm"
+    message: "Weak cryptographic algorithm detected. Using broken or outdated algorithms may allow attackers to decrypt data or forge signatures. Use modern algorithms like AES-256, SHA-256, or Ed25519."
     severity: HIGH
     languages: [objective-c]
     pattern-either:
@@ -94,10 +114,14 @@ rules:
       category: security
       cwe: CWE-327
       confidence: high
+      subcategory: crypto
+      vulnerability_class: "Cryptographic Weakness"
+      owasp: "A02:2021"
+      fix: "Use CC_SHA256 from CommonCrypto instead of CC_MD5/CC_SHA1. Use CCCrypt with kCCAlgorithmAES for encryption."
 
   # Weak cryptography - SHA1
   - id: objc-weak-crypto-sha1
-    message: "Use of weak SHA1 hash algorithm"
+    message: "Weak cryptographic algorithm detected. Using broken or outdated algorithms may allow attackers to decrypt data or forge signatures. Use modern algorithms like AES-256, SHA-256, or Ed25519."
     severity: HIGH
     languages: [objective-c]
     pattern-either:
@@ -108,10 +132,14 @@ rules:
       category: security
       cwe: CWE-327
       confidence: high
+      subcategory: crypto
+      vulnerability_class: "Cryptographic Weakness"
+      owasp: "A02:2021"
+      fix: "Use CC_SHA256 from CommonCrypto instead of CC_MD5/CC_SHA1. Use CCCrypt with kCCAlgorithmAES for encryption."
 
   # SSL/TLS bypass
   - id: objc-ssl-bypass
-    message: "SSL/TLS certificate validation bypassed"
+    message: "TLS/SSL certificate validation is disabled or bypassed. This allows man-in-the-middle attacks where attackers can intercept encrypted communications. Always validate certificates in production."
     severity: HIGH
     languages: [objective-c]
     pattern-either:
@@ -125,10 +153,14 @@ rules:
       category: security
       cwe: CWE-295
       confidence: high
+      subcategory: crypto
+      vulnerability_class: "Cryptographic Weakness"
+      owasp: "A07:2021"
+      fix: "Never override NSURLSession delegate to accept invalid certificates. Use App Transport Security (ATS) defaults."
 
   # Path traversal
   - id: objc-path-traversal
-    message: "Path traversal vulnerability detected"
+    message: "Path traversal vulnerability detected. User input is used in file paths without validation, allowing attackers to access files outside the intended directory. Validate and canonicalize paths before use."
     severity: HIGH
     languages: [objective-c]
     pattern-either:
@@ -139,10 +171,14 @@ rules:
       category: security
       cwe: CWE-22
       confidence: medium
+      subcategory: access-control
+      vulnerability_class: "Access Control Violation"
+      owasp: "A01:2021"
+      fix: "Use -[NSString stringByStandardizingPath] and verify the result starts with the allowed base directory. Reject '..' path components."
 
   # XSS in WebView
   - id: objc-webview-xss
-    message: "XSS vulnerability in WebView"
+    message: "Cross-site scripting (XSS) vulnerability detected. User input is rendered in HTML output without proper escaping, allowing attackers to inject malicious scripts. Sanitize or escape all user input before rendering."
     severity: HIGH
     languages: [objective-c]
     pattern-either:
@@ -153,12 +189,16 @@ rules:
       category: security
       cwe: CWE-79
       confidence: medium
+      subcategory: xss
+      vulnerability_class: "Cross-Site Scripting (XSS)"
+      owasp: "A03:2021"
+      fix: "Escape user input before rendering in web views. Use NSString methods to encode HTML entities. Avoid loading untrusted HTML in WKWebView."
 
   # === Medium Severity Rules ===
 
   # Insecure random number generation
   - id: objc-insecure-random
-    message: "Use of insecure random number generator"
+    message: "Insecure random number generator used. Non-cryptographic PRNGs produce predictable values that attackers can guess. Use a cryptographically secure random generator for security-sensitive operations."
     severity: MEDIUM
     languages: [objective-c]
     pattern-either:
@@ -170,10 +210,13 @@ rules:
       category: security
       cwe: CWE-338
       confidence: medium
+      subcategory: crypto
+      vulnerability_class: "Cryptographic Weakness"
+      owasp: "A02:2021"
 
   # HTTP instead of HTTPS
   - id: objc-insecure-http
-    message: "Use of HTTP instead of HTTPS"
+    message: "Sensitive data transmitted over an unencrypted channel. Using HTTP instead of HTTPS allows network attackers to intercept data in transit. Use HTTPS for all communications containing sensitive data."
     severity: MEDIUM
     languages: [objective-c]
     pattern-either:
@@ -185,10 +228,13 @@ rules:
       category: security
       cwe: CWE-319
       confidence: low
+      subcategory: crypto
+      vulnerability_class: "Cryptographic Weakness"
+      owasp: "A02:2021"
 
   # Open redirect
   - id: objc-open-redirect
-    message: "Open redirect vulnerability detected"
+    message: "Open redirect vulnerability detected. The application redirects to a user-controlled URL without validation, enabling phishing attacks. Validate redirect targets against an allowlist."
     severity: MEDIUM
     languages: [objective-c]
     pattern-either:
@@ -198,10 +244,13 @@ rules:
       category: security
       cwe: CWE-601
       confidence: low
+      subcategory: access-control
+      vulnerability_class: "Access Control Violation"
+      owasp: "A01:2021"
 
   # Weak cipher algorithms
   - id: objc-weak-cipher
-    message: "Use of weak cipher algorithm"
+    message: "Weak cryptographic algorithm detected. Using broken or outdated algorithms may allow attackers to decrypt data or forge signatures. Use modern algorithms like AES-256, SHA-256, or Ed25519."
     severity: MEDIUM
     languages: [objective-c]
     pattern-either:
@@ -213,10 +262,13 @@ rules:
       category: security
       cwe: CWE-327
       confidence: high
+      subcategory: crypto
+      vulnerability_class: "Cryptographic Weakness"
+      owasp: "A02:2021"
 
   # Keychain without proper security
   - id: objc-keychain-insecure
-    message: "Keychain usage without proper security attributes"
+    message: "Overly permissive file or resource permissions. Resources are accessible to unauthorized users due to incorrect permission settings. Apply the principle of least privilege."
     severity: MEDIUM
     languages: [objective-c]
     pattern-either:
@@ -235,12 +287,15 @@ rules:
       category: security
       cwe: CWE-732
       confidence: low
+      subcategory: configuration
+      vulnerability_class: "Security Misconfiguration"
+      owasp: "A05:2021"
 
   # === Low Severity Rules ===
 
   # Debug information disclosure
   - id: objc-debug-info-disclosure
-    message: "Debug information disclosure detected"
+    message: "Sensitive information written to log files. Passwords, tokens, or personal data in logs can be exposed to unauthorized parties. Redact sensitive values before logging."
     severity: LOW
     languages: [objective-c]
     patterns:
@@ -255,10 +310,13 @@ rules:
       category: security
       cwe: CWE-532
       confidence: low
+      subcategory: logging
+      vulnerability_class: "Sensitive Data Exposure"
+      owasp: "A09:2021"
 
   # Hardcoded IP addresses
   - id: objc-hardcoded-ip
-    message: "Hardcoded IP address detected"
+    message: "Hard-coded credentials detected. Embedding secrets in source code makes them easily discoverable and impossible to rotate. Use environment variables or a secrets manager instead."
     severity: LOW
     languages: [objective-c]
     pattern-either:
@@ -271,10 +329,13 @@ rules:
       category: security
       cwe: CWE-798
       confidence: low
+      subcategory: authentication
+      vulnerability_class: "Authentication Weakness"
+      owasp: "A07:2021"
 
   # Memory management issues
   - id: objc-memory-management
-    message: "Memory management issue detected"
+    message: "Double free vulnerability. Freeing memory twice corrupts memory management and may allow code execution. Track allocation state and nullify freed pointers."
     severity: MEDIUM
     languages: [objective-c]
     pattern-either:
@@ -296,12 +357,14 @@ rules:
       category: security
       cwe: CWE-415
       confidence: medium
+      subcategory: deprecated
+      vulnerability_class: "Memory Safety Violation"
 
   # === iOS-specific Rules ===
 
   # App Transport Security bypass
   - id: objc-ios-ats-bypass
-    message: "App Transport Security bypassed"
+    message: "Sensitive data transmitted over an unencrypted channel. Using HTTP instead of HTTPS allows network attackers to intercept data in transit. Use HTTPS for all communications containing sensitive data."
     severity: MEDIUM
     languages: [objective-c]
     pattern-either:
@@ -313,10 +376,13 @@ rules:
       platform: ios
       cwe: CWE-319
       confidence: medium
+      subcategory: crypto
+      vulnerability_class: "Cryptographic Weakness"
+      owasp: "A02:2021"
 
   # Insecure data storage
   - id: objc-ios-insecure-storage
-    message: "Insecure data storage detected"
+    message: "Sensitive data stored in cleartext. Plaintext storage of secrets allows unauthorized access. Encrypt sensitive data at rest."
     severity: HIGH
     languages: [objective-c]
     patterns:
@@ -332,10 +398,14 @@ rules:
       platform: ios
       cwe: CWE-312
       confidence: low
+      subcategory: crypto
+      vulnerability_class: "Cryptographic Weakness"
+      owasp: "A04:2021"
+      fix: "Use Keychain Services (SecItemAdd) for storing secrets instead of NSUserDefaults or plist files. Encrypt sensitive data with CommonCrypto."
 
   # URL scheme handling
   - id: objc-ios-url-scheme
-    message: "URL scheme handling without validation"
+    message: "Missing input validation. User input is not sufficiently validated, enabling injection or logic bypass attacks. Validate all inputs against expected format, type, and range."
     severity: MEDIUM
     languages: [objective-c]
     pattern-either:
@@ -350,10 +420,13 @@ rules:
       platform: ios
       cwe: CWE-20
       confidence: low
+      subcategory: design
+      vulnerability_class: "Insecure Design"
+      owasp: "A03:2021"
 
   # Jailbreak detection bypass
   - id: objc-ios-jailbreak-detection
-    message: "Jailbreak detection implementation detected"
+    message: "Debug mode or debug code is enabled in a production context. Debug features expose sensitive information and increase attack surface. Disable debug mode before deploying to production."
     severity: MEDIUM
     languages: [objective-c]
     pattern-either:
@@ -365,10 +438,13 @@ rules:
       platform: ios
       cwe: CWE-489
       confidence: low
+      subcategory: configuration
+      vulnerability_class: "Security Misconfiguration"
+      owasp: "A05:2021"
 
   # Biometric authentication bypass
   - id: objc-ios-biometric-bypass
-    message: "Biometric authentication implementation issue"
+    message: "Improper authentication detected. The application does not properly verify user identity before granting access. Implement proper authentication mechanisms."
     severity: MEDIUM
     languages: [objective-c]
     pattern-either:
@@ -384,12 +460,15 @@ rules:
       platform: ios
       cwe: CWE-287
       confidence: low
+      subcategory: authentication
+      vulnerability_class: "Authentication Weakness"
+      owasp: "A07:2021"
 
   # === macOS-specific Rules ===
 
   # Privilege escalation
   - id: objc-macos-privilege-escalation
-    message: "Potential privilege escalation detected"
+    message: "Code runs with unnecessary privileges. Excess permissions increase the impact of exploits. Apply the principle of least privilege."
     severity: HIGH
     languages: [objective-c]
     pattern-either:
@@ -401,10 +480,13 @@ rules:
       platform: macos
       cwe: CWE-250
       confidence: medium
+      subcategory: configuration
+      vulnerability_class: "Security Misconfiguration"
+      fix: "Drop elevated privileges as soon as possible. Use the principle of least privilege. Avoid running with root/admin unless absolutely necessary."
 
   # Code signing bypass
   - id: objc-macos-code-signing
-    message: "Code signing verification issue"
+    message: "Cryptographic signature verification is missing or improper. Unverified signatures allow attackers to tamper with data. Always verify signatures before trusting signed data."
     severity: HIGH
     languages: [objective-c]
     pattern-either:
@@ -420,12 +502,16 @@ rules:
       platform: macos
       cwe: CWE-347
       confidence: low
+      subcategory: crypto
+      vulnerability_class: "Cryptographic Weakness"
+      owasp: "A02:2021"
+      fix: "Always verify cryptographic signatures before trusting signed data. Use Security.framework's SecKeyVerifySignature for RSA/EC verification."
 
   # === Network Security Rules ===
 
   # Insecure NSURLSession configuration
   - id: objc-insecure-nsurlsession
-    message: "Insecure NSURLSession configuration"
+    message: "Inadequate encryption strength. Short key lengths make brute-force attacks feasible. Use at least 128-bit symmetric keys or 2048-bit RSA keys."
     severity: MEDIUM
     languages: [objective-c]
     pattern-either:
@@ -440,10 +526,13 @@ rules:
       category: security
       cwe: CWE-326
       confidence: medium
+      subcategory: crypto
+      vulnerability_class: "Cryptographic Weakness"
+      owasp: "A02:2021"
 
   # Certificate pinning bypass
   - id: objc-certificate-pinning-bypass
-    message: "Certificate pinning bypassed or missing"
+    message: "TLS/SSL certificate validation is disabled or bypassed. This allows man-in-the-middle attacks where attackers can intercept encrypted communications. Always validate certificates in production."
     severity: HIGH
     languages: [objective-c]
     pattern-either:
@@ -461,12 +550,16 @@ rules:
       category: security
       cwe: CWE-295
       confidence: low
+      subcategory: crypto
+      vulnerability_class: "Cryptographic Weakness"
+      owasp: "A07:2021"
+      fix: "Never override NSURLSession delegate to accept invalid certificates. Use App Transport Security (ATS) defaults."
 
   # === Framework-specific Rules ===
 
   # Core Data injection
   - id: objc-core-data-injection
-    message: "Core Data injection vulnerability"
+    message: "NoSQL injection vulnerability detected. User input in NoSQL queries without sanitization allows data theft or modification. Use parameterized queries and validate input types."
     severity: HIGH
     languages: [objective-c]
     pattern-either:
@@ -478,10 +571,16 @@ rules:
       framework: coredata
       cwe: CWE-943
       confidence: medium
+      subcategory: injection
+      vulnerability_class: "Injection Vulnerability"
+      owasp: "A03:2021"
+      references:
+        - https://developer.apple.com/documentation/coredata
+      fix: "Validate all user input before including in NoSQL queries. Use parameterized queries and type-check inputs to reject injection payloads."
 
   # AFNetworking security issues
   - id: objc-afnetworking-security
-    message: "AFNetworking security configuration issue"
+    message: "TLS/SSL certificate validation is disabled or bypassed. This allows man-in-the-middle attacks where attackers can intercept encrypted communications. Always validate certificates in production."
     severity: MEDIUM
     languages: [objective-c]
     pattern-either:
@@ -495,10 +594,13 @@ rules:
       framework: afnetworking
       cwe: CWE-295
       confidence: medium
+      subcategory: crypto
+      vulnerability_class: "Cryptographic Weakness"
+      owasp: "A07:2021"
 
   # Buffer overflow vulnerabilities
   - id: objc-buffer-overflow
-    message: "Buffer overflow vulnerability detected"
+    message: "Buffer overflow vulnerability. Data is copied without checking buffer size, potentially allowing code execution. Always validate input length before buffer operations."
     severity: CRITICAL
     languages: [objective-c]
     pattern-either:
@@ -510,10 +612,13 @@ rules:
       category: security
       cwe: CWE-120
       confidence: high
+      subcategory: deprecated
+      vulnerability_class: "Memory Safety Violation"
+      fix: "Use NSString and NSData instead of C string functions. If C buffers are required, always validate sizes. Use strlcpy/strlcat instead of strcpy/strcat."
 
   # Race conditions
   - id: objc-race-condition
-    message: "Race condition detected - check file operations"
+    message: "Time-of-check time-of-use (TOCTOU) race condition. A resource can change between check and use, allowing bypass. Perform check and use atomically."
     severity: MEDIUM
     languages: [objective-c]
     pattern-either:
@@ -529,3 +634,5 @@ rules:
       category: security
       cwe: CWE-367
       confidence: low
+      subcategory: design
+      vulnerability_class: "Insecure Design"

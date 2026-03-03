@@ -27,10 +27,14 @@ rules:
       category: security
       cwe: CWE-94
       confidence: high
+      subcategory: injection
+      vulnerability_class: "Injection Vulnerability"
+      owasp: "A03:2021"
+      fix: "Remove eval(), assert(), and preg_replace with /e flag. Use proper parsing functions for data. Never include user-controlled file paths."
 
   # preg_replace with /e modifier (separate rule due to specific vulnerability)
   - id: php-preg-replace-e-modifier
-    message: "Dangerous preg_replace with /e modifier detected"
+    message: "Code injection vulnerability detected. User-controlled input is passed to a code evaluation function, allowing arbitrary code execution. Avoid eval/exec with user input; use safe alternatives."
     severity: CRITICAL
     languages: [php]
     pattern-either:
@@ -45,6 +49,10 @@ rules:
       category: security
       cwe: CWE-94
       confidence: high
+      subcategory: injection
+      vulnerability_class: "Injection Vulnerability"
+      owasp: "A03:2021"
+      fix: "Remove eval(), assert(), and preg_replace with /e flag. Use proper parsing functions for data. Never include user-controlled file paths."
 
   # SQL injection
   - id: php-sql-injection
@@ -88,6 +96,10 @@ rules:
       category: security
       cwe: CWE-89
       confidence: high
+      subcategory: injection
+      vulnerability_class: "Injection Vulnerability"
+      owasp: "A03:2021"
+      fix: "Use PDO prepared statements: $stmt = $pdo->prepare('SELECT * FROM t WHERE id = ?'); $stmt->execute([$userId]);"
 
   # Command injection
   - id: php-command-injection
@@ -121,10 +133,14 @@ rules:
       category: security
       cwe: CWE-78
       confidence: high
+      subcategory: injection
+      vulnerability_class: "Injection Vulnerability"
+      owasp: "A03:2021"
+      fix: "Use escapeshellarg() for arguments and escapeshellcmd() for commands. Prefer language-level APIs over shell execution."
 
   # Unsafe deserialization
   - id: php-unsafe-deserialization
-    message: "Unsafe deserialization detected"
+    message: "Unsafe deserialization detected. Deserializing untrusted data can lead to remote code execution or denial of service. Use safe serialization formats like JSON or validate data before deserializing."
     severity: CRITICAL
     languages: [php]
     patterns:
@@ -141,10 +157,14 @@ rules:
       category: security
       cwe: CWE-502
       confidence: high
+      subcategory: integrity
+      vulnerability_class: "Insecure Deserialization"
+      owasp: "A08:2021"
+      fix: "Replace unserialize() with json_decode(). If unserialize() is required, use the allowed_classes option to restrict types."
 
   # LDAP injection
   - id: php-ldap-injection
-    message: "LDAP injection vulnerability detected"
+    message: "LDAP injection vulnerability detected. User input in LDAP queries without sanitization allows attackers to modify query logic. Escape special characters in LDAP filters."
     severity: CRITICAL
     languages: [php]
     pattern-either:
@@ -155,12 +175,16 @@ rules:
       category: security
       cwe: CWE-90
       confidence: medium
+      subcategory: injection
+      vulnerability_class: "Injection Vulnerability"
+      owasp: "A03:2021"
+      fix: "Use ldap_escape() to sanitize filter values: ldap_escape($input, '', LDAP_ESCAPE_FILTER). Never concatenate user input into LDAP filters."
 
   # === High Severity Rules ===
 
   # File inclusion vulnerabilities
   - id: php-file-inclusion
-    message: "File inclusion vulnerability detected"
+    message: "Remote file inclusion vulnerability. User input controls file include paths, enabling remote code execution. Validate file paths against an allowlist."
     severity: HIGH
     languages: [php]
     pattern-either:
@@ -175,6 +199,10 @@ rules:
       category: security
       cwe: CWE-98
       confidence: medium
+      subcategory: injection
+      vulnerability_class: "Injection Vulnerability"
+      owasp: "A03:2021"
+      fix: "Set allow_url_include=Off in php.ini. Validate file paths against an allowlist. Use basename() to strip directory components from user input."
 
   # XSS vulnerabilities
   - id: php-xss
@@ -229,10 +257,14 @@ rules:
       category: security
       cwe: CWE-79
       confidence: high
+      subcategory: xss
+      vulnerability_class: "Cross-Site Scripting (XSS)"
+      owasp: "A03:2021"
+      fix: "Use htmlspecialchars($input, ENT_QUOTES, 'UTF-8') for output. Enable auto-escaping in Twig/Blade templates. Never echo raw user input."
 
   # Hardcoded secrets
   - id: php-hardcoded-secrets
-    message: "Hardcoded secrets detected"
+    message: "Hard-coded credentials detected. Embedding secrets in source code makes them easily discoverable and impossible to rotate. Use environment variables or a secrets manager instead."
     severity: HIGH
     languages: [php]
     pattern-either:
@@ -246,6 +278,10 @@ rules:
       category: security
       cwe: CWE-798
       confidence: medium
+      subcategory: authentication
+      vulnerability_class: "Authentication Weakness"
+      owasp: "A07:2021"
+      fix: "Store secrets in environment variables (getenv('KEY')) or use a secrets manager. Use vlucas/phpdotenv for local development."
 
   # Path traversal
   - id: php-path-traversal
@@ -287,6 +323,10 @@ rules:
       category: security
       cwe: CWE-22
       confidence: high
+      subcategory: access-control
+      vulnerability_class: "Access Control Violation"
+      owasp: "A01:2021"
+      fix: "Use realpath() and verify the result starts with the allowed base directory. Reject paths containing '..' sequences."
 
   # Open redirect
   - id: php-open-redirect
@@ -315,10 +355,14 @@ rules:
       category: security
       cwe: CWE-601
       confidence: high
+      subcategory: access-control
+      vulnerability_class: "Access Control Violation"
+      owasp: "A01:2021"
+      fix: "Validate redirect URLs against an allowlist of trusted domains. Use relative paths for internal redirects. Parse URLs and check the host component."
 
   # XXE vulnerabilities
   - id: php-xxe-vulnerability
-    message: "XML parsing vulnerable to XXE attacks"
+    message: "XML External Entity (XXE) vulnerability. The XML parser processes external entity references that can read local files or make network requests. Disable external entity processing in XML parsers."
     severity: HIGH
     languages: [php]
     pattern-either:
@@ -335,12 +379,16 @@ rules:
       category: security
       cwe: CWE-611
       confidence: medium
+      subcategory: injection
+      vulnerability_class: "Injection Vulnerability"
+      owasp: "A05:2021"
+      fix: "Call libxml_disable_entity_loader(true) before parsing XML. Use LIBXML_NOENT flag carefully. Use json_decode() if possible."
 
   # === Medium Severity Rules ===
 
   # Weak cryptographic functions
   - id: php-weak-crypto
-    message: "Use of weak cryptographic function"
+    message: "Weak cryptographic algorithm detected. Using broken or outdated algorithms may allow attackers to decrypt data or forge signatures. Use modern algorithms like AES-256, SHA-256, or Ed25519."
     severity: MEDIUM
     languages: [php]
     pattern-either:
@@ -354,10 +402,13 @@ rules:
       category: security
       cwe: CWE-327
       confidence: high
+      subcategory: crypto
+      vulnerability_class: "Cryptographic Weakness"
+      owasp: "A02:2021"
 
   # Insecure file permissions
   - id: php-insecure-file-permissions
-    message: "Insecure file permissions detected"
+    message: "Overly permissive file or resource permissions. Resources are accessible to unauthorized users due to incorrect permission settings. Apply the principle of least privilege."
     severity: MEDIUM
     languages: [php]
     pattern-either:
@@ -369,10 +420,13 @@ rules:
       category: security
       cwe: CWE-732
       confidence: high
+      subcategory: configuration
+      vulnerability_class: "Security Misconfiguration"
+      owasp: "A05:2021"
 
   # Session security issues
   - id: php-session-security
-    message: "Session security issue detected"
+    message: "Session fixation vulnerability. Session tokens are not regenerated after authentication, allowing session hijacking. Regenerate session IDs on login."
     severity: MEDIUM
     languages: [php]
     pattern-either:
@@ -387,10 +441,13 @@ rules:
       category: security
       cwe: CWE-384
       confidence: low
+      subcategory: authentication
+      vulnerability_class: "Authentication Weakness"
+      owasp: "A07:2021"
 
   # CSRF vulnerabilities
   - id: php-csrf-vulnerability
-    message: "CSRF vulnerability detected"
+    message: "Cross-site request forgery (CSRF) vulnerability. The application does not verify that requests originate from its own interface. Implement CSRF tokens on all state-changing operations."
     severity: MEDIUM
     languages: [php]
     pattern-either:
@@ -406,10 +463,13 @@ rules:
       category: security
       cwe: CWE-352
       confidence: low
+      subcategory: access-control
+      vulnerability_class: "Access Control Violation"
+      owasp: "A01:2021"
 
   # HTTP instead of HTTPS
   - id: php-insecure-http
-    message: "Use of HTTP instead of HTTPS"
+    message: "Sensitive data transmitted over an unencrypted channel. Using HTTP instead of HTTPS allows network attackers to intercept data in transit. Use HTTPS for all communications containing sensitive data."
     severity: MEDIUM
     languages: [php]
     pattern-either:
@@ -421,10 +481,13 @@ rules:
       category: security
       cwe: CWE-319
       confidence: low
+      subcategory: crypto
+      vulnerability_class: "Cryptographic Weakness"
+      owasp: "A02:2021"
 
   # Insecure random number generation
   - id: php-insecure-random
-    message: "Use of insecure random number generator"
+    message: "Insecure random number generator used. Non-cryptographic PRNGs produce predictable values that attackers can guess. Use a cryptographically secure random generator for security-sensitive operations."
     severity: MEDIUM
     languages: [php]
     pattern-either:
@@ -436,12 +499,15 @@ rules:
       category: security
       cwe: CWE-338
       confidence: medium
+      subcategory: crypto
+      vulnerability_class: "Cryptographic Weakness"
+      owasp: "A02:2021"
 
   # === Low Severity Rules ===
 
   # Debug information disclosure
   - id: php-debug-info-disclosure
-    message: "Debug information disclosure detected"
+    message: "Sensitive information written to log files. Passwords, tokens, or personal data in logs can be exposed to unauthorized parties. Redact sensitive values before logging."
     severity: LOW
     languages: [php]
     patterns:
@@ -458,10 +524,13 @@ rules:
       category: security
       cwe: CWE-532
       confidence: low
+      subcategory: logging
+      vulnerability_class: "Sensitive Data Exposure"
+      owasp: "A09:2021"
 
   # Hardcoded IP addresses
   - id: php-hardcoded-ip
-    message: "Hardcoded IP address detected"
+    message: "Hard-coded credentials detected. Embedding secrets in source code makes them easily discoverable and impossible to rotate. Use environment variables or a secrets manager instead."
     severity: LOW
     languages: [php]
     pattern-either:
@@ -473,10 +542,13 @@ rules:
       category: security
       cwe: CWE-798
       confidence: low
+      subcategory: authentication
+      vulnerability_class: "Authentication Weakness"
+      owasp: "A07:2021"
 
   # Error suppression
   - id: php-error-suppression
-    message: "Error suppression detected - may hide security issues"
+    message: "Improper handling of exceptional conditions. The application may crash or behave unexpectedly on errors. Add proper exception handling for all expected failure modes."
     severity: LOW
     languages: [php]
     pattern-either:
@@ -487,12 +559,14 @@ rules:
       category: security
       cwe: CWE-755
       confidence: low
+      subcategory: error-handling
+      vulnerability_class: "Improper Error Handling"
 
   # === Framework-specific Rules ===
 
   # Laravel security issues
   - id: php-laravel-security
-    message: "Laravel security configuration issue"
+    message: "SQL injection vulnerability detected. User-supplied input is included in a SQL query without sanitization, potentially allowing attackers to read, modify, or delete database contents. Use parameterized queries or an ORM instead of string concatenation."
     severity: HIGH
     languages: [php]
     pattern-either:
@@ -505,10 +579,16 @@ rules:
       framework: laravel
       cwe: CWE-89
       confidence: medium
+      subcategory: injection
+      vulnerability_class: "Injection Vulnerability"
+      owasp: "A03:2021"
+      references:
+        - https://laravel.com/docs/master/security
+      fix: "Use PDO prepared statements: $stmt = $pdo->prepare('SELECT * FROM t WHERE id = ?'); $stmt->execute([$userId]);"
 
   # Symfony security issues
   - id: php-symfony-security
-    message: "Symfony security configuration issue"
+    message: "Missing authorization check. The application does not verify user permissions before granting access to resources. Add authorization checks to all protected endpoints."
     severity: MEDIUM
     languages: [php]
     pattern-either:
@@ -525,10 +605,15 @@ rules:
       framework: symfony
       cwe: CWE-862
       confidence: low
+      subcategory: access-control
+      vulnerability_class: "Access Control Violation"
+      owasp: "A01:2021"
+      references:
+        - https://symfony.com/doc/current/security.html
 
   # WordPress security issues
   - id: php-wordpress-security
-    message: "WordPress security issue detected"
+    message: "SQL injection vulnerability detected. User-supplied input is included in a SQL query without sanitization, potentially allowing attackers to read, modify, or delete database contents. Use parameterized queries or an ORM instead of string concatenation."
     severity: HIGH
     languages: [php]
     pattern-either:
@@ -541,10 +626,16 @@ rules:
       framework: wordpress
       cwe: CWE-89
       confidence: medium
+      subcategory: injection
+      vulnerability_class: "Injection Vulnerability"
+      owasp: "A03:2021"
+      references:
+        - https://developer.wordpress.org/advanced-administration/security/
+      fix: "Use PDO prepared statements: $stmt = $pdo->prepare('SELECT * FROM t WHERE id = ?'); $stmt->execute([$userId]);"
 
   # CodeIgniter security issues
   - id: php-codeigniter-security
-    message: "CodeIgniter security issue detected"
+    message: "SQL injection vulnerability detected. User-supplied input is included in a SQL query without sanitization, potentially allowing attackers to read, modify, or delete database contents. Use parameterized queries or an ORM instead of string concatenation."
     severity: HIGH
     languages: [php]
     pattern-either:
@@ -556,12 +647,16 @@ rules:
       framework: codeigniter
       cwe: CWE-89
       confidence: low
+      subcategory: injection
+      vulnerability_class: "Injection Vulnerability"
+      owasp: "A03:2021"
+      fix: "Use PDO prepared statements: $stmt = $pdo->prepare('SELECT * FROM t WHERE id = ?'); $stmt->execute([$userId]);"
 
   # === Additional Security Rules ===
 
   # File upload vulnerabilities
   - id: php-file-upload-vulnerability
-    message: "File upload vulnerability detected"
+    message: "Unrestricted file upload detected. Accepting uploads without validating file type and content can allow execution of malicious code. Validate file type, size, and content before storing."
     severity: HIGH
     languages: [php]
     pattern-either:
@@ -580,10 +675,14 @@ rules:
       category: security
       cwe: CWE-434
       confidence: low
+      subcategory: upload
+      vulnerability_class: "Unrestricted File Upload"
+      owasp: "A04:2021"
+      fix: "Validate file extension, MIME type with finfo_file(), and content. Store uploads outside the web root. Never trust $_FILES['type']."
 
   # Email injection
   - id: php-email-injection
-    message: "Email injection vulnerability detected"
+    message: "Log injection risk. Unsanitized input in logs allows forged entries. Sanitize newlines and special characters before logging."
     severity: MEDIUM
     languages: [php]
     pattern-either:
@@ -594,10 +693,13 @@ rules:
       category: security
       cwe: CWE-117
       confidence: medium
+      subcategory: injection
+      vulnerability_class: "Injection Vulnerability"
+      owasp: "A09:2021"
 
   # Type juggling vulnerabilities
   - id: php-type-juggling
-    message: "Type juggling vulnerability detected"
+    message: "Incorrect comparison detected. Flawed comparison logic can bypass security checks. Use strict equality and proper type checking."
     severity: MEDIUM
     languages: [php]
     pattern-either:
@@ -613,10 +715,12 @@ rules:
       category: security
       cwe: CWE-697
       confidence: low
+      subcategory: design
+      vulnerability_class: "Insecure Design"
 
   # Insecure direct object references
   - id: php-insecure-direct-object-reference
-    message: "Insecure direct object reference detected"
+    message: "Insecure direct object reference (IDOR). User-supplied IDs access resources without authorization checks. Verify user permissions for every resource access."
     severity: HIGH
     languages: [php]
     pattern-either:
@@ -633,10 +737,14 @@ rules:
       category: security
       cwe: CWE-639
       confidence: low
+      subcategory: access-control
+      vulnerability_class: "Access Control Violation"
+      owasp: "A01:2021"
+      fix: "Verify user authorization before accessing resources. Use the authenticated user's session ID, not user-supplied IDs for resource access."
 
   # SQL injection in prepared statements
   - id: php-prepared-statement-injection
-    message: "SQL injection in prepared statement detected"
+    message: "SQL injection vulnerability detected. User-supplied input is included in a SQL query without sanitization, potentially allowing attackers to read, modify, or delete database contents. Use parameterized queries or an ORM instead of string concatenation."
     severity: CRITICAL
     languages: [php]
     pattern-either:
@@ -647,10 +755,14 @@ rules:
       category: security
       cwe: CWE-89
       confidence: medium
+      subcategory: injection
+      vulnerability_class: "Injection Vulnerability"
+      owasp: "A03:2021"
+      fix: "Use PDO prepared statements: $stmt = $pdo->prepare('SELECT * FROM t WHERE id = ?'); $stmt->execute([$userId]);"
 
   # Regex injection (ReDoS)
   - id: php-regex-injection
-    message: "Regular expression injection (ReDoS) detected"
+    message: "Regular expression denial of service (ReDoS) risk. A regex with catastrophic backtracking can freeze the application on crafted input. Simplify the regex or set a timeout."
     severity: MEDIUM
     languages: [php]
     pattern-either:
@@ -661,10 +773,12 @@ rules:
       category: security
       cwe: CWE-1333
       confidence: low
+      subcategory: dos
+      vulnerability_class: "Denial of Service"
 
   # Insecure cookie settings
   - id: php-insecure-cookie
-    message: "Insecure cookie configuration detected"
+    message: "Sensitive cookie missing the Secure flag. The cookie may be transmitted over unencrypted HTTP, allowing interception. Set the Secure flag on all sensitive cookies."
     severity: MEDIUM
     languages: [php]
     pattern-either:
@@ -675,10 +789,13 @@ rules:
       category: security
       cwe: CWE-614
       confidence: medium
+      subcategory: configuration
+      vulnerability_class: "Security Misconfiguration"
+      owasp: "A05:2021"
 
   # Information disclosure through errors
   - id: php-information-disclosure-errors
-    message: "Information disclosure through error messages"
+    message: "Error messages expose sensitive information. Stack traces or internal details in error responses help attackers plan attacks. Use generic error messages in production."
     severity: LOW
     languages: [php]
     pattern-either:
@@ -696,3 +813,6 @@ rules:
       category: security
       cwe: CWE-209
       confidence: low
+      subcategory: configuration
+      vulnerability_class: "Security Misconfiguration"
+      owasp: "A04:2021"

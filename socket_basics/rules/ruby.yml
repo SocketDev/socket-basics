@@ -29,6 +29,10 @@ rules:
       category: security
       cwe: CWE-94
       confidence: high
+      subcategory: injection
+      vulnerability_class: "Injection Vulnerability"
+      owasp: "A03:2021"
+      fix: "Remove eval(), instance_eval(), and send() with user input. Use safe parsing methods. Use a sandboxed environment if dynamic execution is required."
 
   # Command injection - using taint mode for accurate detection
   - id: ruby-command-injection
@@ -62,6 +66,10 @@ rules:
       category: security
       cwe: CWE-78
       confidence: high
+      subcategory: injection
+      vulnerability_class: "Injection Vulnerability"
+      owasp: "A03:2021"
+      fix: "Use system() with separate arguments: system('cmd', arg1, arg2). Avoid backticks or %x{} with user input."
 
   # SQL injection - using taint mode for accurate detection
   - id: ruby-sql-injection
@@ -99,10 +107,14 @@ rules:
       category: security
       cwe: CWE-89
       confidence: high
+      subcategory: injection
+      vulnerability_class: "Injection Vulnerability"
+      owasp: "A03:2021"
+      fix: "Use parameterized queries with ActiveRecord: User.where('id = ?', user_id) or use the ORM query interface."
 
   # Unsafe deserialization
   - id: ruby-unsafe-deserialization
-    message: "Unsafe deserialization detected"
+    message: "Unsafe deserialization detected. Deserializing untrusted data can lead to remote code execution or denial of service. Use safe serialization formats like JSON or validate data before deserializing."
     severity: CRITICAL
     languages: [ruby]
     pattern-either:
@@ -114,10 +126,14 @@ rules:
       category: security
       cwe: CWE-502
       confidence: high
+      subcategory: integrity
+      vulnerability_class: "Insecure Deserialization"
+      owasp: "A08:2021"
+      fix: "Replace Marshal.load/YAML.load with JSON.parse or YAML.safe_load. Never deserialize untrusted data with Marshal."
 
   # Dynamic method definition - simplified
   - id: ruby-dynamic-method-definition
-    message: "Dynamic method definition with user input"
+    message: "Code injection vulnerability detected. User-controlled input is passed to a code evaluation function, allowing arbitrary code execution. Avoid eval/exec with user input; use safe alternatives."
     severity: CRITICAL
     languages: [ruby]
     pattern-either:
@@ -131,12 +147,16 @@ rules:
       category: security
       cwe: CWE-94
       confidence: medium
+      subcategory: injection
+      vulnerability_class: "Injection Vulnerability"
+      owasp: "A03:2021"
+      fix: "Remove eval(), instance_eval(), and send() with user input. Use safe parsing methods. Use a sandboxed environment if dynamic execution is required."
 
   # === High Severity Rules ===
 
   # Hardcoded secrets - using regex on the variable name
   - id: ruby-hardcoded-secrets
-    message: "Hardcoded secret or credential detected"
+    message: "Hard-coded credentials detected. Embedding secrets in source code makes them easily discoverable and impossible to rotate. Use environment variables or a secrets manager instead."
     severity: HIGH
     languages: [ruby]
     patterns:
@@ -153,6 +173,10 @@ rules:
       category: security
       cwe: CWE-798
       confidence: medium
+      subcategory: authentication
+      vulnerability_class: "Authentication Weakness"
+      owasp: "A07:2021"
+      fix: "Store secrets in environment variables (ENV['KEY']) or use Rails credentials (config/credentials.yml.enc) or a secrets manager."
 
   # File path traversal - using taint mode
   - id: ruby-path-traversal
@@ -190,10 +214,14 @@ rules:
       category: security
       cwe: CWE-22
       confidence: high
+      subcategory: access-control
+      vulnerability_class: "Access Control Violation"
+      owasp: "A01:2021"
+      fix: "Use File.expand_path() and verify the result starts with the allowed base directory. Use Pathname#cleanpath for normalization."
 
   # Open redirect - Rails patterns with taint mode
   - id: ruby-open-redirect
-    message: "Open redirect vulnerability detected"
+    message: "Open redirect vulnerability detected. The application redirects to a user-controlled URL without validation, enabling phishing attacks. Validate redirect targets against an allowlist."
     severity: HIGH
     languages: [ruby]
     mode: taint
@@ -216,6 +244,10 @@ rules:
       category: security
       cwe: CWE-601
       confidence: high
+      subcategory: access-control
+      vulnerability_class: "Access Control Violation"
+      owasp: "A01:2021"
+      fix: "Validate redirect URLs against an allowlist. Use relative paths for internal redirects. Use URI.parse to check the host before redirecting."
 
   # XSS vulnerabilities - Rails specific with taint mode
   - id: ruby-xss-raw-output
@@ -246,10 +278,14 @@ rules:
       category: security
       cwe: CWE-79
       confidence: high
+      subcategory: xss
+      vulnerability_class: "Cross-Site Scripting (XSS)"
+      owasp: "A03:2021"
+      fix: "Use ERB auto-escaping (<%= %>) or sanitize helper. Never use raw() or html_safe on user input without sanitization."
 
   # SSL/TLS verification bypass
   - id: ruby-ssl-verification-bypass
-    message: "SSL/TLS certificate verification disabled"
+    message: "TLS/SSL certificate validation is disabled or bypassed. This allows man-in-the-middle attacks where attackers can intercept encrypted communications. Always validate certificates in production."
     severity: HIGH
     languages: [ruby]
     pattern-either:
@@ -259,10 +295,14 @@ rules:
       category: security
       cwe: CWE-295
       confidence: high
+      subcategory: crypto
+      vulnerability_class: "Cryptographic Weakness"
+      owasp: "A07:2021"
+      fix: "Never set verify_mode = OpenSSL::SSL::VERIFY_NONE. Use the default certificate validation in Net::HTTP and OpenSSL."
 
   # Weak cryptographic hash
   - id: ruby-weak-crypto
-    message: "Use of weak hash algorithm (MD5 or SHA1)"
+    message: "Weak cryptographic algorithm detected. Using broken or outdated algorithms may allow attackers to decrypt data or forge signatures. Use modern algorithms like AES-256, SHA-256, or Ed25519."
     severity: HIGH
     languages: [ruby]
     pattern-either:
@@ -280,12 +320,16 @@ rules:
       category: security
       cwe: CWE-327
       confidence: high
+      subcategory: crypto
+      vulnerability_class: "Cryptographic Weakness"
+      owasp: "A02:2021"
+      fix: "Use OpenSSL::Digest::SHA256 instead of MD5/SHA1. Use OpenSSL::Cipher.new('aes-256-gcm') for encryption."
 
   # === Medium Severity Rules ===
 
   # Insecure random number generation
   - id: ruby-insecure-random
-    message: "Use of insecure random number generator"
+    message: "Insecure random number generator used. Non-cryptographic PRNGs produce predictable values that attackers can guess. Use a cryptographically secure random generator for security-sensitive operations."
     severity: MEDIUM
     languages: [ruby]
     pattern-either:
@@ -298,10 +342,13 @@ rules:
       category: security
       cwe: CWE-338
       confidence: medium
+      subcategory: crypto
+      vulnerability_class: "Cryptographic Weakness"
+      owasp: "A02:2021"
 
   # Weak cipher algorithms
   - id: ruby-weak-cipher
-    message: "Use of weak cipher algorithm"
+    message: "Weak cryptographic algorithm detected. Using broken or outdated algorithms may allow attackers to decrypt data or forge signatures. Use modern algorithms like AES-256, SHA-256, or Ed25519."
     severity: MEDIUM
     languages: [ruby]
     pattern-either:
@@ -314,10 +361,13 @@ rules:
       category: security
       cwe: CWE-327
       confidence: high
+      subcategory: crypto
+      vulnerability_class: "Cryptographic Weakness"
+      owasp: "A02:2021"
 
   # Mass assignment vulnerability - Rails
   - id: ruby-mass-assignment
-    message: "Mass assignment vulnerability detected"
+    message: "Mass assignment vulnerability. Users can set object attributes they should not control. Use an allowlist of permitted attributes."
     severity: MEDIUM
     languages: [ruby]
     pattern-either:
@@ -331,10 +381,15 @@ rules:
       framework: rails
       cwe: CWE-915
       confidence: low
+      subcategory: access-control
+      vulnerability_class: "Access Control Violation"
+      owasp: "A08:2021"
+      references:
+        - https://guides.rubyonrails.org/security.html
 
   # CSRF protection bypass
   - id: ruby-csrf-bypass
-    message: "CSRF protection potentially bypassed"
+    message: "Cross-site request forgery (CSRF) vulnerability. The application does not verify that requests originate from its own interface. Implement CSRF tokens on all state-changing operations."
     severity: MEDIUM
     languages: [ruby]
     pattern-either:
@@ -345,10 +400,15 @@ rules:
       framework: rails
       cwe: CWE-352
       confidence: medium
+      subcategory: access-control
+      vulnerability_class: "Access Control Violation"
+      owasp: "A01:2021"
+      references:
+        - https://guides.rubyonrails.org/security.html
 
   # HTTP instead of HTTPS - catch any HTTP URL
   - id: ruby-insecure-http
-    message: "Use of HTTP instead of HTTPS"
+    message: "Sensitive data transmitted over an unencrypted channel. Using HTTP instead of HTTPS allows network attackers to intercept data in transit. Use HTTPS for all communications containing sensitive data."
     severity: MEDIUM
     languages: [ruby]
     pattern-regex: "http://[a-zA-Z0-9.-]+[a-zA-Z0-9/._-]*"
@@ -356,12 +416,15 @@ rules:
       category: security
       cwe: CWE-319
       confidence: low
+      subcategory: crypto
+      vulnerability_class: "Cryptographic Weakness"
+      owasp: "A02:2021"
 
   # === Low Severity Rules ===
 
   # Debug information disclosure
   - id: ruby-debug-info-disclosure
-    message: "Debug information disclosure detected"
+    message: "Sensitive information written to log files. Passwords, tokens, or personal data in logs can be exposed to unauthorized parties. Redact sensitive values before logging."
     severity: LOW
     languages: [ruby]
     patterns:
@@ -378,10 +441,13 @@ rules:
       category: security
       cwe: CWE-532
       confidence: low
+      subcategory: logging
+      vulnerability_class: "Sensitive Data Exposure"
+      owasp: "A09:2021"
 
   # Hardcoded IP addresses
   - id: ruby-hardcoded-ip
-    message: "Hardcoded IP address detected"
+    message: "Hard-coded credentials detected. Embedding secrets in source code makes them easily discoverable and impossible to rotate. Use environment variables or a secrets manager instead."
     severity: LOW
     languages: [ruby]
     pattern-regex: "(192\\.168\\.|10\\.|172\\.16\\.|127\\.0\\.0\\.1)"
@@ -389,10 +455,13 @@ rules:
       category: security
       cwe: CWE-798
       confidence: low
+      subcategory: authentication
+      vulnerability_class: "Authentication Weakness"
+      owasp: "A07:2021"
 
   # Empty rescue blocks
   - id: ruby-empty-rescue
-    message: "Empty rescue block detected - exceptions should be handled"
+    message: "Improper error handling detected. The application does not properly handle exceptions, which may cause crashes or information leaks. Catch specific exceptions and handle them gracefully."
     severity: LOW
     languages: [ruby]
     pattern: |
@@ -404,12 +473,14 @@ rules:
       category: security
       cwe: CWE-703
       confidence: high
+      subcategory: error-handling
+      vulnerability_class: "Improper Error Handling"
 
   # === Framework-specific Rules (Rails) ===
 
   # Rails find_by_sql injection - catch any variable usage
   - id: ruby-rails-find-by-sql-injection
-    message: "Potential SQL injection in find_by_sql method"
+    message: "SQL injection vulnerability detected. User-supplied input is included in a SQL query without sanitization, potentially allowing attackers to read, modify, or delete database contents. Use parameterized queries or an ORM instead of string concatenation."
     severity: CRITICAL
     languages: [ruby]
     pattern-either:
@@ -421,10 +492,16 @@ rules:
       framework: rails
       cwe: CWE-89
       confidence: medium
+      subcategory: injection
+      vulnerability_class: "Injection Vulnerability"
+      owasp: "A03:2021"
+      references:
+        - https://guides.rubyonrails.org/security.html
+      fix: "Use parameterized queries with ActiveRecord: User.where('id = ?', user_id) or use the ORM query interface."
 
   # Rails where clause injection
   - id: ruby-rails-where-injection
-    message: "Potential SQL injection in where clause"
+    message: "SQL injection vulnerability detected. User-supplied input is included in a SQL query without sanitization, potentially allowing attackers to read, modify, or delete database contents. Use parameterized queries or an ORM instead of string concatenation."
     severity: CRITICAL
     languages: [ruby]
     pattern-either:
@@ -436,10 +513,16 @@ rules:
       framework: rails
       cwe: CWE-89
       confidence: medium
+      subcategory: injection
+      vulnerability_class: "Injection Vulnerability"
+      owasp: "A03:2021"
+      references:
+        - https://guides.rubyonrails.org/security.html
+      fix: "Use parameterized queries with ActiveRecord: User.where('id = ?', user_id) or use the ORM query interface."
 
   # Template injection - generic
   - id: ruby-template-injection
-    message: "Template injection vulnerability detected"
+    message: "Code injection vulnerability detected. User-controlled input is passed to a code evaluation function, allowing arbitrary code execution. Avoid eval/exec with user input; use safe alternatives."
     severity: HIGH
     languages: [ruby]
     pattern-either:
@@ -450,10 +533,14 @@ rules:
       category: security
       cwe: CWE-94
       confidence: medium
+      subcategory: injection
+      vulnerability_class: "Injection Vulnerability"
+      owasp: "A03:2021"
+      fix: "Remove eval(), instance_eval(), and send() with user input. Use safe parsing methods. Use a sandboxed environment if dynamic execution is required."
 
   # File upload without validation - Rails pattern
   - id: ruby-file-upload-no-validation
-    message: "File upload without proper validation"
+    message: "Unrestricted file upload detected. Accepting uploads without validating file type and content can allow execution of malicious code. Validate file type, size, and content before storing."
     severity: MEDIUM
     languages: [ruby]
     pattern-either:
@@ -468,10 +555,13 @@ rules:
       category: security
       cwe: CWE-434
       confidence: low
+      subcategory: upload
+      vulnerability_class: "Unrestricted File Upload"
+      owasp: "A04:2021"
 
   # Dangerous file permissions
   - id: ruby-dangerous-file-permissions
-    message: "Dangerous file permissions detected"
+    message: "Overly permissive file or resource permissions. Resources are accessible to unauthorized users due to incorrect permission settings. Apply the principle of least privilege."
     severity: MEDIUM
     languages: [ruby]
     pattern-either:
@@ -483,3 +573,6 @@ rules:
       category: security
       cwe: CWE-732
       confidence: high
+      subcategory: configuration
+      vulnerability_class: "Security Misconfiguration"
+      owasp: "A05:2021"

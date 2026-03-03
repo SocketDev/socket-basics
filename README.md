@@ -11,10 +11,16 @@ Socket Basics orchestrates multiple security scanners, normalizes their outputs 
 The easiest way to use Socket Basics is through GitHub Actions. Add it to your workflow in minutes:
 
 ```yaml
-name: Security Scan
+# .github/workflows/socket.yml
+
+name: ⚡️ Security Scan
+
 on:
   pull_request:
     types: [opened, synchronize, reopened]
+
+permissions:
+  contents: read
 
 jobs:
   security-scan:
@@ -22,12 +28,12 @@ jobs:
       issues: write
       contents: read
       pull-requests: write
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
     steps:
-      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
-      
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
       - name: Run Socket Basics
-        uses: SocketDev/socket-basics@1.0.26
+        uses: SocketDev/socket-basics@1.1.2
         env:
           GITHUB_PR_NUMBER: ${{ github.event.pull_request.number || github.event.issue.number }}
         with:
@@ -72,10 +78,26 @@ Socket Basics can also run locally or in other CI/CD environments:
 - Auto-enablement for container scanning when images or Dockerfiles are specified
 - Support for both standard and GitHub Actions `INPUT_*` environment variables
 
+## 🎨 Enhanced PR Comments
+
+Socket Basics delivers **beautifully formatted, actionable PR comments** with smart defaults — all enabled by default, zero configuration needed.
+
+- 🔗 **Clickable File Links** — Jump directly to the vulnerable code in GitHub
+- 📋 **Collapsible Sections** — Critical findings auto-expand, others collapse
+- 🎨 **Syntax Highlighting** — Language-aware code blocks
+- 🏷️ **Auto-Labels** — PRs tagged with severity-based labels (e.g., `security: critical`)
+- 🔴 **CVE Links & CVSS Scores** — One-click access to NVD with risk context
+- 🚀 **Full Scan Link** — Report link prominently displayed at the top
+
+Every feature is customizable via GitHub Actions inputs, CLI flags, or environment variables.
+
+📖 **[PR Comment Guide →](docs/github-pr-comment-guide.md)** — Full customization options, examples, and configuration reference
+
 ## 📖 Documentation
 
 ### Getting Started
 - [GitHub Actions Integration](docs/github-action.md) — Complete guide with workflow examples
+- [PR Comment Guide](docs/github-pr-comment-guide.md) — Detailed guide to PR comment customization
 - [Pre-Commit Hook Setup](docs/pre-commit-hook.md) — Two installation methods (Docker vs native)
 - [Local Docker Installation](docs/local-install-docker.md) — Run with Docker, no tools to install
 - [Local Installation](docs/local-installation.md) — Install Socket CLI, Trivy, and other tools natively
@@ -88,6 +110,14 @@ All configuration can be managed through:
 4. **JSON Configuration File** — Structured configuration (see `socket_config_example.json`)
 
 See [Configuration Documentation](docs/configuration.md) for details on all available options.
+
+#### Integration Environment Variables
+
+Socket Basics supports special environment variables for integration with other tools:
+
+- **`SKIP_SOCKET_REACH=1`** — Skip Socket Tier 1 reachability analysis. This allows external tools (like the Node.js Socket CLI) to skip redundant reachability scans when the analysis will be performed separately or is not needed for a particular workflow.
+
+- **`SKIP_SOCKET_SUBMISSION=1`** — Skip submission to Socket API while still generating `.socket.facts.json`. This allows external tools (like the Node.js Socket CLI) to collect the facts file and submit it along with other data in a unified API call. When this is set, Socket Basics will complete all scanning and generate the facts file, but will not make the API submission call.
 
 ## 🎯 What Socket Basics Does
 
@@ -106,47 +136,32 @@ Configure scanning policies, notification channels, and rule sets for your entir
 
 ![Socket Basics Section Config](docs/screenshots/socket_basics_section_config.png)
 
-## 💻 Usage Examples
+## 💻 Other Usage Methods
 
-### GitHub Actions (Recommended)
-
-**Dashboard-Configured (Enterprise):**
-```yaml
-- uses: SocketDev/socket-basics@1.0.26
-  env:
-    GITHUB_PR_NUMBER: ${{ github.event.pull_request.number || github.event.issue.number }}
-  with:
-    github_token: ${{ secrets.GITHUB_TOKEN }}
-    socket_security_api_key: ${{ secrets.SOCKET_SECURITY_API_KEY }}
-    # All configuration managed in Socket Dashboard
-```
-
-**CLI-Configured:**
-```yaml
-- uses: SocketDev/socket-basics@1.0.26
-  env:
-    GITHUB_PR_NUMBER: ${{ github.event.pull_request.number || github.event.issue.number }}
-  with:
-    github_token: ${{ secrets.GITHUB_TOKEN }}
-    python_sast_enabled: 'true'
-    secret_scanning_enabled: 'true'
-    container_images: 'myapp:latest'
-```
-
-📖 **[View Complete GitHub Actions Documentation](docs/github-action.md)**
+For GitHub Actions, see the [Quick Start](#-quick-start---github-actions) above or the **[Complete GitHub Actions Guide](docs/github-action.md)** for advanced workflows.
 
 ### Docker
 
 ```bash
 # Build with version tag
-docker build -t socketdev/socket-basics:1.0.26 .
+docker build -t socketdev/socket-basics:1.1.2 .
 
 # Run scan
-docker run --rm -v "$PWD:/workspace" socketdev/socket-basics:1.0.26 \
+docker run --rm -v "$PWD:/workspace" socketdev/socket-basics:1.1.2 \
   --workspace /workspace \
   --python-sast-enabled \
   --secret-scanning-enabled \
   --console-tabular-enabled
+```
+
+Tip: If you need specific Trivy, TruffleHog, or OpenGrep versions, you can override them at build time:
+
+```bash
+docker build \
+  --build-arg TRIVY_VERSION=v0.69.2 \
+  --build-arg TRUFFLEHOG_VERSION=v3.93.6 \
+  --build-arg OPENGREP_VERSION=v1.16.2 \
+  -t socketdev/socket-basics:1.1.2 .
 ```
 
 📖 **[View Docker Installation Guide](docs/local-install-docker.md)**
@@ -257,8 +272,135 @@ We welcome contributions! To add new features:
 1. **New Connectors:** Implement under `socket_basics/core/connector/`
 2. **New Notifiers:** Implement under `socket_basics/core/notification/`
 3. **Configuration:** Add entries to `socket_basics/connectors.yaml` or `socket_basics/notifications.yaml`
-4. **Tests:** Add test cases to `app_tests/`
+4. **Tests:** See [Testing](#-testing) section below
 
+## 🧪 Testing
+
+Socket Basics uses a two-tier testing strategy to ensure code quality and scanner accuracy.
+
+### Test Structure
+
+```
+socket-basics/
+├── tests/             # Unit & integration tests (pytest)
+│   └── test_*.py      # Fast, isolated tests of functions/modules
+└── app_tests/         # End-to-end test fixtures
+    ├── juice-shop/    # Node.js vulnerable app
+    ├── pygoat/        # Python vulnerable app
+    ├── NodeGoat/      # Node.js vulnerable app
+    ├── DVWA/          # PHP vulnerable app
+    └── ...            # Other deliberately vulnerable apps
+```
+
+### Running Unit Tests
+
+**Quick test run:**
+```bash
+# Setup (first time only)
+python3 -m venv venv
+source venv/bin/activate
+pip install -e ".[dev]"
+
+# Run all unit tests
+pytest
+
+# Run specific test file
+pytest tests/test_github_helpers.py
+
+# Run with verbose output
+pytest -v
+
+# Run with coverage report
+pytest --cov=socket_basics tests/
+```
+
+**Characteristics:**
+- ⚡ **Fast** — Milliseconds to seconds
+- 🎯 **Isolated** — No external dependencies
+- 🔄 **Frequent** — Run on every commit
+- ✅ **Validates** — Code logic and functions
+
+### End-to-End Testing with Real Apps
+
+The `app_tests/` directory contains deliberately vulnerable applications (git submodules) for validating scanner accuracy.
+
+**Purpose:**
+- Verify scanners detect **known vulnerabilities**
+- Test against **real-world code patterns**
+- Ensure **multi-language coverage**
+- Validate **entire scan pipeline**
+
+**Run E2E tests:**
+```bash
+# Scan a vulnerable Node.js app
+socket-basics --workspace app_tests/juice-shop \
+  --javascript-sast-enabled \
+  --secret-scanning-enabled
+
+# Scan a vulnerable Python app
+socket-basics --workspace app_tests/pygoat \
+  --python-sast-enabled \
+  --secret-scanning-enabled
+
+# Compare results against known vulnerabilities
+# (Manual verification of findings)
+```
+
+**Characteristics:**
+- 🐢 **Slow** — Minutes per app
+- 📦 **Large** — Git submodules with full apps
+- 🎯 **Ground truth** — Known vulnerabilities to detect
+- ✅ **Validates** — Scanner accuracy and coverage
+
+### Adding Tests
+
+**Adding Unit Tests:**
+```python
+# tests/test_new_feature.py
+import pytest
+from socket_basics.module import new_function
+
+def test_new_feature():
+    result = new_function(input_data)
+    assert result == expected_output
+```
+
+**Adding E2E Test Fixtures:**
+```bash
+# Add a new vulnerable app as a git submodule
+cd app_tests/
+git submodule add https://github.com/org/vulnerable-app
+git submodule update --init
+```
+
+### Test Best Practices
+
+**For contributors:**
+1. ✅ Add unit tests for new functions/modules
+2. ✅ Run `pytest` before committing
+3. ✅ Validate changes against `app_tests/` fixtures
+4. ✅ Keep unit tests fast (mock external dependencies)
+
+**For security researchers:**
+1. 🔍 Use `app_tests/` to validate scanner accuracy
+2. 📊 Compare findings against CVE databases
+3. 🎯 Add new vulnerable apps as needed
+4. 📝 Document expected findings for regression testing
+
+### CI/CD Testing
+
+```yaml
+# Example GitHub Actions workflow
+- name: Run Unit Tests
+  run: |
+    pip install -e ".[dev]"
+    pytest tests/ --cov=socket_basics
+
+- name: Run E2E Tests (Selected)
+  run: |
+    # Run against specific vulnerable apps
+    socket-basics --workspace app_tests/pygoat --python
+```
 
 ---
 
@@ -273,4 +415,3 @@ We welcome contributions! To add new features:
 ---
 
 **Need help?** Visit our [documentation](docs/) or contact [Socket Support](https://socket.dev/support).
-

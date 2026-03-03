@@ -1,7 +1,7 @@
 rules:
   # === Gosec G101: Hardcoded credentials ===
   - id: go-hardcoded-credentials
-    message: "Potential hardcoded credentials detected"
+    message: "Hard-coded credentials detected. Embedding secrets in source code makes them easily discoverable and impossible to rotate. Use environment variables or a secrets manager instead."
     severity: HIGH
     languages: [go]
     pattern-either:
@@ -25,6 +25,10 @@ rules:
       gosec_equivalent: G101
       cwe: CWE-798
       confidence: medium
+      subcategory: authentication
+      vulnerability_class: "Authentication Weakness"
+      owasp: "A07:2021"
+      fix: "Store secrets in environment variables (os.Getenv('KEY')) or use a secrets manager (HashiCorp Vault, AWS Secrets Manager)."
 
   # === Gosec G102: Bind to all interfaces ===
   - id: go-bind-all-interfaces
@@ -40,10 +44,13 @@ rules:
       category: security
       gosec_equivalent: G102
       cwe: CWE-200
+      subcategory: configuration
+      vulnerability_class: "Security Misconfiguration"
+      owasp: "A01:2021"
 
   # === Gosec G103: Unsafe block usage ===
   - id: go-unsafe-usage
-    message: "Use of unsafe package detected"
+    message: "Use of inherently dangerous function. The called function cannot be used safely regardless of input handling. Replace with a safe alternative."
     severity: LOW
     languages: [go]
     pattern-either:
@@ -55,10 +62,12 @@ rules:
       category: security
       gosec_equivalent: G103
       cwe: CWE-242
+      subcategory: deprecated
+      vulnerability_class: "Memory Safety Violation"
 
   # === Gosec G104: Errors not checked ===
   - id: go-error-not-checked
-    message: "Error return value not checked"
+    message: "Improper error handling detected. The application does not properly handle exceptions, which may cause crashes or information leaks. Catch specific exceptions and handle them gracefully."
     severity: LOW
     languages: [go]
     patterns:
@@ -85,10 +94,12 @@ rules:
       gosec_equivalent: G104
       cwe: CWE-703
       confidence: low
+      subcategory: error-handling
+      vulnerability_class: "Improper Error Handling"
 
   # === Gosec G106: SSH InsecureIgnoreHostKey ===
   - id: go-ssh-insecure-ignore-host-key
-    message: "Use of ssh.InsecureIgnoreHostKey detected"
+    message: "Key exchange without authentication. Unauthenticated key exchange enables man-in-the-middle attacks. Use authenticated key exchange protocols."
     severity: HIGH
     languages: [go]
     pattern: ssh.InsecureIgnoreHostKey()
@@ -96,10 +107,14 @@ rules:
       category: security
       gosec_equivalent: G106
       cwe: CWE-322
+      subcategory: crypto
+      vulnerability_class: "Cryptographic Weakness"
+      owasp: "A02:2021"
+      fix: "Use authenticated key exchange protocols (TLS 1.3, SSH with host key verification). Never skip host key verification in SSH connections."
 
   # === Gosec G107: URL taint input ===
   - id: go-url-taint-input
-    message: "URL provided as taint input to HTTP request"
+    message: "Argument injection detected. User input is passed as command arguments without sanitization. Validate and escape all command arguments."
     severity: LOW
     languages: [go]
     patterns:
@@ -115,10 +130,13 @@ rules:
       category: security
       gosec_equivalent: G107
       cwe: CWE-88
+      subcategory: injection
+      vulnerability_class: "Injection Vulnerability"
+      owasp: "A03:2021"
 
   # === Gosec G108: Profiling endpoint exposed ===
   - id: go-profiling-endpoint-exposed
-    message: "Profiling endpoint automatically exposed on /debug/pprof"
+    message: "Debug mode or debug code is enabled in a production context. Debug features expose sensitive information and increase attack surface. Disable debug mode before deploying to production."
     severity: MEDIUM
     languages: [go]
     pattern: |
@@ -127,10 +145,13 @@ rules:
       category: security
       gosec_equivalent: G108
       cwe: CWE-489
+      subcategory: configuration
+      vulnerability_class: "Security Misconfiguration"
+      owasp: "A05:2021"
 
   # === Gosec G109: Integer overflow ===
   - id: go-integer-overflow-strconv
-    message: "Potential integer overflow from strconv.Atoi result"
+    message: "Integer overflow risk detected. Arithmetic operations may exceed integer bounds, causing unexpected behavior. Validate arithmetic operands and use safe math functions."
     severity: MEDIUM
     languages: [go]
     pattern-either:
@@ -140,10 +161,12 @@ rules:
       category: security
       gosec_equivalent: G109
       cwe: CWE-190
+      subcategory: deprecated
+      vulnerability_class: "Memory Safety Violation"
 
   # === Gosec G110: Decompression bomb ===
   - id: go-decompression-bomb
-    message: "Potential DoS vulnerability via decompression bomb"
+    message: "Decompression bomb risk detected. Processing compressed data without size limits can exhaust memory. Set maximum decompression size limits."
     severity: MEDIUM
     languages: [go]
     pattern-either:
@@ -154,10 +177,12 @@ rules:
       category: security
       gosec_equivalent: G110
       cwe: CWE-409
+      subcategory: dos
+      vulnerability_class: "Denial of Service"
 
   # === Gosec G201: SQL query format string ===
   - id: go-sql-format-string
-    message: "SQL query construction using format string"
+    message: "SQL injection vulnerability detected. User-supplied input is included in a SQL query without sanitization, potentially allowing attackers to read, modify, or delete database contents. Use parameterized queries or an ORM instead of string concatenation."
     severity: CRITICAL
     languages: [go]
     pattern-either:
@@ -168,10 +193,14 @@ rules:
       category: security
       gosec_equivalent: G201
       cwe: CWE-89
+      subcategory: injection
+      vulnerability_class: "Injection Vulnerability"
+      owasp: "A03:2021"
+      fix: "Use parameterized queries: db.Query('SELECT * FROM t WHERE id = ?', userId). Never concatenate user input into SQL strings."
 
   # === Gosec G202: SQL query string concatenation ===
   - id: go-sql-string-concat
-    message: "SQL query construction using string concatenation"
+    message: "SQL injection vulnerability detected. User-supplied input is included in a SQL query without sanitization, potentially allowing attackers to read, modify, or delete database contents. Use parameterized queries or an ORM instead of string concatenation."
     severity: CRITICAL
     languages: [go]
     pattern-either:
@@ -182,10 +211,14 @@ rules:
       category: security
       gosec_equivalent: G202
       cwe: CWE-89
+      subcategory: injection
+      vulnerability_class: "Injection Vulnerability"
+      owasp: "A03:2021"
+      fix: "Use parameterized queries: db.Query('SELECT * FROM t WHERE id = ?', userId). Never concatenate user input into SQL strings."
 
   # === Gosec G203: HTML template without escaping ===
   - id: go-html-template-no-escape
-    message: "Use of unescaped data in HTML templates"
+    message: "Cross-site scripting (XSS) vulnerability detected. User input is rendered in HTML output without proper escaping, allowing attackers to inject malicious scripts. Sanitize or escape all user input before rendering."
     severity: MEDIUM
     languages: [go]
     pattern-either:
@@ -197,10 +230,13 @@ rules:
       category: security
       gosec_equivalent: G203
       cwe: CWE-79
+      subcategory: xss
+      vulnerability_class: "Cross-Site Scripting (XSS)"
+      owasp: "A03:2021"
 
   # === Gosec G204: Command execution ===
   - id: go-command-execution
-    message: "Audit use of command execution"
+    message: "OS command injection vulnerability detected. User-controlled data flows into a system command without proper sanitization, allowing attackers to execute arbitrary commands. Use safe APIs with argument lists instead of shell execution."
     severity: CRITICAL
     languages: [go]
     patterns:
@@ -214,10 +250,14 @@ rules:
       category: security
       gosec_equivalent: G204
       cwe: CWE-78
+      subcategory: injection
+      vulnerability_class: "Injection Vulnerability"
+      owasp: "A03:2021"
+      fix: "Use exec.Command() with separate arguments: exec.Command('cmd', arg1, arg2). Never pass user input to exec.Command('sh', '-c', userInput)."
 
   # === Gosec G301: Poor file permissions (mkdir) ===
   - id: go-poor-mkdir-permissions
-    message: "Poor file permissions used when creating a directory"
+    message: "Incorrect default permissions. Resources are created with overly permissive access. Set restrictive permissions explicitly on creation."
     severity: MEDIUM
     languages: [go]
     pattern-either:
@@ -229,10 +269,13 @@ rules:
       category: security
       gosec_equivalent: G301
       cwe: CWE-276
+      subcategory: configuration
+      vulnerability_class: "Security Misconfiguration"
+      owasp: "A01:2021"
 
   # === Gosec G302: Poor file permissions (chmod) ===
   - id: go-poor-chmod-permissions
-    message: "Poor file permissions used in chmod"
+    message: "Incorrect default permissions. Resources are created with overly permissive access. Set restrictive permissions explicitly on creation."
     severity: MEDIUM
     languages: [go]
     pattern-either:
@@ -242,10 +285,13 @@ rules:
       category: security
       gosec_equivalent: G302
       cwe: CWE-276
+      subcategory: configuration
+      vulnerability_class: "Security Misconfiguration"
+      owasp: "A01:2021"
 
   # === Gosec G303: Predictable temp file ===
   - id: go-predictable-temp-file
-    message: "Creating tempfile using a predictable path"
+    message: "Insecure temporary file creation. Predictable temp file names or insecure permissions can be exploited via symlink attacks. Use secure temp file creation functions."
     severity: LOW
     languages: [go]
     pattern-either:
@@ -256,10 +302,13 @@ rules:
       category: security
       gosec_equivalent: G303
       cwe: CWE-377
+      subcategory: file-operations
+      vulnerability_class: "Insecure File Operation"
+      owasp: "A01:2021"
 
   # === Gosec G304: File path traversal ===
   - id: go-file-path-traversal
-    message: "File path provided as taint input"
+    message: "Path traversal vulnerability detected. User input is used in file paths without validation, allowing attackers to access files outside the intended directory. Validate and canonicalize paths before use."
     severity: CRITICAL
     languages: [go]
     patterns:
@@ -275,10 +324,14 @@ rules:
       category: security
       gosec_equivalent: G304
       cwe: CWE-22
+      subcategory: access-control
+      vulnerability_class: "Access Control Violation"
+      owasp: "A01:2021"
+      fix: "Use filepath.Clean() and filepath.Abs(), then verify the result is within the allowed base directory with strings.HasPrefix()."
 
   # === Gosec G305: Zip archive traversal ===
   - id: go-zip-traversal
-    message: "File path traversal when extracting zip archive"
+    message: "Path traversal vulnerability detected. User input is used in file paths without validation, allowing attackers to access files outside the intended directory. Validate and canonicalize paths before use."
     severity: CRITICAL
     languages: [go]
     pattern: |
@@ -299,10 +352,14 @@ rules:
       category: security
       gosec_equivalent: G305
       cwe: CWE-22
+      subcategory: access-control
+      vulnerability_class: "Access Control Violation"
+      owasp: "A01:2021"
+      fix: "Use filepath.Clean() and filepath.Abs(), then verify the result is within the allowed base directory with strings.HasPrefix()."
 
   # === Gosec G401: Weak cryptography (MD5/SHA1) ===
   - id: go-weak-crypto-hash
-    message: "Detect the usage of MD5 or SHA1"
+    message: "Inadequate encryption strength. Short key lengths make brute-force attacks feasible. Use at least 128-bit symmetric keys or 2048-bit RSA keys."
     severity: MEDIUM
     languages: [go]
     pattern-either:
@@ -316,10 +373,13 @@ rules:
       category: security
       gosec_equivalent: G401
       cwe: CWE-326
+      subcategory: crypto
+      vulnerability_class: "Cryptographic Weakness"
+      owasp: "A02:2021"
 
   # === Gosec G402: Bad TLS connection ===
   - id: go-bad-tls-connection
-    message: "TLS connection with InsecureSkipVerify set to true"
+    message: "TLS/SSL certificate validation is disabled or bypassed. This allows man-in-the-middle attacks where attackers can intercept encrypted communications. Always validate certificates in production."
     severity: HIGH
     languages: [go]
     pattern-either:
@@ -339,10 +399,14 @@ rules:
       category: security
       gosec_equivalent: G402
       cwe: CWE-295
+      subcategory: crypto
+      vulnerability_class: "Cryptographic Weakness"
+      owasp: "A07:2021"
+      fix: "Never set InsecureSkipVerify: true in tls.Config. Use the default TLS configuration which validates certificates properly."
 
   # === Gosec G403: Weak RSA key ===
   - id: go-weak-rsa-key
-    message: "RSA key length should be at least 2048 bits"
+    message: "Cryptographic weakness detected. Misuse of cryptographic primitives undermines data protection. Use well-tested crypto libraries with recommended configurations."
     severity: MEDIUM
     languages: [go]
     pattern-either:
@@ -353,10 +417,13 @@ rules:
       category: security
       gosec_equivalent: G403
       cwe: CWE-310
+      subcategory: crypto
+      vulnerability_class: "Cryptographic Weakness"
+      owasp: "A02:2021"
 
   # === Gosec G404: Weak random ===
   - id: go-weak-random
-    message: "Insecure random number source (rand)"
+    message: "Insecure random number generator used. Non-cryptographic PRNGs produce predictable values that attackers can guess. Use a cryptographically secure random generator for security-sensitive operations."
     severity: MEDIUM
     languages: [go]
     pattern-either:
@@ -369,10 +436,13 @@ rules:
       category: security
       gosec_equivalent: G404
       cwe: CWE-338
+      subcategory: crypto
+      vulnerability_class: "Cryptographic Weakness"
+      owasp: "A02:2021"
 
   # === Gosec G501: Import of MD5 ===
   - id: go-import-md5
-    message: "Blocklisted import: crypto/md5"
+    message: "Weak cryptographic algorithm detected. Using broken or outdated algorithms may allow attackers to decrypt data or forge signatures. Use modern algorithms like AES-256, SHA-256, or Ed25519."
     severity: MEDIUM
     languages: [go]
     pattern: |
@@ -381,10 +451,13 @@ rules:
       category: security
       gosec_equivalent: G501
       cwe: CWE-327
+      subcategory: crypto
+      vulnerability_class: "Cryptographic Weakness"
+      owasp: "A02:2021"
 
   # === Gosec G502: Import of DES ===
   - id: go-import-des
-    message: "Blocklisted import: crypto/des"
+    message: "Weak cryptographic algorithm detected. Using broken or outdated algorithms may allow attackers to decrypt data or forge signatures. Use modern algorithms like AES-256, SHA-256, or Ed25519."
     severity: HIGH
     languages: [go]
     pattern: |
@@ -393,10 +466,14 @@ rules:
       category: security
       gosec_equivalent: G502
       cwe: CWE-327
+      subcategory: crypto
+      vulnerability_class: "Cryptographic Weakness"
+      owasp: "A02:2021"
+      fix: "Use crypto/sha256 instead of crypto/md5 or crypto/sha1. Use crypto/aes with GCM mode for encryption."
 
   # === Gosec G503: Import of RC4 ===
   - id: go-import-rc4
-    message: "Blocklisted import: crypto/rc4"
+    message: "Weak cryptographic algorithm detected. Using broken or outdated algorithms may allow attackers to decrypt data or forge signatures. Use modern algorithms like AES-256, SHA-256, or Ed25519."
     severity: HIGH
     languages: [go]
     pattern: |
@@ -405,10 +482,14 @@ rules:
       category: security
       gosec_equivalent: G503
       cwe: CWE-327
+      subcategory: crypto
+      vulnerability_class: "Cryptographic Weakness"
+      owasp: "A02:2021"
+      fix: "Use crypto/sha256 instead of crypto/md5 or crypto/sha1. Use crypto/aes with GCM mode for encryption."
 
   # === Gosec G504: Import of CGI ===
   - id: go-import-cgi
-    message: "Blocklisted import: net/http/cgi"
+    message: "Debug mode or debug code is enabled in a production context. Debug features expose sensitive information and increase attack surface. Disable debug mode before deploying to production."
     severity: MEDIUM
     languages: [go]
     pattern: |
@@ -417,10 +498,13 @@ rules:
       category: security
       gosec_equivalent: G504
       cwe: CWE-489
+      subcategory: configuration
+      vulnerability_class: "Security Misconfiguration"
+      owasp: "A05:2021"
 
   # === Gosec G505: Import of SHA1 ===
   - id: go-import-sha1
-    message: "Blocklisted import: crypto/sha1"
+    message: "Weak cryptographic algorithm detected. Using broken or outdated algorithms may allow attackers to decrypt data or forge signatures. Use modern algorithms like AES-256, SHA-256, or Ed25519."
     severity: MEDIUM
     languages: [go]
     pattern: |
@@ -429,10 +513,13 @@ rules:
       category: security
       gosec_equivalent: G505
       cwe: CWE-327
+      subcategory: crypto
+      vulnerability_class: "Cryptographic Weakness"
+      owasp: "A02:2021"
 
   # === Additional Go security patterns ===
   - id: go-empty-password
-    message: "Empty password detected"
+    message: "Weak password requirements. The application does not enforce strong password policies. Require minimum length, complexity, and check against breached password lists."
     severity: HIGH
     languages: [go]
     pattern-either:
@@ -445,10 +532,14 @@ rules:
     metadata:
       category: security
       cwe: CWE-521
+      subcategory: authentication
+      vulnerability_class: "Authentication Weakness"
+      owasp: "A07:2021"
+      fix: "Enforce minimum password length of 12 characters. Require complexity rules. Check passwords against breached password lists (Have I Been Pwned API)."
 
   # === SQL injection via direct concatenation ===
   - id: go-sql-direct-concat
-    message: "SQL injection via direct string concatenation"
+    message: "SQL injection vulnerability detected. User-supplied input is included in a SQL query without sanitization, potentially allowing attackers to read, modify, or delete database contents. Use parameterized queries or an ORM instead of string concatenation."
     severity: CRITICAL
     languages: [go]
     pattern-either:
@@ -461,10 +552,14 @@ rules:
     metadata:
       category: security
       cwe: CWE-89
+      subcategory: injection
+      vulnerability_class: "Injection Vulnerability"
+      owasp: "A03:2021"
+      fix: "Use parameterized queries: db.Query('SELECT * FROM t WHERE id = ?', userId). Never concatenate user input into SQL strings."
 
   # === Path traversal via filepath.Join ===
   - id: go-path-traversal-filepath-join
-    message: "Potential path traversal via filepath.Join with user input"
+    message: "Path traversal vulnerability detected. User input is used in file paths without validation, allowing attackers to access files outside the intended directory. Validate and canonicalize paths before use."
     severity: LOW
     languages: [go]
     patterns:
@@ -475,3 +570,6 @@ rules:
     metadata:
       category: security
       cwe: CWE-22
+      subcategory: access-control
+      vulnerability_class: "Access Control Violation"
+      owasp: "A01:2021"

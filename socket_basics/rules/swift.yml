@@ -3,7 +3,7 @@ rules:
 
   # SQL injection
   - id: swift-sql-injection
-    message: "SQL injection vulnerability detected"
+    message: "SQL injection vulnerability detected. User-supplied input is included in a SQL query without sanitization, potentially allowing attackers to read, modify, or delete database contents. Use parameterized queries or an ORM instead of string concatenation."
     severity: CRITICAL
     languages: [swift]
     pattern-either:
@@ -14,10 +14,14 @@ rules:
       category: security
       cwe: CWE-89
       confidence: medium
+      subcategory: injection
+      vulnerability_class: "Injection Vulnerability"
+      owasp: "A03:2021"
+      fix: "Use parameterized queries with sqlite3_bind_text() or a Swift ORM like GRDB with parameterized statements."
 
   # Code injection via NSTask/Process
   - id: swift-command-injection
-    message: "Command injection vulnerability detected"
+    message: "OS command injection vulnerability detected. User-controlled data flows into a system command without proper sanitization, allowing attackers to execute arbitrary commands. Use safe APIs with argument lists instead of shell execution."
     severity: CRITICAL
     languages: [swift]
     pattern-either:
@@ -28,10 +32,14 @@ rules:
       category: security
       cwe: CWE-78
       confidence: high
+      subcategory: injection
+      vulnerability_class: "Injection Vulnerability"
+      owasp: "A03:2021"
+      fix: "Use Process (NSTask) with separate arguments array. Never pass user input to system() or shell commands."
 
   # Unsafe deserialization
   - id: swift-unsafe-deserialization
-    message: "Unsafe deserialization detected"
+    message: "Unsafe deserialization detected. Deserializing untrusted data can lead to remote code execution or denial of service. Use safe serialization formats like JSON or validate data before deserializing."
     severity: CRITICAL
     languages: [swift]
     pattern-either:
@@ -42,12 +50,16 @@ rules:
       category: security
       cwe: CWE-502
       confidence: high
+      subcategory: integrity
+      vulnerability_class: "Insecure Deserialization"
+      owasp: "A08:2021"
+      fix: "Use JSONDecoder with Codable instead of NSKeyedUnarchiver. Use NSSecureCoding with unarchivedObject(ofClass:from:) for type-safe unarchiving."
 
   # === High Severity Rules ===
 
   # Hardcoded secrets
   - id: swift-hardcoded-secrets
-    message: "Hardcoded secrets detected"
+    message: "Hard-coded credentials detected. Embedding secrets in source code makes them easily discoverable and impossible to rotate. Use environment variables or a secrets manager instead."
     severity: HIGH
     languages: [swift]
     patterns:
@@ -67,10 +79,14 @@ rules:
       category: security
       cwe: CWE-798
       confidence: medium
+      subcategory: authentication
+      vulnerability_class: "Authentication Weakness"
+      owasp: "A07:2021"
+      fix: "Store secrets in the iOS Keychain or environment variables. Use a secrets manager for server-side Swift. Never embed secrets in source code."
 
   # Weak cryptography - MD5
   - id: swift-weak-crypto-md5
-    message: "Use of weak MD5 hash algorithm"
+    message: "Weak cryptographic algorithm detected. Using broken or outdated algorithms may allow attackers to decrypt data or forge signatures. Use modern algorithms like AES-256, SHA-256, or Ed25519."
     severity: HIGH
     languages: [swift]
     pattern-either:
@@ -81,10 +97,14 @@ rules:
       category: security
       cwe: CWE-327
       confidence: high
+      subcategory: crypto
+      vulnerability_class: "Cryptographic Weakness"
+      owasp: "A02:2021"
+      fix: "Use SHA256 from CryptoKit instead of Insecure.MD5/SHA1. Use AES.GCM.seal() for authenticated encryption."
 
   # Weak cryptography - SHA1
   - id: swift-weak-crypto-sha1
-    message: "Use of weak SHA1 hash algorithm"
+    message: "Weak cryptographic algorithm detected. Using broken or outdated algorithms may allow attackers to decrypt data or forge signatures. Use modern algorithms like AES-256, SHA-256, or Ed25519."
     severity: HIGH
     languages: [swift]
     pattern-either:
@@ -95,10 +115,14 @@ rules:
       category: security
       cwe: CWE-327
       confidence: high
+      subcategory: crypto
+      vulnerability_class: "Cryptographic Weakness"
+      owasp: "A02:2021"
+      fix: "Use SHA256 from CryptoKit instead of Insecure.MD5/SHA1. Use AES.GCM.seal() for authenticated encryption."
 
   # SSL/TLS bypass
   - id: swift-ssl-bypass
-    message: "SSL/TLS certificate validation bypassed"
+    message: "TLS/SSL certificate validation is disabled or bypassed. This allows man-in-the-middle attacks where attackers can intercept encrypted communications. Always validate certificates in production."
     severity: HIGH
     languages: [swift]
     pattern-either:
@@ -111,10 +135,14 @@ rules:
       category: security
       cwe: CWE-295
       confidence: high
+      subcategory: crypto
+      vulnerability_class: "Cryptographic Weakness"
+      owasp: "A07:2021"
+      fix: "Never override URLSession delegate to accept invalid certificates. Use App Transport Security (ATS) defaults."
 
   # Path traversal
   - id: swift-path-traversal
-    message: "Path traversal vulnerability detected"
+    message: "Path traversal vulnerability detected. User input is used in file paths without validation, allowing attackers to access files outside the intended directory. Validate and canonicalize paths before use."
     severity: HIGH
     languages: [swift]
     pattern-either:
@@ -126,10 +154,14 @@ rules:
       category: security
       cwe: CWE-22
       confidence: medium
+      subcategory: access-control
+      vulnerability_class: "Access Control Violation"
+      owasp: "A01:2021"
+      fix: "Use URL.standardizedFileURL or (path as NSString).standardizingPath and verify the result is within the allowed base directory."
 
   # XSS in WebView
   - id: swift-webview-xss
-    message: "XSS vulnerability in WebView"
+    message: "Cross-site scripting (XSS) vulnerability detected. User input is rendered in HTML output without proper escaping, allowing attackers to inject malicious scripts. Sanitize or escape all user input before rendering."
     severity: HIGH
     languages: [swift]
     pattern-either:
@@ -140,12 +172,16 @@ rules:
       category: security
       cwe: CWE-79
       confidence: medium
+      subcategory: xss
+      vulnerability_class: "Cross-Site Scripting (XSS)"
+      owasp: "A03:2021"
+      fix: "Escape user input before rendering in web views. Use String extension to encode HTML entities. Set WKWebView configuration to restrict JavaScript."
 
   # === Medium Severity Rules ===
 
   # Insecure random number generation
   - id: swift-insecure-random
-    message: "Use of insecure random number generator"
+    message: "Insecure random number generator used. Non-cryptographic PRNGs produce predictable values that attackers can guess. Use a cryptographically secure random generator for security-sensitive operations."
     severity: MEDIUM
     languages: [swift]
     pattern-either:
@@ -157,10 +193,13 @@ rules:
       category: security
       cwe: CWE-338
       confidence: low
+      subcategory: crypto
+      vulnerability_class: "Cryptographic Weakness"
+      owasp: "A02:2021"
 
   # HTTP instead of HTTPS
   - id: swift-insecure-http
-    message: "Use of HTTP instead of HTTPS"
+    message: "Sensitive data transmitted over an unencrypted channel. Using HTTP instead of HTTPS allows network attackers to intercept data in transit. Use HTTPS for all communications containing sensitive data."
     severity: MEDIUM
     languages: [swift]
     pattern-either:
@@ -174,10 +213,13 @@ rules:
       category: security
       cwe: CWE-319
       confidence: low
+      subcategory: crypto
+      vulnerability_class: "Cryptographic Weakness"
+      owasp: "A02:2021"
 
   # Open redirect
   - id: swift-open-redirect
-    message: "Open redirect vulnerability detected"
+    message: "Open redirect vulnerability detected. The application redirects to a user-controlled URL without validation, enabling phishing attacks. Validate redirect targets against an allowlist."
     severity: MEDIUM
     languages: [swift]
     pattern-either:
@@ -187,10 +229,13 @@ rules:
       category: security
       cwe: CWE-601
       confidence: low
+      subcategory: access-control
+      vulnerability_class: "Access Control Violation"
+      owasp: "A01:2021"
 
   # Weak cipher algorithms
   - id: swift-weak-cipher
-    message: "Use of weak cipher algorithm"
+    message: "Weak cryptographic algorithm detected. Using broken or outdated algorithms may allow attackers to decrypt data or forge signatures. Use modern algorithms like AES-256, SHA-256, or Ed25519."
     severity: MEDIUM
     languages: [swift]
     pattern-either:
@@ -202,10 +247,13 @@ rules:
       category: security
       cwe: CWE-327
       confidence: high
+      subcategory: crypto
+      vulnerability_class: "Cryptographic Weakness"
+      owasp: "A02:2021"
 
   # Keychain without proper security
   - id: swift-keychain-insecure
-    message: "Keychain usage without proper security attributes"
+    message: "Overly permissive file or resource permissions. Resources are accessible to unauthorized users due to incorrect permission settings. Apply the principle of least privilege."
     severity: MEDIUM
     languages: [swift]
     pattern-either:
@@ -224,12 +272,15 @@ rules:
       category: security
       cwe: CWE-732
       confidence: low
+      subcategory: configuration
+      vulnerability_class: "Security Misconfiguration"
+      owasp: "A05:2021"
 
   # === Low Severity Rules ===
 
   # Debug information disclosure
   - id: swift-debug-info-disclosure
-    message: "Debug information disclosure detected"
+    message: "Sensitive information written to log files. Passwords, tokens, or personal data in logs can be exposed to unauthorized parties. Redact sensitive values before logging."
     severity: LOW
     languages: [swift]
     patterns:
@@ -245,10 +296,13 @@ rules:
       category: security
       cwe: CWE-532
       confidence: low
+      subcategory: logging
+      vulnerability_class: "Sensitive Data Exposure"
+      owasp: "A09:2021"
 
   # Hardcoded IP addresses
   - id: swift-hardcoded-ip
-    message: "Hardcoded IP address detected"
+    message: "Hard-coded credentials detected. Embedding secrets in source code makes them easily discoverable and impossible to rotate. Use environment variables or a secrets manager instead."
     severity: LOW
     languages: [swift]
     pattern-either:
@@ -264,10 +318,13 @@ rules:
       category: security
       cwe: CWE-798
       confidence: low
+      subcategory: authentication
+      vulnerability_class: "Authentication Weakness"
+      owasp: "A07:2021"
 
   # Force unwrapping
   - id: swift-force-unwrapping
-    message: "Force unwrapping detected - may cause crashes"
+    message: "Uncaught exception risk. Unhandled exceptions can crash the application or leak information. Catch and handle all expected exception types."
     severity: LOW
     languages: [swift]
     pattern-either:
@@ -278,12 +335,14 @@ rules:
       category: security
       cwe: CWE-248
       confidence: low
+      subcategory: error-handling
+      vulnerability_class: "Improper Error Handling"
 
   # === iOS-specific Rules ===
 
   # App Transport Security bypass
   - id: swift-ios-ats-bypass
-    message: "App Transport Security bypassed"
+    message: "Sensitive data transmitted over an unencrypted channel. Using HTTP instead of HTTPS allows network attackers to intercept data in transit. Use HTTPS for all communications containing sensitive data."
     severity: MEDIUM
     languages: [swift]
     pattern-either:
@@ -295,10 +354,13 @@ rules:
       platform: ios
       cwe: CWE-319
       confidence: medium
+      subcategory: crypto
+      vulnerability_class: "Cryptographic Weakness"
+      owasp: "A02:2021"
 
   # Insecure data storage
   - id: swift-ios-insecure-storage
-    message: "Insecure data storage detected"
+    message: "Sensitive data stored in cleartext. Plaintext storage of secrets allows unauthorized access. Encrypt sensitive data at rest."
     severity: HIGH
     languages: [swift]
     patterns:
@@ -314,10 +376,14 @@ rules:
       platform: ios
       cwe: CWE-312
       confidence: low
+      subcategory: crypto
+      vulnerability_class: "Cryptographic Weakness"
+      owasp: "A04:2021"
+      fix: "Use Keychain Services or SwiftKeychainWrapper for storing secrets. Never store sensitive data in UserDefaults or plist files."
 
   # Jailbreak detection bypass
   - id: swift-ios-jailbreak-detection
-    message: "Jailbreak detection implementation detected"
+    message: "Debug mode or debug code is enabled in a production context. Debug features expose sensitive information and increase attack surface. Disable debug mode before deploying to production."
     severity: MEDIUM
     languages: [swift]
     pattern-either:
@@ -329,10 +395,13 @@ rules:
       platform: ios
       cwe: CWE-489
       confidence: low
+      subcategory: configuration
+      vulnerability_class: "Security Misconfiguration"
+      owasp: "A05:2021"
 
   # URL scheme handling
   - id: swift-ios-url-scheme
-    message: "URL scheme handling without validation"
+    message: "Missing input validation. User input is not sufficiently validated, enabling injection or logic bypass attacks. Validate all inputs against expected format, type, and range."
     severity: MEDIUM
     languages: [swift]
     pattern-either:
@@ -347,10 +416,13 @@ rules:
       platform: ios
       cwe: CWE-20
       confidence: low
+      subcategory: design
+      vulnerability_class: "Insecure Design"
+      owasp: "A03:2021"
 
   # Biometric authentication bypass
   - id: swift-ios-biometric-bypass
-    message: "Biometric authentication implementation issue"
+    message: "Improper authentication detected. The application does not properly verify user identity before granting access. Implement proper authentication mechanisms."
     severity: MEDIUM
     languages: [swift]
     pattern-either:
@@ -366,12 +438,15 @@ rules:
       platform: ios
       cwe: CWE-287
       confidence: low
+      subcategory: authentication
+      vulnerability_class: "Authentication Weakness"
+      owasp: "A07:2021"
 
   # === macOS-specific Rules ===
 
   # Privilege escalation
   - id: swift-macos-privilege-escalation
-    message: "Potential privilege escalation detected"
+    message: "Code runs with unnecessary privileges. Excess permissions increase the impact of exploits. Apply the principle of least privilege."
     severity: HIGH
     languages: [swift]
     pattern-either:
@@ -383,10 +458,13 @@ rules:
       platform: macos
       cwe: CWE-250
       confidence: medium
+      subcategory: configuration
+      vulnerability_class: "Security Misconfiguration"
+      fix: "Drop elevated privileges as soon as possible. Use the principle of least privilege. Use Authorization Services for privileged operations."
 
   # Code signing bypass
   - id: swift-macos-code-signing
-    message: "Code signing verification issue"
+    message: "Cryptographic signature verification is missing or improper. Unverified signatures allow attackers to tamper with data. Always verify signatures before trusting signed data."
     severity: HIGH
     languages: [swift]
     pattern-either:
@@ -402,12 +480,16 @@ rules:
       platform: macos
       cwe: CWE-347
       confidence: low
+      subcategory: crypto
+      vulnerability_class: "Cryptographic Weakness"
+      owasp: "A02:2021"
+      fix: "Always verify cryptographic signatures before trusting signed data. Use CryptoKit's isValidSignature or Security.framework's SecKeyVerifySignature."
 
   # === Network Security Rules ===
 
   # Insecure URLSession configuration
   - id: swift-insecure-urlsession
-    message: "Insecure URLSession configuration"
+    message: "Inadequate encryption strength. Short key lengths make brute-force attacks feasible. Use at least 128-bit symmetric keys or 2048-bit RSA keys."
     severity: MEDIUM
     languages: [swift]
     pattern-either:
@@ -422,10 +504,13 @@ rules:
       category: security
       cwe: CWE-326
       confidence: medium
+      subcategory: crypto
+      vulnerability_class: "Cryptographic Weakness"
+      owasp: "A02:2021"
 
   # Certificate pinning bypass
   - id: swift-certificate-pinning-bypass
-    message: "Certificate pinning bypassed or missing"
+    message: "TLS/SSL certificate validation is disabled or bypassed. This allows man-in-the-middle attacks where attackers can intercept encrypted communications. Always validate certificates in production."
     severity: HIGH
     languages: [swift]
     pattern-either:
@@ -443,12 +528,16 @@ rules:
       category: security
       cwe: CWE-295
       confidence: low
+      subcategory: crypto
+      vulnerability_class: "Cryptographic Weakness"
+      owasp: "A07:2021"
+      fix: "Never override URLSession delegate to accept invalid certificates. Use App Transport Security (ATS) defaults."
 
   # === Framework-specific Rules ===
 
   # Core Data injection
   - id: swift-core-data-injection
-    message: "Core Data injection vulnerability"
+    message: "NoSQL injection vulnerability detected. User input in NoSQL queries without sanitization allows data theft or modification. Use parameterized queries and validate input types."
     severity: HIGH
     languages: [swift]
     pattern-either:
@@ -460,10 +549,16 @@ rules:
       framework: coredata
       cwe: CWE-943
       confidence: medium
+      subcategory: injection
+      vulnerability_class: "Injection Vulnerability"
+      owasp: "A03:2021"
+      references:
+        - https://developer.apple.com/documentation/coredata
+      fix: "Validate all user input before including in NoSQL queries. Use parameterized queries and type-check inputs to reject injection payloads."
 
   # SwiftUI security issues
   - id: swift-swiftui-security
-    message: "SwiftUI security issue detected"
+    message: "Open redirect vulnerability detected. The application redirects to a user-controlled URL without validation, enabling phishing attacks. Validate redirect targets against an allowlist."
     severity: MEDIUM
     languages: [swift]
     pattern-either:
@@ -474,10 +569,15 @@ rules:
       framework: swiftui
       cwe: CWE-601
       confidence: low
+      subcategory: access-control
+      vulnerability_class: "Access Control Violation"
+      owasp: "A01:2021"
+      references:
+        - https://developer.apple.com/documentation/swiftui
 
   # Alamofire security issues
   - id: swift-alamofire-security
-    message: "Alamofire security configuration issue"
+    message: "TLS/SSL certificate validation is disabled or bypassed. This allows man-in-the-middle attacks where attackers can intercept encrypted communications. Always validate certificates in production."
     severity: MEDIUM
     languages: [swift]
     pattern-either:
@@ -488,3 +588,6 @@ rules:
       framework: alamofire
       cwe: CWE-295
       confidence: medium
+      subcategory: crypto
+      vulnerability_class: "Cryptographic Weakness"
+      owasp: "A07:2021"
