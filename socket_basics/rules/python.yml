@@ -76,6 +76,8 @@ rules:
       cwe: CWE-22
       confidence: high
       subcategory: access-control
+      vulnerability_class: "Access Control Violation"
+      fix: "Use os.path.abspath() and verify the result starts with your allowed base directory. Use pathlib.Path.resolve() for canonicalization."
 
   # Open redirect
   - id: python-open-redirect
@@ -125,6 +127,7 @@ rules:
       cwe: CWE-601
       confidence: high
       subcategory: access-control
+      vulnerability_class: "Access Control Violation"
 
   # Insecure direct object reference
   - id: python-idor-vulnerability
@@ -151,10 +154,12 @@ rules:
       cwe: CWE-639
       confidence: medium
       subcategory: access-control
+      vulnerability_class: "Access Control Violation"
+      fix: "Verify user authorization before accessing resources. Use the authenticated user's ID from the session, not from request parameters."
 
   # Missing authorization check
   - id: python-missing-auth-check
-    message: "Route handler missing authentication/authorization check"
+    message: "Missing authorization check. The application does not verify user permissions before granting access to resources. Add authorization checks to all protected endpoints."
     severity: HIGH
     languages: [python]
     patterns:
@@ -185,6 +190,8 @@ rules:
       cwe: CWE-862
       confidence: low
       subcategory: access-control
+      vulnerability_class: "Access Control Violation"
+      fix: "Add authorization decorators or middleware to protected endpoints. Use @login_required (Django) or @jwt_required (Flask-JWT) on all protected routes."
 
   # ===================================================================== 
   # A02:2021 - Cryptographic Failures
@@ -192,7 +199,7 @@ rules:
 
   # Weak cryptographic hash algorithms
   - id: python-weak-hash-md5
-    message: "MD5 is cryptographically broken and should not be used"
+    message: "Weak cryptographic algorithm detected. Using broken or outdated algorithms may allow attackers to decrypt data or forge signatures. Use modern algorithms like AES-256, SHA-256, or Ed25519."
     severity: HIGH
     languages: [python]
     pattern-either:
@@ -205,6 +212,8 @@ rules:
       cwe: CWE-327
       confidence: high
       subcategory: crypto
+      vulnerability_class: "Cryptographic Weakness"
+      fix: "Use hashlib.sha256() or hashlib.sha3_256() instead of md5/sha1. Use cryptography library with AES-GCM or ChaCha20-Poly1305 for encryption."
 
   - id: python-weak-hash-sha1
     message: "SHA1 is cryptographically weak and should not be used for security"
@@ -220,6 +229,8 @@ rules:
       cwe: CWE-327
       confidence: high
       subcategory: crypto
+      vulnerability_class: "Cryptographic Weakness"
+      fix: "Use hashlib.sha256() or hashlib.sha3_256() instead of md5/sha1. Use cryptography library with AES-GCM or ChaCha20-Poly1305 for encryption."
 
   # Insecure random number generation
   - id: python-insecure-random
@@ -246,6 +257,7 @@ rules:
       confidence: medium
       subcategory: crypto
       fix: "Use secrets.token_bytes(), secrets.token_hex(), or secrets.choice() for security-sensitive operations"
+      vulnerability_class: "Cryptographic Weakness"
 
   # Hardcoded secrets
   - id: python-hardcoded-secret
@@ -265,6 +277,8 @@ rules:
       cwe: CWE-798
       confidence: medium
       subcategory: crypto
+      vulnerability_class: "Cryptographic Weakness"
+      fix: "Store secrets in environment variables (os.environ['KEY']) or use a secrets manager (AWS Secrets Manager, HashiCorp Vault, python-dotenv)."
 
   # Weak cipher algorithms
   - id: python-weak-cipher-des
@@ -283,6 +297,8 @@ rules:
       cwe: CWE-327
       confidence: high
       subcategory: crypto
+      vulnerability_class: "Cryptographic Weakness"
+      fix: "Use hashlib.sha256() or hashlib.sha3_256() instead of md5/sha1. Use cryptography library with AES-GCM or ChaCha20-Poly1305 for encryption."
 
   # SSL/TLS verification disabled
   - id: python-ssl-verify-disabled
@@ -302,10 +318,12 @@ rules:
       cwe: CWE-295
       confidence: high
       subcategory: crypto
+      vulnerability_class: "Cryptographic Weakness"
+      fix: "Always use verify=True (the default) in requests. Set ssl_context properly. Never set CERT_NONE or disable hostname checking."
 
   # Insecure TLS versions
   - id: python-insecure-tls-version
-    message: "Insecure TLS version - use TLS 1.2 or higher"
+    message: "Weak cryptographic algorithm detected. Using broken or outdated algorithms may allow attackers to decrypt data or forge signatures. Use modern algorithms like AES-256, SHA-256, or Ed25519."
     severity: HIGH
     languages: [python]
     pattern-either:
@@ -321,6 +339,8 @@ rules:
       cwe: CWE-327
       confidence: high
       subcategory: crypto
+      vulnerability_class: "Cryptographic Weakness"
+      fix: "Use hashlib.sha256() or hashlib.sha3_256() instead of md5/sha1. Use cryptography library with AES-GCM or ChaCha20-Poly1305 for encryption."
 
   # ===================================================================== 
   # A03:2021 - Injection
@@ -370,6 +390,8 @@ rules:
       cwe: CWE-94
       confidence: high
       subcategory: injection
+      vulnerability_class: "Injection Vulnerability"
+      fix: "Remove eval()/exec() calls with user input. Use ast.literal_eval() for safe parsing of Python literals. Use a sandboxed environment if dynamic execution is required."
 
   # SQL injection
   - id: python-sql-injection
@@ -432,6 +454,8 @@ rules:
       cwe: CWE-89
       confidence: high
       subcategory: injection
+      vulnerability_class: "Injection Vulnerability"
+      fix: "Use parameterized queries: cursor.execute('SELECT * FROM t WHERE id = %s', (user_id,)). For Django, use the ORM or QuerySet API. For SQLAlchemy, use bound parameters."
 
   # NoSQL injection (MongoDB)
   - id: python-nosql-injection
@@ -453,6 +477,8 @@ rules:
       cwe: CWE-943
       confidence: high
       subcategory: injection
+      vulnerability_class: "Injection Vulnerability"
+      fix: "Use parameterized queries with PyMongo. Validate input types (reject dicts/lists where strings expected). Never pass raw request data to MongoDB queries."
 
   # Command injection
   - id: python-command-injection
@@ -510,6 +536,8 @@ rules:
       cwe: CWE-78
       confidence: high
       subcategory: injection
+      vulnerability_class: "Injection Vulnerability"
+      fix: "Use subprocess.run() with a list of arguments instead of shell=True: subprocess.run(['cmd', arg1, arg2]). Never pass user input to os.system() or shell commands."
 
   # LDAP injection
   - id: python-ldap-injection
@@ -526,6 +554,8 @@ rules:
       cwe: CWE-90
       confidence: high
       subcategory: injection
+      vulnerability_class: "Injection Vulnerability"
+      fix: "Use ldap3 library with safe filter escaping: ldap3.utils.conv.escape_filter_chars(user_input). Never concatenate user input into LDAP filters."
 
   # XSS via template rendering
   - id: python-xss-template
@@ -583,6 +613,8 @@ rules:
       cwe: CWE-79
       confidence: high
       subcategory: injection
+      vulnerability_class: "Injection Vulnerability"
+      fix: "Use template engine auto-escaping (Jinja2 autoescape=True, Django default). Use markupsafe.escape() for manual escaping. Never render raw user input with |safe or Markup()."
 
   # XXE (XML External Entity)
   - id: python-xxe-vulnerability
@@ -605,6 +637,8 @@ rules:
       cwe: CWE-611
       confidence: medium
       subcategory: injection
+      vulnerability_class: "Injection Vulnerability"
+      fix: "Use defusedxml instead of xml.etree or lxml. Set resolve_entities=False and no_network=True in lxml parsers."
 
   # Server-side template injection
   - id: python-template-injection
@@ -626,10 +660,12 @@ rules:
       cwe: CWE-1336
       confidence: high
       subcategory: injection
+      vulnerability_class: "Injection Vulnerability"
+      fix: "Never pass user input to Jinja2 Template() or Mako Template(). Use render_template() with variables. Enable sandboxed environment for dynamic templates."
 
   # YAML deserialization
   - id: python-yaml-load-unsafe
-    message: "Unsafe YAML deserialization - use yaml.safe_load() instead"
+    message: "Unsafe deserialization detected. Deserializing untrusted data can lead to remote code execution or denial of service. Use safe serialization formats like JSON or validate data before deserializing."
     severity: CRITICAL
     languages: [python]
     pattern-either:
@@ -641,6 +677,8 @@ rules:
       cwe: CWE-502
       confidence: high
       subcategory: injection
+      vulnerability_class: "Injection Vulnerability"
+      fix: "Replace pickle/shelve with json.loads() for data interchange. If pickle is required, use hmac to verify data integrity before deserializing."
 
   # ===================================================================== 
   # A04:2021 - Insecure Design
@@ -674,10 +712,11 @@ rules:
       cwe: CWE-307
       confidence: low
       subcategory: design
+      vulnerability_class: "Insecure Design"
 
   # Insufficient input validation
   - id: python-missing-input-validation
-    message: "User input used without validation"
+    message: "Missing input validation. User input is not sufficiently validated, enabling injection or logic bypass attacks. Validate all inputs against expected format, type, and range."
     severity: MEDIUM
     languages: [python]
     patterns:
@@ -701,6 +740,7 @@ rules:
       cwe: CWE-20
       confidence: low
       subcategory: design
+      vulnerability_class: "Insecure Design"
 
   # ===================================================================== 
   # A05:2021 - Security Misconfiguration
@@ -725,10 +765,12 @@ rules:
       cwe: CWE-489
       confidence: high
       subcategory: configuration
+      vulnerability_class: "Security Misconfiguration"
+      fix: "Set DEBUG=False in production. Use environment variables to control debug mode: DEBUG = os.environ.get('DEBUG', 'False').lower() == 'true'."
 
   # Weak session configuration
   - id: python-weak-session-config
-    message: "Insecure session configuration"
+    message: "Sensitive cookie missing the Secure flag. The cookie may be transmitted over unencrypted HTTP, allowing interception. Set the Secure flag on all sensitive cookies."
     severity: HIGH
     languages: [python]
     pattern-either:
@@ -746,6 +788,8 @@ rules:
       cwe: CWE-614
       confidence: high
       subcategory: configuration
+      vulnerability_class: "Security Misconfiguration"
+      fix: "Set cookie flags: response.set_cookie(key, value, secure=True, httponly=True, samesite='Lax'). Use SESSION_COOKIE_SECURE=True in Django."
 
   # Exposed error messages
   - id: python-error-exposure
@@ -777,10 +821,11 @@ rules:
       cwe: CWE-209
       confidence: medium
       subcategory: configuration
+      vulnerability_class: "Security Misconfiguration"
 
   # Insecure file permissions
   - id: python-insecure-file-permissions
-    message: "File created with insecure permissions"
+    message: "Overly permissive file or resource permissions. Resources are accessible to unauthorized users due to incorrect permission settings. Apply the principle of least privilege."
     severity: HIGH
     languages: [python]
     pattern-either:
@@ -795,6 +840,8 @@ rules:
       cwe: CWE-732
       confidence: high
       subcategory: configuration
+      vulnerability_class: "Security Misconfiguration"
+      fix: "Set restrictive permissions with os.chmod(path, 0o600) for sensitive files. Use os.umask(0o077) to restrict default permissions."
 
   # Binding to all interfaces
   - id: python-bind-all-interfaces
@@ -811,6 +858,7 @@ rules:
       cwe: CWE-200
       confidence: medium
       subcategory: configuration
+      vulnerability_class: "Security Misconfiguration"
 
   # ===================================================================== 
   # A06:2021 - Vulnerable and Outdated Components
@@ -818,7 +866,7 @@ rules:
 
   # Deprecated functions
   - id: python-deprecated-functions
-    message: "Deprecated function - use modern alternatives"
+    message: "Use of obsolete or deprecated function. The function may have known security weaknesses. Replace with the recommended modern alternative."
     severity: LOW
     languages: [python]
     pattern-either:
@@ -832,6 +880,7 @@ rules:
       cwe: CWE-477
       confidence: high
       subcategory: deprecated
+      vulnerability_class: "Memory Safety Violation"
 
   # ===================================================================== 
   # A07:2021 - Identification and Authentication Failures
@@ -839,7 +888,7 @@ rules:
 
   # Weak password validation
   - id: python-weak-password-validation
-    message: "Weak password validation - enforce strong password policy"
+    message: "Weak password requirements. The application does not enforce strong password policies. Require minimum length, complexity, and check against breached password lists."
     severity: MEDIUM
     languages: [python]
     patterns:
@@ -855,6 +904,7 @@ rules:
       cwe: CWE-521
       confidence: low
       subcategory: authentication
+      vulnerability_class: "Authentication Weakness"
 
   # JWT without verification
   - id: python-jwt-no-verify
@@ -871,10 +921,12 @@ rules:
       cwe: CWE-347
       confidence: high
       subcategory: authentication
+      vulnerability_class: "Authentication Weakness"
+      fix: "Always verify JWT signatures: jwt.decode(token, key, algorithms=['HS256']). Never use options={'verify_signature': False}."
 
   # Weak JWT algorithm
   - id: python-weak-jwt-algorithm
-    message: "Weak or no JWT algorithm - should use RS256 or HS256"
+    message: "Cryptographic signature verification is missing or improper. Unverified signatures allow attackers to tamper with data. Always verify signatures before trusting signed data."
     severity: HIGH
     languages: [python]
     pattern-either:
@@ -887,6 +939,8 @@ rules:
       cwe: CWE-347
       confidence: high
       subcategory: authentication
+      vulnerability_class: "Authentication Weakness"
+      fix: "Always verify JWT signatures: jwt.decode(token, key, algorithms=['HS256']). Never use options={'verify_signature': False}."
 
   # Missing password hashing
   - id: python-plain-text-password
@@ -916,6 +970,8 @@ rules:
       cwe: CWE-916
       confidence: medium
       subcategory: authentication
+      vulnerability_class: "Authentication Weakness"
+      fix: "Use bcrypt (bcrypt.hashpw), argon2 (argon2-cffi), or scrypt (hashlib.scrypt) instead of MD5/SHA for password hashing."
 
   # ===================================================================== 
   # A08:2021 - Software and Data Integrity Failures
@@ -923,7 +979,7 @@ rules:
 
   # Unsafe deserialization
   - id: python-unsafe-deserialization
-    message: "Unsafe deserialization - can lead to remote code execution"
+    message: "Unsafe deserialization detected. Deserializing untrusted data can lead to remote code execution or denial of service. Use safe serialization formats like JSON or validate data before deserializing."
     severity: CRITICAL
     languages: [python]
     pattern-either:
@@ -942,10 +998,12 @@ rules:
       cwe: CWE-502
       confidence: high
       subcategory: integrity
+      vulnerability_class: "Insecure Deserialization"
+      fix: "Replace pickle/shelve with json.loads() for data interchange. If pickle is required, use hmac to verify data integrity before deserializing."
 
   # Missing integrity check
   - id: python-missing-integrity-check
-    message: "Downloaded file without integrity verification"
+    message: "Missing integrity check. Data modifications go undetected without integrity verification. Implement checksums or HMACs on sensitive data."
     severity: MEDIUM
     languages: [python]
     patterns:
@@ -966,6 +1024,7 @@ rules:
       cwe: CWE-353
       confidence: low
       subcategory: integrity
+      vulnerability_class: "Insecure Deserialization"
 
   # ===================================================================== 
   # A09:2021 - Security Logging and Monitoring Failures
@@ -988,10 +1047,11 @@ rules:
       cwe: CWE-532
       confidence: low
       subcategory: logging
+      vulnerability_class: "Sensitive Data Exposure"
 
   # Missing error logging
   - id: python-missing-error-logging
-    message: "Error caught but not logged - can hide security issues"
+    message: "Insufficient security logging. Critical events are not logged, hindering incident detection. Log authentication, authorization, and data access events."
     severity: LOW
     languages: [python]
     patterns:
@@ -1016,6 +1076,7 @@ rules:
       cwe: CWE-778
       confidence: low
       subcategory: logging
+      vulnerability_class: "Sensitive Data Exposure"
 
   # ===================================================================== 
   # A10:2021 - Server-Side Request Forgery (SSRF)
@@ -1039,6 +1100,8 @@ rules:
       cwe: CWE-918
       confidence: high
       subcategory: ssrf
+      vulnerability_class: "Server-Side Request Forgery"
+      fix: "Validate URLs against an allowlist of permitted hosts and schemes. Block private IP ranges (10.x, 172.16-31.x, 192.168.x, 127.x). Use urllib.parse to validate before fetching."
 
   # =====================================================================
   # Python Best Practices
@@ -1055,6 +1118,7 @@ rules:
       cwe: CWE-703
       confidence: high
       subcategory: error-handling
+      vulnerability_class: "Improper Error Handling"
 
   # Bare except clause
   - id: python-bare-except
@@ -1071,6 +1135,7 @@ rules:
       cwe: CWE-396
       confidence: high
       subcategory: error-handling
+      vulnerability_class: "Improper Error Handling"
 
   # Use of exec/eval
   - id: python-dangerous-eval-exec
@@ -1089,6 +1154,9 @@ rules:
       cwe: CWE-95
       confidence: high
       subcategory: injection
+      vulnerability_class: "Injection Vulnerability"
+      owasp: "A03:2021"
+      fix: "Remove eval()/exec() with user input. Use ast.literal_eval() for safe Python literal parsing. Use a sandboxed environment if dynamic code execution is needed."
 
   # SQL format string
   - id: python-sql-format-string
@@ -1105,6 +1173,9 @@ rules:
       cwe: CWE-89
       confidence: high
       subcategory: injection
+      vulnerability_class: "Injection Vulnerability"
+      owasp: "A03:2021"
+      fix: "Use parameterized queries: cursor.execute('SELECT * FROM t WHERE id = %s', (user_id,)). For Django, use the ORM or QuerySet API. For SQLAlchemy, use bound parameters."
 
   # Tempfile without secure flags
   - id: python-insecure-temp-file
@@ -1120,6 +1191,8 @@ rules:
       cwe: CWE-377
       confidence: high
       subcategory: file-operations
+      vulnerability_class: "Insecure File Operation"
+      owasp: "A01:2021"
 
   # ReDoS vulnerability
   - id: python-regex-dos
@@ -1141,6 +1214,7 @@ rules:
       cwe: CWE-1333
       confidence: medium
       subcategory: dos
+      vulnerability_class: "Denial of Service"
 
   # Unvalidated file upload
   - id: python-unvalidated-file-upload
@@ -1164,10 +1238,13 @@ rules:
       cwe: CWE-434
       confidence: low
       subcategory: upload
+      vulnerability_class: "Unrestricted File Upload"
+      owasp: "A04:2021"
+      fix: "Validate file extension, MIME type, and content. Use werkzeug.utils.secure_filename(). Store uploads outside the web root with randomized names."
 
   # === Bandit B107: Hardcoded password default ===
   - id: python-hardcoded-password-default
-    message: "Possible hardcoded password in function default"
+    message: "Hard-coded password detected. Passwords embedded in code are easily discovered. Use environment variables or a secrets manager."
     severity: MEDIUM
     languages: [python]
     pattern-either:
@@ -1184,6 +1261,9 @@ rules:
       category: security
       bandit_equivalent: B107
       cwe: CWE-259
+      subcategory: authentication
+      vulnerability_class: "Authentication Weakness"
+      owasp: "A07:2021"
 
   # === Bandit B301: Pickle usage ===
   - id: python-pickle-usage
@@ -1202,10 +1282,14 @@ rules:
       bandit_equivalent: B301
       cwe: CWE-502
       confidence: high
+      subcategory: integrity
+      vulnerability_class: "Insecure Deserialization"
+      owasp: "A08:2021"
+      fix: "Replace pickle/shelve with json.loads() for data interchange. If pickle is required, use hmac to verify data integrity before deserializing."
 
   # === Bandit B303: MD5 hash usage ===
   - id: python-md5-usage
-    message: "Use of insecure MD5 hash function detected"
+    message: "Weak cryptographic algorithm detected. Using broken or outdated algorithms may allow attackers to decrypt data or forge signatures. Use modern algorithms like AES-256, SHA-256, or Ed25519."
     severity: MEDIUM
     languages: [python]
     pattern-either:
@@ -1217,10 +1301,13 @@ rules:
       category: security
       bandit_equivalent: B303
       cwe: CWE-327
+      subcategory: crypto
+      vulnerability_class: "Cryptographic Weakness"
+      owasp: "A02:2021"
 
   # === Bandit B304: SHA1 hash usage ===
   - id: python-sha1-usage
-    message: "Use of insecure SHA1 hash function detected"
+    message: "Weak cryptographic algorithm detected. Using broken or outdated algorithms may allow attackers to decrypt data or forge signatures. Use modern algorithms like AES-256, SHA-256, or Ed25519."
     severity: MEDIUM
     languages: [python]
     pattern-either:
@@ -1232,10 +1319,13 @@ rules:
       category: security
       bandit_equivalent: B304
       cwe: CWE-327
+      subcategory: crypto
+      vulnerability_class: "Cryptographic Weakness"
+      owasp: "A02:2021"
 
   # === Bandit B307: Eval usage ===
   - id: python-eval-usage
-    message: "Use of eval() detected. This can execute arbitrary code"
+    message: "Code injection vulnerability detected. User-controlled input is passed to a code evaluation function, allowing arbitrary code execution. Avoid eval/exec with user input; use safe alternatives."
     severity: CRITICAL
     languages: [python]
     patterns:
@@ -1247,10 +1337,14 @@ rules:
       bandit_equivalent: B307
       cwe: CWE-94
       confidence: high
+      subcategory: injection
+      vulnerability_class: "Injection Vulnerability"
+      owasp: "A03:2021"
+      fix: "Remove eval()/exec() calls with user input. Use ast.literal_eval() for safe parsing of Python literals. Use a sandboxed environment if dynamic execution is required."
 
   # === Bandit B501: Request without cert validation ===
   - id: python-request-without-cert-validation
-    message: "Request made without certificate verification"
+    message: "TLS/SSL certificate validation is disabled or bypassed. This allows man-in-the-middle attacks where attackers can intercept encrypted communications. Always validate certificates in production."
     severity: HIGH
     languages: [python]
     pattern-either:
@@ -1264,10 +1358,14 @@ rules:
       category: security
       bandit_equivalent: B501
       cwe: CWE-295
+      subcategory: crypto
+      vulnerability_class: "Cryptographic Weakness"
+      owasp: "A07:2021"
+      fix: "Always use verify=True (the default) in requests. Set ssl_context properly. Never set CERT_NONE or disable hostname checking."
 
   # === Bandit B502: SSL with bad version ===
   - id: python-ssl-bad-version
-    message: "Use of insecure SSL/TLS version detected"
+    message: "Weak cryptographic algorithm detected. Using broken or outdated algorithms may allow attackers to decrypt data or forge signatures. Use modern algorithms like AES-256, SHA-256, or Ed25519."
     severity: HIGH
     languages: [python]
     pattern-either:
@@ -1281,10 +1379,14 @@ rules:
       category: security
       bandit_equivalent: B502
       cwe: CWE-327
+      subcategory: crypto
+      vulnerability_class: "Cryptographic Weakness"
+      owasp: "A02:2021"
+      fix: "Use hashlib.sha256() or hashlib.sha3_256() instead of md5/sha1. Use cryptography library with AES-GCM or ChaCha20-Poly1305 for encryption."
 
   # === Bandit B601: Paramiko calls ===
   - id: python-paramiko-calls
-    message: "Paramiko call detected. Ensure proper key verification"
+    message: "Key exchange without authentication. Unauthenticated key exchange enables man-in-the-middle attacks. Use authenticated key exchange protocols."
     severity: MEDIUM
     languages: [python]
     pattern-either:
@@ -1294,6 +1396,9 @@ rules:
       category: security
       bandit_equivalent: B601
       cwe: CWE-322
+      subcategory: crypto
+      vulnerability_class: "Cryptographic Weakness"
+      owasp: "A02:2021"
 
   # === Bandit B602: Subprocess with shell=True ===
   - id: python-subprocess-shell-true
@@ -1313,6 +1418,10 @@ rules:
       bandit_equivalent: B602
       cwe: CWE-78
       confidence: high
+      subcategory: injection
+      vulnerability_class: "Injection Vulnerability"
+      owasp: "A03:2021"
+      fix: "Use subprocess.run() with a list of arguments instead of shell=True: subprocess.run(['cmd', arg1, arg2]). Never pass user input to os.system() or shell commands."
 
   # === Bandit B605: Start process with shell ===
   - id: python-start-process-with-shell
@@ -1331,10 +1440,14 @@ rules:
       category: security
       bandit_equivalent: B605
       cwe: CWE-78
+      subcategory: injection
+      vulnerability_class: "Injection Vulnerability"
+      owasp: "A03:2021"
+      fix: "Use subprocess.run() with a list of arguments instead of shell=True: subprocess.run(['cmd', arg1, arg2]). Never pass user input to os.system() or shell commands."
 
   # === Bandit B608: SQL injection ===
   - id: python-sql-injection-format
-    message: "Possible SQL injection vector through string formatting"
+    message: "SQL injection vulnerability detected. User-supplied input is included in a SQL query without sanitization, potentially allowing attackers to read, modify, or delete database contents. Use parameterized queries or an ORM instead of string concatenation."
     severity: CRITICAL
     languages: [python]
     pattern-either:
@@ -1349,6 +1462,10 @@ rules:
       bandit_equivalent: B608
       cwe: CWE-89
       confidence: medium
+      subcategory: injection
+      vulnerability_class: "Injection Vulnerability"
+      owasp: "A03:2021"
+      fix: "Use parameterized queries: cursor.execute('SELECT * FROM t WHERE id = %s', (user_id,)). For Django, use the ORM or QuerySet API. For SQLAlchemy, use bound parameters."
 
   # === Flask debug mode ===
   - id: python-flask-debug-true
@@ -1363,6 +1480,9 @@ rules:
       category: security
       bandit_equivalent: B201
       cwe: CWE-489
+      subcategory: configuration
+      vulnerability_class: "Security Misconfiguration"
+      owasp: "A05:2021"
 
   # === Jinja2 autoescape false ===
   - id: python-jinja2-autoescape-false
@@ -1376,6 +1496,10 @@ rules:
       category: security
       bandit_equivalent: B701
       cwe: CWE-79
+      subcategory: xss
+      vulnerability_class: "Cross-Site Scripting (XSS)"
+      owasp: "A03:2021"
+      fix: "Use template engine auto-escaping (Jinja2 autoescape=True, Django default). Use markupsafe.escape() for manual escaping. Never render raw user input with |safe or Markup()."
 
   # === Weak random ===
   - id: python-weak-random
@@ -1392,10 +1516,13 @@ rules:
       category: security
       cwe: CWE-338
       confidence: high
+      subcategory: crypto
+      vulnerability_class: "Cryptographic Weakness"
+      owasp: "A02:2021"
 
   # === Temporary file creation ===
   - id: python-tempfile-mktemp
-    message: "Insecure temporary file creation detected"
+    message: "Insecure temporary file creation. Predictable temp file names or insecure permissions can be exploited via symlink attacks. Use secure temp file creation functions."
     severity: LOW
     languages: [python]
     pattern-either:
@@ -1405,3 +1532,6 @@ rules:
     metadata:
       category: security
       cwe: CWE-377
+      subcategory: file-operations
+      vulnerability_class: "Insecure File Operation"
+      owasp: "A01:2021"

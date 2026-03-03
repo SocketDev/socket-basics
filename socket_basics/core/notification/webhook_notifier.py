@@ -19,7 +19,7 @@ class WebhookNotifier(BaseNotifier):
         super().__init__(params or {})
         # Webhook URL from params, env variable, or app config
         self.url = (
-            self.config.get('url') or
+            self.config.get('webhook_url') or
             get_webhook_url()
         )
 
@@ -57,9 +57,9 @@ class WebhookNotifier(BaseNotifier):
             logger.warning('WebhookNotifier: no webhook URL configured')
             return
 
-        # Get repository and branch info from config (discovered by main logic)
-        repo = self.config.get('repository', 'Unknown')
-        branch = self.config.get('branch', 'Unknown')
+        # Get repository and branch info from facts (populated by NotificationManager)
+        repo = facts.get('repository', 'Unknown')
+        branch = facts.get('branch', 'Unknown')
 
         # Create webhook payload with pre-formatted content
         payload = {

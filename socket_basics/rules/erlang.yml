@@ -5,7 +5,7 @@ rules:
 
   # Code injection
   - id: elixir-code-injection
-    message: "Code injection vulnerability detected"
+    message: "Code injection vulnerability detected. User-controlled input is passed to a code evaluation function, allowing arbitrary code execution. Avoid eval/exec with user input; use safe alternatives."
     severity: CRITICAL
     languages: [elixir]
     pattern-either:
@@ -17,10 +17,14 @@ rules:
       category: security
       cwe: CWE-94
       confidence: high
+      subcategory: injection
+      vulnerability_class: "Injection Vulnerability"
+      owasp: "A03:2021"
+      fix: "Avoid erl_eval:expr/2 and erl_scan with user input. Use pattern matching and safe parsing instead. Never evaluate untrusted Erlang terms."
 
   # SQL injection
   - id: elixir-sql-injection
-    message: "SQL injection vulnerability detected"
+    message: "SQL injection vulnerability detected. User-supplied input is included in a SQL query without sanitization, potentially allowing attackers to read, modify, or delete database contents. Use parameterized queries or an ORM instead of string concatenation."
     severity: CRITICAL
     languages: [elixir]
     pattern-either:
@@ -32,10 +36,14 @@ rules:
       category: security
       cwe: CWE-89
       confidence: medium
+      subcategory: injection
+      vulnerability_class: "Injection Vulnerability"
+      owasp: "A03:2021"
+      fix: "Use parameterized queries with your database driver, e.g., epgsql:equery(C, \"SELECT * FROM t WHERE id = $1\", [UserId])."
 
   # Command injection
   - id: elixir-command-injection
-    message: "Command injection vulnerability detected"
+    message: "OS command injection vulnerability detected. User-controlled data flows into a system command without proper sanitization, allowing attackers to execute arbitrary commands. Use safe APIs with argument lists instead of shell execution."
     severity: CRITICAL
     languages: [elixir]
     pattern-either:
@@ -47,10 +55,14 @@ rules:
       category: security
       cwe: CWE-78
       confidence: medium
+      subcategory: injection
+      vulnerability_class: "Injection Vulnerability"
+      owasp: "A03:2021"
+      fix: "Use erlang:open_port with {spawn_executable, Cmd} and {args, Args} instead of os:cmd/1. Never interpolate user input into commands."
 
   # Unsafe deserialization
   - id: elixir-unsafe-deserialization
-    message: "Unsafe deserialization detected"
+    message: "Unsafe deserialization detected. Deserializing untrusted data can lead to remote code execution or denial of service. Use safe serialization formats like JSON or validate data before deserializing."
     severity: CRITICAL
     languages: [elixir]
     pattern-either:
@@ -62,12 +74,16 @@ rules:
       category: security
       cwe: CWE-502
       confidence: high
+      subcategory: integrity
+      vulnerability_class: "Insecure Deserialization"
+      owasp: "A08:2021"
+      fix: "Use binary_to_term/2 with [safe] option. Use jsx or jiffy for JSON deserialization. Never use binary_to_term/1 on untrusted data."
 
   # === High Severity Rules ===
 
   # Hardcoded secrets
   - id: elixir-hardcoded-secrets
-    message: "Hardcoded secrets detected"
+    message: "Hard-coded credentials detected. Embedding secrets in source code makes them easily discoverable and impossible to rotate. Use environment variables or a secrets manager instead."
     severity: HIGH
     languages: [elixir]
     pattern-either:
@@ -87,10 +103,14 @@ rules:
       category: security
       cwe: CWE-798
       confidence: medium
+      subcategory: authentication
+      vulnerability_class: "Authentication Weakness"
+      owasp: "A07:2021"
+      fix: "Store secrets in environment variables (os:getenv/1) or use a secrets manager. Load secrets from configuration files excluded from version control."
 
   # Weak cryptography
   - id: elixir-weak-crypto
-    message: "Use of weak cryptographic function"
+    message: "Weak cryptographic algorithm detected. Using broken or outdated algorithms may allow attackers to decrypt data or forge signatures. Use modern algorithms like AES-256, SHA-256, or Ed25519."
     severity: HIGH
     languages: [elixir]
     pattern-either:
@@ -102,10 +122,14 @@ rules:
       category: security
       cwe: CWE-327
       confidence: high
+      subcategory: crypto
+      vulnerability_class: "Cryptographic Weakness"
+      owasp: "A02:2021"
+      fix: "Use crypto:hash(sha256, Data) instead of md5/sha. Use crypto:crypto_one_time_aead for AES-GCM encryption."
 
   # Path traversal
   - id: elixir-path-traversal
-    message: "Path traversal vulnerability detected"
+    message: "Path traversal vulnerability detected. User input is used in file paths without validation, allowing attackers to access files outside the intended directory. Validate and canonicalize paths before use."
     severity: HIGH
     languages: [elixir]
     pattern-either:
@@ -117,10 +141,14 @@ rules:
       category: security
       cwe: CWE-22
       confidence: medium
+      subcategory: access-control
+      vulnerability_class: "Access Control Violation"
+      owasp: "A01:2021"
+      fix: "Use filename:absname/1 and verify the result starts with the allowed base directory. Reject paths containing '..' components."
 
   # XSS vulnerabilities
   - id: elixir-xss
-    message: "XSS vulnerability detected"
+    message: "Cross-site scripting (XSS) vulnerability detected. User input is rendered in HTML output without proper escaping, allowing attackers to inject malicious scripts. Sanitize or escape all user input before rendering."
     severity: HIGH
     languages: [elixir]
     pattern-either:
@@ -131,10 +159,14 @@ rules:
       category: security
       cwe: CWE-79
       confidence: low
+      subcategory: xss
+      vulnerability_class: "Cross-Site Scripting (XSS)"
+      owasp: "A03:2021"
+      fix: "Escape all user input before inserting into HTML output. Use a templating library with auto-escaping enabled."
 
   # Open redirect
   - id: elixir-open-redirect
-    message: "Open redirect vulnerability detected"
+    message: "Open redirect vulnerability detected. The application redirects to a user-controlled URL without validation, enabling phishing attacks. Validate redirect targets against an allowlist."
     severity: HIGH
     languages: [elixir]
     pattern-either:
@@ -144,12 +176,16 @@ rules:
       category: security
       cwe: CWE-601
       confidence: medium
+      subcategory: access-control
+      vulnerability_class: "Access Control Violation"
+      owasp: "A01:2021"
+      fix: "Validate redirect URLs against an allowlist of trusted paths or domains. Use relative paths for internal redirects. Reject external URLs."
 
   # === Medium Severity Rules ===
 
   # Insecure random
   - id: elixir-insecure-random
-    message: "Use of insecure random number generator"
+    message: "Insecure random number generator used. Non-cryptographic PRNGs produce predictable values that attackers can guess. Use a cryptographically secure random generator for security-sensitive operations."
     severity: MEDIUM
     languages: [elixir]
     pattern-either:
@@ -161,10 +197,13 @@ rules:
       category: security
       cwe: CWE-338
       confidence: low
+      subcategory: crypto
+      vulnerability_class: "Cryptographic Weakness"
+      owasp: "A02:2021"
 
   # HTTP instead of HTTPS
   - id: elixir-insecure-http
-    message: "Use of HTTP instead of HTTPS"
+    message: "Sensitive data transmitted over an unencrypted channel. Using HTTP instead of HTTPS allows network attackers to intercept data in transit. Use HTTPS for all communications containing sensitive data."
     severity: MEDIUM
     languages: [elixir]
     pattern-either:
@@ -176,10 +215,13 @@ rules:
       category: security
       cwe: CWE-319
       confidence: low
+      subcategory: crypto
+      vulnerability_class: "Cryptographic Weakness"
+      owasp: "A02:2021"
 
   # Weak session configuration
   - id: elixir-weak-session
-    message: "Weak session configuration detected"
+    message: "Sensitive cookie missing the Secure flag. The cookie may be transmitted over unencrypted HTTP, allowing interception. Set the Secure flag on all sensitive cookies."
     severity: MEDIUM
     languages: [elixir]
     pattern-either:
@@ -197,10 +239,13 @@ rules:
       category: security
       cwe: CWE-614
       confidence: medium
+      subcategory: configuration
+      vulnerability_class: "Security Misconfiguration"
+      owasp: "A05:2021"
 
   # CSRF protection bypass
   - id: elixir-csrf-bypass
-    message: "CSRF protection bypassed"
+    message: "Cross-site request forgery (CSRF) vulnerability. The application does not verify that requests originate from its own interface. Implement CSRF tokens on all state-changing operations."
     severity: MEDIUM
     languages: [elixir]
     pattern-either:
@@ -210,12 +255,15 @@ rules:
       category: security
       cwe: CWE-352
       confidence: medium
+      subcategory: access-control
+      vulnerability_class: "Access Control Violation"
+      owasp: "A01:2021"
 
   # === Low Severity Rules ===
 
   # Debug information disclosure
   - id: elixir-debug-info-disclosure
-    message: "Debug information disclosure detected"
+    message: "Sensitive information written to log files. Passwords, tokens, or personal data in logs can be exposed to unauthorized parties. Redact sensitive values before logging."
     severity: LOW
     languages: [elixir]
     patterns:
@@ -231,10 +279,13 @@ rules:
       category: security
       cwe: CWE-532
       confidence: low
+      subcategory: logging
+      vulnerability_class: "Sensitive Data Exposure"
+      owasp: "A09:2021"
 
   # Hardcoded IP addresses
   - id: elixir-hardcoded-ip
-    message: "Hardcoded IP address detected"
+    message: "Hard-coded credentials detected. Embedding secrets in source code makes them easily discoverable and impossible to rotate. Use environment variables or a secrets manager instead."
     severity: LOW
     languages: [elixir]
     pattern-either:
@@ -247,12 +298,15 @@ rules:
       category: security
       cwe: CWE-798
       confidence: low
+      subcategory: authentication
+      vulnerability_class: "Authentication Weakness"
+      owasp: "A07:2021"
 
   # === Phoenix Framework Rules ===
 
   # Phoenix XSS
   - id: elixir-phoenix-xss
-    message: "Phoenix XSS vulnerability detected"
+    message: "Cross-site scripting (XSS) vulnerability detected. User input is rendered in HTML output without proper escaping, allowing attackers to inject malicious scripts. Sanitize or escape all user input before rendering."
     severity: HIGH
     languages: [elixir]
     pattern-either:
@@ -266,10 +320,16 @@ rules:
       framework: phoenix
       cwe: CWE-79
       confidence: low
+      subcategory: xss
+      vulnerability_class: "Cross-Site Scripting (XSS)"
+      owasp: "A03:2021"
+      references:
+        - https://hexdocs.pm/phoenix/security.html
+      fix: "Escape all user input before inserting into HTML output. Use a templating library with auto-escaping enabled."
 
   # Phoenix SQL injection in Ecto
   - id: elixir-phoenix-ecto-injection
-    message: "Phoenix Ecto SQL injection vulnerability"
+    message: "SQL injection vulnerability detected. User-supplied input is included in a SQL query without sanitization, potentially allowing attackers to read, modify, or delete database contents. Use parameterized queries or an ORM instead of string concatenation."
     severity: CRITICAL
     languages: [elixir]
     pattern-either:
@@ -282,10 +342,16 @@ rules:
       framework: phoenix
       cwe: CWE-89
       confidence: high
+      subcategory: injection
+      vulnerability_class: "Injection Vulnerability"
+      owasp: "A03:2021"
+      references:
+        - https://hexdocs.pm/phoenix/security.html
+      fix: "Use parameterized queries with your database driver, e.g., epgsql:equery(C, \"SELECT * FROM t WHERE id = $1\", [UserId])."
 
   # Phoenix insecure routes
   - id: elixir-phoenix-insecure-routes
-    message: "Phoenix insecure route configuration"
+    message: "Missing authorization check. The application does not verify user permissions before granting access to resources. Add authorization checks to all protected endpoints."
     severity: MEDIUM
     languages: [elixir]
     pattern-either:
@@ -301,10 +367,15 @@ rules:
       framework: phoenix
       cwe: CWE-862
       confidence: low
+      subcategory: access-control
+      vulnerability_class: "Access Control Violation"
+      owasp: "A01:2021"
+      references:
+        - https://hexdocs.pm/phoenix/security.html
 
   # Phoenix file upload without validation
   - id: elixir-phoenix-file-upload
-    message: "Phoenix file upload without proper validation"
+    message: "Unrestricted file upload detected. Accepting uploads without validating file type and content can allow execution of malicious code. Validate file type, size, and content before storing."
     severity: HIGH
     languages: [elixir]
     pattern-either:
@@ -324,6 +395,12 @@ rules:
       framework: phoenix
       cwe: CWE-434
       confidence: low
+      subcategory: upload
+      vulnerability_class: "Unrestricted File Upload"
+      owasp: "A04:2021"
+      references:
+        - https://hexdocs.pm/phoenix/security.html
+      fix: "Validate file extension, MIME type, and content. Store uploads outside the web root with randomized filenames."
 
   # ===== ERLANG SECURITY RULES =====
 
@@ -331,7 +408,7 @@ rules:
 
   # Code injection
   - id: erlang-code-injection
-    message: "Code injection vulnerability detected"
+    message: "Code injection vulnerability detected. User-controlled input is passed to a code evaluation function, allowing arbitrary code execution. Avoid eval/exec with user input; use safe alternatives."
     severity: CRITICAL
     languages: [erlang]
     pattern-either:
@@ -343,10 +420,14 @@ rules:
       category: security
       cwe: CWE-94
       confidence: high
+      subcategory: injection
+      vulnerability_class: "Injection Vulnerability"
+      owasp: "A03:2021"
+      fix: "Avoid erl_eval:expr/2 and erl_scan with user input. Use pattern matching and safe parsing instead. Never evaluate untrusted Erlang terms."
 
   # Command injection
   - id: erlang-command-injection
-    message: "Command injection vulnerability detected"
+    message: "OS command injection vulnerability detected. User-controlled data flows into a system command without proper sanitization, allowing attackers to execute arbitrary commands. Use safe APIs with argument lists instead of shell execution."
     severity: CRITICAL
     languages: [erlang]
     pattern-either:
@@ -357,10 +438,14 @@ rules:
       category: security
       cwe: CWE-78
       confidence: high
+      subcategory: injection
+      vulnerability_class: "Injection Vulnerability"
+      owasp: "A03:2021"
+      fix: "Use erlang:open_port with {spawn_executable, Cmd} and {args, Args} instead of os:cmd/1. Never interpolate user input into commands."
 
   # Unsafe deserialization
   - id: erlang-unsafe-deserialization
-    message: "Unsafe deserialization detected"
+    message: "Unsafe deserialization detected. Deserializing untrusted data can lead to remote code execution or denial of service. Use safe serialization formats like JSON or validate data before deserializing."
     severity: CRITICAL
     languages: [erlang]
     pattern-either:
@@ -372,12 +457,16 @@ rules:
       category: security
       cwe: CWE-502
       confidence: high
+      subcategory: integrity
+      vulnerability_class: "Insecure Deserialization"
+      owasp: "A08:2021"
+      fix: "Use binary_to_term/2 with [safe] option. Use jsx or jiffy for JSON deserialization. Never use binary_to_term/1 on untrusted data."
 
   # === High Severity Rules ===
 
   # Hardcoded secrets
   - id: erlang-hardcoded-secrets
-    message: "Hardcoded secrets detected"
+    message: "Hard-coded credentials detected. Embedding secrets in source code makes them easily discoverable and impossible to rotate. Use environment variables or a secrets manager instead."
     severity: HIGH
     languages: [erlang]
     pattern-either:
@@ -395,10 +484,14 @@ rules:
       category: security
       cwe: CWE-798
       confidence: medium
+      subcategory: authentication
+      vulnerability_class: "Authentication Weakness"
+      owasp: "A07:2021"
+      fix: "Store secrets in environment variables (os:getenv/1) or use a secrets manager. Load secrets from configuration files excluded from version control."
 
   # Weak cryptography
   - id: erlang-weak-crypto
-    message: "Use of weak cryptographic function"
+    message: "Weak cryptographic algorithm detected. Using broken or outdated algorithms may allow attackers to decrypt data or forge signatures. Use modern algorithms like AES-256, SHA-256, or Ed25519."
     severity: HIGH
     languages: [erlang]
     pattern-either:
@@ -410,10 +503,14 @@ rules:
       category: security
       cwe: CWE-327
       confidence: high
+      subcategory: crypto
+      vulnerability_class: "Cryptographic Weakness"
+      owasp: "A02:2021"
+      fix: "Use crypto:hash(sha256, Data) instead of md5/sha. Use crypto:crypto_one_time_aead for AES-GCM encryption."
 
   # Path traversal
   - id: erlang-path-traversal
-    message: "Path traversal vulnerability detected"
+    message: "Path traversal vulnerability detected. User input is used in file paths without validation, allowing attackers to access files outside the intended directory. Validate and canonicalize paths before use."
     severity: HIGH
     languages: [erlang]
     pattern-either:
@@ -424,12 +521,16 @@ rules:
       category: security
       cwe: CWE-22
       confidence: medium
+      subcategory: access-control
+      vulnerability_class: "Access Control Violation"
+      owasp: "A01:2021"
+      fix: "Use filename:absname/1 and verify the result starts with the allowed base directory. Reject paths containing '..' components."
 
   # === Medium Severity Rules ===
 
   # Insecure random
   - id: erlang-insecure-random
-    message: "Use of insecure random number generator"
+    message: "Insecure random number generator used. Non-cryptographic PRNGs produce predictable values that attackers can guess. Use a cryptographically secure random generator for security-sensitive operations."
     severity: MEDIUM
     languages: [erlang]
     pattern-either:
@@ -441,10 +542,13 @@ rules:
       category: security
       cwe: CWE-338
       confidence: low
+      subcategory: crypto
+      vulnerability_class: "Cryptographic Weakness"
+      owasp: "A02:2021"
 
   # HTTP instead of HTTPS
   - id: erlang-insecure-http
-    message: "Use of HTTP instead of HTTPS"
+    message: "Sensitive data transmitted over an unencrypted channel. Using HTTP instead of HTTPS allows network attackers to intercept data in transit. Use HTTPS for all communications containing sensitive data."
     severity: MEDIUM
     languages: [erlang]
     pattern-either:
@@ -456,10 +560,13 @@ rules:
       category: security
       cwe: CWE-319
       confidence: low
+      subcategory: crypto
+      vulnerability_class: "Cryptographic Weakness"
+      owasp: "A02:2021"
 
   # SSL/TLS configuration issues
   - id: erlang-ssl-insecure
-    message: "Insecure SSL/TLS configuration"
+    message: "TLS/SSL certificate validation is disabled or bypassed. This allows man-in-the-middle attacks where attackers can intercept encrypted communications. Always validate certificates in production."
     severity: MEDIUM
     languages: [erlang]
     pattern-either:
@@ -470,12 +577,15 @@ rules:
       category: security
       cwe: CWE-295
       confidence: high
+      subcategory: crypto
+      vulnerability_class: "Cryptographic Weakness"
+      owasp: "A07:2021"
 
   # === Low Severity Rules ===
 
   # Debug information disclosure
   - id: erlang-debug-info-disclosure
-    message: "Debug information disclosure detected"
+    message: "Sensitive information written to log files. Passwords, tokens, or personal data in logs can be exposed to unauthorized parties. Redact sensitive values before logging."
     severity: LOW
     languages: [erlang]
     patterns:
@@ -490,10 +600,13 @@ rules:
       category: security
       cwe: CWE-532
       confidence: low
+      subcategory: logging
+      vulnerability_class: "Sensitive Data Exposure"
+      owasp: "A09:2021"
 
   # Hardcoded IP addresses
   - id: erlang-hardcoded-ip
-    message: "Hardcoded IP address detected"
+    message: "Hard-coded credentials detected. Embedding secrets in source code makes them easily discoverable and impossible to rotate. Use environment variables or a secrets manager instead."
     severity: LOW
     languages: [erlang]
     pattern-either:
@@ -506,12 +619,15 @@ rules:
       category: security
       cwe: CWE-798
       confidence: low
+      subcategory: authentication
+      vulnerability_class: "Authentication Weakness"
+      owasp: "A07:2021"
 
   # === OTP/GenServer Security Rules ===
 
   # Unprotected GenServer calls
   - id: erlang-genserver-unprotected
-    message: "Unprotected GenServer call detected"
+    message: "Missing authorization check. The application does not verify user permissions before granting access to resources. Add authorization checks to all protected endpoints."
     severity: MEDIUM
     languages: [erlang]
     pattern-either:
@@ -528,10 +644,15 @@ rules:
       framework: otp
       cwe: CWE-862
       confidence: low
+      subcategory: access-control
+      vulnerability_class: "Access Control Violation"
+      owasp: "A01:2021"
+      references:
+        - https://www.erlang.org/doc/design_principles/
 
   # Supervisor restart strategy issues
   - id: erlang-supervisor-restart
-    message: "Potentially insecure supervisor restart strategy"
+    message: "Uncontrolled resource consumption detected. The application does not limit resource usage, making it vulnerable to denial-of-service attacks. Implement rate limiting and resource caps."
     severity: LOW
     languages: [erlang]
     pattern-either:
@@ -545,12 +666,16 @@ rules:
       framework: otp
       cwe: CWE-400
       confidence: low
+      subcategory: dos
+      vulnerability_class: "Denial of Service"
+      references:
+        - https://www.erlang.org/doc/design_principles/
 
   # === Cowboy/Web Framework Rules ===
 
   # Cowboy route without authentication
   - id: erlang-cowboy-no-auth
-    message: "Cowboy route without authentication"
+    message: "Missing authorization check. The application does not verify user permissions before granting access to resources. Add authorization checks to all protected endpoints."
     severity: MEDIUM
     languages: [erlang]
     pattern-either:
@@ -565,10 +690,15 @@ rules:
       framework: cowboy
       cwe: CWE-862
       confidence: low
+      subcategory: access-control
+      vulnerability_class: "Access Control Violation"
+      owasp: "A01:2021"
+      references:
+        - https://ninenines.eu/docs/en/cowboy/
 
   # Cowboy XSS vulnerability
   - id: erlang-cowboy-xss
-    message: "Cowboy XSS vulnerability detected"
+    message: "Cross-site scripting (XSS) vulnerability detected. User input is rendered in HTML output without proper escaping, allowing attackers to inject malicious scripts. Sanitize or escape all user input before rendering."
     severity: HIGH
     languages: [erlang]
     pattern-either:
@@ -581,12 +711,18 @@ rules:
       framework: cowboy
       cwe: CWE-79
       confidence: medium
+      subcategory: xss
+      vulnerability_class: "Cross-Site Scripting (XSS)"
+      owasp: "A03:2021"
+      references:
+        - https://ninenines.eu/docs/en/cowboy/
+      fix: "Escape all user input before inserting into HTML output. Use a templating library with auto-escaping enabled."
 
   # === Database Security Rules ===
 
   # Mnesia security issues
   - id: erlang-mnesia-security
-    message: "Mnesia security configuration issue"
+    message: "Race condition on shared resource. Concurrent access without synchronization can corrupt data. Use proper locking or atomic operations."
     severity: MEDIUM
     languages: [erlang]
     pattern-either:
@@ -603,12 +739,14 @@ rules:
       framework: mnesia
       cwe: CWE-362
       confidence: low
+      subcategory: design
+      vulnerability_class: "Insecure Design"
 
   # === Additional Erlang Security Rules ===
 
   # Format string vulnerabilities
   - id: erlang-format-string
-    message: "Format string vulnerability detected"
+    message: "Format string vulnerability. User input in format strings allows memory read/write. Never pass user input as a format string argument."
     severity: HIGH
     languages: [erlang]
     pattern-either:
@@ -619,10 +757,14 @@ rules:
       category: security
       cwe: CWE-134
       confidence: medium
+      subcategory: injection
+      vulnerability_class: "Injection Vulnerability"
+      owasp: "A03:2021"
+      fix: "Never use user input as the format string in io:format/2. Always use a static format string: io:format(\"~s\", [UserInput])."
 
   # Race conditions in file operations
   - id: erlang-race-condition
-    message: "Race condition in file operations"
+    message: "Time-of-check time-of-use (TOCTOU) race condition. A resource can change between check and use, allowing bypass. Perform check and use atomically."
     severity: MEDIUM
     languages: [erlang]
     pattern-either:
@@ -638,10 +780,12 @@ rules:
       category: security
       cwe: CWE-367
       confidence: low
+      subcategory: design
+      vulnerability_class: "Insecure Design"
 
   # Atom exhaustion
   - id: erlang-atom-exhaustion
-    message: "Potential atom table exhaustion"
+    message: "Uncontrolled resource consumption detected. The application does not limit resource usage, making it vulnerable to denial-of-service attacks. Implement rate limiting and resource caps."
     severity: MEDIUM
     languages: [erlang]
     patterns:
@@ -655,10 +799,12 @@ rules:
       category: security
       cwe: CWE-400
       confidence: low
+      subcategory: dos
+      vulnerability_class: "Denial of Service"
 
   # Process dictionary misuse
   - id: erlang-process-dictionary
-    message: "Process dictionary usage detected - consider alternatives"
+    message: "Race condition on shared resource. Concurrent access without synchronization can corrupt data. Use proper locking or atomic operations."
     severity: LOW
     languages: [erlang]
     pattern-either:
@@ -669,10 +815,12 @@ rules:
       category: security
       cwe: CWE-362
       confidence: low
+      subcategory: design
+      vulnerability_class: "Insecure Design"
 
   # ETS table security
   - id: erlang-ets-security
-    message: "ETS table security issue"
+    message: "Information exposure detected. The application reveals sensitive internal details to unauthorized users. Remove or restrict access to sensitive information in responses."
     severity: MEDIUM
     languages: [erlang]
     pattern-either:
@@ -687,12 +835,15 @@ rules:
       category: security
       cwe: CWE-200
       confidence: low
+      subcategory: configuration
+      vulnerability_class: "Security Misconfiguration"
+      owasp: "A01:2021"
 
   # === Cross-Language Generic Rules ===
 
   # Generic hardcoded localhost
   - id: generic-elixir-erlang-localhost
-    message: "Hardcoded localhost/loopback address detected"
+    message: "Hard-coded credentials detected. Embedding secrets in source code makes them easily discoverable and impossible to rotate. Use environment variables or a secrets manager instead."
     severity: LOW
     languages: [elixir, erlang]
     pattern-either:
@@ -704,6 +855,9 @@ rules:
       category: security
       cwe: CWE-798
       confidence: low
+      subcategory: authentication
+      vulnerability_class: "Authentication Weakness"
+      owasp: "A07:2021"
 
   # Generic TODO/FIXME security comments
   - id: generic-elixir-erlang-todo
@@ -718,3 +872,6 @@ rules:
       category: security
       cwe: CWE-1059
       confidence: low
+      subcategory: configuration
+      vulnerability_class: "Security Misconfiguration"
+      owasp: "A06:2021"

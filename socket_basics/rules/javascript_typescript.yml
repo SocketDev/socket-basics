@@ -9,7 +9,7 @@ rules:
 
   # Missing authorization checks
   - id: js-missing-auth-check
-    message: "Route handler missing authentication/authorization check"
+    message: "Missing authorization check. The application does not verify user permissions before granting access to resources. Add authorization checks to all protected endpoints."
     severity: HIGH
     languages: [javascript, typescript]
     patterns:
@@ -39,6 +39,8 @@ rules:
       cwe: CWE-862
       confidence: low
       subcategory: access-control
+      vulnerability_class: "Access Control Violation"
+      fix: "Add authentication middleware to protected routes. Use passport.authenticate() or a custom auth middleware before route handlers."
 
   # Insecure direct object reference
   - id: js-idor-vulnerability
@@ -70,6 +72,8 @@ rules:
       cwe: CWE-639
       confidence: medium
       subcategory: access-control
+      vulnerability_class: "Access Control Violation"
+      fix: "Verify user authorization before accessing resources. Use the authenticated user's ID from the session, not from request parameters."
 
   # Path traversal - using taint mode for accurate detection
   - id: js-path-traversal
@@ -126,6 +130,8 @@ rules:
       cwe: CWE-22
       confidence: high
       subcategory: access-control
+      vulnerability_class: "Access Control Violation"
+      fix: "Use path.resolve() and verify the result starts with the allowed base directory using path.relative() to check for '..' traversal."
 
   # Unvalidated redirect - using taint mode for accurate detection
   - id: js-open-redirect
@@ -175,10 +181,11 @@ rules:
       cwe: CWE-601
       confidence: high
       subcategory: access-control
+      vulnerability_class: "Access Control Violation"
 
   # CORS misconfiguration
   - id: js-cors-allow-all
-    message: "CORS configured to allow all origins - security risk"
+    message: "Overly permissive CORS policy. Any origin can access the API, enabling cross-origin data theft. Restrict CORS to trusted origins only."
     severity: HIGH
     languages: [javascript, typescript]
     pattern-either:
@@ -194,6 +201,8 @@ rules:
       cwe: CWE-942
       confidence: high
       subcategory: access-control
+      vulnerability_class: "Access Control Violation"
+      fix: "Set specific allowed origins instead of '*'. Use the cors middleware with a whitelist: cors({ origin: ['https://trusted.example.com'] })."
 
   # ===================================================================== 
   # A02:2021 - Cryptographic Failures
@@ -201,7 +210,7 @@ rules:
 
   # Weak cryptographic hash algorithms
   - id: js-weak-hash-md5
-    message: "MD5 is cryptographically broken and should not be used"
+    message: "Weak cryptographic algorithm detected. Using broken or outdated algorithms may allow attackers to decrypt data or forge signatures. Use modern algorithms like AES-256, SHA-256, or Ed25519."
     severity: HIGH
     languages: [javascript, typescript]
     pattern-either:
@@ -216,6 +225,8 @@ rules:
       cwe: CWE-327
       confidence: high
       subcategory: crypto
+      vulnerability_class: "Cryptographic Weakness"
+      fix: "Use crypto.createHash('sha256') instead of md5/sha1. Use crypto.createCipheriv('aes-256-gcm', ...) for encryption."
 
   - id: js-weak-hash-sha1
     message: "SHA1 is cryptographically weak and should not be used for security"
@@ -233,6 +244,8 @@ rules:
       cwe: CWE-327
       confidence: high
       subcategory: crypto
+      vulnerability_class: "Cryptographic Weakness"
+      fix: "Use crypto.createHash('sha256') instead of md5/sha1. Use crypto.createCipheriv('aes-256-gcm', ...) for encryption."
 
   # Insecure random number generation
   - id: js-insecure-random
@@ -255,6 +268,7 @@ rules:
       confidence: medium
       subcategory: crypto
       fix: "Use crypto.randomBytes() or crypto.getRandomValues() for security-sensitive operations"
+      vulnerability_class: "Cryptographic Weakness"
 
   # Hardcoded secrets and credentials
   - id: js-hardcoded-secret
@@ -275,6 +289,8 @@ rules:
       cwe: CWE-798
       confidence: medium
       subcategory: crypto
+      vulnerability_class: "Cryptographic Weakness"
+      fix: "Store secrets in environment variables (process.env.KEY) or use a secrets manager. Use dotenv for local development."
 
   # Weak cipher algorithms
   - id: js-weak-cipher
@@ -297,6 +313,8 @@ rules:
       cwe: CWE-327
       confidence: high
       subcategory: crypto
+      vulnerability_class: "Cryptographic Weakness"
+      fix: "Use crypto.createHash('sha256') instead of md5/sha1. Use crypto.createCipheriv('aes-256-gcm', ...) for encryption."
 
   # TLS/SSL certificate validation disabled
   - id: js-tls-reject-unauthorized-false
@@ -319,10 +337,12 @@ rules:
       cwe: CWE-295
       confidence: high
       subcategory: crypto
+      vulnerability_class: "Cryptographic Weakness"
+      fix: "Never set rejectUnauthorized: false or NODE_TLS_REJECT_UNAUTHORIZED=0. Configure proper CA certificates for custom TLS needs."
 
   # Insecure TLS versions
   - id: js-insecure-tls-version
-    message: "Insecure TLS version - use TLS 1.2 or higher"
+    message: "Weak cryptographic algorithm detected. Using broken or outdated algorithms may allow attackers to decrypt data or forge signatures. Use modern algorithms like AES-256, SHA-256, or Ed25519."
     severity: HIGH
     languages: [javascript, typescript]
     pattern-either:
@@ -342,6 +362,8 @@ rules:
       cwe: CWE-327
       confidence: high
       subcategory: crypto
+      vulnerability_class: "Cryptographic Weakness"
+      fix: "Use crypto.createHash('sha256') instead of md5/sha1. Use crypto.createCipheriv('aes-256-gcm', ...) for encryption."
 
   # Missing encryption in transit
   - id: js-insecure-protocol
@@ -369,6 +391,7 @@ rules:
       cwe: CWE-319
       confidence: low
       subcategory: crypto
+      vulnerability_class: "Cryptographic Weakness"
 
   # ===================================================================== 
   # A03:2021 - Injection
@@ -376,7 +399,7 @@ rules:
 
   # Code injection via eval
   - id: js-code-injection-eval
-    message: "Code injection via eval() - can execute arbitrary code"
+    message: "Code injection vulnerability detected. User-controlled input is passed to a code evaluation function, allowing arbitrary code execution. Avoid eval/exec with user input; use safe alternatives."
     severity: CRITICAL
     languages: [javascript, typescript]
     patterns:
@@ -408,6 +431,8 @@ rules:
       cwe: CWE-94
       confidence: high
       subcategory: injection
+      vulnerability_class: "Injection Vulnerability"
+      fix: "Remove eval(), Function(), and setTimeout/setInterval with string arguments. Use JSON.parse() for data parsing. Use a sandboxed environment (vm2) if dynamic execution is needed."
 
   # SQL injection - using taint mode for accurate detection
   - id: js-sql-injection
@@ -467,6 +492,8 @@ rules:
       cwe: CWE-89
       confidence: high
       subcategory: injection
+      vulnerability_class: "Injection Vulnerability"
+      fix: "Use parameterized queries with your database driver, e.g., db.query('SELECT * FROM t WHERE id = $1', [userId]) for pg, or use an ORM like Prisma or Sequelize."
 
   # NoSQL injection (MongoDB)
   - id: js-nosql-injection
@@ -495,6 +522,8 @@ rules:
       cwe: CWE-943
       confidence: high
       subcategory: injection
+      vulnerability_class: "Injection Vulnerability"
+      fix: "Validate input types before MongoDB queries. Use mongoose schema validation. Replace $where with aggregation pipeline. Sanitize with mongo-sanitize."
 
   # Command injection - using taint mode for accurate detection
   - id: js-command-injection
@@ -541,6 +570,8 @@ rules:
       cwe: CWE-78
       confidence: high
       subcategory: injection
+      vulnerability_class: "Injection Vulnerability"
+      fix: "Use child_process.execFile() or spawn() with argument arrays instead of exec(). Never interpolate user input into shell commands."
 
   # LDAP injection - using taint mode for accurate detection
   - id: js-ldap-injection
@@ -580,6 +611,8 @@ rules:
       cwe: CWE-90
       confidence: high
       subcategory: injection
+      vulnerability_class: "Injection Vulnerability"
+      fix: "Use ldapjs with properly escaped filter values. Use ldapEscape.filter() to escape special characters in LDAP filters."
 
   # XSS via innerHTML - using taint mode for accurate detection
   - id: js-xss-innerhtml
@@ -632,6 +665,8 @@ rules:
       cwe: CWE-79
       confidence: high
       subcategory: injection
+      vulnerability_class: "Injection Vulnerability"
+      fix: "Use textContent instead of innerHTML. Use DOMPurify.sanitize() if HTML must be rendered. Enable auto-escaping in template engines (React JSX, Handlebars)."
 
   # DOM-based XSS - using taint mode for accurate detection
   - id: js-dom-xss
@@ -686,6 +721,8 @@ rules:
       cwe: CWE-79
       confidence: high
       subcategory: injection
+      vulnerability_class: "Injection Vulnerability"
+      fix: "Use textContent instead of innerHTML. Use DOMPurify.sanitize() if HTML must be rendered. Enable auto-escaping in template engines (React JSX, Handlebars)."
 
   # XXE (XML External Entity)
   - id: js-xxe-vulnerability
@@ -708,6 +745,8 @@ rules:
       cwe: CWE-611
       confidence: medium
       subcategory: injection
+      vulnerability_class: "Injection Vulnerability"
+      fix: "Use a safe XML parser. In libxmljs, set noent: false and nonet: true. In xml2js, external entities are disabled by default."
 
   # Server-side template injection - using taint mode for accurate detection
   - id: js-template-injection
@@ -746,6 +785,8 @@ rules:
       cwe: CWE-1336
       confidence: high
       subcategory: injection
+      vulnerability_class: "Injection Vulnerability"
+      fix: "Never pass user input to template compilation functions. Use pre-compiled templates with data binding. Enable strict mode in template engines."
 
   # Prototype pollution
   - id: js-prototype-pollution
@@ -776,6 +817,8 @@ rules:
       cwe: CWE-1321
       confidence: high
       subcategory: injection
+      vulnerability_class: "Injection Vulnerability"
+      fix: "Use Object.create(null) for lookup objects. Validate keys against a denylist (__proto__, constructor, prototype). Use Map instead of plain objects."
 
   # ===================================================================== 
   # A04:2021 - Insecure Design
@@ -804,10 +847,11 @@ rules:
       cwe: CWE-307
       confidence: low
       subcategory: design
+      vulnerability_class: "Insecure Design"
 
   # Insufficient input validation
   - id: js-missing-input-validation
-    message: "User input used without validation"
+    message: "Missing input validation. User input is not sufficiently validated, enabling injection or logic bypass attacks. Validate all inputs against expected format, type, and range."
     severity: MEDIUM
     languages: [javascript, typescript]
     patterns:
@@ -829,6 +873,7 @@ rules:
       cwe: CWE-20
       confidence: low
       subcategory: design
+      vulnerability_class: "Insecure Design"
 
   # Predictable resource location
   - id: js-predictable-resource
@@ -848,6 +893,7 @@ rules:
       cwe: CWE-330
       confidence: low
       subcategory: design
+      vulnerability_class: "Insecure Design"
 
   # ===================================================================== 
   # A05:2021 - Security Misconfiguration
@@ -869,10 +915,12 @@ rules:
       cwe: CWE-489
       confidence: medium
       subcategory: configuration
+      vulnerability_class: "Security Misconfiguration"
+      fix: "Set NODE_ENV=production in deployment. Remove console.log/debug statements. Use a logging library with configurable log levels."
 
   # Debugger statement in code
   - id: js-debugger-statement
-    message: "Debugger statement should not be in production code"
+    message: "Debug mode or debug code is enabled in a production context. Debug features expose sensitive information and increase attack surface. Disable debug mode before deploying to production."
     severity: LOW
     languages: [javascript, typescript]
     pattern: debugger
@@ -882,10 +930,11 @@ rules:
       cwe: CWE-489
       confidence: high
       subcategory: configuration
+      vulnerability_class: "Security Misconfiguration"
 
   # Weak session configuration
   - id: js-weak-session-cookie
-    message: "Insecure session cookie configuration"
+    message: "Sensitive cookie missing the Secure flag. The cookie may be transmitted over unencrypted HTTP, allowing interception. Set the Secure flag on all sensitive cookies."
     severity: HIGH
     languages: [javascript, typescript]
     pattern-either:
@@ -907,10 +956,12 @@ rules:
       cwe: CWE-614
       confidence: high
       subcategory: configuration
+      vulnerability_class: "Security Misconfiguration"
+      fix: "Set cookie flags: res.cookie(name, value, { secure: true, httpOnly: true, sameSite: 'lax' }). Use helmet for Express security headers."
 
   # Missing security headers (Helmet.js)
   - id: js-missing-helmet
-    message: "Express app missing Helmet.js security headers middleware"
+    message: "Security protection mechanism bypassed or missing. A security feature is absent or improperly configured. Verify all security mechanisms are active."
     severity: MEDIUM
     languages: [javascript, typescript]
     patterns:
@@ -928,6 +979,7 @@ rules:
       cwe: CWE-693
       confidence: low
       subcategory: configuration
+      vulnerability_class: "Security Misconfiguration"
 
   # Error stack traces exposed
   - id: js-error-stack-exposed
@@ -944,10 +996,11 @@ rules:
       cwe: CWE-209
       confidence: high
       subcategory: configuration
+      vulnerability_class: "Security Misconfiguration"
 
   # Default credentials
   - id: js-default-credentials
-    message: "Default or weak credentials detected"
+    message: "Hard-coded credentials detected. Embedding secrets in source code makes them easily discoverable and impossible to rotate. Use environment variables or a secrets manager instead."
     severity: HIGH
     languages: [javascript, typescript]
     pattern-either:
@@ -967,6 +1020,8 @@ rules:
       cwe: CWE-798
       confidence: high
       subcategory: configuration
+      vulnerability_class: "Security Misconfiguration"
+      fix: "Store secrets in environment variables (process.env.KEY) or use a secrets manager. Use dotenv for local development."
 
   # ===================================================================== 
   # A06:2021 - Vulnerable and Outdated Components
@@ -974,7 +1029,7 @@ rules:
 
   # Deprecated APIs
   - id: js-deprecated-crypto-api
-    message: "Deprecated crypto API - use crypto.createCipheriv instead"
+    message: "Weak cryptographic algorithm detected. Using broken or outdated algorithms may allow attackers to decrypt data or forge signatures. Use modern algorithms like AES-256, SHA-256, or Ed25519."
     severity: MEDIUM
     languages: [javascript, typescript]
     pattern: crypto.createCipher(...)
@@ -984,6 +1039,7 @@ rules:
       cwe: CWE-327
       confidence: high
       subcategory: deprecated
+      vulnerability_class: "Memory Safety Violation"
 
   # Unsafe Buffer constructor
   - id: js-unsafe-buffer
@@ -1000,6 +1056,7 @@ rules:
       cwe: CWE-119
       confidence: high
       subcategory: deprecated
+      vulnerability_class: "Memory Safety Violation"
 
   # ===================================================================== 
   # A07:2021 - Identification and Authentication Failures
@@ -1007,7 +1064,7 @@ rules:
 
   # Weak password requirements
   - id: js-weak-password-validation
-    message: "Weak password validation - enforce strong password policy"
+    message: "Weak password requirements. The application does not enforce strong password policies. Require minimum length, complexity, and check against breached password lists."
     severity: MEDIUM
     languages: [javascript, typescript]
     patterns:
@@ -1026,6 +1083,7 @@ rules:
       cwe: CWE-521
       confidence: low
       subcategory: authentication
+      vulnerability_class: "Authentication Weakness"
 
   # JWT without verification
   - id: js-jwt-no-verify
@@ -1043,10 +1101,12 @@ rules:
       cwe: CWE-347
       confidence: high
       subcategory: authentication
+      vulnerability_class: "Authentication Weakness"
+      fix: "Always verify JWT signatures with jsonwebtoken: jwt.verify(token, secret). Never use jwt.decode() without verification for authorization."
 
   # Weak JWT secret
   - id: js-weak-jwt-secret
-    message: "Weak JWT secret - use a strong random secret"
+    message: "Hard-coded credentials detected. Embedding secrets in source code makes them easily discoverable and impossible to rotate. Use environment variables or a secrets manager instead."
     severity: HIGH
     languages: [javascript, typescript]
     patterns:
@@ -1060,6 +1120,8 @@ rules:
       cwe: CWE-798
       confidence: high
       subcategory: authentication
+      vulnerability_class: "Authentication Weakness"
+      fix: "Store secrets in environment variables (process.env.KEY) or use a secrets manager. Use dotenv for local development."
 
   # Session fixation
   - id: js-session-fixation
@@ -1081,6 +1143,7 @@ rules:
       cwe: CWE-384
       confidence: low
       subcategory: authentication
+      vulnerability_class: "Authentication Weakness"
 
   # ===================================================================== 
   # A08:2021 - Software and Data Integrity Failures
@@ -1088,7 +1151,7 @@ rules:
 
   # Unsafe deserialization
   - id: js-unsafe-deserialization
-    message: "Unsafe deserialization - can lead to remote code execution"
+    message: "Unsafe deserialization detected. Deserializing untrusted data can lead to remote code execution or denial of service. Use safe serialization formats like JSON or validate data before deserializing."
     severity: CRITICAL
     languages: [javascript, typescript]
     pattern-either:
@@ -1108,6 +1171,8 @@ rules:
       cwe: CWE-502
       confidence: high
       subcategory: integrity
+      vulnerability_class: "Insecure Deserialization"
+      fix: "Avoid eval() or Function() for deserialization. Use JSON.parse() with a reviver function to validate types."
 
   # Missing integrity check for external resources
   - id: js-missing-sri
@@ -1130,10 +1195,11 @@ rules:
       cwe: CWE-353
       confidence: low
       subcategory: integrity
+      vulnerability_class: "Insecure Deserialization"
 
   # Insecure update mechanism
   - id: js-insecure-auto-update
-    message: "Auto-update mechanism without integrity verification"
+    message: "Code downloaded without integrity verification. Executing unverified code allows supply chain attacks. Verify checksums or signatures before execution."
     severity: HIGH
     languages: [javascript, typescript]
     patterns:
@@ -1154,6 +1220,8 @@ rules:
       cwe: CWE-494
       confidence: low
       subcategory: integrity
+      vulnerability_class: "Insecure Deserialization"
+      fix: "Use Subresource Integrity (SRI) for CDN scripts: <script src='...' integrity='sha384-...' crossorigin='anonymous'>. Verify npm package checksums."
 
   # ===================================================================== 
   # A09:2021 - Security Logging and Monitoring Failures
@@ -1177,10 +1245,11 @@ rules:
       cwe: CWE-532
       confidence: low
       subcategory: logging
+      vulnerability_class: "Sensitive Data Exposure"
 
   # Missing error logging
   - id: js-missing-error-logging
-    message: "Error caught but not logged - can hide security issues"
+    message: "Insufficient security logging. Critical events are not logged, hindering incident detection. Log authentication, authorization, and data access events."
     severity: LOW
     languages: [javascript, typescript]
     patterns:
@@ -1211,6 +1280,7 @@ rules:
       cwe: CWE-778
       confidence: low
       subcategory: logging
+      vulnerability_class: "Sensitive Data Exposure"
 
   # ===================================================================== 
   # A10:2021 - Server-Side Request Forgery (SSRF)
@@ -1263,6 +1333,8 @@ rules:
       cwe: CWE-918
       confidence: high
       subcategory: ssrf
+      vulnerability_class: "Server-Side Request Forgery"
+      fix: "Validate URLs against an allowlist of permitted hosts. Block private IP ranges and localhost. Use the URL constructor to parse and validate before fetching."
 
   # =====================================================================
   # JavaScript/TypeScript Best Practices
@@ -1270,7 +1342,7 @@ rules:
 
   # Unsafe type coercion
   - id: js-unsafe-type-coercion
-    message: "Unsafe type coercion - use strict equality (===) instead"
+    message: "Incorrect comparison detected. Flawed comparison logic can bypass security checks. Use strict equality and proper type checking."
     severity: LOW
     languages: [javascript, typescript]
     pattern-either:
@@ -1281,10 +1353,11 @@ rules:
       cwe: CWE-697
       confidence: low
       subcategory: type-safety
+      vulnerability_class: "Insecure Design"
 
   # Missing await on Promise
   - id: js-missing-await
-    message: "Promise not awaited - may cause unexpected behavior"
+    message: "Improper error handling detected. The application does not properly handle exceptions, which may cause crashes or information leaks. Catch specific exceptions and handle them gracefully."
     severity: LOW
     languages: [javascript, typescript]
     patterns:
@@ -1306,6 +1379,7 @@ rules:
       cwe: CWE-703
       confidence: low
       subcategory: async
+      vulnerability_class: "Improper Error Handling"
 
   # Unhandled Promise rejection
   - id: js-unhandled-promise-rejection
@@ -1331,10 +1405,11 @@ rules:
       cwe: CWE-755
       confidence: low
       subcategory: error-handling
+      vulnerability_class: "Improper Error Handling"
 
   # RegEx Denial of Service (ReDoS)
   - id: js-regex-dos
-    message: "Complex regex pattern - potential ReDoS vulnerability"
+    message: "Regular expression denial of service (ReDoS) risk. A regex with catastrophic backtracking can freeze the application on crafted input. Simplify the regex or set a timeout."
     severity: MEDIUM
     languages: [javascript, typescript]
     pattern-either:
@@ -1360,6 +1435,7 @@ rules:
       cwe: CWE-1333
       confidence: medium
       subcategory: dos
+      vulnerability_class: "Denial of Service"
 
   # Unsafe parseInt without radix
   - id: js-parseint-missing-radix
@@ -1372,6 +1448,7 @@ rules:
       cwe: CWE-704
       confidence: high
       subcategory: type-safety
+      vulnerability_class: "Insecure Design"
 
   # =====================================================================
   # Framework-Specific Rules
@@ -1391,6 +1468,11 @@ rules:
       cwe: CWE-79
       confidence: high
       subcategory: xss
+      vulnerability_class: "Cross-Site Scripting (XSS)"
+      owasp: "A03:2021"
+      references:
+        - https://react.dev/reference/react-dom/components/common
+      fix: "Use textContent instead of innerHTML. Use DOMPurify.sanitize() if HTML must be rendered. Enable auto-escaping in template engines (React JSX, Handlebars)."
 
   # React missing key prop
   - id: js-react-missing-key
@@ -1407,6 +1489,9 @@ rules:
       framework: react
       confidence: low
       subcategory: performance
+      vulnerability_class: "Other"
+      references:
+        - https://react.dev/reference/react-dom/components/common
 
   # Express missing async error handler
   - id: js-express-async-no-error-handler
@@ -1440,10 +1525,13 @@ rules:
       cwe: CWE-755
       confidence: medium
       subcategory: error-handling
+      vulnerability_class: "Improper Error Handling"
+      references:
+        - https://expressjs.com/en/advanced/best-practice-security.html
 
   # Express trust proxy not set
   - id: js-express-trust-proxy-not-set
-    message: "Express behind proxy without 'trust proxy' setting"
+    message: "Security protection mechanism bypassed or missing. A security feature is absent or improperly configured. Verify all security mechanisms are active."
     severity: LOW
     languages: [javascript, typescript]
     patterns:
@@ -1458,10 +1546,14 @@ rules:
       cwe: CWE-693
       confidence: low
       subcategory: proxy
+      vulnerability_class: "Security Misconfiguration"
+      owasp: "A05:2021"
+      references:
+        - https://expressjs.com/en/advanced/best-practice-security.html
 
   # Next.js getServerSideProps without error handling
   - id: js-nextjs-gsp-no-error-handling
-    message: "getServerSideProps without error handling"
+    message: "Improper handling of exceptional conditions. The application may crash or behave unexpectedly on errors. Add proper exception handling for all expected failure modes."
     severity: LOW
     languages: [javascript, typescript]
     patterns:
@@ -1483,6 +1575,9 @@ rules:
       cwe: CWE-755
       confidence: low
       subcategory: error-handling
+      vulnerability_class: "Improper Error Handling"
+      references:
+        - https://nextjs.org/docs/app/building-your-application/authentication
 
   # =====================================================================
   # Node.js Specific Vulnerabilities
@@ -1490,7 +1585,7 @@ rules:
 
   # Unsafe file operations
   - id: js-unsafe-file-operations
-    message: "Unsafe file operation - validate file paths"
+    message: "External file path control. User input determines which file is accessed. Validate paths against an allowlist and canonicalize before use."
     severity: HIGH
     languages: [javascript, typescript]
     pattern-either:
@@ -1506,10 +1601,13 @@ rules:
       cwe: CWE-73
       confidence: high
       subcategory: file-operations
+      vulnerability_class: "Insecure File Operation"
+      owasp: "A04:2021"
+      fix: "Validate file paths against an allowlist. Use path.resolve() and verify the result is within the allowed directory. Reject paths with '..' components."
 
   # Process execution with user input
   - id: js-unsafe-process-spawn
-    message: "Unsafe process execution with user input"
+    message: "OS command injection vulnerability detected. User-controlled data flows into a system command without proper sanitization, allowing attackers to execute arbitrary commands. Use safe APIs with argument lists instead of shell execution."
     severity: HIGH
     languages: [javascript, typescript]
     pattern-either:
@@ -1523,6 +1621,9 @@ rules:
       cwe: CWE-78
       confidence: high
       subcategory: process
+      vulnerability_class: "Injection Vulnerability"
+      owasp: "A03:2021"
+      fix: "Use child_process.execFile() or spawn() with argument arrays instead of exec(). Never interpolate user input into shell commands."
 
   # Timing attack vulnerability
   - id: js-timing-attack
@@ -1555,6 +1656,7 @@ rules:
       cwe: CWE-208
       confidence: low
       subcategory: crypto
+      vulnerability_class: "Cryptographic Weakness"
 
   # Unvalidated file upload
   - id: js-unvalidated-file-upload
@@ -1573,6 +1675,9 @@ rules:
       cwe: CWE-434
       confidence: low
       subcategory: upload
+      vulnerability_class: "Unrestricted File Upload"
+      owasp: "A04:2021"
+      fix: "Validate file extension, MIME type, and content. Use multer with file filter. Store uploads outside the web root with randomized names."
 
   # Zip bomb / decompression bomb
   - id: js-zip-bomb
@@ -1593,3 +1698,4 @@ rules:
       cwe: CWE-409
       confidence: low
       subcategory: dos
+      vulnerability_class: "Denial of Service"

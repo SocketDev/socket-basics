@@ -23,10 +23,16 @@ RUN apt-get update && \
 RUN curl -sfL https://raw.githubusercontent.com/securego/gosec/master/install.sh  | sh -s -- -b /usr/local/bin v2.21.4
 
 # Install Trivy
-RUN curl -sfL https://raw.githubusercontent.com/aquasecurity/trivy/main/contrib/install.sh | sh -s -- -b /usr/local/bin v0.18.3
+ARG TRIVY_VERSION=v0.69.2
+RUN curl -sfL https://raw.githubusercontent.com/aquasecurity/trivy/main/contrib/install.sh | sh -s -- -b /usr/local/bin "${TRIVY_VERSION}"
 
 # Install Trufflehog
-RUN curl -sSfL https://raw.githubusercontent.com/trufflesecurity/trufflehog/main/scripts/install.sh | sh -s -- -b /usr/local/bin
+ARG TRUFFLEHOG_VERSION=v3.93.6
+RUN curl -sSfL https://raw.githubusercontent.com/trufflesecurity/trufflehog/main/scripts/install.sh | sh -s -- -b /usr/local/bin "${TRUFFLEHOG_VERSION}"
+
+# Install OpenGrep (connector/runtime dependency)
+ARG OPENGREP_VERSION=v1.16.2
+RUN curl -fsSL https://raw.githubusercontent.com/opengrep/opengrep/main/install.sh | bash -s -- -v "${OPENGREP_VERSION}"
 
 # Install Bandit using uv as a tool
 RUN uv tool install bandit
@@ -50,7 +56,7 @@ COPY pyproject.toml uv.lock /scripts/
 # Install Python dependencies using uv
 WORKDIR /scripts
 RUN uv sync --frozen && uv pip install light-s3-client
-ENV PATH="/scripts/.venv/bin:$PATH"
+ENV PATH="/scripts/.venv/bin:/root/.opengrep/cli/latest:$PATH"
 
 # Define entrypoint
 ENTRYPOINT ["/socket-security-tools/entrypoint.sh"]

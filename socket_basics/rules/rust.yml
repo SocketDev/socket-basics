@@ -3,7 +3,7 @@ rules:
 
   # Unsafe code blocks
   - id: rust-unsafe-usage
-    message: "Unsafe code block detected - review for memory safety"
+    message: "Memory buffer boundary violation. Operations read or write beyond buffer bounds, causing crashes or code execution. Use bounds-checked functions and validate sizes."
     severity: CRITICAL
     languages: [rust]
     pattern-either:
@@ -16,10 +16,13 @@ rules:
       category: security
       cwe: CWE-119
       confidence: medium
+      subcategory: deprecated
+      vulnerability_class: "Memory Safety Violation"
+      fix: "Minimize unsafe blocks. Use safe Rust APIs with bounds checking. If unsafe is required, carefully validate all buffer sizes and indices."
 
   # Command injection
   - id: rust-command-injection
-    message: "Command injection vulnerability detected"
+    message: "OS command injection vulnerability detected. User-controlled data flows into a system command without proper sanitization, allowing attackers to execute arbitrary commands. Use safe APIs with argument lists instead of shell execution."
     severity: CRITICAL
     languages: [rust]
     patterns:
@@ -35,10 +38,14 @@ rules:
       category: security
       cwe: CWE-78
       confidence: medium
+      subcategory: injection
+      vulnerability_class: "Injection Vulnerability"
+      owasp: "A03:2021"
+      fix: "Use std::process::Command with separate arguments: Command::new('cmd').arg(arg1).arg(arg2). Never pass user input to shell commands."
 
   # Unsafe deserialization
   - id: rust-unsafe-deserialization
-    message: "Unsafe deserialization detected"
+    message: "Unsafe deserialization detected. Deserializing untrusted data can lead to remote code execution or denial of service. Use safe serialization formats like JSON or validate data before deserializing."
     severity: CRITICAL
     languages: [rust]
     patterns:
@@ -53,10 +60,14 @@ rules:
       category: security
       cwe: CWE-502
       confidence: medium
+      subcategory: integrity
+      vulnerability_class: "Insecure Deserialization"
+      owasp: "A08:2021"
+      fix: "Use serde with JSON/MessagePack instead of bincode for untrusted data. Validate deserialized data before use."
 
   # SQL injection potential
   - id: rust-sql-injection
-    message: "Potential SQL injection vulnerability"
+    message: "SQL injection vulnerability detected. User-supplied input is included in a SQL query without sanitization, potentially allowing attackers to read, modify, or delete database contents. Use parameterized queries or an ORM instead of string concatenation."
     severity: CRITICAL
     languages: [rust]
     pattern-either:
@@ -68,12 +79,16 @@ rules:
       category: security
       cwe: CWE-89
       confidence: medium
+      subcategory: injection
+      vulnerability_class: "Injection Vulnerability"
+      owasp: "A03:2021"
+      fix: "Use parameterized queries with sqlx: sqlx::query('SELECT * FROM t WHERE id = $1').bind(user_id). Never format user input into SQL strings."
 
   # === High Severity Rules ===
 
   # Hardcoded secrets
   - id: rust-hardcoded-secrets
-    message: "Hardcoded secrets detected"
+    message: "Hard-coded credentials detected. Embedding secrets in source code makes them easily discoverable and impossible to rotate. Use environment variables or a secrets manager instead."
     severity: HIGH
     languages: [rust]
     patterns:
@@ -91,10 +106,14 @@ rules:
       category: security
       cwe: CWE-798
       confidence: medium
+      subcategory: authentication
+      vulnerability_class: "Authentication Weakness"
+      owasp: "A07:2021"
+      fix: "Store secrets in environment variables (std::env::var('KEY')) or use a secrets manager. Use dotenvy for local development."
 
   # Weak cryptography - MD5
   - id: rust-weak-crypto-md5
-    message: "Use of weak MD5 hash algorithm"
+    message: "Weak cryptographic algorithm detected. Using broken or outdated algorithms may allow attackers to decrypt data or forge signatures. Use modern algorithms like AES-256, SHA-256, or Ed25519."
     severity: HIGH
     languages: [rust]
     pattern-either:
@@ -106,10 +125,14 @@ rules:
       category: security
       cwe: CWE-327
       confidence: high
+      subcategory: crypto
+      vulnerability_class: "Cryptographic Weakness"
+      owasp: "A02:2021"
+      fix: "Use sha2 crate (Sha256::digest) instead of md5. Use aes-gcm crate for authenticated encryption."
 
   # Weak cryptography - SHA1
   - id: rust-weak-crypto-sha1
-    message: "Use of weak SHA1 hash algorithm"
+    message: "Weak cryptographic algorithm detected. Using broken or outdated algorithms may allow attackers to decrypt data or forge signatures. Use modern algorithms like AES-256, SHA-256, or Ed25519."
     severity: HIGH
     languages: [rust]
     pattern-either:
@@ -121,10 +144,14 @@ rules:
       category: security
       cwe: CWE-327
       confidence: high
+      subcategory: crypto
+      vulnerability_class: "Cryptographic Weakness"
+      owasp: "A02:2021"
+      fix: "Use sha2 crate (Sha256::digest) instead of md5. Use aes-gcm crate for authenticated encryption."
 
   # Insecure TLS configuration
   - id: rust-insecure-tls
-    message: "Insecure TLS configuration detected"
+    message: "TLS/SSL certificate validation is disabled or bypassed. This allows man-in-the-middle attacks where attackers can intercept encrypted communications. Always validate certificates in production."
     severity: HIGH
     languages: [rust]
     pattern-either:
@@ -135,10 +162,14 @@ rules:
       category: security
       cwe: CWE-295
       confidence: high
+      subcategory: crypto
+      vulnerability_class: "Cryptographic Weakness"
+      owasp: "A07:2021"
+      fix: "Never use danger_accept_invalid_certs(true) in reqwest or rustls. Use the default TLS verification with proper CA certificates."
 
   # Path traversal
   - id: rust-path-traversal
-    message: "Path traversal vulnerability detected"
+    message: "Path traversal vulnerability detected. User input is used in file paths without validation, allowing attackers to access files outside the intended directory. Validate and canonicalize paths before use."
     severity: HIGH
     languages: [rust]
     patterns:
@@ -154,10 +185,14 @@ rules:
       category: security
       cwe: CWE-22
       confidence: medium
+      subcategory: access-control
+      vulnerability_class: "Access Control Violation"
+      owasp: "A01:2021"
+      fix: "Use std::fs::canonicalize() and verify the result starts with the allowed base directory. Use Path::starts_with() for validation."
 
   # Buffer overflow potential
   - id: rust-buffer-overflow-potential
-    message: "Potential buffer overflow in unsafe code"
+    message: "Buffer overflow vulnerability. Data is copied without checking buffer size, potentially allowing code execution. Always validate input length before buffer operations."
     severity: HIGH
     languages: [rust]
     pattern-either:
@@ -183,6 +218,9 @@ rules:
       category: security
       cwe: CWE-120
       confidence: low
+      subcategory: deprecated
+      vulnerability_class: "Memory Safety Violation"
+      fix: "Use safe Rust APIs that enforce bounds checking. Minimize unsafe blocks. Use Vec<u8> and slice methods instead of raw pointers."
 
   # === Medium Severity Rules ===
 
@@ -202,10 +240,12 @@ rules:
       category: security
       cwe: CWE-248
       confidence: low
+      subcategory: error-handling
+      vulnerability_class: "Improper Error Handling"
 
   # Insecure random number generation
   - id: rust-insecure-random
-    message: "Use of potentially insecure random number generation"
+    message: "Insecure random number generator used. Non-cryptographic PRNGs produce predictable values that attackers can guess. Use a cryptographically secure random generator for security-sensitive operations."
     severity: MEDIUM
     languages: [rust]
     pattern-either:
@@ -216,10 +256,13 @@ rules:
       category: security
       cwe: CWE-338
       confidence: low
+      subcategory: crypto
+      vulnerability_class: "Cryptographic Weakness"
+      owasp: "A02:2021"
 
   # HTTP instead of HTTPS
   - id: rust-insecure-http
-    message: "Use of HTTP instead of HTTPS"
+    message: "Sensitive data transmitted over an unencrypted channel. Using HTTP instead of HTTPS allows network attackers to intercept data in transit. Use HTTPS for all communications containing sensitive data."
     severity: MEDIUM
     languages: [rust]
     pattern-either:
@@ -230,10 +273,13 @@ rules:
       category: security
       cwe: CWE-319
       confidence: low
+      subcategory: crypto
+      vulnerability_class: "Cryptographic Weakness"
+      owasp: "A02:2021"
 
   # Weak cipher algorithms
   - id: rust-weak-cipher
-    message: "Use of weak cipher algorithm"
+    message: "Weak cryptographic algorithm detected. Using broken or outdated algorithms may allow attackers to decrypt data or forge signatures. Use modern algorithms like AES-256, SHA-256, or Ed25519."
     severity: MEDIUM
     languages: [rust]
     pattern-either:
@@ -245,6 +291,9 @@ rules:
       category: security
       cwe: CWE-327
       confidence: medium
+      subcategory: crypto
+      vulnerability_class: "Cryptographic Weakness"
+      owasp: "A02:2021"
 
   # Integer overflow potential
   - id: rust-integer-overflow
@@ -267,12 +316,14 @@ rules:
       category: security
       cwe: CWE-190
       confidence: low
+      subcategory: deprecated
+      vulnerability_class: "Memory Safety Violation"
 
   # === Low Severity Rules ===
 
   # Debug information disclosure
   - id: rust-debug-info-disclosure
-    message: "Debug information disclosure detected"
+    message: "Sensitive information written to log files. Passwords, tokens, or personal data in logs can be exposed to unauthorized parties. Redact sensitive values before logging."
     severity: LOW
     languages: [rust]
     patterns:
@@ -288,10 +339,13 @@ rules:
       category: security
       cwe: CWE-532
       confidence: low
+      subcategory: logging
+      vulnerability_class: "Sensitive Data Exposure"
+      owasp: "A09:2021"
 
   # Hardcoded IP addresses
   - id: rust-hardcoded-ip
-    message: "Hardcoded IP address detected"
+    message: "Hard-coded credentials detected. Embedding secrets in source code makes them easily discoverable and impossible to rotate. Use environment variables or a secrets manager instead."
     severity: LOW
     languages: [rust]
     pattern-either:
@@ -304,6 +358,9 @@ rules:
       category: security
       cwe: CWE-798
       confidence: low
+      subcategory: authentication
+      vulnerability_class: "Authentication Weakness"
+      owasp: "A07:2021"
 
   # Development/testing code
   - id: rust-development-code
@@ -323,12 +380,15 @@ rules:
       category: security
       cwe: CWE-489
       confidence: low
+      subcategory: configuration
+      vulnerability_class: "Security Misconfiguration"
+      owasp: "A05:2021"
 
   # === Framework-specific Rules ===
 
   # Actix-web security issues
   - id: rust-actix-security
-    message: "Actix-web security configuration issue"
+    message: "Insecure configuration detected. A misconfigured setting weakens the application's security posture. Review and harden security-relevant configuration."
     severity: MEDIUM
     languages: [rust]
     pattern-either:
@@ -345,10 +405,15 @@ rules:
       framework: actix
       cwe: CWE-16
       confidence: low
+      subcategory: configuration
+      vulnerability_class: "Security Misconfiguration"
+      owasp: "A05:2021"
+      references:
+        - https://actix.rs/docs/
 
   # Warp security issues
   - id: rust-warp-security
-    message: "Warp security configuration issue"
+    message: "Insecure configuration detected. A misconfigured setting weakens the application's security posture. Review and harden security-relevant configuration."
     severity: MEDIUM
     languages: [rust]
     pattern-either:
@@ -359,10 +424,15 @@ rules:
       framework: warp
       cwe: CWE-16
       confidence: low
+      subcategory: configuration
+      vulnerability_class: "Security Misconfiguration"
+      owasp: "A05:2021"
+      references:
+        - https://docs.rs/warp/
 
   # Rocket security issues
   - id: rust-rocket-security
-    message: "Rocket security configuration issue"
+    message: "Insecure configuration detected. A misconfigured setting weakens the application's security posture. Review and harden security-relevant configuration."
     severity: MEDIUM
     languages: [rust]
     pattern-either:
@@ -381,10 +451,15 @@ rules:
       framework: rocket
       cwe: CWE-16
       confidence: low
+      subcategory: configuration
+      vulnerability_class: "Security Misconfiguration"
+      owasp: "A05:2021"
+      references:
+        - https://rocket.rs/guide/
 
   # Diesel ORM injection
   - id: rust-diesel-injection
-    message: "Potential Diesel ORM injection"
+    message: "SQL injection vulnerability detected. User-supplied input is included in a SQL query without sanitization, potentially allowing attackers to read, modify, or delete database contents. Use parameterized queries or an ORM instead of string concatenation."
     severity: HIGH
     languages: [rust]
     pattern-either:
@@ -396,10 +471,16 @@ rules:
       framework: diesel
       cwe: CWE-89
       confidence: medium
+      subcategory: injection
+      vulnerability_class: "Injection Vulnerability"
+      owasp: "A03:2021"
+      references:
+        - https://diesel.rs/guides/
+      fix: "Use parameterized queries with sqlx: sqlx::query('SELECT * FROM t WHERE id = $1').bind(user_id). Never format user input into SQL strings."
 
   # Tokio security issues
   - id: rust-tokio-security
-    message: "Tokio async security issue"
+    message: "Uncontrolled resource consumption detected. The application does not limit resource usage, making it vulnerable to denial-of-service attacks. Implement rate limiting and resource caps."
     severity: MEDIUM
     languages: [rust]
     pattern-either:
@@ -416,10 +497,14 @@ rules:
       framework: tokio
       cwe: CWE-400
       confidence: low
+      subcategory: dos
+      vulnerability_class: "Denial of Service"
+      references:
+        - https://tokio.rs/tokio/tutorial
 
   # Serde security issues
   - id: rust-serde-security
-    message: "Serde deserialization security issue"
+    message: "Unsafe deserialization detected. Deserializing untrusted data can lead to remote code execution or denial of service. Use safe serialization formats like JSON or validate data before deserializing."
     severity: HIGH
     languages: [rust]
     patterns:
@@ -435,10 +520,14 @@ rules:
       framework: serde
       cwe: CWE-502
       confidence: low
+      subcategory: integrity
+      vulnerability_class: "Insecure Deserialization"
+      owasp: "A08:2021"
+      fix: "Use serde with JSON/MessagePack instead of bincode for untrusted data. Validate deserialized data before use."
 
   # Memory safety violations
   - id: rust-memory-safety
-    message: "Potential memory safety violation in unsafe code"
+    message: "Use-after-free vulnerability. Accessing freed memory can cause crashes or arbitrary code execution. Nullify pointers after free and use smart pointers where possible."
     severity: HIGH
     languages: [rust]
     pattern-either:
@@ -451,10 +540,13 @@ rules:
       category: security
       cwe: CWE-416
       confidence: low
+      subcategory: deprecated
+      vulnerability_class: "Memory Safety Violation"
+      fix: "Avoid unsafe blocks with raw pointers. Use Rust's ownership system and borrowing rules. If unsafe is required, ensure lifetimes are properly managed."
 
   # File permissions
   - id: rust-file-permissions
-    message: "Insecure file permissions detected"
+    message: "Overly permissive file or resource permissions. Resources are accessible to unauthorized users due to incorrect permission settings. Apply the principle of least privilege."
     severity: MEDIUM
     languages: [rust]
     pattern-either:
@@ -465,10 +557,13 @@ rules:
       category: security
       cwe: CWE-732
       confidence: medium
+      subcategory: configuration
+      vulnerability_class: "Security Misconfiguration"
+      owasp: "A05:2021"
 
   # Environment variable injection
   - id: rust-env-injection
-    message: "Environment variable injection potential"
+    message: "Injection vulnerability. User input reaches a downstream interpreter without sanitization. Sanitize or parameterize all user-controlled data."
     severity: MEDIUM
     languages: [rust]
     patterns:
@@ -483,3 +578,6 @@ rules:
       category: security
       cwe: CWE-74
       confidence: low
+      subcategory: injection
+      vulnerability_class: "Injection Vulnerability"
+      owasp: "A03:2021"
