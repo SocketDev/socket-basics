@@ -24,18 +24,19 @@ def _make_purl(comp: Dict[str, Any]) -> str:
 
 
 def format_notifications(components_list: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
-    """Format for generic webhook - flexible structured format."""
+    """Format for generic webhook - flexible structured format with findings."""
     rows = []
+    findings: List[Dict[str, Any]] = []
     for comp in components_list:
         comp_name = str(comp.get('name') or comp.get('id') or '-')
-        
+
         for a in comp.get('alerts', []):
             props = a.get('props', {}) or {}
             purl = str(props.get('purl') or _make_purl(comp) or comp_name)
             cve_id = str(props.get('ghsaId') or props.get('cveId') or a.get('title') or '')
             severity = str(a.get('severity') or props.get('severity') or '')
             reachability = str(props.get('reachability') or '')
-            
+
             rows.append([
                 cve_id,
                 severity,
@@ -46,6 +47,16 @@ def format_notifications(components_list: List[Dict[str, Any]]) -> List[Dict[str
                 str(props.get('ghsaId', '')),
                 'socket-tier1'
             ])
+
+            findings.append({
+                'package': comp_name,
+                'version': str(comp.get('version', '')),
+                'purl': purl,
+                'cves': [cve_id] if cve_id else [],
+                'severity': severity,
+                'reachability': reachability,
+                'scanner': 'socket-tier1',
+            })
     
     # Format as structured data for webhook
     if not rows:
@@ -62,5 +73,6 @@ def format_notifications(components_list: List[Dict[str, Any]]) -> List[Dict[str
     
     return [{
         'title': 'Socket Tier1 Reachability Analysis',
-        'content': content
+        'content': content,
+        'findings': findings,
     }]
