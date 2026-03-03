@@ -8,6 +8,7 @@ from socket_basics.core.config import (
     load_connectors_config,
     get_slack_webhook_url,
     get_webhook_url,
+    get_msteams_webhook_url,
     get_ms_sentinel_workspace_id,
     get_jira_url,
     get_sumologic_endpoint,
@@ -73,6 +74,19 @@ class NotificationManager:
                             enable_cause = 'env:SLACK_WEBHOOK_URL or INPUT_SLACK_WEBHOOK_URL'
                         else:
                             enable_cause = 'app_config:slack_webhook_url'
+
+                # MS Teams: webhook
+                if name.lower() == 'msteams':
+                    msteams_url = get_msteams_webhook_url()
+                    if (
+                        msteams_url
+                        or (self.app_config and self.app_config.get('msteams_webhook_url'))
+                    ):
+                        enabled = True
+                        if msteams_url:
+                            enable_cause = 'env:MSTEAMS_WEBHOOK_URL or INPUT_MSTEAMS_WEBHOOK_URL'
+                        else:
+                            enable_cause = 'app_config:msteams_webhook_url'
 
                 # Webhook generic
                 if name.lower() == 'webhook':

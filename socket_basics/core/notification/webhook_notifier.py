@@ -1,10 +1,23 @@
-from typing import Any, Dict
+from datetime import datetime, timezone
+from typing import Any, Dict, List
 import logging
+
+import requests
 
 from socket_basics.core.notification.base import BaseNotifier
 from socket_basics.core.config import get_webhook_url
 
 logger = logging.getLogger(__name__)
+
+
+def _compute_summary(findings: List[Dict[str, Any]]) -> Dict[str, int]:
+    """Compute severity counts from a findings list."""
+    counts: Dict[str, int] = {'total': len(findings), 'critical': 0, 'high': 0, 'medium': 0, 'low': 0}
+    for f in findings:
+        sev = str(f.get('severity', '')).lower()
+        if sev in counts:
+            counts[sev] += 1
+    return counts
 
 
 class WebhookNotifier(BaseNotifier):
@@ -47,12 +60,10 @@ class WebhookNotifier(BaseNotifier):
 
         # Send each notification as a separate webhook
         for item in valid_notifications:
-            title = item['title']
-            content = item['content']
-            self._send_webhook(facts, title, content)
+            self._send_webhook(facts, item)
 
-    def _send_webhook(self, facts: Dict[str, Any], title: str, content: str) -> None:
-        """Send a single webhook with title and content."""
+    def _send_webhook(self, facts: Dict[str, Any], item: Dict[str, Any]) -> None:
+        """Send a single webhook with structured payload."""
         if not self.url:
             logger.warning('WebhookNotifier: no webhook URL configured')
             return
@@ -61,25 +72,30 @@ class WebhookNotifier(BaseNotifier):
         repo = facts.get('repository', 'Unknown')
         branch = facts.get('branch', 'Unknown')
 
-        # Create webhook payload with pre-formatted content
+        title = item['title']
+        content = item['content']
+        findings = item.get('findings', [])
+
         payload = {
             'repository': repo,
             'branch': branch,
             'scanner': 'socket-security',
-            'timestamp': facts.get('timestamp'),
+            'timestamp': datetime.now(timezone.utc).strftime('%Y-%m-%dT%H:%M:%SZ'),
+            'scan_type': title,
+            'summary': _compute_summary(findings),
+            'findings': findings,
             'notification': {
                 'title': title,
-                'content': content
+                'content': content,
             }
         }
 
         try:
-            import requests
             resp = requests.post(self.url, json=payload, timeout=10)
             if resp.status_code >= 400:
                 logger.warning('WebhookNotifier: HTTP error %s: %s', resp.status_code, resp.text[:200])
             else:
                 logger.info('WebhookNotifier: sent webhook for "%s"', title)
-                
+
         except Exception as e:
             logger.error('WebhookNotifier: exception sending webhook: %s', e)

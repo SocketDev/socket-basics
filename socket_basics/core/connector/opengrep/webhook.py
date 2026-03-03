@@ -35,30 +35,45 @@ def format_notifications(groups: Dict[str, List[Dict[str, Any]]]) -> List[Dict[s
     for subtype, items in groups.items():
         if not items:  # Skip empty groups
             continue
-            
+
         rows = []
+        findings: List[Dict[str, Any]] = []
         for item in items:
             c = item['component']
             a = item['alert']
             props = a.get('props', {}) or {}
             full_path = props.get('filePath', a.get('location', {}).get('path')) or '-'
-            
+
             try:
                 file_name = Path(full_path).name
             except Exception:
                 file_name = full_path
-            
+
+            rule = props.get('ruleId', a.get('title', ''))
+            severity = a.get('severity', '')
+            lines = f"{props.get('startLine','')}-{props.get('endLine','')}"
+
             rows.append([
-                props.get('ruleId', a.get('title', '')),
-                a.get('severity', ''),
+                rule,
+                severity,
                 file_name,
                 full_path,
-                f"{props.get('startLine','')}-{props.get('endLine','')}",
+                lines,
                 props.get('codeSnippet', '') or '',
                 subtype,
                 'opengrep'
             ])
-        
+
+            findings.append({
+                'rule': rule,
+                'severity': severity,
+                'file': file_name,
+                'path': full_path,
+                'lines': lines,
+                'language': subtype,
+                'scanner': 'opengrep',
+            })
+
         # Create a separate dataset for each subtype/language group
         display_name = subtype_names.get(subtype, subtype.upper())
         headers = ['Rule', 'Severity', 'File', 'Path', 'Lines', 'Code', 'SubType', 'Scanner']
@@ -67,13 +82,14 @@ def format_notifications(groups: Dict[str, List[Dict[str, Any]]]) -> List[Dict[s
         content_rows = []
         for row in rows:
             content_rows.append(' | '.join(str(cell) for cell in row))
-        
+
         content = '\n'.join([header_row, separator_row] + content_rows) if rows else f"No {display_name} issues found."
-        
+
         tables.append({
             'title': display_name,
-            'content': content
+            'content': content,
+            'findings': findings,
         })
-    
+
     # Return list of tables - one per language group
     return tables

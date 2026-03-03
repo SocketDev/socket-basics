@@ -8,8 +8,9 @@ from typing import Dict, Any, List
 
 
 def format_notifications(mapping: Dict[str, Any]) -> List[Dict[str, Any]]:
-    """Format for generic webhook - flexible structured format."""
+    """Format for generic webhook - flexible structured format with findings."""
     rows = []
+    findings: List[Dict[str, Any]] = []
     for comp in mapping.values():
         for a in comp.get('alerts', []):
             props = a.get('props', {}) or {}
@@ -20,7 +21,7 @@ def format_notifications(mapping: Dict[str, Any]) -> List[Dict[str, Any]]:
             redacted = str(props.get('redactedValue', ''))
             verified = props.get('verified', False)
             secret_type = str(props.get('secretType', ''))
-            
+
             rows.append([
                 detector,
                 severity,
@@ -31,6 +32,16 @@ def format_notifications(mapping: Dict[str, Any]) -> List[Dict[str, Any]]:
                 str(verified),
                 'trufflehog'
             ])
+
+            # Omit redacted_value from structured findings to avoid leaking secrets
+            findings.append({
+                'detector': detector,
+                'severity': severity,
+                'file': file_path,
+                'line': line,
+                'verified': verified,
+                'scanner': 'trufflehog',
+            })
     
     # Format as structured data
     if not rows:
@@ -47,5 +58,6 @@ def format_notifications(mapping: Dict[str, Any]) -> List[Dict[str, Any]]:
     
     return [{
         'title': 'TruffleHog Secret Detection Results',
-        'content': content
+        'content': content,
+        'findings': findings,
     }]
