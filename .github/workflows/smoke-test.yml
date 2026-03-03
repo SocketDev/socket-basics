@@ -1,0 +1,36 @@
+name: smoke-test
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'Dockerfile'
+      - 'scripts/smoke-test-docker.sh'
+      - '.github/workflows/smoke-test.yml'
+  pull_request:
+    paths:
+      - 'Dockerfile'
+      - 'scripts/smoke-test-docker.sh'
+      - '.github/workflows/smoke-test.yml'
+  schedule:
+    - cron: '0 */12 * * *' # every 12 hours
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: smoke-test-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  smoke-test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      DOCKER_BUILDKIT: "1"
+      SMOKE_TEST_BUILD_PROGRESS: plain
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+      - name: 🐳 smoke test
+        run: bash ./scripts/smoke-test-docker.sh --image-tag socket-basics:smoke-test
