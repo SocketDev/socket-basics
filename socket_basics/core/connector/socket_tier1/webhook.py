@@ -52,7 +52,7 @@ def format_notifications(components_list: List[Dict[str, Any]]) -> List[Dict[str
                 'package': comp_name,
                 'version': str(comp.get('version', '')),
                 'purl': purl,
-                'cve': cve_id,
+                'cves': [cve_id] if cve_id else [],
                 'severity': severity,
                 'reachability': reachability,
                 'scanner': 'socket-tier1',
