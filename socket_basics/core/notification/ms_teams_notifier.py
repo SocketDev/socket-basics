@@ -19,7 +19,7 @@ class MSTeamsNotifier(BaseNotifier):
         super().__init__(params or {})
         # Teams webhook URL from params, env variable, or app config
         self.webhook_url = (
-            self.config.get('webhook_url') or
+            self.config.get('msteams_webhook_url') or
             get_msteams_webhook_url()
         )
         self.title = self.config.get('title', 'Socket Security')
