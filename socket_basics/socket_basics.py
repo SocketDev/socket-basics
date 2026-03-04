@@ -356,9 +356,10 @@ class SecurityScanner:
                     logger.error(f"Error creating full scan: {error_msg}")
                     raise Exception(f"Error creating full scan: {error_msg}")
                     
-                # Extract the scan ID and HTML URL from the response
-                scan_id = getattr(res, 'id', None)
-                html_url = getattr(res, 'html_url', None)
+                # SDK CreateFullScanResponse nests metadata under .data
+                data = getattr(res, 'data', None) or res
+                scan_id = getattr(data, 'id', None)
+                html_url = getattr(data, 'html_report_url', None) or getattr(data, 'html_url', None)
                 logger.debug(f"Extracted from object: scan_id={scan_id}, html_url={html_url}")
                 
             if scan_id:
