@@ -19,7 +19,7 @@ class SlackNotifier(BaseNotifier):
         super().__init__(params or {})
         # Slack webhook URL from params, env variable, or app config
         self.webhook_url = (
-            self.config.get('webhook_url') or
+            self.config.get('slack_webhook_url') or
             get_slack_webhook_url()
         )
         self.username = "Socket Security"
