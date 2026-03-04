@@ -17,7 +17,7 @@ import logging
 import sys
 import os
 from pathlib import Path
-from typing import Dict, Any, Optional
+from typing import Dict, Any, List, Optional
 import hashlib
 try:
     # Python 3.11+
@@ -356,9 +356,10 @@ class SecurityScanner:
                     logger.error(f"Error creating full scan: {error_msg}")
                     raise Exception(f"Error creating full scan: {error_msg}")
                     
-                # Extract the scan ID and HTML URL from the response
-                scan_id = getattr(res, 'id', None)
-                html_url = getattr(res, 'html_url', None)
+                # SDK CreateFullScanResponse nests metadata under .data
+                data = getattr(res, 'data', None) or res
+                scan_id = getattr(data, 'id', None)
+                html_url = getattr(data, 'html_report_url', None) or getattr(data, 'html_url', None)
                 logger.debug(f"Extracted from object: scan_id={scan_id}, html_url={html_url}")
                 
             if scan_id:
@@ -376,6 +377,283 @@ class SecurityScanner:
             logger.debug("Full traceback:", exc_info=True)
             # Return original results if submission fails
             return results
+
+
+    def apply_triage_filter(self, results: Dict[str, Any]) -> Dict[str, Any]:
+        """Filter out triaged alerts and regenerate notifications.
+
+        Streams the full scan from the Socket API to obtain alert keys,
+        cross-references them with triage entries, removes suppressed
+        alerts from local components, regenerates connector notifications,
+        and injects a triage summary into github_pr content.
+
+        Args:
+            results: Current scan results dict (components + notifications).
+
+        Returns:
+            Updated results dict with triaged findings removed.
+        """
+        socket_api_key = self.config.get('socket_api_key')
+        socket_org = self.config.get('socket_org')
+        full_scan_id = results.get('full_scan_id')
+
+        if not socket_api_key or not socket_org:
+            logger.debug("Skipping triage filter: missing socket_api_key or socket_org")
+            return results
+
+        if not full_scan_id:
+            logger.debug("Skipping triage filter: no full_scan_id in results")
+            return results
+
+        # Import SDK and triage helpers
+        try:
+            from socketdev import socketdev
+        except ImportError:
+            logger.debug("socketdev SDK not available; skipping triage filter")
+            return results
+
+        try:
+            from .core.triage import TriageFilter, fetch_triage_data, stream_full_scan_alerts
+        except ImportError:
+            from socket_basics.core.triage import TriageFilter, fetch_triage_data, stream_full_scan_alerts
+
+        sdk = socketdev(token=socket_api_key, timeout=100)
+
+        # Fetch triage entries and stream full scan alert keys in sequence
+        triage_entries = fetch_triage_data(sdk, socket_org)
+        if not triage_entries:
+            logger.info("No triage entries found; skipping filter")
+            return results
+
+        suppressed_count = sum(
+            1 for e in triage_entries
+            if (e.get("state") or "").lower() in ("ignore", "monitor")
+        )
+        logger.info(
+            "Fetched %d triage entries (%d with suppressed state)",
+            len(triage_entries),
+            suppressed_count,
+        )
+
+        artifact_alerts = stream_full_scan_alerts(sdk, socket_org, full_scan_id)
+        if not artifact_alerts:
+            logger.info("No alert keys returned from full scan stream; skipping filter")
+            return results
+
+        triage_filter = TriageFilter(triage_entries, artifact_alerts)
+        original_components = results.get('components', [])
+        original_alert_count = sum(
+            len(c.get('alerts', [])) for c in original_components
+        )
+        filtered_components, triaged_count = triage_filter.filter_components(
+            original_components
+        )
+
+        if triaged_count == 0:
+            logger.info(
+                "Triage filter matched 0 of %d finding(s); no changes applied",
+                original_alert_count,
+            )
+            return results
+
+        remaining_alert_count = sum(
+            len(c.get('alerts', [])) for c in filtered_components
+        )
+        logger.info(
+            "Triage filter removed %d finding(s); %d finding(s) remain",
+            triaged_count,
+            remaining_alert_count,
+        )
+        results['components'] = filtered_components
+        results['triaged_count'] = triaged_count
+
+        # Regenerate notifications from the filtered components
+        self._regenerate_notifications(results, filtered_components, triaged_count)
+
+        return results
+
+    def _regenerate_notifications(
+        self,
+        results: Dict[str, Any],
+        filtered_components: List[Dict[str, Any]],
+        triaged_count: int,
+    ) -> None:
+        """Regenerate connector notifications from filtered components.
+
+        Groups components by their connector origin (via the ``generatedBy``
+        field on alerts), calls each connector's ``generate_notifications``,
+        merges the results, and injects a triage summary into github_pr
+        content.
+
+        Always replaces ``results['notifications']`` so stale pre-filter
+        notifications are never forwarded to notifiers.
+        """
+        connector_components: Dict[str, List[Dict[str, Any]]] = {}
+        unmapped_count = 0
+        for comp in filtered_components:
+            mapped = False
+            for alert in comp.get('alerts', []):
+                gen = alert.get('generatedBy') or ''
+                connector_name = self._connector_name_from_generated_by(gen)
+                if connector_name:
+                    connector_components.setdefault(connector_name, []).append(comp)
+                    mapped = True
+                    break  # one mapping per component is enough
+            if not mapped:
+                unmapped_count += 1
+
+        if unmapped_count:
+            logger.debug(
+                "Triage regen: %d component(s) could not be mapped to a connector",
+                unmapped_count,
+            )
+
+        logger.info(
+            "Regenerating notifications for %d connector(s): %s",
+            len(connector_components),
+            ", ".join(connector_components.keys()) or "(none)",
+        )
+
+        merged_notifications: Dict[str, list] = {}
+
+        for connector_name, comps in connector_components.items():
+            connector = self.connector_manager.loaded_connectors.get(connector_name)
+            if connector is None:
+                logger.warning(
+                    "Connector %s not in loaded_connectors (available: %s); "
+                    "cannot regenerate its notifications",
+                    connector_name,
+                    ", ".join(self.connector_manager.loaded_connectors.keys()),
+                )
+                continue
+
+            if not hasattr(connector, 'generate_notifications'):
+                logger.debug("Connector %s has no generate_notifications", connector_name)
+                continue
+
+            try:
+                if connector_name == 'trivy':
+                    item_name, scan_type = self._derive_trivy_params(comps)
+                    notifs = connector.generate_notifications(comps, item_name, scan_type)
+                else:
+                    notifs = connector.generate_notifications(comps)
+            except Exception:
+                logger.exception("Failed to regenerate notifications for %s", connector_name)
+                continue
+
+            if not isinstance(notifs, dict):
+                continue
+
+            notifier_keys = [k for k, v in notifs.items() if v]
+            logger.debug(
+                "Connector %s produced notifications for: %s",
+                connector_name,
+                ", ".join(notifier_keys) or "(empty)",
+            )
+
+            for notifier_key, payload in notifs.items():
+                if notifier_key not in merged_notifications:
+                    merged_notifications[notifier_key] = payload
+                elif isinstance(merged_notifications[notifier_key], list) and isinstance(payload, list):
+                    merged_notifications[notifier_key].extend(payload)
+
+        # Inject triage summary into github_pr notification content
+        full_scan_url = results.get('full_scan_html_url', '')
+        self._inject_triage_summary(merged_notifications, triaged_count, full_scan_url)
+
+        # Always replace notifications so stale pre-filter content is never
+        # forwarded to notifiers.  An empty dict is valid and means every
+        # finding was triaged.
+        results['notifications'] = merged_notifications
+
+    @staticmethod
+    def _connector_name_from_generated_by(generated_by: str) -> str | None:
+        """Map a generatedBy value back to its connector name."""
+        gb = generated_by.lower()
+        if gb.startswith('opengrep') or gb.startswith('sast'):
+            return 'opengrep'
+        if gb == 'trufflehog':
+            return 'trufflehog'
+        if gb.startswith('trivy'):
+            return 'trivy'
+        if gb == 'socket-tier1':
+            return 'socket_tier1'
+        return None
+
+    def _derive_trivy_params(
+        self, components: List[Dict[str, Any]]
+    ) -> tuple:
+        """Derive item_name and scan_type for Trivy notification regeneration."""
+        scan_type = 'image'
+        for comp in components:
+            for alert in comp.get('alerts', []):
+                props = alert.get('props') or {}
+                st = props.get('scanType', '')
+                if st:
+                    scan_type = st
+                    break
+            if scan_type != 'image':
+                break
+
+        item_name = "Unknown"
+        images_str = (
+            self.config.get('container_images', '')
+            or self.config.get('container_images_to_scan', '')
+            or self.config.get('docker_images', '')
+        )
+        if images_str:
+            if isinstance(images_str, list):
+                item_name = images_str[0] if images_str else "Unknown"
+            else:
+                images = [img.strip() for img in str(images_str).split(',') if img.strip()]
+                item_name = images[0] if images else "Unknown"
+        else:
+            dockerfiles = self.config.get('dockerfiles', '')
+            if dockerfiles:
+                if isinstance(dockerfiles, list):
+                    item_name = dockerfiles[0] if dockerfiles else "Unknown"
+                else:
+                    docker_list = [df.strip() for df in str(dockerfiles).split(',') if df.strip()]
+                    item_name = docker_list[0] if docker_list else "Unknown"
+
+        if scan_type == 'vuln' and item_name == "Unknown":
+            try:
+                item_name = os.path.basename(str(self.config.workspace))
+            except Exception:
+                item_name = "Workspace"
+
+        return item_name, scan_type
+
+    @staticmethod
+    def _inject_triage_summary(
+        notifications: Dict[str, list],
+        triaged_count: int,
+        full_scan_url: str,
+    ) -> None:
+        """Insert a triage summary line into github_pr notification content."""
+        gh_items = notifications.get('github_pr')
+        if not gh_items or not isinstance(gh_items, list):
+            return
+
+        dashboard_link = full_scan_url or "https://socket.dev/dashboard"
+        summary_line = (
+            f"\n> :white_check_mark: **{triaged_count} finding(s) triaged** "
+            f"via [Socket Dashboard]({dashboard_link}) and removed from this report.\n"
+        )
+
+        for item in gh_items:
+            if not isinstance(item, dict) or 'content' not in item:
+                continue
+            content = item['content']
+            # Insert after the first markdown heading line (# Title)
+            lines = content.split('\n')
+            insert_idx = 0
+            for i, line in enumerate(lines):
+                if line.strip().startswith('# '):
+                    insert_idx = i + 1
+                    break
+            lines.insert(insert_idx, summary_line)
+            item['content'] = '\n'.join(lines)
 
 
 def main():
@@ -428,6 +706,12 @@ def main():
         results = scanner.submit_socket_facts(output_path, results)
     except Exception:
         logger.exception("Failed to submit socket facts file")
+
+    # Filter out triaged alerts before notifying
+    try:
+        results = scanner.apply_triage_filter(results)
+    except Exception:
+        logger.exception("Failed to apply triage filter")
 
     # Optionally upload to S3 if requested
     try:
