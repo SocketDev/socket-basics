@@ -15,6 +15,18 @@ from . import github_pr, slack, ms_teams, ms_sentinel, sumologic, console, jira,
 # Import shared formatters
 from ...formatters import get_all_formatters
 
+
+def _to_bool(value: Any) -> bool:
+    """Normalize config values that may arrive as bool, string, or number."""
+    if isinstance(value, bool):
+        return value
+    if isinstance(value, (int, float)):
+        return value != 0
+    if isinstance(value, str):
+        return value.strip().lower() in {'true', '1', 'yes', 'on'}
+    return bool(value)
+
+
 class TrivyScanner(BaseConnector):
     """Trivy container scanner implementation"""
 
@@ -27,13 +39,13 @@ class TrivyScanner(BaseConnector):
         Returns True if either Dockerfile, container image, or vulnerability scanning is enabled.
         This method supports both the new parameter names and legacy ones.
         """
-        dockerfile_flag = bool(
+        dockerfile_flag = _to_bool(
             self.config.get('dockerfile_scanning_enabled', False) or self.config.get('dockerfile_enabled', False))
-        image_flag = bool(
+        image_flag = _to_bool(
             self.config.get('container_image_scanning_enabled', False) or self.config.get('image_enabled', False))
         
         # Check if Trivy vulnerability scanning is enabled
-        vuln_flag = bool(self.config.get('trivy_vuln_enabled', False))
+        vuln_flag = _to_bool(self.config.get('trivy_vuln_enabled', False))
         
         return dockerfile_flag or image_flag or vuln_flag
 
@@ -125,8 +137,9 @@ class TrivyScanner(BaseConnector):
     def scan_dockerfiles(self) -> Dict[str, Any]:
         """Run Trivy Dockerfile scanning"""
         # Consider both new and legacy dockerfile flags
-        dockerfile_enabled = self.config.get('dockerfile_scanning_enabled', False) or self.config.get(
-            'dockerfile_enabled', False)
+        dockerfile_enabled = _to_bool(
+            self.config.get('dockerfile_scanning_enabled', False) or self.config.get('dockerfile_enabled', False)
+        )
         if not dockerfile_enabled:
             logger.info("Dockerfile scanning disabled, skipping Trivy Dockerfile")
             return {}
@@ -260,7 +273,11 @@ class TrivyScanner(BaseConnector):
             return {}
 
         # Consider both new and legacy image flags (auto-enabled if images provided)
-        image_enabled = self.config.get('container_image_scanning_enabled', False) or self.config.get('image_enabled', False) or bool(images)
+        image_enabled = (
+            _to_bool(self.config.get('container_image_scanning_enabled', False))
+            or _to_bool(self.config.get('image_enabled', False))
+            or bool(images)
+        )
         if not image_enabled:
             logger.info("Image scanning disabled, skipping Trivy Image")
             return {}
@@ -308,7 +325,7 @@ class TrivyScanner(BaseConnector):
 
     def scan_vulnerabilities(self) -> Dict[str, Any]:
         """Run Trivy filesystem scanning for vulnerabilities"""
-        vuln_enabled = self.config.get('trivy_vuln_enabled', False)
+        vuln_enabled = _to_bool(self.config.get('trivy_vuln_enabled', False))
         
         if not vuln_enabled:
             logger.info("Trivy vulnerability scanning disabled, skipping")
