@@ -1006,6 +1006,23 @@ def merge_json_and_env_config(json_config: Dict[str, Any] | None = None) -> Dict
     """
     # Start with environment defaults (lowest priority)
     config = load_config_from_env()
+
+    def _filter_empty_string_overrides(incoming: Dict[str, Any], source_name: str) -> Dict[str, Any]:
+        """Prevent empty string values from erasing existing non-empty config values."""
+        logger = logging.getLogger(__name__)
+        filtered: Dict[str, Any] = {}
+        for k, v in incoming.items():
+            if isinstance(v, str) and v == '':
+                current = config.get(k)
+                if current not in (None, ''):
+                    logger.debug(
+                        "Skipping empty %s override for '%s' (keeping existing value)",
+                        source_name,
+                        k,
+                    )
+                    continue
+            filtered[k] = v
+        return filtered
     
     # Override with Socket Basics API config if no explicit JSON config provided
     # API config takes precedence over environment defaults
@@ -1017,15 +1034,7 @@ def merge_json_and_env_config(json_config: Dict[str, Any] | None = None) -> Dict
         if socket_basics_config:
             # Normalize camelCase API keys to snake_case internal format
             normalized_config = normalize_api_config(socket_basics_config)
-            # Filter out empty strings for rule configs - treat them as unset to use code defaults
-            # Only filter string values ending with _enabled_rules or _disabled_rules
-            filtered_config = {}
-            for k, v in normalized_config.items():
-                if isinstance(v, str) and v == '' and (k.endswith('_enabled_rules') or k.endswith('_disabled_rules')):
-                    # Skip empty rule config strings - they'll fall back to defaults
-                    logger.debug(f"Filtering out empty rule config: {k}")
-                    continue
-                filtered_config[k] = v
+            filtered_config = _filter_empty_string_overrides(normalized_config, 'API config')
             config.update(filtered_config)
             logging.getLogger(__name__).info("Loaded Socket Basics API configuration (overrides environment defaults)")
         else:
@@ -1036,14 +1045,7 @@ def merge_json_and_env_config(json_config: Dict[str, Any] | None = None) -> Dict
     if json_config:
         # Also normalize JSON config in case it comes from API
         normalized_json = normalize_api_config(json_config)
-        # Filter out empty strings for rule configs - treat them as unset to use code defaults
-        filtered_json = {}
-        for k, v in normalized_json.items():
-            if isinstance(v, str) and v == '' and (k.endswith('_enabled_rules') or k.endswith('_disabled_rules')):
-                # Skip empty rule config strings - they'll fall back to defaults
-                logger.debug(f"Filtering out empty rule config: {k}")
-                continue
-            filtered_json[k] = v
+        filtered_json = _filter_empty_string_overrides(normalized_json, 'JSON config')
         config.update(filtered_json)
         logging.getLogger(__name__).info("Loaded JSON configuration (overrides environment defaults)")
     
