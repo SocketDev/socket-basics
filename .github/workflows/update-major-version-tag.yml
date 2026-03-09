@@ -1,0 +1,34 @@
+name: Update Major Version Tag
+
+on:
+  release:
+    types: [published]
+
+permissions:
+  contents: write
+
+jobs:
+  update-tag:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+
+      - name: Update floating major version tag
+        run: |
+          VERSION="${GITHUB_REF_NAME}"
+
+          # Extract major version (e.g., "1" from "1.1.3")
+          MAJOR="v${VERSION%%.*}"
+
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+
+          # Delete existing major version tag if it exists
+          git tag -d "$MAJOR" 2>/dev/null || true
+          git push origin ":refs/tags/$MAJOR" 2>/dev/null || true
+
+          # Create new tag pointing to the release commit
+          git tag "$MAJOR"
+          git push origin "$MAJOR"
+
+          echo "Updated $MAJOR tag to point to $VERSION"
