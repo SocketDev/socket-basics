@@ -1,17 +1,24 @@
 name: smoke-test
 
+# Orchestrator: generates the image matrix via ci_matrix.py, then calls
+# _docker-pipeline.yml for each image in smoke-only mode (no push).
+
 on:
   push:
     branches: [main]
     paths:
       - 'Dockerfile'
       - 'scripts/smoke-test-docker.sh'
+      - 'scripts/ci_matrix.py'
       - '.github/workflows/smoke-test.yml'
+      - '.github/workflows/_docker-pipeline.yml'
   pull_request:
     paths:
       - 'Dockerfile'
       - 'scripts/smoke-test-docker.sh'
+      - 'scripts/ci_matrix.py'
       - '.github/workflows/smoke-test.yml'
+      - '.github/workflows/_docker-pipeline.yml'
   schedule:
     - cron: '0 */12 * * *' # every 12 hours
   workflow_dispatch:
@@ -24,13 +31,32 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  smoke-test:
+
+  # ── Job 1: Generate matrix ─────────────────────────────────────────────────
+  generate-matrix:
     runs-on: ubuntu-latest
-    timeout-minutes: 30
-    env:
-      DOCKER_BUILDKIT: "1"
-      SMOKE_TEST_BUILD_PROGRESS: plain
+    outputs:
+      matrix: ${{ steps.matrix.outputs.json }}
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
-      - name: 🐳 smoke test
-        run: bash ./scripts/smoke-test-docker.sh --image-tag socket-basics:smoke-test
+      - name: 🐍 Generate image matrix
+        id: matrix
+        run: |
+          JSON=$(python scripts/ci_matrix.py --target docker)
+          echo "json=$JSON" >> "$GITHUB_OUTPUT"
+
+  # ── Job 2: Smoke (one run per image in the matrix) ─────────────────────────
+  smoke:
+    needs: generate-matrix
+    strategy:
+      fail-fast: false
+      matrix:
+        image: ${{ fromJSON(needs.generate-matrix.outputs.matrix) }}
+    uses: ./.github/workflows/_docker-pipeline.yml
+    with:
+      name: ${{ matrix.image.name }}
+      dockerfile: ${{ matrix.image.dockerfile }}
+      context: ${{ matrix.image.context }}
+      check_set: ${{ matrix.image.check_set }}
+      push: false
+    secrets: inherit
