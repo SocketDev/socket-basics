@@ -1,0 +1,32 @@
+version: 2
+updates:
+
+  # Main Dockerfile — tracks aquasec/trivy, trufflesecurity/trufflehog,
+  # ghcr.io/astral-sh/uv, and python base image.
+  # NOTE: OPENGREP_VERSION is not trackable via Dependabot (no Docker image);
+  #       update it manually in the Dockerfile ARG.
+  - package-ecosystem: "docker"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+    labels:
+      - "dependencies"
+      - "docker"
+
+  # app_tests Dockerfile — same as above, plus golang and securego/gosec.
+  - package-ecosystem: "docker"
+    directory: "/app_tests"
+    schedule:
+      interval: "weekly"
+    labels:
+      - "dependencies"
+      - "docker"
+
+  # GitHub Actions — tracks all uses: ... action versions.
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+    labels:
+      - "dependencies"
+      - "github-actions"
