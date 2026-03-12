@@ -1,0 +1,41 @@
+# Git
+.git/
+.gitignore
+.gitmodules
+
+# CI / GitHub
+.github/
+
+# Tests and test apps
+tests/
+app_tests/
+
+# Docs and scripts (not needed in image)
+docs/
+scripts/
+
+# Markdown (keep README.md — it's copied explicitly in the Dockerfile)
+*.md
+!README.md
+
+# Python build artifacts
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.pytest_cache/
+*.egg-info/
+dist/
+build/
+
+# Virtual environments
+.venv/
+venv/
+
+# Local config / secrets
+.env
+.env.*
+
+# Editor
+.vscode/
+.idea/
