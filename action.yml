@@ -4,6 +4,10 @@ author: "Socket"
 
 runs:
   using: "docker"
+  # TODO (v2.0.0 release): switch to pre-built GHCR image for faster action startup.
+  # Follow the "Release workflow" in docs/github-action.md: publish image first,
+  # then update this line to docker://ghcr.io/socketdev/socket-basics:2.0.0,
+  # then create the git tag v2.0.0.
   image: "Dockerfile"
   env:
     # Core GitHub variables (these are automatically available, but we explicitly pass GITHUB_TOKEN)

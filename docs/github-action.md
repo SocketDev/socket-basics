@@ -5,6 +5,7 @@ Complete guide to integrating Socket Basics into your GitHub Actions workflows f
 ## Table of Contents
 
 - [Quick Start](#quick-start)
+- [Performance and Caching](#performance-and-caching)
 - [Basic Configuration](#basic-configuration)
 - [Enterprise Features](#enterprise-features)
 - [Advanced Workflows](#advanced-workflows)
@@ -51,6 +52,154 @@ jobs:
 ```
 
 With just your `SOCKET_SECURITY_API_KEY`, all scanning configurations are managed through the [Socket Dashboard](https://socket.dev/dashboard) — no workflow changes needed.
+
+## Performance and Caching
+
+### How the action is currently built
+
+When you reference `uses: SocketDev/socket-basics@1.1.3`, GitHub Actions builds the
+`Dockerfile` from source at the start of every workflow run. As of `1.1.3` the
+Dockerfile uses a **multi-stage build** with BuildKit cache mounts, which provides
+two categories of improvement:
+
+| Improvement | Benefit |
+|-------------|---------|
+| Multi-stage stages (`trivy`, `trufflehog`, etc.) | GitHub's runner cache can reuse unchanged tool layers across runs |
+| `python:3.12-slim` base | ~850 MB smaller final image → faster layer pulls on cold runners |
+| `--mount=type=cache` for apt / uv / npm | Faster repeated builds locally and on self-hosted runners with a persistent cache |
+
+**On standard GitHub-hosted runners** (ephemeral, no persistent Docker cache between
+jobs), the multi-stage improvement is most visible when the same runner picks up a
+cached layer — typically within a workflow run or when GitHub's runner image itself
+includes the base layers. Cold runs still download and run all tool-install steps.
+
+### Pre-built image (active as of 1.1.3)
+
+The action now references a pre-built GHCR image instead of building from source:
+
+```yaml
+# action.yml
+runs:
+  using: docker
+  image: docker://ghcr.io/socketdev/socket-basics:1.1.3
+```
+
+Users who pin to a specific version tag (e.g. `@1.1.3`) will see the action start
+in seconds rather than minutes — the image is pre-built, integration-tested, and
+published to GHCR before the release tag is ever created.
+
+> **Note for `1.1.3` specifically:** the first time you use this version after this
+> change, the `publish-docker.yml` workflow must have run at least once (via
+> `workflow_dispatch` with tag `1.1.3`) to populate the GHCR image. Future releases
+> follow the publish-first process described in the release workflow below.
+
+### Release workflow (publish → tag, never tag → publish)
+
+To avoid the race condition where a git tag references an image that doesn't exist
+yet, follow this order for every release:
+
+```
+1. Merge release PR to main (version bump + action.yml version update)
+2. workflow_dispatch → publish-docker.yml (builds, tests, pushes images to GHCR/DockerHub)
+3. Create git tag (e.g. 1.1.4) — image already exists, zero race condition
+```
+
+When users then run `uses: SocketDev/socket-basics@1.1.4`, GitHub reads `action.yml`
+at that tag, pulls `ghcr.io/socketdev/socket-basics:1.1.4`, and starts scanning
+immediately.
+
+### If you're running socket-basics outside of the GitHub Action
+
+If you run socket-basics in other CI systems (Jenkins, GitLab, CircleCI, etc.) or
+as a standalone `docker run`, pull the pre-built image directly:
+
+```bash
+docker pull ghcr.io/socketdev/socket-basics:1.1.3
+```
+
+See [Local Docker Installation](local-install-docker.md) for usage examples.
+
+### Pinning strategies
+
+Starting with v2, socket-basics follows the [GitHub-recommended tag convention](https://docs.github.com/en/actions/sharing-automations/creating-actions/releasing-and-maintaining-actions):
+exact tags (`v2.0.0`), minor tags (`v2.0`), and a floating major tag (`v2`).
+Each strategy offers a different tradeoff between safety and convenience.
+
+---
+
+**Strategy 1 — Floating major tag: `@v2`**
+
+Always runs the latest v2.x.y release. Zero maintenance overhead; you get every
+fix and improvement automatically.
+
+```yaml
+- uses: SocketDev/socket-basics@v2
+  with:
+    socket_security_api_key: ${{ secrets.SOCKET_SECURITY_API_KEY }}
+```
+
+**Best for:** teams that trust the project's stability guarantees and want no
+upgrade friction. **Risk:** a buggy patch release will affect you immediately
+with no review gate.
+
+---
+
+**Strategy 2 — Exact version pin: `@v2.0.0`** *(recommended)*
+
+Pins to a specific immutable release. You control exactly when you upgrade.
+Pair with Dependabot to automate the bump PR while keeping a review gate:
+
+```yaml
+- uses: SocketDev/socket-basics@v2.0.0
+  with:
+    socket_security_api_key: ${{ secrets.SOCKET_SECURITY_API_KEY }}
+```
+
+Add to your repo's `.github/dependabot.yml`:
+
+```yaml
+version: 2
+updates:
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+```
+
+Dependabot opens a PR for each new release. You review, approve, and merge on
+your own schedule — automated upgrades with a human gate. **Best for:** most
+production use cases.
+
+---
+
+**Strategy 3 — Commit SHA pin: `@<sha>`**
+
+Maximum supply-chain safety. Pins to an exact commit; even a force-pushed tag
+cannot change what you run. Use `@v2.0.0` to find the SHA, then pin it:
+
+```yaml
+# Get the SHA: git rev-list -n 1 v2.0.0
+- uses: SocketDev/socket-basics@<sha>  # v2.0.0
+  with:
+    socket_security_api_key: ${{ secrets.SOCKET_SECURITY_API_KEY }}
+```
+
+Dependabot also manages SHA pins — it will open PRs to update the SHA when
+a new version is released, keeping the version comment in sync.
+
+**Best for:** high-compliance environments or repos that already SHA-pin all
+actions. Slightly more friction to set up but the highest guarantee of
+reproducibility.
+
+---
+
+**Comparison**
+
+| Strategy | Effort | Auto-updates | Review gate | Supply-chain safety |
+|---|---|---|---|---|
+| `@v2` | None | Yes (instant) | No | Low |
+| `@v2.0.0` + Dependabot | Low | Yes (weekly PR) | Yes | Medium |
+| `@<sha>` + Dependabot | Low | Yes (weekly PR) | Yes | High |
 
 ## Basic Configuration
 
