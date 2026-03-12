@@ -47,6 +47,7 @@ jobs:
 
   # ── Job 2: Smoke (one run per image in the matrix) ─────────────────────────
   smoke:
+    name: smoke (${{ matrix.image.name }})
     needs: generate-matrix
     strategy:
       fail-fast: false

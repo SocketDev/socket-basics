@@ -66,6 +66,7 @@ jobs:
   # Delegates all Docker steps to the reusable _docker-pipeline workflow.
   # Adding a new image to ci_matrix.py automatically creates a new parallel run.
   build-test-push:
+    name: publish (${{ matrix.image.name }})
     needs: generate-matrix
     permissions:
       contents: write   # force-update the floating major version tag (e.g. v2)
