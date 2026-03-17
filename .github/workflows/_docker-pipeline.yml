@@ -3,7 +3,7 @@ name: _docker-pipeline (reusable)
 # Reusable workflow — the single lego brick for all Docker CI steps.
 #
 # Called by smoke-test.yml (push: false) and publish-docker.yml (push: true).
-# Step visibility is controlled by the push input; the caller sets permissions.
+# Step visibility is controlled by the push/tag_push inputs; the caller sets permissions.
 #
 # Two modes:
 #   push: false  →  build + smoke test + integration test (main image only)
@@ -35,6 +35,15 @@ on:
         required: true
       push:
         description: "Push to GHCR and Docker Hub after testing"
+        type: boolean
+        required: false
+        default: false
+      tag_push:
+        description: >
+          True when the caller was triggered by a tag push (e.g. v2.0.0).
+          Controls the floating major-version tag update and the 'latest' Docker tag.
+          Passed explicitly rather than relying on github.ref_type inside the callee,
+          since context propagation in reusable workflows can be ambiguous.
         type: boolean
         required: false
         default: false
@@ -89,9 +98,9 @@ jobs:
             # Tag push (v2.0.0) → Docker tags 2.0.0, 2.0, latest
             type=semver,pattern={{version}}
             type=semver,pattern={{major}}.{{minor}}
-            type=raw,value=latest,enable=${{ github.ref_type == 'tag' }}
+            type=raw,value=latest,enable=${{ inputs.tag_push }}
             # workflow_dispatch re-publish → use the version input directly
-            type=raw,value=${{ inputs.version }},enable=${{ github.ref_type != 'tag' }}
+            type=raw,value=${{ inputs.version }},enable=${{ !inputs.tag_push }}
           labels: |
             org.opencontainers.image.title=${{ inputs.name }}
             org.opencontainers.image.source=https://github.com/SocketDev/socket-basics
@@ -151,9 +160,9 @@ jobs:
 
       # ── Step 5: Update floating major version tag ──────────────────────────
       # e.g. after publishing v2.0.1, force-updates the v2 tag to point here.
-      # Only runs for the main image (app-tests doesn't publish a GHA action).
+      # Only runs for the main image on tag pushes (not workflow_dispatch re-publishes).
       - name: 🏷️ Update floating major version tag
-        if: inputs.push && github.ref_type == 'tag' && inputs.name == 'socket-basics'
+        if: inputs.push && inputs.tag_push && inputs.name == 'socket-basics'
         run: |
           MAJOR="${{ github.ref_name }}"
           MAJOR="${MAJOR%%.*}"
