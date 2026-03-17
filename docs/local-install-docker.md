@@ -45,9 +45,9 @@ inspect exactly what's inside:
 docker inspect ghcr.io/socketdev/socket-basics:1.1.3 \
   | jq '.[0].Config.Labels'
 # {
-#   "com.socket.trivy-version": "0.69.2",
-#   "com.socket.trufflehog-version": "3.93.6",
-#   "com.socket.opengrep-version": "v1.16.2",
+#   "com.socket.trivy-version": "0.69.3",
+#   "com.socket.trufflehog-version": "3.93.8",
+#   "com.socket.opengrep-version": "v1.16.5",
 #   "org.opencontainers.image.version": "1.1.3",
 #   ...
 # }
@@ -163,9 +163,9 @@ The image pins Trivy, TruffleHog, and OpenGrep to specific versions. You can ove
 
 ```bash
 docker build \
-  --build-arg TRIVY_VERSION=v0.69.2 \
-  --build-arg TRUFFLEHOG_VERSION=3.93.6 \
-  --build-arg OPENGREP_VERSION=v1.16.2 \
+  --build-arg TRIVY_VERSION=0.69.3 \
+  --build-arg TRUFFLEHOG_VERSION=3.93.8 \
+  --build-arg OPENGREP_VERSION=v1.16.5 \
   -t socket-basics:1.1.3 .
 ```
 
