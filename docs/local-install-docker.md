@@ -15,8 +15,8 @@ Run Socket Basics locally using Docker without installing any security tools on 
 ## Quick Start
 
 ```bash
-# 1. Pull a pinned release from GHCR (no build step required)
-docker pull ghcr.io/socketdev/socket-basics:1.1.3
+# 1. Pull a pinned release from Docker Hub (no build step required)
+docker pull socketdev/socket-basics:1.1.3
 
 # 2. Create .env file with your credentials
 cat > .env << 'EOF'
@@ -28,7 +28,7 @@ EOF
 docker run --rm \
   -v "$PWD:/workspace" \
   --env-file .env \
-  ghcr.io/socketdev/socket-basics:1.1.3 \
+  socketdev/socket-basics:1.1.3 \
   --workspace /workspace \
   --python \
   --secrets \
