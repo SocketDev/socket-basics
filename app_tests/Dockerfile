@@ -5,15 +5,16 @@
 # To override at build time: docker build --build-arg TRIVY_VERSION=0.70.0 .
 #
 # Dependabot-trackable (each has a corresponding FROM <image>:<ARG> stage):
-ARG GOLANG_VERSION=1.23.2
+ARG GOLANG_VERSION=1.24.1
+ARG NODE_VERSION=22
 ARG PYTHON_VERSION=3.12
-ARG TRUFFLEHOG_VERSION=3.93.6
-ARG TRIVY_VERSION=0.69.2
-ARG UV_VERSION=0.10.9
+ARG TRUFFLEHOG_VERSION=3.93.8
+ARG TRIVY_VERSION=0.69.3
+ARG UV_VERSION=0.10.11
 #
 # NOT Dependabot-trackable (no official Docker image with a stable binary path):
-ARG GOSEC_VERSION=v2.21.4
-ARG OPENGREP_VERSION=v1.16.2
+ARG GOSEC_VERSION=v2.24.7
+ARG OPENGREP_VERSION=v1.16.5
 
 # ─── Stage: trivy (Dependabot-trackable) ──────────────────────────────────────
 FROM aquasec/trivy:${TRIVY_VERSION} AS trivy
@@ -23,6 +24,11 @@ FROM trufflesecurity/trufflehog:${TRUFFLEHOG_VERSION} AS trufflehog
 
 # ─── Stage: golang (Dependabot-trackable) ─────────────────────────────────────
 FROM golang:${GOLANG_VERSION} AS golang
+
+# ─── Stage: node (Dependabot-trackable) ───────────────────────────────────────
+# Named stage replaces the nodesource curl install, making the Node version
+# Dependabot-trackable via the FROM line.
+FROM node:${NODE_VERSION}-slim AS node
 
 # ─── Stage: uv (Dependabot-trackable) ─────────────────────────────────────────
 # Named stage required — COPY --from does not support ARG variable expansion.
@@ -66,13 +72,17 @@ COPY --from=opengrep-installer /root/.opengrep         /root/.opengrep
 COPY --from=golang          /usr/local/go              /usr/local/go
 COPY --from=gosec-installer /usr/local/bin/gosec       /usr/local/bin/gosec
 
-# System deps + Node.js 22.x + ESLint + Socket CLI
+# Node binary + npm from the versioned node stage (Dependabot-trackable)
+COPY --from=node /usr/local/bin/node          /usr/local/bin/node
+COPY --from=node /usr/local/bin/npm           /usr/local/bin/npm
+COPY --from=node /usr/local/bin/npx           /usr/local/bin/npx
+COPY --from=node /usr/local/lib/node_modules  /usr/local/lib/node_modules
+
+# System deps + ESLint + Socket CLI (npm now available from node stage above)
 RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
     --mount=type=cache,target=/var/lib/apt,sharing=locked \
     apt-get update && apt-get install -y --no-install-recommends \
-      curl git wget ca-certificates
-RUN curl -fsSL https://deb.nodesource.com/setup_22.x | bash - \
-    && apt-get install -y nodejs
+      curl git wget ca-certificates libatomic1
 RUN --mount=type=cache,target=/root/.npm \
     npm install -g eslint eslint-plugin-security \
       @typescript-eslint/parser @typescript-eslint/eslint-plugin socket
