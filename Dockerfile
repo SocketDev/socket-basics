@@ -6,12 +6,12 @@
 #
 # Dependabot-trackable (each has a corresponding FROM <image>:<ARG> stage):
 ARG PYTHON_VERSION=3.12
-ARG TRUFFLEHOG_VERSION=3.93.6
-ARG TRIVY_VERSION=0.69.2
-ARG UV_VERSION=0.10.9
+ARG TRUFFLEHOG_VERSION=3.93.8
+ARG TRIVY_VERSION=0.69.3
+ARG UV_VERSION=0.10.11
 #
 # NOT Dependabot-trackable (no official Docker image with a stable binary path):
-ARG OPENGREP_VERSION=v1.16.2
+ARG OPENGREP_VERSION=v1.16.5
 
 # ─── Stage: trivy (Dependabot-trackable) ──────────────────────────────────────
 FROM aquasec/trivy:${TRIVY_VERSION} AS trivy
