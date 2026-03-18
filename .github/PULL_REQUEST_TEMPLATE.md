@@ -18,7 +18,7 @@
 
 - [ ] `socket_basics/version.py` updated to new version
 - [ ] `pyproject.toml` updated to match
-- [ ] `action.yml` `image:` ref updated to `docker://ghcr.io/socketdev/socket-basics:<new-version>`
+- [ ] `action.yml` `image:` ref updated to `docker://ghcr.io/socketdev/socket-basics:<new-version>` *(CI will fail if this doesn't match `pyproject.toml`)*
 - [ ] `CHANGELOG.md` `[Unreleased]` section reviewed and accurate
 
 > ⚠️ **After merging:** run `publish-docker.yml` via `workflow_dispatch` with the new version
