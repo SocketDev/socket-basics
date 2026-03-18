@@ -34,7 +34,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - This changelog and automated changelog update workflow
 
 ### Changed
-- `uv` pinned to `0.10.9` (was `:latest`)
+- `uv` pinned to `0.10.11` (was `:latest`)
 - `smoke-test.yml` restructured as a matrix pipeline driven by `ci_matrix.py`
   (previously only tested the main image; `socket-basics-app-tests` will be re-enabled
   once its missing source files are committed — see `ci_matrix.py` TODO)
