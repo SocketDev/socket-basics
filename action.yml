@@ -4,10 +4,12 @@ author: "Socket"
 
 runs:
   using: "docker"
-  # TODO (v2.0.0 release): switch to pre-built GHCR image for faster action startup.
-  # Follow the "Release workflow" in docs/github-action.md: publish image first,
-  # then update this line to docker://ghcr.io/socketdev/socket-basics:2.0.0,
-  # then create the git tag v2.0.0.
+  # TODO (v2.0.0 release PR): update this to the pre-built GHCR image.
+  # The release PR MUST include all three of these changes together:
+  #   1. version.py + pyproject.toml → 2.0.0
+  #   2. This line → docker://ghcr.io/socketdev/socket-basics:2.0.0
+  #   3. Merge, then run publish-docker workflow_dispatch BEFORE creating the git tag
+  # See docs/github-action.md → "Release workflow" for the full process.
   image: "Dockerfile"
   env:
     # Core GitHub variables (these are automatically available, but we explicitly pass GITHUB_TOKEN)
