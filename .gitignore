@@ -89,6 +89,7 @@ logs/
 !CHANGELOG.md
 !docs/*.md
 !tests/README.md
+!.github/PULL_REQUEST_TEMPLATE.md
 
 # Project-specific (local scripts and test files)
 test/
