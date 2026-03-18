@@ -1,11 +1,5 @@
 name: python-tests
 
-# Orchestrator: generates the Python version matrix via ci_matrix.py, then
-# runs pytest for each version in parallel.
-#
-# To expand test coverage to Python 3.10 / 3.11, edit _PYTHON_TEST_VERSIONS
-# in scripts/ci_matrix.py — no changes needed here.
-
 on:
   push:
     branches: [main]
@@ -14,7 +8,6 @@ on:
       - "tests/**/*.py"
       - "pyproject.toml"
       - "uv.lock"
-      - "scripts/ci_matrix.py"
       - ".github/workflows/python-tests.yml"
   pull_request:
     paths:
@@ -22,7 +15,6 @@ on:
       - "tests/**/*.py"
       - "pyproject.toml"
       - "uv.lock"
-      - "scripts/ci_matrix.py"
       - ".github/workflows/python-tests.yml"
   workflow_dispatch:
 
@@ -34,45 +26,28 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-
-  # ── Job 1: Generate matrix ─────────────────────────────────────────────────
-  generate-matrix:
-    runs-on: ubuntu-latest
-    outputs:
-      matrix: ${{ steps.matrix.outputs.json }}
-    steps:
-      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
-        with:
-          fetch-depth: 1
-          persist-credentials: false
-      - name: 🐍 Generate Python version matrix
-        id: matrix
-        run: |
-          JSON=$(python scripts/ci_matrix.py --target python)
-          echo "json=$JSON" >> "$GITHUB_OUTPUT"
-
-  # ── Job 2: Test (one run per Python version in the matrix) ─────────────────
   test:
-    needs: generate-matrix
     runs-on: ubuntu-latest
     timeout-minutes: 20
-    strategy:
-      fail-fast: false
-      matrix:
-        config: ${{ fromJSON(needs.generate-matrix.outputs.matrix) }}
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
         with:
           fetch-depth: 1
           persist-credentials: false
-      - name: 🐍 Setup Python ${{ matrix.config.python-version }}
+      - name: 🐍 Setup Python
         uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405 # v6.2.0
         with:
-          python-version: ${{ matrix.config.python-version }}
+          python-version: "3.12"
           cache: "pip"
       - name: 🛠️ Install deps
         run: |
           python -m pip install --upgrade pip
           pip install -e ".[dev]"
+      - name: 🔒 Assert version files in sync
+        run: |
+          V_PY=$(python -c "from socket_basics.version import __version__; print(__version__)")
+          V_TOML=$(python -c "import tomllib; print(tomllib.loads(open('pyproject.toml').read())['project']['version'])")
+          [ "$V_PY" = "$V_TOML" ] || (echo "Version mismatch: version.py=$V_PY pyproject.toml=$V_TOML" && exit 1)
+          echo "Version in sync: $V_PY"
       - name: 🧪 Run tests
         run: pytest -q tests/

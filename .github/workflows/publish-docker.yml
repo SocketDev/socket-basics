@@ -1,7 +1,8 @@
 name: publish-docker
 
-# Orchestrator: generates the image matrix via ci_matrix.py, then calls
-# _docker-pipeline.yml for each image (build → test → push → floating tag).
+# Builds, tests, and publishes the socket-basics image to GHCR and Docker Hub.
+#
+# Flow: resolve-version → build-test-push → create-release
 #
 # Tag convention:
 #   v2.0.0  — immutable exact release
@@ -32,24 +33,16 @@ concurrency:
 
 jobs:
 
-  # ── Job 1: Generate matrix ─────────────────────────────────────────────────
-  # Runs ci_matrix.py to discover images and resolve the release version.
-  # Downstream jobs consume these outputs — no image config is hardcoded in YAML.
-  generate-matrix:
+  # ── Job 1: Resolve version ─────────────────────────────────────────────────
+  # Computes a clean semver string (no v prefix) consumed by downstream jobs.
+  resolve-version:
     runs-on: ubuntu-latest
     outputs:
-      matrix: ${{ steps.matrix.outputs.json }}
       version: ${{ steps.version.outputs.clean }}
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
         with:
           ref: ${{ github.event_name == 'workflow_dispatch' && format('v{0}', inputs.tag) || github.ref }}
-
-      - name: 🐍 Generate image matrix
-        id: matrix
-        run: |
-          JSON=$(python scripts/ci_matrix.py --target docker)
-          echo "json=$JSON" >> "$GITHUB_OUTPUT"
 
       - name: 🏷️ Resolve version
         id: version
@@ -62,42 +55,38 @@ jobs:
           fi
           echo "clean=$CLEAN" >> "$GITHUB_OUTPUT"
 
-  # ── Job 2: Build → test → push (one run per image in the matrix) ───────────
+  # ── Job 2: Build → test → push ─────────────────────────────────────────────
   # Delegates all Docker steps to the reusable _docker-pipeline workflow.
-  # Adding a new image to ci_matrix.py automatically creates a new parallel run.
   build-test-push:
-    name: publish (${{ matrix.image.name }})
-    needs: generate-matrix
+    name: publish (socket-basics)
+    needs: resolve-version
     permissions:
       contents: write   # force-update the floating major version tag (e.g. v2)
       packages: write   # push images to GHCR
-    strategy:
-      fail-fast: false
-      matrix:
-        image: ${{ fromJSON(needs.generate-matrix.outputs.matrix) }}
     uses: ./.github/workflows/_docker-pipeline.yml
     with:
-      name: ${{ matrix.image.name }}
-      dockerfile: ${{ matrix.image.dockerfile }}
-      context: ${{ matrix.image.context }}
-      check_set: ${{ matrix.image.check_set }}
+      name: socket-basics
+      dockerfile: Dockerfile
+      context: .
+      check_set: main
       push: true
-      version: ${{ needs.generate-matrix.outputs.version }}
+      tag_push: ${{ github.ref_type == 'tag' }}
+      version: ${{ needs.resolve-version.outputs.version }}
     secrets: inherit
 
   # ── Job 3: Create GitHub release + update CHANGELOG ────────────────────────
-  # Runs once after all images are successfully pushed (not for workflow_dispatch
+  # Runs once after the image is successfully pushed (not for workflow_dispatch
   # re-publishes — those don't create new releases).
   # Generates categorised release notes from merged PR labels (.github/release.yml),
   # creates the GitHub Release, then commits the CHANGELOG update back to main.
   create-release:
-    needs: [generate-matrix, build-test-push]
+    needs: [resolve-version, build-test-push]
     if: github.ref_type == 'tag'
     permissions:
       contents: write   # create GitHub release + commit CHANGELOG back to main
     runs-on: ubuntu-latest
     env:
-      VERSION: ${{ needs.generate-matrix.outputs.version }}
+      VERSION: ${{ needs.resolve-version.outputs.version }}
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
         with:
