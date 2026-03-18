@@ -99,13 +99,21 @@ To avoid the race condition where a git tag references an image that doesn't exi
 yet, follow this order for every release:
 
 ```
-1. Merge release PR to main (version bump + action.yml version update)
-2. workflow_dispatch → publish-docker.yml (builds, tests, pushes images to GHCR/DockerHub)
-3. Create git tag (e.g. 1.1.4) — image already exists, zero race condition
+1. Open a release PR — the PR template includes a release checklist, use it
+2. Merge release PR to main (version bump + action.yml version update)
+3. workflow_dispatch → publish-docker.yml (builds, tests, pushes images to GHCR/DockerHub)
+4. Create git tag (e.g. v2.1.0) — image already exists, zero race condition
 ```
 
-When users then run `uses: SocketDev/socket-basics@1.1.4`, GitHub reads `action.yml`
-at that tag, pulls `ghcr.io/socketdev/socket-basics:1.1.4`, and starts scanning
+> **Tip:** When opening the release PR, the [PR template](../.github/PULL_REQUEST_TEMPLATE.md)
+> includes a pre-filled release checklist covering the version bump, `action.yml` image ref
+> update, and CHANGELOG review. Don't skip it — the `action.yml` step in particular
+> is easy to forget and will break the action for anyone pinned to the new tag.
+> CI will also catch this automatically: `python-tests.yml` asserts the `action.yml`
+> image ref matches the version in `pyproject.toml` on every PR.
+
+When users then run `uses: SocketDev/socket-basics@v2.1.0`, GitHub reads `action.yml`
+at that tag, pulls `ghcr.io/socketdev/socket-basics:2.1.0`, and starts scanning
 immediately.
 
 ### If you're running socket-basics outside of the GitHub Action
