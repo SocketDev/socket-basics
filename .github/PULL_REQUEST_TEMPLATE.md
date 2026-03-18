@@ -17,10 +17,10 @@
 <!-- Only fill this out if this PR is cutting a new release (e.g. v2.1.0). -->
 
 - [ ] `socket_basics/version.py` updated to new version
-- [ ] `pyproject.toml` updated to match
+- [ ] `pyproject.toml` `version:` field updated to match
 - [ ] `action.yml` `image:` ref updated to `docker://ghcr.io/socketdev/socket-basics:<new-version>` *(CI will fail if this doesn't match `pyproject.toml`)*
-- [ ] `CHANGELOG.md` `[Unreleased]` section reviewed and accurate
+- [ ] `CHANGELOG.md` `[Unreleased]` section reviewed *(note: this content is replaced by auto-generated release notes when the tag fires — see [docs/releasing.md](../docs/releasing.md#changelog-and-release-notes))*
 
 > ⚠️ **After merging:** run `publish-docker.yml` via `workflow_dispatch` with the new version
 > **before** creating the git tag. The image must exist in GHCR before the tag is pushed.
-> See [Release workflow](../docs/github-action.md#release-workflow-publish--tag-never-tag--publish) for the full process.
+> See [docs/releasing.md](../docs/releasing.md) for the full process.
