@@ -5,41 +5,42 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 > **Versioning note:** Releases through `1.1.3` used bare semver tags (e.g. `1.1.3`).
-> Starting with `v2.0.0` the project follows the [GitHub Actions tag convention][gha-tags]
-> using a `v` prefix (e.g. `v2.0.0`) with a floating major tag (`v2`).
-
-[gha-tags]: https://docs.github.com/en/actions/sharing-automations/creating-actions/releasing-and-maintaining-actions
+> Starting with `v2.0.0` the project uses a `v` prefix (e.g. `v2.0.0`). Floating major
+> tags (`v2`) are intentionally not published — immutable version tags and SHA pinning
+> are the recommended consumption pattern for a security tool.
 
 ---
 
 ## [Unreleased]
 
 ### Added
-- Multi-stage Dockerfiles for both `socket-basics` and `socket-basics-app-tests` — Trivy,
-  TruffleHog, and Go are now pulled from their official registry images as named stages,
-  making them Dependabot-trackable via `FROM` lines
-- GHCR + Docker Hub publish workflow (`publish-docker.yml`) with build → smoke test →
-  integration test → push fail-fast pipeline
-- Integration test script (`scripts/integration-test-docker.sh`) that runs a real
-  opengrep scan and socket-basics CLI scan without requiring API credentials
-- Dependabot configuration for Docker images, `app_tests/` Dockerfile, and GitHub Actions
-- Buildkite-style dynamic CI pipeline via `scripts/ci_matrix.py` — image and Python
-  version matrices are now Python-driven, not hardcoded in YAML
-- Reusable `_docker-pipeline.yml` workflow as a single lego-brick called by both
-  `smoke-test.yml` and `publish-docker.yml`
-- Floating major version tag automation (`v2` auto-updated on every release)
+- Multi-stage Dockerfiles — Trivy, TruffleHog, Go, and uv pulled via named `FROM` stages
+  (Dependabot-trackable); `python:3.12-slim` base; BuildKit cache mounts throughout
+- GHCR + Docker Hub publish workflow (`publish-docker.yml`): build → smoke test →
+  integration test → push; fail-fast, per-job least-privilege permissions
+- Reusable `_docker-pipeline.yml` lego-brick workflow shared by smoke and publish pipelines
 - OCI image labels baked into published images (`com.socket.trivy-version`, etc.)
-- `python:3.12-slim` base image (~850 MB smaller than full)
-- Root `.dockerignore` to exclude tests, docs, and artifacts from the build context
-- This changelog and automated changelog update workflow
+- Integration test script (`scripts/integration-test-docker.sh`) — no API key required
+- Dependabot configuration for Docker images and GitHub Actions
+- `docs/releasing.md` — maintainer release guide including immutable tag setup
+- `.github/PULL_REQUEST_TEMPLATE.md` — release checklist baked into every PR
+- `commit-lint.yml` + `.commitlintrc.yml` — Conventional Commits enforcement on PR titles
+- Full retroactive `CHANGELOG.md` from `1.0.2`; automated update on every release
+- Root `.dockerignore`
 
 ### Changed
 - `uv` pinned to `0.10.11` (was `:latest`)
-- `smoke-test.yml` restructured as a matrix pipeline driven by `ci_matrix.py`
-  (previously only tested the main image; `socket-basics-app-tests` will be re-enabled
-  once its missing source files are committed — see `ci_matrix.py` TODO)
-- `smoke-test-docker.sh` gains `--skip-build` and `--check-set` flags for use in CI
-  pipelines that build separately
+- `smoke-test-docker.sh` gains `--skip-build` and `--check-set` flags
+- `python-tests.yml` gains CI assertions for version file sync and `action.yml` image ref
+- Tag convention: `v`-prefix (`v2.0.0`), immutable only — `:latest` and floating major
+  tags (`v2`) intentionally not published; SHA pinning + Dependabot is the recommended
+  consumption pattern (see `docs/github-action.md`)
+- Pinning strategy docs rewritten with security philosophy section
+
+### Removed
+- `.hooks/version-check.py` and `.claude/commands/bump-version.md` — auto-bump-on-commit
+  antipattern; replaced by CI assertions in `python-tests.yml`
+- `scripts/ci_matrix.py` — preserved in `basics-temp/` for future ce-tools use
 
 ---
 
@@ -66,15 +67,6 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 [#36]: https://github.com/SocketDev/socket-basics/pull/36
 [#39]: https://github.com/SocketDev/socket-basics/pull/39
-
-## [1.1.1] - 2026-02-26
-
-### Fixed
-- Webhook notifier not reading URL from dashboard config ([#34])
-- `CODEOWNERS` syntax error ([#35])
-
-[#34]: https://github.com/SocketDev/socket-basics/pull/34
-[#35]: https://github.com/SocketDev/socket-basics/pull/35
 
 ## [1.1.0] - 2026-02-20
 
@@ -167,13 +159,6 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 [#11]: https://github.com/SocketDev/socket-basics/pull/11
 
-## [1.0.11] - 2025-10-22
-
-### Fixed
-- Git detection logic not using `workspace` or `GITHUB_WORKSPACE` correctly ([#10])
-
-[#10]: https://github.com/SocketDev/socket-basics/pull/10
-
 ## [1.0.10] - 2025-10-22
 
 ### Changed
@@ -215,10 +200,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 <!-- Comparison links — updated automatically by scripts/update_changelog.py on each release -->
 [Unreleased]: https://github.com/SocketDev/socket-basics/compare/1.1.3...HEAD
-[2.0.0]:      https://github.com/SocketDev/socket-basics/compare/1.1.3...v2.0.0
 [1.1.3]:      https://github.com/SocketDev/socket-basics/compare/1.1.2...1.1.3
-[1.1.2]:      https://github.com/SocketDev/socket-basics/compare/1.1.1...1.1.2
-[1.1.1]:      https://github.com/SocketDev/socket-basics/compare/1.1.0...1.1.1
+[1.1.2]:      https://github.com/SocketDev/socket-basics/compare/1.1.0...1.1.2
 [1.1.0]:      https://github.com/SocketDev/socket-basics/compare/1.0.29...1.1.0
 [1.0.29]:     https://github.com/SocketDev/socket-basics/compare/1.0.28...1.0.29
 [1.0.28]:     https://github.com/SocketDev/socket-basics/compare/1.0.27...1.0.28
@@ -228,8 +211,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 [1.0.24]:     https://github.com/SocketDev/socket-basics/compare/1.0.23...1.0.24
 [1.0.23]:     https://github.com/SocketDev/socket-basics/compare/1.0.21...1.0.23
 [1.0.21]:     https://github.com/SocketDev/socket-basics/compare/1.0.20...1.0.21
-[1.0.20]:     https://github.com/SocketDev/socket-basics/compare/1.0.11...1.0.20
-[1.0.11]:     https://github.com/SocketDev/socket-basics/compare/1.0.10...1.0.11
+[1.0.20]:     https://github.com/SocketDev/socket-basics/compare/1.0.10...1.0.20
 [1.0.10]:     https://github.com/SocketDev/socket-basics/compare/1.0.9...1.0.10
 [1.0.9]:      https://github.com/SocketDev/socket-basics/compare/1.0.3...1.0.9
 [1.0.3]:      https://github.com/SocketDev/socket-basics/compare/1.0.2...1.0.3
