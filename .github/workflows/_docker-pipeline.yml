@@ -93,13 +93,14 @@ jobs:
           images: |
             ghcr.io/socketdev/${{ inputs.name }}
             ${{ secrets.DOCKERHUB_USERNAME }}/${{ inputs.name }}
+          # Disable the automatic :latest tag — metadata-action adds it by default
+          # for semver tag pushes. Mutable tags are inappropriate for a security tool.
+          flavor: |
+            latest=false
           tags: |
-            # Tag push (v2.0.0) → immutable Docker tags 2.0.0 and 2.0 only.
-            # :latest and floating major tags (v2) are intentionally omitted —
-            # this is a security tool and mutable tags set the wrong example.
-            # Users should pin to a specific version or digest; Dependabot manages upgrades.
+            # Tag push (v2.0.0) → exact immutable version tag only.
+            # Minor (2.0) and latest tags are intentionally omitted.
             type=semver,pattern={{version}}
-            type=semver,pattern={{major}}.{{minor}}
             # workflow_dispatch re-publish → use the version input directly
             type=raw,value=${{ inputs.version }},enable=${{ !inputs.tag_push }}
           labels: |
