@@ -13,37 +13,20 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
-### Added
-- Multi-stage Dockerfiles — Trivy, TruffleHog, Go, and uv pulled via named `FROM` stages
-  (Dependabot-trackable); `python:3.12-slim` base; BuildKit cache mounts throughout
-- GHCR + Docker Hub publish workflow (`publish-docker.yml`): build → smoke test →
-  integration test → push; fail-fast, per-job least-privilege permissions
-- Reusable `_docker-pipeline.yml` lego-brick workflow shared by smoke and publish pipelines
-- OCI image labels baked into published images (`com.socket.trivy-version`, etc.)
-- Integration test script (`scripts/integration-test-docker.sh`) — no API key required
-- Dependabot configuration for Docker images and GitHub Actions
-- `docs/releasing.md` — maintainer release guide including immutable tag setup
-- `.github/PULL_REQUEST_TEMPLATE.md` — release checklist baked into every PR
-- `commit-lint.yml` + `.commitlintrc.yml` — Conventional Commits enforcement on PR titles
-- Full retroactive `CHANGELOG.md` from `1.0.2`; automated update on every release
-- Root `.dockerignore`
+## [2.0.0] - 2026-03-20
 
-### Changed
-- `uv` pinned to `0.10.11` (was `:latest`)
-- `smoke-test-docker.sh` gains `--skip-build` and `--check-set` flags
-- `python-tests.yml` gains CI assertions for version file sync and `action.yml` image ref
-- Tag convention: `v`-prefix (`v2.0.0`), immutable only — `:latest` and floating major
-  tags (`v2`) intentionally not published; SHA pinning + Dependabot is the recommended
-  consumption pattern (see `docs/github-action.md`)
-- Pinning strategy docs rewritten with security philosophy section
+<!-- Release notes generated using configuration in .github/release.yml at v2.0.0 -->
 
-### Removed
-- `.hooks/version-check.py` and `.claude/commands/bump-version.md` — auto-bump-on-commit
-  antipattern; replaced by CI assertions in `python-tests.yml`
-- `scripts/ci_matrix.py` — preserved in `basics-temp/` for future ce-tools use
+## What's Changed
+### 🔧 Other Changes
+* feat: 🐳 multi-stage Docker builds, immutable release pipeline, `CHANGELOG` automation by @lelia in https://github.com/SocketDev/socket-basics/pull/46
+* fix(ci): add conventional commit prefixes to Dependabot config by @lelia in https://github.com/SocketDev/socket-basics/pull/53
+* fix(ci): support breaking change indicator (!) in commit-lint pattern by @lelia in https://github.com/SocketDev/socket-basics/pull/54
+* fix(ci): accept full tag name in workflow_dispatch, drop auto-v-prefix by @lelia in https://github.com/SocketDev/socket-basics/pull/55
+* feat!: switch to pre-built GHCR images by @lelia in https://github.com/SocketDev/socket-basics/pull/48
 
----
 
+**Full Changelog**: https://github.com/SocketDev/socket-basics/compare/1.1.3...v2.0.0
 ## [1.1.3] - 2026-03-03
 
 ### Added
@@ -199,7 +182,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 ---
 
 <!-- Comparison links — updated automatically by scripts/update_changelog.py on each release -->
-[Unreleased]: https://github.com/SocketDev/socket-basics/compare/1.1.3...HEAD
+[Unreleased]: https://github.com/SocketDev/socket-basics/compare/v2.0.0...HEAD
+[2.0.0]:      https://github.com/SocketDev/socket-basics/compare/1.1.3...v2.0.0
 [1.1.3]:      https://github.com/SocketDev/socket-basics/compare/1.1.2...1.1.3
 [1.1.2]:      https://github.com/SocketDev/socket-basics/compare/1.1.0...1.1.2
 [1.1.0]:      https://github.com/SocketDev/socket-basics/compare/1.0.29...1.1.0
