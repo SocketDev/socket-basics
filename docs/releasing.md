@@ -22,9 +22,11 @@ The release PR **must** include all three of these changes together:
 - [ ] [`socket_basics/version.py`](../socket_basics/version.py) updated to new version
 - [ ] [`pyproject.toml`](../pyproject.toml) `version:` field updated to match
 - [ ] [`action.yml`](../action.yml) `image:` ref updated to `docker://ghcr.io/socketdev/socket-basics:<new-version>`
+  *(after v2.0.0 this is auto-updated by the release workflow on every tag push — manual update only required for the initial v2.0.0 release)*
 
 > 💡 [`python-tests.yml`](../.github/workflows/python-tests.yml) CI will fail if `action.yml` and `pyproject.toml` versions diverge,
-> so a mismatch cannot be merged accidentally.
+> so a mismatch cannot be merged accidentally. The release workflow also auto-corrects
+> this via `sed` on each tag push once the pre-built image switch is in place.
 
 ## `CHANGELOG` and release notes
 
