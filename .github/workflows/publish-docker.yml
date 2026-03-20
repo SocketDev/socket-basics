@@ -20,7 +20,7 @@ on:
   workflow_dispatch:
     inputs:
       tag:
-        description: "Version to publish without v prefix (e.g. 2.0.0). Must match an existing git tag."
+        description: "Full git tag to publish (e.g. v2.0.0 for new releases, 1.1.3 for old). Must exist in the repo."
         required: true
 
 # Default: deny everything. Each job below grants only what it needs.
@@ -42,17 +42,17 @@ jobs:
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
         with:
-          ref: ${{ github.event_name == 'workflow_dispatch' && format('v{0}', inputs.tag) || github.ref }}
+          ref: ${{ github.event_name == 'workflow_dispatch' && inputs.tag || github.ref }}
 
       - name: 🏷️ Resolve version
         id: version
         run: |
           if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
-            CLEAN="${{ inputs.tag }}"      # user provides without v prefix
+            CLEAN="${{ inputs.tag }}"      # full tag as provided (e.g. 1.1.3 or v2.0.0)
           else
             CLEAN="${{ github.ref_name }}" # e.g. v2.0.0
-            CLEAN="${CLEAN#v}"             # strip leading v → 2.0.0
           fi
+          CLEAN="${CLEAN#v}"               # strip leading v if present → 2.0.0 or 1.1.3
           echo "clean=$CLEAN" >> "$GITHUB_OUTPUT"
 
   # ── Job 2: Build → test → push ─────────────────────────────────────────────
