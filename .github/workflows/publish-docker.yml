@@ -5,9 +5,8 @@ name: publish-docker
 # Flow: resolve-version → build-test-push → create-release
 #
 # Tag convention:
-#   v2.0.0  — immutable exact release
-#   v2      — floating, always points to latest v2.x.y
-#   See docs/github-action.md → "Pinning strategies" for the tradeoff guide.
+#   v2.0.0  — immutable exact release (floating major tags intentionally not published)
+#   See docs/github-action.md → "Pinning strategies" for the full rationale.
 #
 # Required repository secrets:
 #   DOCKERHUB_USERNAME  — Docker Hub account name
@@ -61,7 +60,7 @@ jobs:
     name: publish (socket-basics)
     needs: resolve-version
     permissions:
-      contents: write   # force-update the floating major version tag (e.g. v2)
+      contents: read
       packages: write   # push images to GHCR
     uses: ./.github/workflows/_docker-pipeline.yml
     with:
