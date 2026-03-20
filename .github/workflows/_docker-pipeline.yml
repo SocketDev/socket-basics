@@ -1,0 +1,166 @@
+name: _docker-pipeline (reusable)
+
+# Reusable workflow — the single lego brick for all Docker CI steps.
+#
+# Called by smoke-test.yml (push: false) and publish-docker.yml (push: true).
+# Step visibility is controlled by the push/tag_push inputs; the caller sets permissions.
+#
+# Two modes:
+#   push: false  →  build + smoke test + integration test (main image only)
+#   push: true   →  above + push to GHCR/Docker Hub + update floating v-tag
+#
+# Permissions required from the calling workflow:
+#   push: false  →  contents: read
+#   push: true   →  contents: write, packages: write
+
+on:
+  workflow_call:
+    inputs:
+      name:
+        description: "Image name, e.g. socket-basics"
+        type: string
+        required: true
+      dockerfile:
+        description: "Path to Dockerfile relative to repo root"
+        type: string
+        required: true
+      context:
+        description: "Docker build context"
+        type: string
+        required: false
+        default: "."
+      check_set:
+        description: "Smoke-test tool set: main or app-tests"
+        type: string
+        required: true
+      push:
+        description: "Push to GHCR and Docker Hub after testing"
+        type: boolean
+        required: false
+        default: false
+      tag_push:
+        description: >
+          True when the caller was triggered by a tag push (e.g. v2.0.0).
+          Controls the floating major-version tag update and the 'latest' Docker tag.
+          Passed explicitly rather than relying on github.ref_type inside the callee,
+          since context propagation in reusable workflows can be ambiguous.
+        type: boolean
+        required: false
+        default: false
+      version:
+        description: "Semver without v prefix (e.g. 2.0.0) — used for OCI labels and push tags"
+        type: string
+        required: false
+        default: "dev"
+    secrets:
+      DOCKERHUB_USERNAME:
+        required: false
+      DOCKERHUB_TOKEN:
+        required: false
+
+jobs:
+  pipeline:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+
+      - name: 🔨 Set up Docker Buildx
+        uses: docker/setup-buildx-action@4d04d5d9486b7bd6fa91e7baf45bbb4f8b9deedd # v4.0.0
+
+      # Logins and metadata are only needed in push mode
+      - name: Login to GHCR
+        if: inputs.push
+        uses: docker/login-action@c94ce9fb468520275223c153574b00df6fe4bcc9 # v3.7.0
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ github.token }}
+
+      - name: Login to Docker Hub
+        if: inputs.push
+        uses: docker/login-action@c94ce9fb468520275223c153574b00df6fe4bcc9 # v3.7.0
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+
+      - name: Extract image metadata
+        if: inputs.push
+        id: meta
+        uses: docker/metadata-action@c299e40c65443455700f0fdfc63efafe5b349051 # v5.10.0
+        with:
+          images: |
+            ghcr.io/socketdev/${{ inputs.name }}
+            ${{ secrets.DOCKERHUB_USERNAME }}/${{ inputs.name }}
+          tags: |
+            # Tag push (v2.0.0) → immutable Docker tags 2.0.0 and 2.0 only.
+            # :latest and floating major tags (v2) are intentionally omitted —
+            # this is a security tool and mutable tags set the wrong example.
+            # Users should pin to a specific version or digest; Dependabot manages upgrades.
+            type=semver,pattern={{version}}
+            type=semver,pattern={{major}}.{{minor}}
+            # workflow_dispatch re-publish → use the version input directly
+            type=raw,value=${{ inputs.version }},enable=${{ !inputs.tag_push }}
+          labels: |
+            org.opencontainers.image.title=${{ inputs.name }}
+            org.opencontainers.image.source=https://github.com/SocketDev/socket-basics
+
+      # ── Step 1: Build ──────────────────────────────────────────────────────
+      # Loads image into the local Docker daemon without pushing.
+      # Writes all layers to the GHA cache so the push step is just an upload.
+      - name: 🔨 Build (load for testing)
+        uses: docker/build-push-action@10e90e3645eae34f1e60eeb005ba3a3d33f178e8 # v6.19.2
+        with:
+          context: ${{ inputs.context }}
+          file: ${{ inputs.dockerfile }}
+          load: true
+          push: false
+          tags: ${{ inputs.name }}:pipeline-test
+          build-args: |
+            SOCKET_BASICS_VERSION=${{ inputs.version }}
+            VCS_REF=${{ github.sha }}
+            BUILD_DATE=${{ github.event.repository.updated_at }}
+          cache-from: type=gha,scope=${{ inputs.name }}
+          cache-to: type=gha,mode=max,scope=${{ inputs.name }}
+
+      # ── Step 2: Smoke test ─────────────────────────────────────────────────
+      - name: 🧪 Smoke test
+        run: |
+          bash ./scripts/smoke-test-docker.sh \
+            --skip-build \
+            --image-tag ${{ inputs.name }}:pipeline-test \
+            --check-set ${{ inputs.check_set }}
+
+      # ── Step 3: Integration test (main image only) ─────────────────────────
+      - name: 🔬 Integration test
+        if: inputs.name == 'socket-basics'
+        run: |
+          bash ./scripts/integration-test-docker.sh \
+            --image-tag ${{ inputs.name }}:pipeline-test
+
+      # ── Step 4: Push to registries (publish mode only) ─────────────────────
+      # All layers are in the GHA cache from step 1 — this is just an upload.
+      - name: 🚀 Push to registries
+        if: inputs.push
+        uses: docker/build-push-action@10e90e3645eae34f1e60eeb005ba3a3d33f178e8 # v6.19.2
+        with:
+          context: ${{ inputs.context }}
+          file: ${{ inputs.dockerfile }}
+          load: false
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          build-args: |
+            SOCKET_BASICS_VERSION=${{ inputs.version }}
+            VCS_REF=${{ github.sha }}
+            BUILD_DATE=${{ github.event.repository.updated_at }}
+          cache-from: type=gha,scope=${{ inputs.name }}
+          provenance: true
+          sbom: true
+
+      # Floating major version tags (v2 → latest v2.x.y) have been intentionally
+      # removed. Mutable tags are structurally equivalent to :latest and are
+      # inappropriate for a security tool. Users should pin to an immutable
+      # version tag or digest and use Dependabot to manage upgrades.

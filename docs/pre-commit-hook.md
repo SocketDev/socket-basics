@@ -31,15 +31,11 @@ Best for: Teams wanting consistent environments without installing security tool
 
 ### Setup Steps
 
-**1. Build the Socket Basics Docker image:**
+**1. Pull the Socket Basics Docker image:**
 
 ```bash
-# Clone the repository (if not already)
-git clone https://github.com/SocketDev/socket-basics.git
-cd socket-basics
-
-# Build the Docker image with version tag
-docker build -t socket-basics:1.1.3 .
+# Pull the pre-built image (no build step required)
+docker pull socketdev/socket-basics:1.1.3
 ```
 
 **2. Create pre-commit hook:**

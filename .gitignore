@@ -86,20 +86,16 @@ logs/
 # Markdown: ignore all except documentation
 *.md
 !README.md
+!CHANGELOG.md
 !docs/*.md
 !tests/README.md
+!.github/PULL_REQUEST_TEMPLATE.md
 
 # Project-specific (local scripts and test files)
 test/
 test.py
 run_container.sh
 bin/
-scripts/*.py
-!scripts/enrich_rules.py
-!scripts/rewrite_messages.py
-!scripts/update_cwe_catalog.py
-!scripts/verify_jira_dashboard_config.py
-!scripts/preview_pr_comments.py
 file_generator.py
 local_tests/
 custom_rules/

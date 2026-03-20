@@ -1,0 +1,34 @@
+# Configures GitHub's auto-generated release notes categories.
+# Used by `gh release create --generate-notes` in publish-docker.yml,
+# and visible in the GitHub "Generate release notes" UI when drafting releases.
+# https://docs.github.com/en/repositories/releasing-projects-on-github/automatically-generated-release-notes
+
+changelog:
+  categories:
+    - title: "🚀 New Features"
+      labels:
+        - enhancement
+        - feature
+    - title: "🐛 Bug Fixes"
+      labels:
+        - bug
+        - fix
+    - title: "🔒 Security"
+      labels:
+        - security
+    - title: "📦 Dependencies"
+      labels:
+        - dependencies
+        - docker
+    - title: "⚙️ CI / Build"
+      labels:
+        - ci
+        - github-actions
+        - build
+    - title: "📚 Documentation"
+      labels:
+        - documentation
+        - docs
+    - title: "🔧 Other Changes"
+      labels:
+        - "*"

@@ -6,6 +6,8 @@ REPO_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
 IMAGE_TAG="${IMAGE_TAG:-socket-basics:smoke-test}"
 APP_TESTS_IMAGE_TAG="${APP_TESTS_IMAGE_TAG:-socket-basics-app-tests:smoke-test}"
 RUN_APP_TESTS=false
+SKIP_BUILD=false
+CHECK_SET="main"
 BUILD_PROGRESS="${SMOKE_TEST_BUILD_PROGRESS:-}"
 
 MAIN_TOOLS=(
@@ -24,7 +26,9 @@ APP_TESTS_TOOLS=(
 )
 
 usage() {
-  echo "Usage: $0 [--image-tag TAG] [--app-tests] [--build-progress MODE]"
+  echo "Usage: $0 [--image-tag TAG] [--app-tests] [--skip-build] [--check-set main|app-tests] [--build-progress MODE]"
+  echo "  --skip-build:     skip docker build; verify tools in a pre-built image"
+  echo "  --check-set:      which tool set to verify: main (default) or app-tests"
   echo "  --build-progress: auto|plain|tty (default: auto locally, plain in CI)"
 }
 
@@ -36,6 +40,11 @@ while [[ $# -gt 0 ]]; do
       IMAGE_TAG="$2"; shift 2
       ;;
     --app-tests) RUN_APP_TESTS=true; shift ;;
+    --skip-build) SKIP_BUILD=true; shift ;;
+    --check-set)
+      [[ $# -lt 2 ]] && { echo "Error: --check-set requires a value"; exit 1; }
+      CHECK_SET="$2"; shift 2
+      ;;
     --build-progress)
       [[ $# -lt 2 ]] && { echo "Error: --build-progress requires a value"; exit 1; }
       BUILD_PROGRESS="$2"; shift 2
@@ -43,6 +52,11 @@ while [[ $# -gt 0 ]]; do
     *) echo "Error: unknown option: $1"; usage; exit 1 ;;
   esac
 done
+
+case "$CHECK_SET" in
+  main|app-tests) ;;
+  *) echo "Error: invalid --check-set '$CHECK_SET' (must be 'main' or 'app-tests')"; exit 1 ;;
+esac
 
 if [[ -z "$BUILD_PROGRESS" ]]; then
   if [[ "${GITHUB_ACTIONS:-}" == "true" ]]; then
@@ -92,29 +106,42 @@ run_checks() {
 
 cd "$REPO_ROOT"
 
-echo "==> Build main image"
-echo "Image: $IMAGE_TAG"
-echo "Docker build progress mode: $BUILD_PROGRESS"
-build_args_for_tag "$IMAGE_TAG"
-main_build_start="$(date +%s)"
-docker build "${BUILD_ARGS[@]}" .
-main_build_end="$(date +%s)"
-echo "Main image build completed in $((main_build_end - main_build_start))s"
+if $SKIP_BUILD; then
+  # ── Skip build: verify tools in a pre-built image ────────────────────────
+  echo "==> Verify tools (skip-build mode)"
+  echo "Image: $IMAGE_TAG"
+  echo "Check set: $CHECK_SET"
+  if [[ "$CHECK_SET" == "app-tests" ]]; then
+    run_checks "$IMAGE_TAG" "${APP_TESTS_TOOLS[@]}"
+  else
+    run_checks "$IMAGE_TAG" "${MAIN_TOOLS[@]}"
+  fi
+else
+  # ── Normal mode: build then verify ────────────────────────────────────────
+  echo "==> Build main image"
+  echo "Image: $IMAGE_TAG"
+  echo "Docker build progress mode: $BUILD_PROGRESS"
+  build_args_for_tag "$IMAGE_TAG"
+  main_build_start="$(date +%s)"
+  docker build "${BUILD_ARGS[@]}" .
+  main_build_end="$(date +%s)"
+  echo "Main image build completed in $((main_build_end - main_build_start))s"
 
-echo "==> Verify tools in main image"
-run_checks "$IMAGE_TAG" "${MAIN_TOOLS[@]}"
+  echo "==> Verify tools in main image"
+  run_checks "$IMAGE_TAG" "${MAIN_TOOLS[@]}"
 
-if $RUN_APP_TESTS; then
-  echo "==> Build app_tests image"
-  echo "Image: $APP_TESTS_IMAGE_TAG"
-  build_args_for_tag "$APP_TESTS_IMAGE_TAG"
-  app_build_start="$(date +%s)"
-  docker build -f app_tests/Dockerfile "${BUILD_ARGS[@]}" .
-  app_build_end="$(date +%s)"
-  echo "app_tests image build completed in $((app_build_end - app_build_start))s"
+  if $RUN_APP_TESTS; then
+    echo "==> Build app_tests image"
+    echo "Image: $APP_TESTS_IMAGE_TAG"
+    build_args_for_tag "$APP_TESTS_IMAGE_TAG"
+    app_build_start="$(date +%s)"
+    docker build -f app_tests/Dockerfile "${BUILD_ARGS[@]}" .
+    app_build_end="$(date +%s)"
+    echo "app_tests image build completed in $((app_build_end - app_build_start))s"
 
-  echo "==> Verify tools in app_tests image"
-  run_checks "$APP_TESTS_IMAGE_TAG" "${APP_TESTS_TOOLS[@]}"
+    echo "==> Verify tools in app_tests image"
+    run_checks "$APP_TESTS_IMAGE_TAG" "${APP_TESTS_TOOLS[@]}"
+  fi
 fi
 
 echo "==> Smoke test passed"

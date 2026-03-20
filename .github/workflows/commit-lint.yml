@@ -1,0 +1,51 @@
+name: commit-lint
+
+# Validates the PR title follows Conventional Commits format.
+# For squash-merge workflows (the standard here), the PR title becomes
+# the commit message on main — so this is the enforcement point.
+#
+# To make this a hard gate: add it as a required status check in
+# Settings → Branches → main → Require status checks → commit-lint / lint
+#
+# Until then it runs as advisory (CI fails but merge is not blocked).
+#
+# Config: .commitlintrc.yml (documents valid types and rules)
+# Format: <type>(<optional scope>): <Description>
+# Example: feat(docker): Add versioned Node stage
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened, edited]
+
+permissions:
+  contents: read
+  pull-requests: read
+
+jobs:
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Validate PR title (Conventional Commits)
+        env:
+          PR_TITLE: ${{ github.event.pull_request.title }}
+        run: |
+          VALID_TYPES="feat|fix|docs|chore|ci|refactor|test|perf|revert"
+          PATTERN="^(${VALID_TYPES})(\(.+\))?: .+"
+
+          echo "PR title: $PR_TITLE"
+
+          if echo "$PR_TITLE" | grep -qP "$PATTERN"; then
+            echo "✅ PR title follows Conventional Commits format"
+          else
+            echo "❌ PR title does not follow Conventional Commits format"
+            echo ""
+            echo "Expected: <type>(<optional scope>): <Description>"
+            echo "Valid types: feat, fix, docs, chore, ci, refactor, test, perf, revert"
+            echo ""
+            echo "Examples:"
+            echo "  feat(docker): Add versioned Node stage"
+            echo "  fix: Correct TruffleHog tag format"
+            echo "  docs: Update pinning strategy guidance"
+            echo "  chore(deps): Bump Trivy to 0.69.3"
+            exit 1
+          fi

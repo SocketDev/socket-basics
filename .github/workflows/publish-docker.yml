@@ -1,0 +1,142 @@
+name: publish-docker
+
+# Builds, tests, and publishes the socket-basics image to GHCR and Docker Hub.
+#
+# Flow: resolve-version → build-test-push → create-release
+#
+# Tag convention:
+#   v2.0.0  — immutable exact release
+#   v2      — floating, always points to latest v2.x.y
+#   See docs/github-action.md → "Pinning strategies" for the tradeoff guide.
+#
+# Required repository secrets:
+#   DOCKERHUB_USERNAME  — Docker Hub account name
+#   DOCKERHUB_TOKEN     — Docker Hub access token (read/write)
+
+on:
+  push:
+    tags:
+      - 'v[0-9]+.[0-9]+.[0-9]+'
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Version to publish without v prefix (e.g. 2.0.0). Must match an existing git tag."
+        required: true
+
+# Default: deny everything. Each job below grants only what it needs.
+permissions:
+  contents: read
+
+concurrency:
+  group: publish-docker-${{ github.ref }}
+  cancel-in-progress: false  # never cancel an in-flight publish
+
+jobs:
+
+  # ── Job 1: Resolve version ─────────────────────────────────────────────────
+  # Computes a clean semver string (no v prefix) consumed by downstream jobs.
+  resolve-version:
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.version.outputs.clean }}
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          ref: ${{ github.event_name == 'workflow_dispatch' && format('v{0}', inputs.tag) || github.ref }}
+
+      - name: 🏷️ Resolve version
+        id: version
+        run: |
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            CLEAN="${{ inputs.tag }}"      # user provides without v prefix
+          else
+            CLEAN="${{ github.ref_name }}" # e.g. v2.0.0
+            CLEAN="${CLEAN#v}"             # strip leading v → 2.0.0
+          fi
+          echo "clean=$CLEAN" >> "$GITHUB_OUTPUT"
+
+  # ── Job 2: Build → test → push ─────────────────────────────────────────────
+  # Delegates all Docker steps to the reusable _docker-pipeline workflow.
+  build-test-push:
+    name: publish (socket-basics)
+    needs: resolve-version
+    permissions:
+      contents: write   # force-update the floating major version tag (e.g. v2)
+      packages: write   # push images to GHCR
+    uses: ./.github/workflows/_docker-pipeline.yml
+    with:
+      name: socket-basics
+      dockerfile: Dockerfile
+      context: .
+      check_set: main
+      push: true
+      tag_push: ${{ github.ref_type == 'tag' }}
+      version: ${{ needs.resolve-version.outputs.version }}
+    secrets: inherit
+
+  # ── Job 3: Create GitHub release + update CHANGELOG ────────────────────────
+  # Runs once after the image is successfully pushed (not for workflow_dispatch
+  # re-publishes — those don't create new releases).
+  # Generates categorised release notes from merged PR labels (.github/release.yml),
+  # creates the GitHub Release, then commits the CHANGELOG update back to main.
+  create-release:
+    needs: [resolve-version, build-test-push]
+    if: github.ref_type == 'tag'
+    permissions:
+      contents: write   # create GitHub release + commit CHANGELOG back to main
+    runs-on: ubuntu-latest
+    env:
+      VERSION: ${{ needs.resolve-version.outputs.version }}
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          ref: main
+          fetch-depth: 0
+
+      - name: 🤖 Generate socket-release-bot token
+        id: bot
+        uses: actions/create-github-app-token@29824e69f54612133e76f7eaac726eef6c875baf # v2.2.1
+        with:
+          app-id: ${{ secrets.GH_BOT_APP_ID }}
+          private-key: ${{ secrets.GH_BOT_APP_PEM_FILE }}
+          owner: SocketDev
+          repositories: socket-basics
+
+      - name: 📝 Create GitHub release with auto-generated notes
+        run: |
+          gh release create "${{ github.ref_name }}" \
+            --title "${{ github.ref_name }}" \
+            --generate-notes \
+            --verify-tag
+        env:
+          GH_TOKEN: ${{ steps.bot.outputs.token }}
+
+      - name: 📋 Update CHANGELOG.md
+        run: |
+          NOTES=$(gh release view "${{ github.ref_name }}" --json body --jq .body)
+          DATE=$(date +%Y-%m-%d)
+          echo "$NOTES" | python scripts/update_changelog.py \
+            --version "$VERSION" \
+            --date "$DATE"
+        env:
+          GH_TOKEN: ${{ steps.bot.outputs.token }}
+
+      - name: 🔀 Commit CHANGELOG + action.yml back to main
+        run: |
+          git config user.name "socket-release-bot[bot]"
+          git config user.email "socket-release-bot[bot]@users.noreply.github.com"
+          git remote set-url origin "https://x-access-token:${{ steps.bot.outputs.token }}@github.com/SocketDev/socket-basics.git"
+
+          # Auto-update action.yml image ref to the new version.
+          # No-op if action.yml still uses `image: "Dockerfile"` (handles the
+          # chicken-and-egg on the initial v2.0.0 release).
+          if grep -q 'docker://ghcr.io/socketdev/socket-basics:' action.yml; then
+            sed -i "s|docker://ghcr.io/socketdev/socket-basics:[0-9][0-9]*\.[0-9][0-9]*\.[0-9][0-9]*|docker://ghcr.io/socketdev/socket-basics:${VERSION}|" action.yml
+            echo "Updated action.yml image ref to ${VERSION}"
+          else
+            echo "action.yml not yet using pre-built image — skipping version update"
+          fi
+
+          git add CHANGELOG.md action.yml
+          git diff --cached --quiet || git commit -m "chore: release ${{ github.ref_name }} — update CHANGELOG and action.yml [skip ci]"
+          git push origin HEAD:main

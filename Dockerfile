@@ -1,46 +1,89 @@
-# Use the official Python image as a base
-FROM python:3.12
+# syntax=docker/dockerfile:1
 
-# Create application directory
+# ─── Global version pins (single source of truth) ────────────────────────────
+# Dependabot tracks all ARGs below via the FROM lines that reference them.
+# To override at build time: docker build --build-arg TRIVY_VERSION=0.70.0 .
+#
+# Dependabot-trackable (each has a corresponding FROM <image>:<ARG> stage):
+ARG PYTHON_VERSION=3.12
+ARG TRUFFLEHOG_VERSION=3.93.8
+ARG TRIVY_VERSION=0.69.3
+ARG UV_VERSION=0.10.11
+#
+# NOT Dependabot-trackable (no official Docker image with a stable binary path):
+ARG OPENGREP_VERSION=v1.16.5
+
+# ─── Stage: trivy (Dependabot-trackable) ──────────────────────────────────────
+FROM aquasec/trivy:${TRIVY_VERSION} AS trivy
+
+# ─── Stage: trufflehog (Dependabot-trackable) ─────────────────────────────────
+FROM trufflesecurity/trufflehog:${TRUFFLEHOG_VERSION} AS trufflehog
+
+# ─── Stage: uv (Dependabot-trackable) ─────────────────────────────────────────
+# Named stage required — COPY --from does not support ARG variable expansion.
+FROM ghcr.io/astral-sh/uv:${UV_VERSION} AS uv
+
+# ─── Stage: opengrep-installer ────────────────────────────────────────────────
+# OpenGrep does not publish an official Docker image with a stable binary path,
+# so we install via their official script in a dedicated build stage.
+# NOTE: OPENGREP_VERSION is not Dependabot-trackable; update manually above.
+FROM python:${PYTHON_VERSION}-slim AS opengrep-installer
+ARG OPENGREP_VERSION
+RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
+    --mount=type=cache,target=/var/lib/apt,sharing=locked \
+    apt-get update && apt-get install -y --no-install-recommends \
+      curl ca-certificates bash
+RUN curl -fsSL https://raw.githubusercontent.com/opengrep/opengrep/main/install.sh \
+    | bash -s -- -v "${OPENGREP_VERSION}"
+
+# ─── Stage: runtime ───────────────────────────────────────────────────────────
+FROM python:${PYTHON_VERSION}-slim AS runtime
+
 WORKDIR /socket-basics
-ENV PATH=$PATH:/usr/local/go/bin
 
-# Install uv
-COPY --from=ghcr.io/astral-sh/uv:latest /uv /uvx /bin/
+COPY --from=uv /uv /uvx /bin/
 
-# Install system dependencies
-RUN apt-get update && apt-get install -y curl git wget
+# Binary tools from immutable build stages
+COPY --from=trivy      /usr/local/bin/trivy      /usr/local/bin/trivy
+COPY --from=trufflehog /usr/bin/trufflehog        /usr/local/bin/trufflehog
+COPY --from=opengrep-installer /root/.opengrep    /root/.opengrep
 
-# Install Node.js 22.x
-RUN curl -fsSL https://deb.nodesource.com/setup_22.x | bash - && \
-    apt-get install -y nodejs
+# System deps + Node.js 22.x + Socket CLI
+RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
+    --mount=type=cache,target=/var/lib/apt,sharing=locked \
+    apt-get update && apt-get install -y --no-install-recommends \
+      curl git wget ca-certificates
+RUN curl -fsSL https://deb.nodesource.com/setup_22.x | bash - \
+    && apt-get install -y nodejs
+RUN --mount=type=cache,target=/root/.npm \
+    npm install -g socket
 
-# Install Socket CLI globally
-RUN npm install -g socket
+# Python project files
+COPY socket_basics  /socket-basics/socket_basics
+COPY pyproject.toml README.md LICENSE uv.lock /socket-basics/
 
-# Install Trivy
-ARG TRIVY_VERSION=v0.69.2
-RUN curl -sfL https://raw.githubusercontent.com/aquasecurity/trivy/main/contrib/install.sh | sh -s -- -b /usr/local/bin "${TRIVY_VERSION}"
+# Install Python deps (uv cache speeds up repeated local builds)
+ENV UV_LINK_MODE=copy
+RUN --mount=type=cache,target=/root/.cache/uv \
+    pip install -e . && uv sync --frozen --no-dev
 
-# Install Trufflehog
-ARG TRUFFLEHOG_VERSION=v3.93.6
-RUN curl -sSfL https://raw.githubusercontent.com/trufflesecurity/trufflehog/main/scripts/install.sh | sh -s -- -b /usr/local/bin "${TRUFFLEHOG_VERSION}"
+# OCI image labels — baked-in tool versions + build provenance
+# Values are populated by the publish-docker workflow; local builds use defaults.
+ARG SOCKET_BASICS_VERSION=dev
+ARG VCS_REF=unknown
+ARG BUILD_DATE=unknown
+ARG TRIVY_VERSION
+ARG TRUFFLEHOG_VERSION
+ARG OPENGREP_VERSION
+LABEL org.opencontainers.image.title="Socket Basics" \
+      org.opencontainers.image.source="https://github.com/SocketDev/socket-basics" \
+      org.opencontainers.image.version="${SOCKET_BASICS_VERSION}" \
+      org.opencontainers.image.created="${BUILD_DATE}" \
+      org.opencontainers.image.revision="${VCS_REF}" \
+      com.socket.trivy-version="${TRIVY_VERSION}" \
+      com.socket.trufflehog-version="${TRUFFLEHOG_VERSION}" \
+      com.socket.opengrep-version="${OPENGREP_VERSION}"
 
-# Install OpenGrep (connector/runtime dependency)
-ARG OPENGREP_VERSION=v1.16.2
-RUN curl -fsSL https://raw.githubusercontent.com/opengrep/opengrep/main/install.sh | bash -s -- -v "${OPENGREP_VERSION}"
+ENV PATH="/socket-basics/.venv/bin:/root/.opengrep/cli/latest:/usr/local/bin:$PATH"
 
-# Copy the specific files needed for the project
-COPY socket_basics /socket-basics/socket_basics
-COPY pyproject.toml /socket-basics/pyproject.toml
-COPY README.md /socket-basics/README.md
-COPY LICENSE /socket-basics/LICENSE
-COPY uv.lock /socket-basics/uv.lock
-
-# Install Python dependencies using uv from the project root
-WORKDIR /socket-basics
-RUN pip install -e . && uv sync --frozen --no-dev
-ENV PATH="/socket-basics/.venv/bin:/root/.opengrep/cli/latest:/usr/bin:$PATH"
-
-# Use socket-basics as the default entrypoint
 ENTRYPOINT ["socket-basics"]

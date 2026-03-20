@@ -8,7 +8,7 @@ Socket Basics orchestrates multiple security scanners, normalizes their outputs 
 
 ## 🚀 Quick Start - GitHub Actions
 
-The easiest way to use Socket Basics is through GitHub Actions. Add it to your workflow in minutes:
+The easiest way to use Socket Basics is through GitHub Actions:
 
 ```yaml
 # .github/workflows/socket.yml
@@ -33,13 +33,21 @@ jobs:
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
       - name: Run Socket Basics
-        uses: SocketDev/socket-basics@1.1.3
+        # Pin to a commit SHA for supply-chain safety.
+        # Dependabot will keep this up to date automatically — see docs/github-action.md.
+        uses: SocketDev/socket-basics@<sha>  # v2.0.0
         env:
           GITHUB_PR_NUMBER: ${{ github.event.pull_request.number || github.event.issue.number }}
         with:
           github_token: ${{ secrets.GITHUB_TOKEN }}
           socket_security_api_key: ${{ secrets.SOCKET_SECURITY_API_KEY }}
 ```
+
+> **Why pin to a SHA?** Socket Basics is a security tool — its own supply-chain
+> integrity matters. Version tags can be force-pushed or deleted; a commit SHA is
+> immutable. Dependabot manages the upgrade automatically so you still get updates
+> with a review gate. See [docs/github-action.md](docs/github-action.md#pinning-strategies)
+> for the full explanation and Dependabot setup.
 
 **That's it!** With just your `SOCKET_SECURITY_API_KEY`, all scanning configurations are managed through the [Socket Dashboard](https://socket.dev/dashboard) — no workflow changes needed.
 
@@ -101,6 +109,7 @@ Every feature is customizable via GitHub Actions inputs, CLI flags, or environme
 - [Pre-Commit Hook Setup](docs/pre-commit-hook.md) — Two installation methods (Docker vs native)
 - [Local Docker Installation](docs/local-install-docker.md) — Run with Docker, no tools to install
 - [Local Installation](docs/local-installation.md) — Install Socket CLI, Trivy, and other tools natively
+- [Releasing](docs/releasing.md) — Maintainer guide: How to cut a release for Socket Basics
 
 ### Configuration
 All configuration can be managed through:
@@ -109,7 +118,7 @@ All configuration can be managed through:
 3. **Environment Variables** — Standard or `INPUT_*` prefixed for GitHub Actions
 4. **JSON Configuration File** — Structured configuration (see `socket_config_example.json`)
 
-See [Configuration Documentation](docs/configuration.md) for details on all available options.
+See [Parameters Reference](docs/parameters.md) for the full list of CLI options and environment variables.
 
 #### Integration Environment Variables
 
@@ -143,8 +152,8 @@ For GitHub Actions, see the [Quick Start](#-quick-start---github-actions) above 
 ### Docker
 
 ```bash
-# Build with version tag
-docker build -t socketdev/socket-basics:1.1.3 .
+# Pull the pre-built image (recommended — no build step required)
+docker pull socketdev/socket-basics:1.1.3
 
 # Run scan
 docker run --rm -v "$PWD:/workspace" socketdev/socket-basics:1.1.3 \
@@ -152,16 +161,6 @@ docker run --rm -v "$PWD:/workspace" socketdev/socket-basics:1.1.3 \
   --python-sast-enabled \
   --secret-scanning-enabled \
   --console-tabular-enabled
-```
-
-Tip: If you need specific Trivy, TruffleHog, or OpenGrep versions, you can override them at build time:
-
-```bash
-docker build \
-  --build-arg TRIVY_VERSION=v0.69.2 \
-  --build-arg TRUFFLEHOG_VERSION=v3.93.6 \
-  --build-arg OPENGREP_VERSION=v1.16.2 \
-  -t socketdev/socket-basics:1.1.3 .
 ```
 
 📖 **[View Docker Installation Guide](docs/local-install-docker.md)**
@@ -179,7 +178,7 @@ socket-basics --python --secrets --containers --verbose
 **For GitHub Actions & Docker:** No installation needed — all tools are bundled in the container.
 
 **For Local Installation:**
-- Python 3.8+
+- Python 3.10+
 - [Socket CLI](https://docs.socket.dev/docs/cli) (for dependency analysis)
 - [Trivy](https://github.com/aquasecurity/trivy) (for container scanning)
 - [OpenGrep/Semgrep](https://semgrep.dev/) (for SAST)
@@ -227,20 +226,6 @@ Add new connectors by:
 2. Implementing the connector class
 3. Adding configuration to `socket_basics/connectors.yaml`
 
-See the [Developer Guide](docs/development.md) for details.
-
-## 🧪 Testing
-
-Integration tests for connectors live in `app_tests/`. This is the authoritative location for connector-level testing with sample repositories.
-
-```bash
-# Run tests
-python -m pytest app_tests/ -v
-
-# Run specific connector tests
-python -m pytest app_tests/test_trivy.py -v
-```
-
 ## 🐛 Troubleshooting
 
 **Connector fails to load:**
@@ -272,7 +257,8 @@ We welcome contributions! To add new features:
 1. **New Connectors:** Implement under `socket_basics/core/connector/`
 2. **New Notifiers:** Implement under `socket_basics/core/notification/`
 3. **Configuration:** Add entries to `socket_basics/connectors.yaml` or `socket_basics/notifications.yaml`
-4. **Tests:** See [Testing](#-testing) section below
+4. **Testing:** See [Testing](#-testing) section below
+5. **Releasing:** See [docs/releasing.md](docs/releasing.md) for the maintainer release process
 
 ## 🧪 Testing
 
