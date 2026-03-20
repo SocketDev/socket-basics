@@ -1,5 +1,3 @@
-# syntax=docker/dockerfile:1
-
 # ─── Global version pins (single source of truth) ────────────────────────────
 # Dependabot tracks all ARGs below via the FROM lines that reference them.
 # To override at build time: docker build --build-arg TRIVY_VERSION=0.70.0 .
