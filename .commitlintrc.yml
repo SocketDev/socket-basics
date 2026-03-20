@@ -1,0 +1,28 @@
+extends:
+  - '@commitlint/config-conventional'
+
+# Conventional commit types allowed in this repo.
+# PR titles are validated against this config on every PR (commit-lint.yml)
+# since most merges are squash merges — the PR title becomes the commit on main.
+#
+# Format: <type>(<optional scope>): <description>
+# Examples:
+#   feat(docker): add versioned Node stage
+#   fix: correct TruffleHog tag format
+#   docs: update pinning strategy guidance
+#   chore(deps): bump Trivy to 0.69.3
+#   ci: add commit-lint workflow
+
+rules:
+  type-enum:
+    - 2
+    - always
+    - [feat, fix, docs, chore, ci, refactor, test, perf, revert]
+  subject-case:
+    - 2
+    - always
+    - sentence-case
+  header-max-length:
+    - 2
+    - always
+    - 100
