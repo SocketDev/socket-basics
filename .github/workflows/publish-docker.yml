@@ -121,11 +121,22 @@ jobs:
         env:
           GH_TOKEN: ${{ steps.bot.outputs.token }}
 
-      - name: 🔀 Commit CHANGELOG back to main
+      - name: 🔀 Commit CHANGELOG + action.yml back to main
         run: |
           git config user.name "socket-release-bot[bot]"
           git config user.email "socket-release-bot[bot]@users.noreply.github.com"
           git remote set-url origin "https://x-access-token:${{ steps.bot.outputs.token }}@github.com/SocketDev/socket-basics.git"
-          git add CHANGELOG.md
-          git diff --cached --quiet || git commit -m "docs: update CHANGELOG for ${{ github.ref_name }} [skip ci]"
+
+          # Auto-update action.yml image ref to the new version.
+          # No-op if action.yml still uses `image: "Dockerfile"` (handles the
+          # chicken-and-egg on the initial v2.0.0 release).
+          if grep -q 'docker://ghcr.io/socketdev/socket-basics:' action.yml; then
+            sed -i "s|docker://ghcr.io/socketdev/socket-basics:[0-9][0-9]*\.[0-9][0-9]*\.[0-9][0-9]*|docker://ghcr.io/socketdev/socket-basics:${VERSION}|" action.yml
+            echo "Updated action.yml image ref to ${VERSION}"
+          else
+            echo "action.yml not yet using pre-built image — skipping version update"
+          fi
+
+          git add CHANGELOG.md action.yml
+          git diff --cached --quiet || git commit -m "chore: release ${{ github.ref_name }} — update CHANGELOG and action.yml [skip ci]"
           git push origin HEAD:main
