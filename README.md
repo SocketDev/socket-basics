@@ -8,7 +8,7 @@ Socket Basics orchestrates multiple security scanners, normalizes their outputs 
 
 ## 🚀 Quick Start - GitHub Actions
 
-The easiest way to use Socket Basics is through GitHub Actions. Add it to your workflow in minutes:
+The easiest way to use Socket Basics is through GitHub Actions:
 
 ```yaml
 # .github/workflows/socket.yml
@@ -33,13 +33,21 @@ jobs:
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
       - name: Run Socket Basics
-        uses: SocketDev/socket-basics@1.1.3
+        # Pin to a commit SHA for supply-chain safety.
+        # Dependabot will keep this up to date automatically — see docs/github-action.md.
+        uses: SocketDev/socket-basics@<sha>  # v2.0.0
         env:
           GITHUB_PR_NUMBER: ${{ github.event.pull_request.number || github.event.issue.number }}
         with:
           github_token: ${{ secrets.GITHUB_TOKEN }}
           socket_security_api_key: ${{ secrets.SOCKET_SECURITY_API_KEY }}
 ```
+
+> **Why pin to a SHA?** Socket Basics is a security tool — its own supply-chain
+> integrity matters. Version tags can be force-pushed or deleted; a commit SHA is
+> immutable. Dependabot manages the upgrade automatically so you still get updates
+> with a review gate. See [docs/github-action.md](docs/github-action.md#pinning-strategies)
+> for the full explanation and Dependabot setup.
 
 **That's it!** With just your `SOCKET_SECURITY_API_KEY`, all scanning configurations are managed through the [Socket Dashboard](https://socket.dev/dashboard) — no workflow changes needed.
 

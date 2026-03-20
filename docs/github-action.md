@@ -94,35 +94,57 @@ docker pull ghcr.io/socketdev/socket-basics:1.1.3
 
 See [Local Docker Installation](local-install-docker.md) for usage examples.
 
+### Why we're opinionated about pinning
+
+Socket Basics is a security tool. Its own supply-chain integrity matters — if
+the action itself is compromised or ships a bad release, every repo running it
+is immediately affected. We've seen this happen across the ecosystem:
+
+- **Floating tags** (`@v2`, `:latest`) auto-update on every new release.
+  A single bad push silently reaches all users with no review gate. This is
+  structurally identical to `docker pull :latest` — the anti-pattern we
+  explicitly warn against in our Docker docs.
+- **Version tags** (`@v2.0.0`) are better, but tags are mutable by default.
+  A tag can be deleted and recreated pointing at a different commit. There are
+  documented cases of this happening — maliciously and accidentally.
+- **Commit SHAs** are the only truly immutable reference. A SHA cannot be
+  reassigned. Combined with Dependabot, you get automated upgrades with a
+  human review gate at zero ongoing maintenance cost.
+
+We don't publish a floating major tag (`v2`). We do publish immutable version
+tags (`v2.0.0`) protected by tag protection rules in GitHub — but SHA pinning
+is still the recommendation for defence in depth.
+
 ### Pinning strategies
 
-Starting with v2, socket-basics follows the [GitHub-recommended tag convention](https://docs.github.com/en/actions/sharing-automations/creating-actions/releasing-and-maintaining-actions):
-exact tags (`v2.0.0`), minor tags (`v2.0`), and a floating major tag (`v2`).
-Each strategy offers a different tradeoff between safety and convenience.
+Two supported approaches, both managed by Dependabot:
 
 ---
 
-**Strategy 1 — Floating major tag: `@v2`**
+**Strategy 1 — Commit SHA pin + Dependabot** *(recommended)*
 
-Always runs the latest v2.x.y release. Zero maintenance overhead; you get every
-fix and improvement automatically.
+The only truly immutable reference. Dependabot keeps it current automatically.
 
 ```yaml
-- uses: SocketDev/socket-basics@v2
+- name: Run Socket Basics
+  # Dependabot keeps this SHA up to date — see .github/dependabot.yml setup below.
+  uses: SocketDev/socket-basics@<sha>  # v2.0.0
   with:
     socket_security_api_key: ${{ secrets.SOCKET_SECURITY_API_KEY }}
 ```
 
-**Best for:** teams that trust the project's stability guarantees and want no
-upgrade friction. **Risk:** a buggy patch release will affect you immediately
-with no review gate.
+Get the SHA for any release:
+```bash
+git ls-remote https://github.com/SocketDev/socket-basics refs/tags/v2.0.0
+```
 
 ---
 
-**Strategy 2 — Exact version pin: `@v2.0.0`** *(recommended)*
+**Strategy 2 — Version tag pin + Dependabot**
 
-Pins to a specific immutable release. You control exactly when you upgrade.
-Pair with Dependabot to automate the bump PR while keeping a review gate:
+Acceptable if you trust that tags are immutable (they are — socket-basics
+enforces tag protection rules). SHA pinning is still preferable for defence
+in depth.
 
 ```yaml
 - uses: SocketDev/socket-basics@v2.0.0
@@ -130,7 +152,11 @@ Pair with Dependabot to automate the bump PR while keeping a review gate:
     socket_security_api_key: ${{ secrets.SOCKET_SECURITY_API_KEY }}
 ```
 
-Add to your repo's `.github/dependabot.yml`:
+---
+
+**Dependabot setup (works for both strategies)**
+
+Add or extend `.github/dependabot.yml` in your repo:
 
 ```yaml
 version: 2
@@ -141,40 +167,19 @@ updates:
       interval: "weekly"
 ```
 
-Dependabot opens a PR for each new release. You review, approve, and merge on
-your own schedule — automated upgrades with a human gate. **Best for:** most
-production use cases.
-
----
-
-**Strategy 3 — Commit SHA pin: `@<sha>`**
-
-Maximum supply-chain safety. Pins to an exact commit; even a force-pushed tag
-cannot change what you run. Use `@v2.0.0` to find the SHA, then pin it:
-
-```yaml
-# Get the SHA: git rev-list -n 1 v2.0.0
-- uses: SocketDev/socket-basics@<sha>  # v2.0.0
-  with:
-    socket_security_api_key: ${{ secrets.SOCKET_SECURITY_API_KEY }}
-```
-
-Dependabot also manages SHA pins — it will open PRs to update the SHA when
-a new version is released, keeping the version comment in sync.
-
-**Best for:** high-compliance environments or repos that already SHA-pin all
-actions. Slightly more friction to set up but the highest guarantee of
-reproducibility.
+Dependabot opens a PR for each new release, updating the SHA or version tag
+and keeping the `# v2.0.0` comment in sync. You review, approve, and merge
+on your own schedule — automated upgrades with a human gate.
 
 ---
 
 **Comparison**
 
-| Strategy | Effort | Auto-updates | Review gate | Supply-chain safety |
-|---|---|---|---|---|
-| `@v2` | None | Yes (instant) | No | Low |
-| `@v2.0.0` + Dependabot | Low | Yes (weekly PR) | Yes | Medium |
-| `@<sha>` + Dependabot | Low | Yes (weekly PR) | Yes | High |
+| Strategy | Immutable? | Auto-updates | Review gate |
+|---|---|---|---|
+| `@v2` floating tag | ❌ (not published) | — | — |
+| `@v2.0.0` + Dependabot | ✅ (tag protection enforced) | Yes (weekly PR) | Yes |
+| `@<sha>` + Dependabot | ✅ always | Yes (weekly PR) | Yes |
 
 ## Basic Configuration
 

@@ -62,8 +62,22 @@ the publish pipeline and:
 1. Builds and tests the Docker image
 2. Pushes to `ghcr.io/socketdev/socket-basics:<version>` and `socketdev/socket-basics:<version>`
 3. Creates the GitHub Release with auto-generated notes (categorised by PR labels)
-4. Commits an updated [`CHANGELOG.md`](../CHANGELOG.md) back to `main` via `socket-release-bot`
-5. Force-updates the floating `v2` major version tag
+4. Commits an updated [`CHANGELOG.md`](../CHANGELOG.md) and [`action.yml`](../action.yml) back to `main` via `socket-release-bot`
+
+> Note: floating major version tags (`v2`) are intentionally not published —
+> see [docs/github-action.md](github-action.md#why-were-opinionated-about-pinning).
+
+## Immutable tags — required GitHub setup
+
+Tag protection rules prevent tags from being deleted or force-pushed after creation.
+This is what makes `@v2.0.0` trustworthy as a pin (beyond just recommending SHA pinning).
+
+**One-time setup** (repo admin, Settings → Rules → Rulesets):
+- Create a ruleset targeting tags matching `v*`
+- Enable: **Restrict deletions** + **Block force pushes**
+
+Once in place, every `v*` tag pushed is permanent. Combined with SHA pinning
+and Dependabot, users get the full immutable release guarantee.
 
 ## Making GHCR packages public
 
