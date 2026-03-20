@@ -12,6 +12,9 @@ updates:
     labels:
       - "dependencies"
       - "docker"
+    commit-message:
+      prefix: "chore"
+      include: "scope"   # → chore(deps): bump trivy from 0.69.2 to 0.69.3
 
   # app_tests Dockerfile — same as above, plus golang and securego/gosec.
   - package-ecosystem: "docker"
@@ -21,6 +24,9 @@ updates:
     labels:
       - "dependencies"
       - "docker"
+    commit-message:
+      prefix: "chore"
+      include: "scope"
 
   # GitHub Actions — tracks all uses: ... action versions.
   - package-ecosystem: "github-actions"
@@ -30,3 +36,6 @@ updates:
     labels:
       - "dependencies"
       - "github-actions"
+    commit-message:
+      prefix: "ci"
+      include: "scope"   # → ci(deps): bump actions/checkout from v3 to v4
