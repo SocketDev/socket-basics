@@ -1,3 +1,8 @@
+<!-- PR TITLE: use Conventional Commits format — the commit-lint CI check enforces this.
+     type(scope): Description    →    feat(docker): Add versioned Node stage
+     Valid types: feat · fix · docs · chore · ci · refactor · test · perf · revert
+     Breaking change: add ! after type  →  feat!: Switch to pre-built images -->
+
 ## Summary
 
 <!-- What does this PR do? Why? -->
