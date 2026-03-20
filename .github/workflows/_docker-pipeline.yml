@@ -70,7 +70,7 @@ jobs:
       - name: 🔨 Set up Docker Buildx
         uses: docker/setup-buildx-action@4d04d5d9486b7bd6fa91e7baf45bbb4f8b9deedd # v4.0.0
 
-      # Logins and metadata are only needed in push mode
+      # GHCR login runs before the build — needed to pull ghcr.io/astral-sh/uv.
       - name: Login to GHCR
         if: inputs.push
         uses: docker/login-action@c94ce9fb468520275223c153574b00df6fe4bcc9 # v3.7.0
@@ -79,12 +79,11 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ github.token }}
 
-      - name: Login to Docker Hub
-        if: inputs.push
-        uses: docker/login-action@c94ce9fb468520275223c153574b00df6fe4bcc9 # v3.7.0
-        with:
-          username: ${{ secrets.DOCKERHUB_USERNAME }}
-          password: ${{ secrets.DOCKERHUB_TOKEN }}
+      # Docker Hub login is deferred until after the build and tests.
+      # A repo-scoped Docker Hub token (socketdev/socket-basics only) would cause
+      # 401s if active during the build, since BuildKit uses it for ALL Docker Hub
+      # requests including pulling public base images (python, trivy, trufflehog).
+      # Those public images pull fine without auth; only the push needs credentials.
 
       - name: Extract image metadata
         if: inputs.push
@@ -141,6 +140,16 @@ jobs:
             --image-tag ${{ inputs.name }}:pipeline-test
 
       # ── Step 4: Push to registries (publish mode only) ─────────────────────
+      # Docker Hub login happens here — after build and tests, immediately before
+      # push. Keeping it here prevents the repo-scoped token from interfering
+      # with public image pulls during the build step.
+      - name: Login to Docker Hub
+        if: inputs.push
+        uses: docker/login-action@c94ce9fb468520275223c153574b00df6fe4bcc9 # v3.7.0
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+
       # All layers are in the GHA cache from step 1 — this is just an upload.
       - name: 🚀 Push to registries
         if: inputs.push
