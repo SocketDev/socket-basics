@@ -95,10 +95,12 @@ jobs:
             ghcr.io/socketdev/${{ inputs.name }}
             ${{ secrets.DOCKERHUB_USERNAME }}/${{ inputs.name }}
           tags: |
-            # Tag push (v2.0.0) → Docker tags 2.0.0, 2.0, latest
+            # Tag push (v2.0.0) → immutable Docker tags 2.0.0 and 2.0 only.
+            # :latest and floating major tags (v2) are intentionally omitted —
+            # this is a security tool and mutable tags set the wrong example.
+            # Users should pin to a specific version or digest; Dependabot manages upgrades.
             type=semver,pattern={{version}}
             type=semver,pattern={{major}}.{{minor}}
-            type=raw,value=latest,enable=${{ inputs.tag_push }}
             # workflow_dispatch re-publish → use the version input directly
             type=raw,value=${{ inputs.version }},enable=${{ !inputs.tag_push }}
           labels: |
@@ -158,15 +160,7 @@ jobs:
           provenance: true
           sbom: true
 
-      # ── Step 5: Update floating major version tag ──────────────────────────
-      # e.g. after publishing v2.0.1, force-updates the v2 tag to point here.
-      # Only runs for the main image on tag pushes (not workflow_dispatch re-publishes).
-      - name: 🏷️ Update floating major version tag
-        if: inputs.push && inputs.tag_push && inputs.name == 'socket-basics'
-        run: |
-          MAJOR="${{ github.ref_name }}"
-          MAJOR="${MAJOR%%.*}"
-          git config user.name "github-actions[bot]"
-          git config user.email "github-actions[bot]@users.noreply.github.com"
-          git tag -fa "$MAJOR" -m "Update $MAJOR to ${{ github.ref_name }}"
-          git push origin "$MAJOR" --force
+      # Floating major version tags (v2 → latest v2.x.y) have been intentionally
+      # removed. Mutable tags are structurally equivalent to :latest and are
+      # inappropriate for a security tool. Users should pin to an immutable
+      # version tag or digest and use Dependabot to manage upgrades.
