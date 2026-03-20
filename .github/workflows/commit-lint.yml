@@ -30,7 +30,7 @@ jobs:
           PR_TITLE: ${{ github.event.pull_request.title }}
         run: |
           VALID_TYPES="feat|fix|docs|chore|ci|refactor|test|perf|revert"
-          PATTERN="^(${VALID_TYPES})(\(.+\))?: .+"
+          PATTERN="^(${VALID_TYPES})(\(.+\))?!?: .+"
 
           echo "PR title: $PR_TITLE"
 
