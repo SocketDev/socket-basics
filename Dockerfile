@@ -12,7 +12,7 @@ ARG UV_VERSION=0.10.11
 ARG OPENGREP_VERSION=v1.16.5
 
 # ─── Stage: trivy (Dependabot-trackable) ──────────────────────────────────────
-FROM aquasec/trivy:${TRIVY_VERSION} AS trivy
+# FROM aquasec/trivy:${TRIVY_VERSION} AS trivy
 
 # ─── Stage: trufflehog (Dependabot-trackable) ─────────────────────────────────
 FROM trufflesecurity/trufflehog:${TRUFFLEHOG_VERSION} AS trufflehog
@@ -42,7 +42,7 @@ WORKDIR /socket-basics
 COPY --from=uv /uv /uvx /bin/
 
 # Binary tools from immutable build stages
-COPY --from=trivy      /usr/local/bin/trivy      /usr/local/bin/trivy
+# COPY --from=trivy      /usr/local/bin/trivy      /usr/local/bin/trivy
 COPY --from=trufflehog /usr/bin/trufflehog        /usr/local/bin/trufflehog
 COPY --from=opengrep-installer /root/.opengrep    /root/.opengrep
 

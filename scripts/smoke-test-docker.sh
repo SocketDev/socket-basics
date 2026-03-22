@@ -13,16 +13,20 @@ BUILD_PROGRESS="${SMOKE_TEST_BUILD_PROGRESS:-}"
 MAIN_TOOLS=(
   "socket-basics -h"
   "command -v socket"
-  "trivy --version"
   "trufflehog --version"
   "opengrep --version"
 )
 
 APP_TESTS_TOOLS=(
-  "trivy --version"
   "trufflehog --version"
   "opengrep --version"
   "command -v socket"
+)
+
+# TEMPORARY: trivy is being removed to assess impact. These checks FAIL if the
+# tool is still present in the image — ensures removal is complete.
+MUST_NOT_EXIST_TOOLS=(
+  "trivy"
 )
 
 usage() {
@@ -104,6 +108,22 @@ run_checks() {
   done
 }
 
+# TEMPORARY: verify tools have been fully removed from the image.
+# Fails if any tool in the list is still present.
+run_must_not_exist_checks() {
+  local tag="$1"
+  shift
+  local tools=("$@")
+  for tool in "${tools[@]}"; do
+    if docker run --rm --entrypoint /bin/sh "$tag" -c "command -v $tool" > /dev/null 2>&1; then
+      echo "  FAIL: $tool is still present in the image (expected removal)"
+      return 1
+    else
+      echo "  OK: $tool not found (removal confirmed)"
+    fi
+  done
+}
+
 cd "$REPO_ROOT"
 
 if $SKIP_BUILD; then
@@ -116,6 +136,7 @@ if $SKIP_BUILD; then
   else
     run_checks "$IMAGE_TAG" "${MAIN_TOOLS[@]}"
   fi
+  run_must_not_exist_checks "$IMAGE_TAG" "${MUST_NOT_EXIST_TOOLS[@]}"
 else
   # ── Normal mode: build then verify ────────────────────────────────────────
   echo "==> Build main image"
@@ -129,6 +150,7 @@ else
 
   echo "==> Verify tools in main image"
   run_checks "$IMAGE_TAG" "${MAIN_TOOLS[@]}"
+  run_must_not_exist_checks "$IMAGE_TAG" "${MUST_NOT_EXIST_TOOLS[@]}"
 
   if $RUN_APP_TESTS; then
     echo "==> Build app_tests image"
@@ -141,6 +163,7 @@ else
 
     echo "==> Verify tools in app_tests image"
     run_checks "$APP_TESTS_IMAGE_TAG" "${APP_TESTS_TOOLS[@]}"
+    run_must_not_exist_checks "$APP_TESTS_IMAGE_TAG" "${MUST_NOT_EXIST_TOOLS[@]}"
   fi
 fi
 
