@@ -13,6 +13,13 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [2.0.2] - 2026-03-22
+
+<!-- Release notes generated using configuration in .github/release.yml at v2.0.2 -->
+
+
+
+**Full Changelog**: https://github.com/SocketDev/socket-basics/compare/v2.0.1...v2.0.2
 ## [2.0.0] - 2026-03-20
 
 <!-- Release notes generated using configuration in .github/release.yml at v2.0.0 -->
@@ -182,7 +189,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 ---
 
 <!-- Comparison links — updated automatically by scripts/update_changelog.py on each release -->
-[Unreleased]: https://github.com/SocketDev/socket-basics/compare/v2.0.0...HEAD
+[Unreleased]: https://github.com/SocketDev/socket-basics/compare/v2.0.2...HEAD
+[2.0.2]:      https://github.com/SocketDev/socket-basics/compare/v2.0.0...v2.0.2
 [2.0.0]:      https://github.com/SocketDev/socket-basics/compare/1.1.3...v2.0.0
 [1.1.3]:      https://github.com/SocketDev/socket-basics/compare/1.1.2...1.1.3
 [1.1.2]:      https://github.com/SocketDev/socket-basics/compare/1.1.0...1.1.2
