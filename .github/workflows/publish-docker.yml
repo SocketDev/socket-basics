@@ -108,6 +108,7 @@ jobs:
             --generate-notes \
             --verify-tag \
           || echo "Release already exists (re-run scenario) — skipping creation"
+          || echo "Release already exists (re-run scenario) — skipping creation"
         env:
           GH_TOKEN: ${{ steps.bot.outputs.token }}
 
