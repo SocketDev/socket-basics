@@ -65,10 +65,11 @@ def _insert_release_section(content: str, version: str, date: str, notes: str) -
     new_section = f"\n## [{version}] - {date}\n\n{notes.strip()}\n"
 
     # Match the [Unreleased] heading through to (but not including) the next ## heading
+    # or end of headings (handles a clean changelog with no prior version entries).
     unreleased_pattern = re.compile(
         r"(## \[Unreleased\][^\n]*\n)"  # the heading line
         r"(.*?)"                          # any existing [Unreleased] content
-        r"(?=## \[)",                     # stop before the next ## [ section
+        r"(?=## \[|\Z)",                  # stop before next ## [ section or end of string
         re.IGNORECASE | re.DOTALL,
     )
     match = unreleased_pattern.search(content)
