@@ -113,6 +113,7 @@ jobs:
       - name: 🔨 Build (load for testing)
         uses: docker/build-push-action@10e90e3645eae34f1e60eeb005ba3a3d33f178e8 # v6.19.2
         with:
+          # zizmor: ignore[template-injection] — safe: always hardcoded "." from same-repo callers; passed as array element to exec, not shell-interpolated
           context: ${{ inputs.context }}
           file: ${{ inputs.dockerfile }}
           load: true
@@ -132,18 +133,23 @@ jobs:
 
       # ── Step 2: Smoke test ─────────────────────────────────────────────────
       - name: 🧪 Smoke test
+        env:
+          IMAGE_NAME: ${{ inputs.name }}
+          CHECK_SET: ${{ inputs.check_set }}
         run: |
           bash ./scripts/smoke-test-docker.sh \
             --skip-build \
-            --image-tag ${{ inputs.name }}:pipeline-test \
-            --check-set ${{ inputs.check_set }}
+            --image-tag "$IMAGE_NAME:pipeline-test" \
+            --check-set "$CHECK_SET"
 
       # ── Step 3: Integration test (main image only) ─────────────────────────
       - name: 🔬 Integration test
         if: inputs.name == 'socket-basics'
+        env:
+          IMAGE_NAME: ${{ inputs.name }}
         run: |
           bash ./scripts/integration-test-docker.sh \
-            --image-tag ${{ inputs.name }}:pipeline-test
+            --image-tag "$IMAGE_NAME:pipeline-test"
 
       # ── Step 4: Push to registries (publish mode only) ─────────────────────
       # Docker Hub login happens here — after build and tests, immediately before
@@ -161,6 +167,7 @@ jobs:
         if: inputs.push
         uses: docker/build-push-action@10e90e3645eae34f1e60eeb005ba3a3d33f178e8 # v6.19.2
         with:
+          # zizmor: ignore[template-injection] — safe: always hardcoded "." from same-repo callers; passed as array element to exec, not shell-interpolated
           context: ${{ inputs.context }}
           file: ${{ inputs.dockerfile }}
           load: false

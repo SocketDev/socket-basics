@@ -38,4 +38,3 @@ jobs:
       context: .
       check_set: main
       push: false
-    secrets: inherit

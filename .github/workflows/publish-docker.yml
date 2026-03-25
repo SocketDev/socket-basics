@@ -45,11 +45,15 @@ jobs:
 
       - name: 🏷️ Resolve version
         id: version
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          INPUT_TAG: ${{ inputs.tag }}
+          REF_NAME: ${{ github.ref_name }}
         run: |
-          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
-            CLEAN="${{ inputs.tag }}"      # full tag as provided (e.g. 1.1.3 or v2.0.0)
+          if [ "$EVENT_NAME" = "workflow_dispatch" ]; then
+            CLEAN="$INPUT_TAG"      # full tag as provided (e.g. 1.1.3 or v2.0.0)
           else
-            CLEAN="${{ github.ref_name }}" # e.g. v2.0.0
+            CLEAN="$REF_NAME"      # e.g. v2.0.0
           fi
           CLEAN="${CLEAN#v}"               # strip leading v if present → 2.0.0 or 1.1.3
           echo "clean=$CLEAN" >> "$GITHUB_OUTPUT"
@@ -71,7 +75,9 @@ jobs:
       push: true
       tag_push: ${{ github.ref_type == 'tag' }}
       version: ${{ needs.resolve-version.outputs.version }}
-    secrets: inherit
+    secrets:
+      DOCKERHUB_USERNAME: ${{ secrets.DOCKERHUB_USERNAME }}
+      DOCKERHUB_TOKEN: ${{ secrets.DOCKERHUB_TOKEN }}
 
   # ── Job 3: Create GitHub release + update CHANGELOG ────────────────────────
   # Runs once after the image is successfully pushed (not for workflow_dispatch
@@ -102,30 +108,35 @@ jobs:
           repositories: socket-basics
 
       - name: 📝 Create GitHub release with auto-generated notes
+        env:
+          GH_TOKEN: ${{ steps.bot.outputs.token }}
+          REF_NAME: ${{ github.ref_name }}
         run: |
-          gh release create "${{ github.ref_name }}" \
-            --title "${{ github.ref_name }}" \
+          gh release create "$REF_NAME" \
+            --title "$REF_NAME" \
             --generate-notes \
             --verify-tag \
           || echo "Release already exists (re-run scenario) — skipping creation"
-        env:
-          GH_TOKEN: ${{ steps.bot.outputs.token }}
 
       - name: 📋 Update CHANGELOG.md
+        env:
+          GH_TOKEN: ${{ steps.bot.outputs.token }}
+          REF_NAME: ${{ github.ref_name }}
         run: |
-          NOTES=$(gh release view "${{ github.ref_name }}" --json body --jq .body)
+          NOTES=$(gh release view "$REF_NAME" --json body --jq .body)
           DATE=$(date +%Y-%m-%d)
           echo "$NOTES" | python scripts/update_changelog.py \
             --version "$VERSION" \
             --date "$DATE"
-        env:
-          GH_TOKEN: ${{ steps.bot.outputs.token }}
 
       - name: 🔀 Commit CHANGELOG + action.yml back to main
+        env:
+          BOT_TOKEN: ${{ steps.bot.outputs.token }}
+          REF_NAME: ${{ github.ref_name }}
         run: |
           git config user.name "socket-release-bot[bot]"
           git config user.email "socket-release-bot[bot]@users.noreply.github.com"
-          git remote set-url origin "https://x-access-token:${{ steps.bot.outputs.token }}@github.com/SocketDev/socket-basics.git"
+          git remote set-url origin "https://x-access-token:${BOT_TOKEN}@github.com/SocketDev/socket-basics.git"
 
           # Auto-update action.yml image ref to the new version.
           # No-op if action.yml still uses `image: "Dockerfile"` (handles the
@@ -138,5 +149,5 @@ jobs:
           fi
 
           git add CHANGELOG.md action.yml
-          git diff --cached --quiet || git commit -m "chore: release ${{ github.ref_name }} — update CHANGELOG and action.yml [skip ci]"
+          git diff --cached --quiet || git commit -m "chore: release ${REF_NAME} — update CHANGELOG and action.yml [skip ci]"
           git push origin HEAD:main
