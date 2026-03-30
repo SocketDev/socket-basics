@@ -11,6 +11,7 @@ for notifiers. It intentionally does not live in manager.py or socket_basics.py.
 from typing import Any, Dict, List, Tuple
 import logging
 import os
+from ..config import alert_matches_sast_ignore_override
 
 logger = logging.getLogger(__name__)
 
@@ -37,6 +38,17 @@ def _normalize_alert(a: Dict[str, Any], connector: Any | None = None, default_ge
     if 'severity' in a and isinstance(a['severity'], str):
         a['severity'] = a['severity'].lower()
     # Minimal normalization: lowercase severity and ensure action exists
+
+    # Honor local SAST ignore overrides before deriving actions from severity.
+    try:
+        if connector and hasattr(connector, 'config') and hasattr(connector.config, 'get_sast_ignore_overrides'):
+            for override in connector.config.get_sast_ignore_overrides():
+                if alert_matches_sast_ignore_override(a, override):
+                    logger.debug("Alert matched sast_ignore_overrides entry %s", override)
+                    a['action'] = 'ignore'
+                    return a
+    except Exception:
+        logger.debug('Failed to check SAST ignore overrides for alert', exc_info=True)
 
     # Check if this alert's rule is in the disabled rules list for any language
     # If so, set action to 'ignore' regardless of severity
