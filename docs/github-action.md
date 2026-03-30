@@ -638,7 +638,24 @@ jobs:
           # JavaScript with custom rules
           javascript_sast_enabled: 'true'
           javascript_enabled_rules: 'eval-usage,prototype-pollution'
+
+          # Ignore a specific SAST rule globally or for one exact file
+          sast_ignore_overrides: 'js-sql-injection:index.js'
 ```
+
+`sast_ignore_overrides` supports:
+- `rule_id` to ignore a SAST rule everywhere in the repo
+- `rule_id:path` to ignore a SAST rule for one exact repo-relative file
+
+Examples:
+- `js-sql-injection`
+- `js-sql-injection:index.js`
+- `js-sql-injection:src/unsafe/demo.js`
+
+Notes:
+- Paths must be exact repo-relative paths using `/` separators after normalization.
+- Windows-style input such as `src\\unsafe\\demo.js` is accepted and normalized automatically.
+- Globs and directory-prefix matching are not supported in this first version.
 
 ## Configuration Reference
 
@@ -667,6 +684,7 @@ See [`action.yml`](../action.yml) for the complete list of inputs.
 **Rule Configuration (per language):**
 - `<language>_enabled_rules` — Comma-separated rules to enable
 - `<language>_disabled_rules` — Comma-separated rules to disable
+- `sast_ignore_overrides` — Comma-separated `rule_id` or `rule_id:path` SAST ignore overrides
 
 **Security Scanning:**
 - `secret_scanning_enabled` — Enable secret scanning

@@ -4,7 +4,8 @@ author: "Socket"
 
 runs:
   using: "docker"
-  image: "docker://ghcr.io/socketdev/socket-basics:2.0.2"
+  # TODO: revert to the published GHCR image before merging/releasing.
+  image: "Dockerfile"
   env:
     # Core GitHub variables (these are automatically available, but we explicitly pass GITHUB_TOKEN)
     GITHUB_TOKEN: ${{ inputs.github_token }}
@@ -40,6 +41,7 @@ runs:
     INPUT_JAVASCRIPT_DISABLED_RULES: ${{ inputs.javascript_disabled_rules }}
     INPUT_JAVASCRIPT_ENABLED_RULES: ${{ inputs.javascript_enabled_rules }}
     INPUT_JAVASCRIPT_SAST_ENABLED: ${{ inputs.javascript_sast_enabled }}
+    INPUT_SAST_IGNORE_OVERRIDES: ${{ inputs.sast_ignore_overrides }}
     INPUT_JAVA_DISABLED_RULES: ${{ inputs.java_disabled_rules }}
     INPUT_JAVA_ENABLED_RULES: ${{ inputs.java_enabled_rules }}
     INPUT_JAVA_SAST_ENABLED: ${{ inputs.java_sast_enabled }}
@@ -246,6 +248,10 @@ inputs:
     description: "Enable JavaScript/TypeScript SAST scanning"
     required: false
     default: "false"
+  sast_ignore_overrides:
+    description: "Comma-separated list of SAST ignore overrides in rule_id or rule_id:path format"
+    required: false
+    default: ""
   jira_api_token:
     description: "Jira Api Token"
     required: false
@@ -453,4 +459,4 @@ inputs:
 
 branding:
   icon: "shield"
-  color: "blue"
+  color: "purple"

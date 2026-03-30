@@ -15,6 +15,107 @@ from typing import Dict, Any, List, Optional
 logger = logging.getLogger(__name__)
 
 
+def normalize_repo_relative_path(path_value: str | None) -> str | None:
+    """Normalize a repo-relative path to the POSIX form emitted by SAST alerts."""
+    if path_value is None:
+        return None
+
+    path_str = str(path_value).strip()
+    if not path_str:
+        return None
+
+    # Accept common local input styles but keep the final format strict.
+    path_str = path_str.replace('\\', '/')
+    while path_str.startswith('./'):
+        path_str = path_str[2:]
+    path_str = path_str.lstrip('/')
+
+    normalized_parts: List[str] = []
+    for part in path_str.split('/'):
+        if not part or part == '.':
+            continue
+        if part == '..':
+            return None
+        normalized_parts.append(part)
+
+    normalized = '/'.join(normalized_parts)
+    return normalized or None
+
+
+def parse_sast_ignore_overrides(raw_value: str | None) -> List[Dict[str, str | None]]:
+    """Parse `rule_id` and `rule_id:path` ignore override entries."""
+    overrides: List[Dict[str, str | None]] = []
+    seen: set[tuple[str, str | None]] = set()
+
+    if not raw_value:
+        return overrides
+
+    for raw_entry in str(raw_value).split(','):
+        entry = raw_entry.strip()
+        if not entry:
+            continue
+
+        rule_id = entry
+        path = None
+
+        if ':' in entry:
+            rule_id, path_part = entry.split(':', 1)
+            rule_id = rule_id.strip()
+            path_part = path_part.strip()
+
+            if not rule_id or not path_part:
+                logger.warning("Ignoring malformed SAST ignore override: %r", entry)
+                continue
+
+            if any(ch in path_part for ch in ('*', '?', '[')):
+                logger.warning(
+                    "Ignoring unsupported SAST ignore override with glob syntax: %r",
+                    entry,
+                )
+                continue
+
+            path = normalize_repo_relative_path(path_part)
+            if not path:
+                logger.warning("Ignoring invalid repo-relative path in SAST override: %r", entry)
+                continue
+        else:
+            rule_id = rule_id.strip()
+            if not rule_id:
+                logger.warning("Ignoring malformed SAST ignore override: %r", entry)
+                continue
+
+        key = (rule_id, path)
+        if key in seen:
+            continue
+        seen.add(key)
+        overrides.append({'rule_id': rule_id, 'path': path})
+
+    return overrides
+
+
+def alert_matches_sast_ignore_override(
+    alert: Dict[str, Any],
+    override: Dict[str, str | None],
+) -> bool:
+    """Return True when an alert matches a parsed SAST ignore override."""
+    props = alert.get('props', {}) or {}
+    rule_id = props.get('ruleId') or alert.get('title') or alert.get('ruleId')
+    if not rule_id or rule_id != override.get('rule_id'):
+        return False
+
+    override_path = override.get('path')
+    if not override_path:
+        return True
+
+    alert_path = (
+        props.get('filePath')
+        or (alert.get('location') or {}).get('path')
+        or ''
+    )
+    normalized_alert_path = normalize_repo_relative_path(alert_path)
+    return normalized_alert_path == override_path
+
+
 class Config:
     """Configuration object that provides unified access to all settings"""
     
@@ -112,6 +213,13 @@ class Config:
         else:
             # Default action for unknown severities
             return 'monitor'
+
+    def get_sast_ignore_overrides(self) -> List[Dict[str, str | None]]:
+        """Return parsed SAST ignore overrides from config."""
+        if not hasattr(self, '_sast_ignore_overrides_cache'):
+            raw_value = self.get('sast_ignore_overrides', '')
+            self._sast_ignore_overrides_cache = parse_sast_ignore_overrides(raw_value)
+        return self._sast_ignore_overrides_cache
     
     @property
     def repo(self) -> str:

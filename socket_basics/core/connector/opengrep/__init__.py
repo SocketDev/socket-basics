@@ -720,6 +720,9 @@ class OpenGrepScanner(BaseConnector):
 		groups: Dict[str, List[Dict[str, Any]]] = {}
 		for c in comps_map.values():
 			for a in c.get('alerts', []):
+				alert_action = (a.get('action') or '').strip().lower()
+				if alert_action == 'ignore':
+					continue
 				# Filter by severity - only include alerts that match allowed severities
 				alert_severity = (a.get('severity') or '').strip().lower()
 				if alert_severity and hasattr(self, 'allowed_severities') and alert_severity not in self.allowed_severities:
