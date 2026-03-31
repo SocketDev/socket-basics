@@ -15,8 +15,8 @@ from typing import Dict, Any, List, Optional
 logger = logging.getLogger(__name__)
 
 
-def normalize_repo_relative_path(path_value: str | None) -> str | None:
-    """Normalize a repo-relative path to the POSIX form emitted by SAST alerts."""
+def _normalize_path_parts(path_value: str | None) -> List[str] | None:
+    """Normalize a path-like string into comparable POSIX-style path segments."""
     if path_value is None:
         return None
 
@@ -24,7 +24,6 @@ def normalize_repo_relative_path(path_value: str | None) -> str | None:
     if not path_str:
         return None
 
-    # Accept common local input styles but keep the final format strict.
     path_str = path_str.replace('\\', '/')
     while path_str.startswith('./'):
         path_str = path_str[2:]
@@ -37,6 +36,60 @@ def normalize_repo_relative_path(path_value: str | None) -> str | None:
         if part == '..':
             return None
         normalized_parts.append(part)
+
+    return normalized_parts or None
+
+
+def _get_workspace_prefix_candidates() -> List[List[str]]:
+    """Return normalized workspace roots from common CI systems and local cwd."""
+    candidate_values: List[str] = []
+    for env_var in (
+        'BITBUCKET_CLONE_DIR',
+        'BUILD_SOURCESDIRECTORY',
+        'BUILDKITE_BUILD_CHECKOUT_PATH',
+        'CI_PROJECT_DIR',
+        'CIRCLE_WORKING_DIRECTORY',
+        'DRONE_WORKSPACE',
+        'GITHUB_WORKSPACE',
+        'SYSTEM_DEFAULTWORKINGDIRECTORY',
+        'WORKSPACE',
+    ):
+        env_value = os.getenv(env_var)
+        if env_value:
+            candidate_values.append(env_value)
+
+    try:
+        candidate_values.append(os.getcwd())
+    except Exception:
+        pass
+
+    normalized_candidates: List[List[str]] = []
+    seen: set[tuple[str, ...]] = set()
+    for value in candidate_values:
+        parts = _normalize_path_parts(value)
+        if not parts:
+            continue
+        parts_key = tuple(parts)
+        if parts_key in seen:
+            continue
+        seen.add(parts_key)
+        normalized_candidates.append(parts)
+
+    # Check longer, more specific prefixes first.
+    normalized_candidates.sort(key=len, reverse=True)
+    return normalized_candidates
+
+
+def normalize_repo_relative_path(path_value: str | None) -> str | None:
+    """Normalize a repo-relative path to the POSIX form emitted by SAST alerts."""
+    normalized_parts = _normalize_path_parts(path_value)
+    if not normalized_parts:
+        return None
+
+    for workspace_parts in _get_workspace_prefix_candidates():
+        if len(normalized_parts) > len(workspace_parts) and normalized_parts[:len(workspace_parts)] == workspace_parts:
+            normalized_parts = normalized_parts[len(workspace_parts):]
+            break
 
     normalized = '/'.join(normalized_parts)
     return normalized or None
