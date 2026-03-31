@@ -98,6 +98,7 @@ runs:
     INPUT_PR_LABEL_CRITICAL: ${{ inputs.pr_label_critical }}
     INPUT_PR_LABEL_HIGH: ${{ inputs.pr_label_high }}
     INPUT_PR_LABEL_MEDIUM: ${{ inputs.pr_label_medium }}
+    INPUT_PR_LABEL_LOW: ${{ inputs.pr_label_low }}
 
 inputs:
   workspace:
@@ -456,6 +457,10 @@ inputs:
     description: "Label name for medium severity findings"
     required: false
     default: "security: medium"
+  pr_label_low:
+    description: "Label name for low severity findings"
+    required: false
+    default: "security: low"
 
 branding:
   icon: "shield"
