@@ -36,13 +36,10 @@ class GithubPRNotifier(BaseNotifier):
 
     def notify(self, facts: Dict[str, Any]) -> None:
         notifications = facts.get('notifications', []) or []
+        labels_enabled = self.config.get('pr_labels_enabled', True)
         
         if not isinstance(notifications, list):
             logger.error('GithubPRNotifier: only supports new format - list of dicts with title/content')
-            return
-            
-        if not notifications:
-            logger.info('GithubPRNotifier: no notifications present; skipping')
             return
 
         # Get full scan URL if available and store it for use in truncation
@@ -58,6 +55,13 @@ class GithubPRNotifier(BaseNotifier):
                 logger.warning('GithubPRNotifier: skipping invalid notification item: %s', type(item))
 
         if not valid_notifications:
+            if labels_enabled:
+                pr_number = self._get_pr_number()
+                if pr_number:
+                    self._reconcile_pr_labels(pr_number, [])
+                else:
+                    logger.warning('GithubPRNotifier: unable to determine PR number for label reconciliation')
+            logger.info('GithubPRNotifier: no notifications present; skipping comments')
             return
 
         # Get PR number for current branch
@@ -117,7 +121,7 @@ class GithubPRNotifier(BaseNotifier):
                 logger.error('GithubPRNotifier: failed to post individual comment')
 
         # Add labels to PR if enabled
-        if self.config.get('pr_labels_enabled', True) and pr_number:
+        if labels_enabled and pr_number:
             labels = self._determine_pr_labels(valid_notifications)
             self._reconcile_pr_labels(pr_number, labels)
     def _managed_pr_label_config(self) -> Dict[str, str]:

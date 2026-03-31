@@ -87,3 +87,20 @@ def test_reconcile_pr_labels_clears_managed_labels_when_none_desired(monkeypatch
 
     assert success is True
     assert removed == ['security: high']
+
+
+def test_notify_reconciles_labels_even_when_notifications_are_empty(monkeypatch):
+    notifier = GithubPRNotifier(
+        {
+            'repository': 'SocketDev/socket-basics',
+            'pr_labels_enabled': True,
+        }
+    )
+
+    reconciled: list[tuple[int, list[str]]] = []
+    monkeypatch.setattr(notifier, '_get_pr_number', lambda: 123)
+    monkeypatch.setattr(notifier, '_reconcile_pr_labels', lambda pr_number, labels: reconciled.append((pr_number, labels)) or True)
+
+    notifier.notify({'notifications': []})
+
+    assert reconciled == [(123, [])]
