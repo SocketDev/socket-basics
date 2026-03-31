@@ -76,6 +76,7 @@ runs:
     INPUT_SWIFT_DISABLED_RULES: ${{ inputs.swift_disabled_rules }}
     INPUT_SWIFT_ENABLED_RULES: ${{ inputs.swift_enabled_rules }}
     INPUT_SWIFT_SAST_ENABLED: ${{ inputs.swift_sast_enabled }}
+    # Trivy-backed scanning is temporarily disabled in the pre-built GitHub Action image.
     INPUT_TRIVY_DISABLED_RULES: ${{ inputs.trivy_disabled_rules }}
     INPUT_TRIVY_IMAGE_SCANNING_DISABLED: ${{ inputs.trivy_image_scanning_disabled }}
     INPUT_TRIVY_NOTIFICATION_METHOD: ${{ inputs.trivy_notification_method }}

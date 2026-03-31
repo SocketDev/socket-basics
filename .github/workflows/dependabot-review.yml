@@ -13,7 +13,7 @@ concurrency:
 
 jobs:
   inspect:
-    if: github.actor == 'dependabot[bot]'
+    if: github.event.pull_request.user.login == 'dependabot[bot]'
     runs-on: ubuntu-latest
     outputs:
       root_docker_changed: ${{ steps.diff.outputs.root_docker_changed }}
@@ -66,7 +66,7 @@ jobs:
 
   docker-smoke-main:
     needs: inspect
-    if: github.actor == 'dependabot[bot]' && needs.inspect.outputs.root_docker_changed == 'true'
+    if: github.event.pull_request.user.login == 'dependabot[bot]' && needs.inspect.outputs.root_docker_changed == 'true'
     uses: ./.github/workflows/_docker-pipeline.yml
     permissions:
       contents: read
@@ -79,7 +79,7 @@ jobs:
 
   docker-smoke-app-tests:
     needs: inspect
-    if: github.actor == 'dependabot[bot]' && needs.inspect.outputs.app_tests_docker_changed == 'true'
+    if: github.event.pull_request.user.login == 'dependabot[bot]' && needs.inspect.outputs.app_tests_docker_changed == 'true'
     uses: ./.github/workflows/_docker-pipeline.yml
     permissions:
       contents: read
@@ -92,7 +92,7 @@ jobs:
 
   workflow-notice:
     needs: inspect
-    if: github.actor == 'dependabot[bot]' && needs.inspect.outputs.workflow_or_action_changed == 'true'
+    if: github.event.pull_request.user.login == 'dependabot[bot]' && needs.inspect.outputs.workflow_or_action_changed == 'true'
     runs-on: ubuntu-latest
     steps:
       - name: Flag workflow-sensitive updates
