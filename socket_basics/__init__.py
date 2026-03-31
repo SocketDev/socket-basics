@@ -4,7 +4,7 @@ Socket Basics - Security scanning module
 A comprehensive security scanning module that integrates multiple security tools:
 - OpenGrep for SAST (Static Application Security Testing)
 - Trufflehog for secret scanning
-- Trivy for container and Dockerfile scanning
+- Trivy-backed container and Dockerfile scanning support
 
 The module includes bundled rules and can be used as a standalone tool or library.
 """
@@ -12,7 +12,7 @@ The module includes bundled rules and can be used as a standalone tool or librar
 from .socket_basics import SecurityScanner, main
 from .core.config import load_config_from_env, Config
 
-__version__ = "1.1.3"
+__version__ = "2.0.2"
 __author__ = "Socket.dev"
 __email__ = "support@socket.dev"
 

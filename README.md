@@ -43,7 +43,8 @@ jobs:
           socket_security_api_key: ${{ secrets.SOCKET_SECURITY_API_KEY }}
 ```
 
-> **Why pin to a SHA?** Socket Basics is a security tool — its own supply-chain
+> [!NOTE]
+> Why pin to a SHA? Socket Basics is a security tool, so its own supply-chain
 > integrity matters. Version tags can be force-pushed or deleted; a commit SHA is
 > immutable. Dependabot manages the upgrade automatically so you still get updates
 > with a review gate. See [docs/github-action.md](docs/github-action.md#pinning-strategies)
@@ -54,7 +55,7 @@ jobs:
 ### What You Get
 
 - ✅ **Zero Configuration Required** — Configure scanning policies in the Socket Dashboard
-- ✅ **All Scanners Included** — SAST, secrets, containers, and dependency analysis
+- ✅ **Unified Scanning** — SAST, secrets, dependency analysis, and native container scanning support
 - ✅ **PR Comments** — Automated security findings on pull requests
 - ✅ **Centralized Management** — Update policies across all repos from one place
 
@@ -63,6 +64,16 @@ jobs:
 ### Other Installation Methods
 
 Socket Basics can also run locally or in other CI/CD environments:
+
+> [!NOTE]
+> Container and Dockerfile scanning remain part of Socket Basics, but the current
+> GitHub Action and pre-built image paths have Trivy-backed support temporarily
+> disabled while we complete additional security review of the underlying scanner
+> dependency path. If container or Dockerfile scanning is a near-term
+> requirement, the [native installation path](docs/local-installation.md) remains
+> available as a temporary workaround while the pre-built path is under
+> additional review. Review the upstream install path and artifacts carefully
+> before adopting it in production CI.
 
 - **[Pre-Commit Hook](docs/pre-commit-hook.md)** — Catch issues before they're committed
 - **[Local Docker Installation](docs/local-install-docker.md)** — Run in Docker with no tool installation required
@@ -73,7 +84,7 @@ Socket Basics can also run locally or in other CI/CD environments:
 **Built-in Security Scanners:**
 - 🔍 **SAST** — Static analysis for 15+ languages (Python, JavaScript, Go, Java, Ruby, C#, and more)
 - 🔐 **Secret Scanning** — Detect leaked credentials and API keys with TruffleHog
-- 🐳 **Container Scanning** — Vulnerability scanning for Docker images and Dockerfiles with Trivy
+- 🐳 **Container Scanning** — Trivy-backed image and Dockerfile scanning for native installs
 - 📦 **Dependency Analysis** — Socket Tier 1 reachability analysis for supply chain security
 
 **Enterprise Features** (requires [Socket Enterprise](https://socket.dev/enterprise)):
@@ -108,8 +119,7 @@ Every feature is customizable via GitHub Actions inputs, CLI flags, or environme
 - [PR Comment Guide](docs/github-pr-comment-guide.md) — Detailed guide to PR comment customization
 - [Pre-Commit Hook Setup](docs/pre-commit-hook.md) — Two installation methods (Docker vs native)
 - [Local Docker Installation](docs/local-install-docker.md) — Run with Docker, no tools to install
-- [Local Installation](docs/local-installation.md) — Install Socket CLI, Trivy, and other tools natively
-- [Releasing](docs/releasing.md) — Maintainer guide: How to cut a release for Socket Basics
+- [Local Installation](docs/local-installation.md) — Install Socket CLI and other tools natively with version pinning guidance
 
 ### Configuration
 All configuration can be managed through:
@@ -153,15 +163,17 @@ For GitHub Actions, see the [Quick Start](#-quick-start---github-actions) above 
 
 ```bash
 # Pull the pre-built image (recommended — no build step required)
-docker pull socketdev/socket-basics:1.1.3
+docker pull ghcr.io/socketdev/socket-basics:2.0.2
 
 # Run scan
-docker run --rm -v "$PWD:/workspace" socketdev/socket-basics:1.1.3 \
+docker run --rm -v "$PWD:/workspace" ghcr.io/socketdev/socket-basics:2.0.2 \
   --workspace /workspace \
   --python-sast-enabled \
   --secret-scanning-enabled \
   --console-tabular-enabled
 ```
+
+The pre-built image is versioned and intended to be pinned exactly. Avoid floating tags like `:latest` in CI.
 
 📖 **[View Docker Installation Guide](docs/local-install-docker.md)**
 
@@ -175,12 +187,12 @@ socket-basics --python --secrets --containers --verbose
 
 ## 🔧 Requirements
 
-**For GitHub Actions & Docker:** No installation needed — all tools are bundled in the container.
+**For GitHub Actions & Docker:** No local installation needed for the supported bundled scanners.
 
 **For Local Installation:**
 - Python 3.10+
 - [Socket CLI](https://docs.socket.dev/docs/cli) (for dependency analysis)
-- [Trivy](https://github.com/aquasecurity/trivy) (for container scanning)
+- [Trivy](https://github.com/aquasecurity/trivy) (for native container scanning)
 - [OpenGrep/Semgrep](https://semgrep.dev/) (for SAST)
 - [TruffleHog](https://github.com/trufflesecurity/trufflehog) (for secret scanning)
 
@@ -258,7 +270,6 @@ We welcome contributions! To add new features:
 2. **New Notifiers:** Implement under `socket_basics/core/notification/`
 3. **Configuration:** Add entries to `socket_basics/connectors.yaml` or `socket_basics/notifications.yaml`
 4. **Testing:** See [Testing](#-testing) section below
-5. **Releasing:** See [docs/releasing.md](docs/releasing.md) for the maintainer release process
 
 ## 🧪 Testing
 

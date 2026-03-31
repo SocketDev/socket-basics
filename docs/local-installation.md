@@ -1,6 +1,6 @@
 # Local Installation Guide
 
-Complete guide to installing Socket Basics and all security tools for native execution on your local machine.
+Complete guide to installing Socket Basics and security tools for native execution on your local machine.
 
 ## Table of Contents
 
@@ -23,7 +23,7 @@ git clone https://github.com/SocketDev/socket-basics.git
 cd socket-basics
 pip install -e .
 
-# Install security tools
+# Install pinned security tools
 brew install socket trivy trufflehog
 
 # Install OpenGrep (SAST scanning)
@@ -36,6 +36,12 @@ trivy --version
 opengrep --version
 trufflehog --version
 ```
+
+> [!NOTE]
+> If container or Dockerfile scanning is a near-term requirement, the native
+> installation path remains available as a temporary workaround while the
+> pre-built path is under additional review. Review the upstream install path and
+> artifacts carefully before adopting it in production CI.
 
 For detailed installation instructions, continue reading below.
 
@@ -148,7 +154,8 @@ pip install -e .
 
 ## Security Tools Installation
 
-Socket Basics orchestrates multiple security tools. Install the ones you need:
+Socket Basics orchestrates multiple security tools. Install only the scanners you plan
+to use, and prefer exact version pins whenever your package manager supports them.
 
 ### Socket CLI (Dependency Analysis)
 
@@ -180,6 +187,21 @@ export SOCKET_SECURITY_API_KEY="your-api-key"
 
 **Required for:** Container image and Dockerfile vulnerability scanning
 
+> [!NOTE]
+> Trivy-backed container and Dockerfile scanning remain part of Socket Basics,
+> but the current pre-built GitHub Action and Docker image paths have that
+> support temporarily disabled while the underlying scanner dependency path
+> remains under additional review. This native installation path remains
+> available as a temporary workaround if container scanning is a near-term
+> requirement.
+
+> [!WARNING]
+> This fallback path pulls installation material directly from upstream. Even when
+> you pin the Trivy version, the installer or repository path is a separate trust
+> decision. This is one reason Socket Basics has moved toward pre-built, pinned
+> container-based distribution where possible. Review the upstream install path
+> and artifacts carefully before using this in production CI.
+
 **Installation:**
 
 ```bash
@@ -203,8 +225,8 @@ enabled=1
 EOF
 sudo yum -y install trivy
 
-# Using Docker (alternative):
-docker pull aquasec/trivy:latest
+# Using Docker (alternative; pin explicitly):
+docker pull aquasec/trivy:0.69.3
 
 # Verify installation
 trivy --version
@@ -245,17 +267,17 @@ OpenGrep works with the bundled Socket Basics SAST rules. No additional configur
 # macOS/Linux with Homebrew:
 brew install trufflehog
 
-# Using Docker (alternative):
-docker pull trufflesecurity/trufflehog:latest
+# Using Docker (alternative; pin explicitly):
+docker pull trufflesecurity/trufflehog:v3.93.8
 
 # Manual installation (Linux):
-wget https://github.com/trufflesecurity/trufflehog/releases/latest/download/trufflehog_linux_amd64.tar.gz
-tar -xzf trufflehog_linux_amd64.tar.gz
+wget https://github.com/trufflesecurity/trufflehog/releases/download/v3.93.8/trufflehog_3.93.8_linux_amd64.tar.gz
+tar -xzf trufflehog_3.93.8_linux_amd64.tar.gz
 sudo mv trufflehog /usr/local/bin/
 
 # Manual installation (macOS):
-wget https://github.com/trufflesecurity/trufflehog/releases/latest/download/trufflehog_darwin_arm64.tar.gz
-tar -xzf trufflehog_darwin_arm64.tar.gz
+wget https://github.com/trufflesecurity/trufflehog/releases/download/v3.93.8/trufflehog_3.93.8_darwin_arm64.tar.gz
+tar -xzf trufflehog_3.93.8_darwin_arm64.tar.gz
 sudo mv trufflehog /usr/local/bin/
 
 # Verify installation
@@ -493,7 +515,7 @@ socket-basics \
 
 # Container scanning
 socket-basics \
-  --container-images nginx:latest,redis:7 \
+  --container-images nginx:1.27.4,redis:7.4 \
   --dockerfiles Dockerfile,docker/Dockerfile.prod
 
 # Scan specific workspace

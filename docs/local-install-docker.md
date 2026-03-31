@@ -1,6 +1,6 @@
 # Local Docker Installation
 
-Run Socket Basics locally using Docker without installing any security tools on your host machine. This guide covers using the pre-built images from GHCR / Docker Hub and building from source.
+Run Socket Basics locally using Docker without installing security tools on your host machine. This guide covers the supported pre-built images from GHCR / Docker Hub and building from source when you need to inspect or customize the image.
 
 ## Table of Contents
 
@@ -15,8 +15,8 @@ Run Socket Basics locally using Docker without installing any security tools on 
 ## Quick Start
 
 ```bash
-# 1. Pull a pinned release from Docker Hub (no build step required)
-docker pull socketdev/socket-basics:1.1.3
+# 1. Pull a pinned release from GHCR (no build step required)
+docker pull ghcr.io/socketdev/socket-basics:2.0.2
 
 # 2. Create .env file with your credentials
 cat > .env << 'EOF'
@@ -28,12 +28,15 @@ EOF
 docker run --rm \
   -v "$PWD:/workspace" \
   --env-file .env \
-  socketdev/socket-basics:1.1.3 \
+  ghcr.io/socketdev/socket-basics:2.0.2 \
   --workspace /workspace \
   --python \
   --secrets \
   --console-tabular-enabled
 ```
+
+The Docker image should always be pinned to an exact version such as `2.0.2`. Avoid
+floating tags like `:latest` in CI/CD.
 
 ## Using Pre-built Images
 
@@ -42,16 +45,25 @@ The baked-in security tool versions are recorded in the image labels so you can 
 inspect exactly what's inside:
 
 ```bash
-docker inspect ghcr.io/socketdev/socket-basics:1.1.3 \
+docker inspect ghcr.io/socketdev/socket-basics:2.0.2 \
   | jq '.[0].Config.Labels'
 # {
-#   "com.socket.trivy-version": "0.69.3",
 #   "com.socket.trufflehog-version": "3.93.8",
 #   "com.socket.opengrep-version": "v1.16.5",
-#   "org.opencontainers.image.version": "1.1.3",
+#   "org.opencontainers.image.version": "2.0.2",
 #   ...
 # }
 ```
+
+> [!NOTE]
+> Container and Dockerfile scanning remain part of Socket Basics, but the current
+> pre-built image path has Trivy-backed support temporarily disabled while we
+> complete additional security review of the underlying scanner dependency path.
+> If container or Dockerfile scanning is a near-term requirement, the
+> [native installation path](local-installation.md) remains available as a
+> temporary workaround while the pre-built path is under additional review.
+> Review the upstream install path and artifacts carefully before adopting it in
+> production CI.
 
 ### Registries
 
@@ -72,7 +84,7 @@ docker inspect ghcr.io/socketdev/socket-basics:1.1.3 \
       -v "$GITHUB_WORKSPACE:/workspace" \
       -e SOCKET_SECURITY_API_KEY=${{ secrets.SOCKET_API_KEY }} \
       -e SOCKET_ORG=${{ secrets.SOCKET_ORG }} \
-      ghcr.io/socketdev/socket-basics:1.1.3 \
+      ghcr.io/socketdev/socket-basics:2.0.2 \
       --workspace /workspace \
       --all-languages \
       --secrets \
@@ -83,7 +95,7 @@ docker inspect ghcr.io/socketdev/socket-basics:1.1.3 \
 
 ```yaml
 security-scan:
-  image: ghcr.io/socketdev/socket-basics:1.1.3
+  image: ghcr.io/socketdev/socket-basics:2.0.2
   stage: test
   script:
     - socket-basics
@@ -100,7 +112,7 @@ security-scan:
 
 ```dockerfile
 # Pin socket-basics and let Dependabot send upgrade PRs automatically
-FROM ghcr.io/socketdev/socket-basics:1.1.3
+FROM ghcr.io/socketdev/socket-basics:2.0.2
 ```
 
 ### Staying Up to Date with Dependabot
@@ -118,7 +130,7 @@ updates:
       interval: "weekly"
 ```
 
-Dependabot will detect the `FROM ghcr.io/socketdev/socket-basics:1.1.3` reference
+Dependabot will detect the `FROM ghcr.io/socketdev/socket-basics:2.0.2` reference
 and open a PR with the version bump when a new release is available.
 
 ## Building the Docker Image
@@ -129,10 +141,10 @@ Pull a specific release without building locally:
 
 ```bash
 # GHCR (preferred)
-docker pull ghcr.io/socketdev/socket-basics:1.1.3
+docker pull ghcr.io/socketdev/socket-basics:2.0.2
 
 # Docker Hub
-docker pull socketdev/socket-basics:1.1.3
+docker pull socketdev/socket-basics:2.0.2
 ```
 
 ### Build from Source
@@ -145,7 +157,7 @@ git clone https://github.com/SocketDev/socket-basics.git
 cd socket-basics
 
 # Build with version tag (multi-stage; first build is slower, subsequent ones are fast)
-docker build -t socket-basics:1.1.3 .
+docker build -t socket-basics:2.0.2 .
 
 # Verify the build
 docker images | grep socket-basics
@@ -154,32 +166,32 @@ docker images | grep socket-basics
 ### Build for a Specific Platform (M1/M2 Macs)
 
 ```bash
-docker build --platform linux/amd64 -t socket-basics:1.1.3 .
+docker build --platform linux/amd64 -t socket-basics:2.0.2 .
 ```
 
 ### Build with Custom Tool Versions
 
-The image pins Trivy, TruffleHog, and OpenGrep to specific versions. You can override any of them at build time:
+The image pins the bundled tools to specific versions. You can override them at build time:
 
 ```bash
 docker build \
-  --build-arg TRIVY_VERSION=0.69.3 \
   --build-arg TRUFFLEHOG_VERSION=3.93.8 \
   --build-arg OPENGREP_VERSION=v1.16.5 \
-  -t socket-basics:1.1.3 .
+  -t socket-basics:2.0.2 .
 ```
 
-Omit any `--build-arg` to use the default version for that tool. For the app tests image, build from the `app_tests` directory and use the same build args.
+`TRIVY_VERSION` still exists in the Dockerfile for maintainers, but the current
+published image intentionally omits the Trivy binary. For the app tests image, build
+from the `app_tests` directory and use the same build args.
 
 ### Verify Installation
 
 ```bash
 # Check that all tools are available in the container
-docker run --rm socket-basics:1.1.3 socket-basics --version
-docker run --rm socket-basics:1.1.3 socket --version
-docker run --rm socket-basics:1.1.3 trivy --version
-docker run --rm socket-basics:1.1.3 opengrep --version
-docker run --rm socket-basics:1.1.3 trufflehog --version
+docker run --rm socket-basics:2.0.2 socket-basics --version
+docker run --rm socket-basics:2.0.2 socket --version
+docker run --rm socket-basics:2.0.2 opengrep --version
+docker run --rm socket-basics:2.0.2 trufflehog --version
 ```
 
 ### Smoke Test
@@ -202,7 +214,7 @@ With `--app-tests` to also test the app_tests image (requires full build context
 ./scripts/smoke-test-docker.sh --app-tests
 ```
 
-This builds the image(s) and verifies Trivy, TruffleHog, and OpenGrep are installed and executable. A GitHub Action runs this on Dockerfile changes and daily.
+This builds the image(s) and verifies the currently bundled tools are installed and executable. A GitHub Action runs this on Dockerfile changes and daily.
 
 ## Running Scans
 
@@ -214,7 +226,7 @@ Mount your project directory into the container:
 # Scan current directory
 docker run --rm \
   -v "$PWD:/workspace" \
-  socket-basics:1.1.3 \
+  socket-basics:2.0.2 \
   --workspace /workspace \
   --python \
   --secrets \
@@ -231,7 +243,7 @@ docker run --rm \
 # Scan a specific project directory
 docker run --rm \
   -v "/path/to/your/project:/workspace" \
-  socket-basics:1.1.3 \
+  socket-basics:2.0.2 \
   --workspace /workspace \
   --javascript \
   --secrets
@@ -242,7 +254,7 @@ docker run --rm \
 ```bash
 docker run --rm \
   -v "$PWD:/workspace" \
-  socket-basics:1.1.3 \
+  socket-basics:2.0.2 \
   --workspace /workspace \
   --all-languages \
   --secrets \
@@ -290,7 +302,7 @@ VERBOSE=false
 docker run --rm \
   -v "$PWD:/workspace" \
   --env-file .env \
-  socket-basics:1.1.3 \
+  socket-basics:2.0.2 \
   --workspace /workspace \
   --python \
   --secrets
@@ -305,7 +317,7 @@ docker run --rm \
   -v "$PWD:/workspace" \
   -e "SOCKET_SECURITY_API_KEY=scrt_your_api_key" \
   -e "SOCKET_ORG=your-org-slug" \
-  socket-basics:1.1.3 \
+  socket-basics:2.0.2 \
   --workspace /workspace \
   --python \
   --secrets \
@@ -327,7 +339,7 @@ docker run --rm \
   --env-file .env.socket \
   --env-file .env.notifiers \
   --env-file .env.scanning \
-  socket-basics:1.1.3 \
+  socket-basics:2.0.2 \
   --workspace /workspace \
   --all-languages
 ```
@@ -346,29 +358,24 @@ docker run --rm \
   -v "$PWD:/workspace" \
   -e "SOCKET_SECURITY_API_KEY=$SOCKET_SECURITY_API_KEY" \
   -e "SOCKET_ORG=$SOCKET_ORG" \
-  socket-basics:1.1.3 \
+  socket-basics:2.0.2 \
   --workspace /workspace \
   --python
 ```
 
 ## Advanced Usage
 
-### Container Scanning with Docker-in-Docker
+### Container Scanning Status
 
-To scan Docker images, you need to provide Docker socket access:
-
-```bash
-docker run --rm \
-  -v "$PWD:/workspace" \
-  -v "/var/run/docker.sock:/var/run/docker.sock" \
-  --env-file .env \
-  socket-basics:1.1.3 \
-  --workspace /workspace \
-  --images "nginx:latest,redis:7" \
-  --console-tabular-enabled
-```
-
-**Security Note:** Mounting the Docker socket gives the container full Docker access. Only use with trusted images.
+> [!NOTE]
+> Container and Dockerfile scanning remain part of Socket Basics, but the current
+> pre-built Docker image path has Trivy-backed support temporarily disabled while
+> we complete additional security review of the underlying scanner dependency path.
+> If container or Dockerfile scanning is a near-term requirement, the
+> [native installation path](local-installation.md) remains available as a
+> temporary workaround while the pre-built path is under additional review.
+> Review the upstream install path and artifacts carefully before adopting it in
+> production CI.
 
 ### Save Results to File
 
@@ -383,7 +390,7 @@ docker run --rm \
   -v "$PWD:/workspace" \
   -v "$PWD/scan-results:/results" \
   --env-file .env \
-  socket-basics:1.1.3 \
+  socket-basics:2.0.2 \
   --workspace /workspace \
   --python \
   --secrets \
@@ -400,7 +407,7 @@ docker run --rm -it \
   -v "$PWD:/workspace" \
   --env-file .env \
   --entrypoint /bin/bash \
-  socket-basics:1.1.3
+  socket-basics:2.0.2
 
 # Inside container, run commands manually:
 # cd /workspace
@@ -429,7 +436,7 @@ docker run --rm \
   -v "$PWD:/workspace" \
   -v "$PWD/socket-config.json:/config.json" \
   --env-file .env \
-  socket-basics:1.1.3 \
+  socket-basics:2.0.2 \
   --workspace /workspace \
   --config /config.json
 ```
@@ -453,7 +460,7 @@ for PROJECT in "${PROJECTS[@]}"; do
   docker run --rm \
     -v "$PROJECT:/workspace" \
     --env-file .env \
-    socket-basics:1.1.3 \
+    socket-basics:2.0.2 \
     --workspace /workspace \
     --all-languages \
     --secrets \
@@ -477,7 +484,7 @@ pipeline {
         stage('Security Scan') {
             steps {
                 script {
-                    docker.image('ghcr.io/socketdev/socket-basics:1.1.3').inside(
+                    docker.image('ghcr.io/socketdev/socket-basics:2.0.2').inside(
                         "-v ${WORKSPACE}:/workspace --env-file .env"
                     ) {
                         sh '''
@@ -499,7 +506,7 @@ pipeline {
 
 ```yaml
 security-scan:
-  image: ghcr.io/socketdev/socket-basics:1.1.3
+  image: ghcr.io/socketdev/socket-basics:2.0.2
   stage: test
   script:
     - socket-basics
@@ -525,7 +532,7 @@ security-scan:
    docker run --rm \
      -v "$PWD:/workspace" \
      --user "$(id -u):$(id -g)" \
-     socket-basics:1.1.3 \
+     socket-basics:2.0.2 \
      --workspace /workspace
    ```
 
@@ -544,14 +551,14 @@ security-scan:
    ```bash
    docker run --rm \
      -v "$(pwd):/workspace" \  # Use $(pwd) instead of $PWD
-     socket-basics:1.1.3
+     socket-basics:2.0.2
    ```
 
 2. Verify mount:
    ```bash
    docker run --rm \
      -v "$PWD:/workspace" \
-     socket-basics:1.1.3 \
+     socket-basics:2.0.2 \
      ls -la /workspace
    ```
 
@@ -581,24 +588,7 @@ security-scan:
    docker run --rm \
      -v "$PWD:/workspace" \
      --env-file "$(pwd)/.env" \
-     socket-basics:1.1.3
-   ```
-
-### Docker Socket Permission Denied
-
-**Problem:** Cannot scan Docker images (permission denied on `/var/run/docker.sock`).
-
-**Solutions:**
-
-1. Add user to docker group:
-   ```bash
-   sudo usermod -aG docker $USER
-   newgrp docker
-   ```
-
-2. Run with sudo (not recommended):
-   ```bash
-   sudo docker run ...
+     socket-basics:2.0.2
    ```
 
 ### Container Image Too Large
@@ -629,7 +619,7 @@ security-scan:
    ```bash
    docker run --rm \
      -v "$PWD:/workspace" \
-     socket-basics:1.1.3 \
+     socket-basics:2.0.2 \
      --workspace /workspace \
      --python \
      --secrets \
@@ -650,7 +640,7 @@ security-scan:
    ```bash
    docker run --rm \
      -v "$PWD:/workspace" \
-     socket-basics:1.1.3 \
+     socket-basics:2.0.2 \
      --workspace /workspace \
      --output /workspace/results.json  # Save to mounted directory
    ```
@@ -661,7 +651,7 @@ security-scan:
    docker run --rm \
      -v "$PWD:/workspace" \
      -v "$PWD/results:/results" \
-     socket-basics:1.1.3 \
+     socket-basics:2.0.2 \
      --workspace /workspace \
      --output /results/scan.json
    ```
@@ -672,7 +662,7 @@ Add these to your `~/.bashrc` or `~/.zshrc` for quick access:
 
 ```bash
 # Socket Basics Docker aliases
-alias sb-docker='docker run --rm -v "$PWD:/workspace" --env-file .env ghcr.io/socketdev/socket-basics:1.1.3 --workspace /workspace'
+alias sb-docker='docker run --rm -v "$PWD:/workspace" --env-file .env ghcr.io/socketdev/socket-basics:2.0.2 --workspace /workspace'
 alias sb-quick='sb-docker --secrets --console-tabular-enabled'
 alias sb-python='sb-docker --python --secrets --console-tabular-enabled'
 alias sb-js='sb-docker --javascript --secrets --console-tabular-enabled'
@@ -697,7 +687,7 @@ sb-all
 ## Best Practices
 
 1. **Use pre-built images** — Pull `ghcr.io/socketdev/socket-basics:<version>` instead of building locally
-2. **Pin to a specific version** — Avoid `:latest` in production CI; pin to `1.1.3` and upgrade deliberately
+2. **Pin to a specific version** — Avoid `:latest` in production CI; pin to `2.0.2` and upgrade deliberately
 3. **Use Dependabot** — Reference the image in your Dockerfile/Compose to get automatic upgrade PRs
 4. **Inspect baked-in labels** — Run `docker inspect <image> | jq '.[0].Config.Labels'` to verify tool versions
 5. **Use .env files** — Keep credentials out of command history
@@ -716,7 +706,7 @@ set -e
 # Configuration
 PROJECT_DIR="$(pwd)"
 RESULTS_DIR="./scan-results"
-IMAGE_NAME="socket-basics:1.1.3"
+IMAGE_NAME="socket-basics:2.0.2"
 ENV_FILE=".env"
 
 # Create results directory

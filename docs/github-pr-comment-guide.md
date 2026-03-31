@@ -7,11 +7,17 @@ Socket Basics delivers **beautifully formatted, actionable GitHub PR comments** 
 These enhancements work across **all scanner types**:
 - ✅ **Socket Tier 1** (Reachability Analysis)
 - ✅ **SAST** (OpenGrep/Semgrep)
-- ✅ **Container Scanning** (Trivy)
+- ✅ **Container Scanning** (when container findings are available)
 - ✅ **Secret Detection** (TruffleHog)
 - ✅ **Future OSS Tools** (via centralized architecture)
 
 All scanners share the same UX enhancements for a consistent, professional experience.
+
+> [!NOTE]
+> Container-scanning UX is still supported by Socket Basics, but the current
+> pre-built GitHub Action image does not emit Trivy-backed container findings
+> while we complete additional security review of the underlying scanner
+> dependency path.
 
 ## 🎯 Quick Start
 
@@ -166,7 +172,7 @@ Make vulnerability IDs clickable and display CVSS scores for better risk assessm
 **How it works:**
 - CVE IDs automatically become clickable links to the National Vulnerability Database (NVD)
 - CVSS scores are displayed when available from the scanner
-- Works for Socket Tier 1 and Trivy container/CVE scanning
+- Works for Socket Tier 1 and container/CVE scanning when those findings are present
 - Missing CVSS scores are gracefully omitted (no breaking changes)
 
 **Example with different formats:**
