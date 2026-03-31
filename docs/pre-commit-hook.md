@@ -35,7 +35,7 @@ Best for: Teams wanting consistent environments without installing security tool
 
 ```bash
 # Pull the pre-built image (no build step required)
-docker pull socketdev/socket-basics:1.1.3
+docker pull ghcr.io/socketdev/socket-basics:2.0.2
 ```
 
 **2. Create pre-commit hook:**
@@ -198,9 +198,9 @@ pip install -e .
 
 **Security tools:**
 
-See [Local Installation Guide](local-installation.md) for detailed instructions on installing:
+See [Local Installation Guide](local-installation.md) for detailed instructions on installing pinned versions of:
 - Socket CLI
-- Trivy
+- Trivy (required if you want native container scanning)
 - OpenGrep
 - TruffleHog
 

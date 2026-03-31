@@ -383,19 +383,19 @@ inputs:
     required: false
     default: "false"
   trivy_disabled_rules:
-    description: "Comma-separated list of Trivy rules to disable"
+    description: "Comma-separated list of Trivy rules to disable. Trivy-backed scanning is temporarily unavailable in the pre-built GitHub Action image."
     required: false
     default: ""
   trivy_image_scanning_disabled:
-    description: "Disable Trivy image scanning"
+    description: "Disable Trivy image scanning. Trivy-backed scanning is temporarily unavailable in the pre-built GitHub Action image."
     required: false
     default: "false"
   trivy_notification_method:
-    description: "Notification method for Trivy (e.g., console, slack)"
+    description: "Notification method for Trivy (e.g., console, slack). Trivy-backed scanning is temporarily unavailable in the pre-built GitHub Action image."
     required: false
     default: ""
   trivy_vuln_enabled:
-    description: "Enable Trivy vulnerability scanning for all supported language ecosystems"
+    description: "Enable Trivy vulnerability scanning for all supported language ecosystems. Trivy-backed scanning is temporarily unavailable in the pre-built GitHub Action image."
     required: false
     default: "false"
   trufflehog_exclude_dir:

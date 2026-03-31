@@ -293,12 +293,22 @@ socket-basics --secrets --show-unverified
 
 ## Container Scanning
 
+> [!NOTE]
+> These parameters remain part of the Socket Basics interface for container
+> scanning. In the current pre-built GitHub Action and Docker image paths,
+> Trivy-backed support is temporarily disabled while we complete additional
+> security review of the underlying scanner dependency path. The parameters still
+> apply for the [native installation path](local-installation.md) as a temporary
+> workaround, and for future container scanner support in the pre-built paths.
+> Review the upstream install path and artifacts carefully before adopting that
+> workaround in production CI.
+
 ### `--images IMAGES`
 Comma-separated list of container images to scan (auto-enables image scanning).
 
 **Example:**
 ```bash
-socket-basics --images "nginx:latest,redis:7,postgres:15"
+socket-basics --images "nginx:1.27.4,redis:7.4,postgres:15.8"
 ```
 
 ### `--dockerfiles DOCKERFILES`
@@ -314,7 +324,7 @@ Notification method for Trivy container scanning results.
 
 **Example:**
 ```bash
-socket-basics --images "nginx:latest" --trivy-notify console
+socket-basics --images "nginx:1.27.4" --trivy-notify console
 ```
 
 ### `--trivy-disabled-rules TRIVY_DISABLED_RULES`
@@ -322,7 +332,7 @@ Comma-separated list of Trivy rules to disable.
 
 **Example:**
 ```bash
-socket-basics --images "nginx:latest" --trivy-disabled-rules "CVE-2023-1234,CVE-2023-5678"
+socket-basics --images "nginx:1.27.4" --trivy-disabled-rules "CVE-2023-1234,CVE-2023-5678"
 ```
 
 ### `--trivy-image-scanning-disabled`
@@ -546,7 +556,7 @@ You can provide configuration via a JSON file using `--config`:
   "socket_org": "your-org-slug",
   "socket_api_key": "scrt_your_api_key",
   
-  "images": "nginx:latest,redis:7",
+  "images": "nginx:1.27.4,redis:7.4",
   "trivy_vuln_enabled": true,
   
   "slack_webhook_url": "https://hooks.slack.com/services/T00/B00/XXXX",
@@ -593,7 +603,7 @@ socket-basics \
   --all-languages \
   --secrets \
   --socket-tier1 \
-  --images "myapp:latest" \
+  --images "myapp:1.0.0" \
   --console-tabular-enabled \
   --verbose
 ```
@@ -624,7 +634,7 @@ socket-basics \
 
 ```bash
 socket-basics \
-  --images "nginx:latest,postgres:15" \
+  --images "nginx:1.27.4,postgres:15.8" \
   --dockerfiles "Dockerfile" \
   --trivy-vuln-enabled \
   --console-tabular-enabled
