@@ -1,5 +1,6 @@
 from typing import Any, Dict, List, Optional
 import logging
+from urllib.parse import quote
 
 from socket_basics.core.notification.base import BaseNotifier
 from socket_basics.core.config import get_github_token, get_github_repository, get_github_pr_number
@@ -118,8 +119,39 @@ class GithubPRNotifier(BaseNotifier):
         # Add labels to PR if enabled
         if self.config.get('pr_labels_enabled', True) and pr_number:
             labels = self._determine_pr_labels(valid_notifications)
-            if labels:
-                self._add_pr_labels(pr_number, labels)
+            self._reconcile_pr_labels(pr_number, labels)
+    def _managed_pr_label_config(self) -> Dict[str, str]:
+        """Return the managed severity label names configured for PRs."""
+        return {
+            'critical': self.config.get('pr_label_critical', 'security: critical'),
+            'high': self.config.get('pr_label_high', 'security: high'),
+            'medium': self.config.get('pr_label_medium', 'security: medium'),
+            'low': self.config.get('pr_label_low', 'security: low'),
+        }
+
+    def _get_label_color_info(self, label: str) -> Optional[tuple[str, str]]:
+        """Infer color/description for managed or custom severity labels."""
+        label_colors = {
+            self.config.get('pr_label_critical', 'security: critical'): ('D73A4A', 'Critical security vulnerabilities'),
+            self.config.get('pr_label_high', 'security: high'): ('D93F0B', 'High severity security issues'),
+            self.config.get('pr_label_medium', 'security: medium'): ('FBCA04', 'Medium severity security issues'),
+            self.config.get('pr_label_low', 'security: low'): ('E4E4E4', 'Low severity security issues'),
+        }
+        color_info = label_colors.get(label)
+        if color_info:
+            return color_info
+
+        label_lower = label.lower()
+        if 'critical' in label_lower:
+            return ('D73A4A', 'Critical security vulnerabilities')
+        if 'high' in label_lower:
+            return ('D93F0B', 'High severity security issues')
+        if 'medium' in label_lower:
+            return ('FBCA04', 'Medium severity security issues')
+        if 'low' in label_lower:
+            return ('E4E4E4', 'Low severity security issues')
+        return None
+
 
     def _send_pr_comment(self, facts: Dict[str, Any], title: str, content: str) -> None:
         """Send a single PR comment with title and content."""
@@ -423,19 +455,93 @@ class GithubPRNotifier(BaseNotifier):
                     logger.info('GithubPRNotifier: created label "%s" with color #%s', label_name, color)
                     return True
                 else:
-                    logger.warning('GithubPRNotifier: failed to create label "%s": %s',
-                                 label_name, create_resp.status_code)
+                    logger.warning(
+                        'GithubPRNotifier: failed to create label "%s": %s %s',
+                        label_name,
+                        create_resp.status_code,
+                        create_resp.text[:200],
+                    )
                     return False
             else:
-                logger.warning('GithubPRNotifier: unexpected response checking label: %s', resp.status_code)
+                logger.warning(
+                    'GithubPRNotifier: unexpected response checking label "%s": %s %s',
+                    label_name,
+                    resp.status_code,
+                    resp.text[:200],
+                )
                 return False
 
         except Exception as e:
             logger.debug('GithubPRNotifier: exception ensuring label exists: %s', e)
             return False
 
+    def _ensure_pr_labels_exist(self, labels: List[str]) -> None:
+        """Ensure desired labels exist in the repository with appropriate colors."""
+        for label in labels:
+            color_info = self._get_label_color_info(label)
+            if color_info:
+                color, description = color_info
+                self._ensure_label_exists_with_color(label, color, description)
+
+    def _get_current_pr_label_names(self, pr_number: int) -> List[str]:
+        """Fetch current label names for the PR."""
+        if not self.repository:
+            return []
+
+        try:
+            import requests
+            headers = {
+                'Authorization': f'token {self.token}',
+                'Accept': 'application/vnd.github.v3+json'
+            }
+            url = f"{self.api_base}/repos/{self.repository}/issues/{pr_number}/labels"
+            resp = requests.get(url, headers=headers, timeout=10)
+            if resp.status_code == 200:
+                payload = resp.json()
+                return [label.get('name') for label in payload if isinstance(label, dict) and label.get('name')]
+            logger.warning(
+                'GithubPRNotifier: failed to fetch current labels for PR %s: %s %s',
+                pr_number,
+                resp.status_code,
+                resp.text[:200],
+            )
+        except Exception as e:
+            logger.error('GithubPRNotifier: exception fetching current labels: %s', e)
+        return []
+
+    def _remove_pr_label(self, pr_number: int, label: str) -> bool:
+        """Remove a label from a PR."""
+        if not self.repository or not label:
+            return False
+
+        try:
+            import requests
+            headers = {
+                'Authorization': f'token {self.token}',
+                'Accept': 'application/vnd.github.v3+json'
+            }
+            encoded_label = quote(label, safe='')
+            url = f"{self.api_base}/repos/{self.repository}/issues/{pr_number}/labels/{encoded_label}"
+            resp = requests.delete(url, headers=headers, timeout=10)
+            if resp.status_code == 200:
+                logger.info('GithubPRNotifier: removed label from PR %s: %s', pr_number, label)
+                return True
+            if resp.status_code == 404:
+                logger.debug('GithubPRNotifier: label %s already absent from PR %s', label, pr_number)
+                return True
+            logger.warning(
+                'GithubPRNotifier: failed to remove label "%s" from PR %s: %s %s',
+                label,
+                pr_number,
+                resp.status_code,
+                resp.text[:200],
+            )
+        except Exception as e:
+            logger.error('GithubPRNotifier: exception removing label %s: %s', label, e)
+        return False
+
     def _add_pr_labels(self, pr_number: int, labels: List[str]) -> bool:
-        """Add labels to a PR, ensuring they exist with appropriate colors.
+        """Add missing labels to a PR.
 
         Args:
             pr_number: PR number
@@ -446,34 +552,6 @@ class GithubPRNotifier(BaseNotifier):
         """
         if not self.repository or not labels:
             return False
-
-        # Color mapping for severity labels (matching emoji colors)
-        label_colors = {
-            'security: critical': ('D73A4A', 'Critical security vulnerabilities'),
-            'security: high': ('D93F0B', 'High severity security issues'),
-            'security: medium': ('FBCA04', 'Medium severity security issues'),
-            'security: low': ('E4E4E4', 'Low severity security issues'),
-        }
-
-        # Ensure labels exist with correct colors
-        for label in labels:
-            # Get color and description if this is a known severity label
-            color_info = label_colors.get(label)
-            if color_info:
-                color, description = color_info
-                self._ensure_label_exists_with_color(label, color, description)
-            # For custom label names, use a default color
-            elif ':' in label:
-                # Try to infer severity from label name
-                label_lower = label.lower()
-                if 'critical' in label_lower:
-                    self._ensure_label_exists_with_color(label, 'D73A4A', 'Critical security vulnerabilities')
-                elif 'high' in label_lower:
-                    self._ensure_label_exists_with_color(label, 'D93F0B', 'High severity security issues')
-                elif 'medium' in label_lower:
-                    self._ensure_label_exists_with_color(label, 'FBCA04', 'Medium severity security issues')
-                elif 'low' in label_lower:
-                    self._ensure_label_exists_with_color(label, 'E4E4E4', 'Low severity security issues')
 
         try:
             import requests
@@ -490,11 +568,32 @@ class GithubPRNotifier(BaseNotifier):
                 logger.info('GithubPRNotifier: added labels to PR %s: %s', pr_number, ', '.join(labels))
                 return True
             else:
-                logger.warning('GithubPRNotifier: failed to add labels: %s', resp.status_code)
+                logger.warning('GithubPRNotifier: failed to add labels: %s %s', resp.status_code, resp.text[:200])
                 return False
         except Exception as e:
             logger.error('GithubPRNotifier: exception adding labels: %s', e)
             return False
+
+    def _reconcile_pr_labels(self, pr_number: int, desired_labels: List[str]) -> bool:
+        """Reconcile managed severity labels on the PR to match the latest run."""
+        managed_labels = set(filter(None, self._managed_pr_label_config().values()))
+        current_labels = set(self._get_current_pr_label_names(pr_number))
+        desired_label_set = set(filter(None, desired_labels))
+
+        stale_labels = sorted(label for label in current_labels if label in managed_labels and label not in desired_label_set)
+        labels_to_add = sorted(label for label in desired_label_set if label not in current_labels)
+
+        success = True
+        for label in stale_labels:
+            success = self._remove_pr_label(pr_number, label) and success
+
+        if labels_to_add:
+            self._ensure_pr_labels_exist(labels_to_add)
+            success = self._add_pr_labels(pr_number, labels_to_add) and success
+
+        if not stale_labels and not labels_to_add:
+            logger.info('GithubPRNotifier: PR %s severity labels already up to date', pr_number)
+        return success
 
     def _determine_pr_labels(self, notifications: List[Dict[str, Any]]) -> List[str]:
         """Determine which labels to add based on notifications.
@@ -517,6 +616,7 @@ class GithubPRNotifier(BaseNotifier):
             critical_match = re.search(r'Critical:\s*(\d+)', content)
             high_match = re.search(r'High:\s*(\d+)', content)
             medium_match = re.search(r'Medium:\s*(\d+)', content)
+            low_match = re.search(r'Low:\s*(\d+)', content)
 
             if critical_match and int(critical_match.group(1)) > 0:
                 severities_found.add('critical')
@@ -524,6 +624,8 @@ class GithubPRNotifier(BaseNotifier):
                 severities_found.add('high')
             if medium_match and int(medium_match.group(1)) > 0:
                 severities_found.add('medium')
+            if low_match and int(low_match.group(1)) > 0:
+                severities_found.add('low')
 
         # Map severities to label names (using configurable labels)
         labels = []
@@ -535,6 +637,9 @@ class GithubPRNotifier(BaseNotifier):
             labels.append(label_name)
         elif 'medium' in severities_found:
             label_name = self.config.get('pr_label_medium', 'security: medium')
+            labels.append(label_name)
+        elif 'low' in severities_found:
+            label_name = self.config.get('pr_label_low', 'security: low')
             labels.append(label_name)
 
         return labels
