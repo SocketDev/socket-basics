@@ -1,0 +1,104 @@
+name: dependabot-review
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened, ready_for_review]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: dependabot-review-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  inspect:
+    if: github.actor == 'dependabot[bot]'
+    runs-on: ubuntu-latest
+    outputs:
+      root_docker_changed: ${{ steps.diff.outputs.root_docker_changed }}
+      app_tests_docker_changed: ${{ steps.diff.outputs.app_tests_docker_changed }}
+      workflow_or_action_changed: ${{ steps.diff.outputs.workflow_or_action_changed }}
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Inspect changed files
+        id: diff
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        run: |
+          CHANGED_FILES="$(git diff --name-only "$BASE_SHA" "$HEAD_SHA")"
+
+          echo "Changed files:" >> "$GITHUB_STEP_SUMMARY"
+          echo '```' >> "$GITHUB_STEP_SUMMARY"
+          printf '%s\n' "$CHANGED_FILES" >> "$GITHUB_STEP_SUMMARY"
+          echo '```' >> "$GITHUB_STEP_SUMMARY"
+
+          has_file() {
+            local pattern="$1"
+            if printf '%s\n' "$CHANGED_FILES" | grep -Eq "$pattern"; then
+              echo "true"
+            else
+              echo "false"
+            fi
+          }
+
+          echo "root_docker_changed=$(has_file '^Dockerfile$')" >> "$GITHUB_OUTPUT"
+          echo "app_tests_docker_changed=$(has_file '^app_tests/Dockerfile$')" >> "$GITHUB_OUTPUT"
+          echo "workflow_or_action_changed=$(has_file '^\\.github/workflows/|^action\\.yml$|^\\.github/dependabot\\.yml$')" >> "$GITHUB_OUTPUT"
+
+      - name: Summarize review expectations
+        env:
+          PR_URL: ${{ github.event.pull_request.html_url }}
+        run: |
+          {
+            echo "## Dependabot Review Checklist"
+            echo "- PR: $PR_URL"
+            echo "- Confirm upstream release notes before merge"
+            echo "- Confirm Docker/toolchain changes match the files in this PR"
+            echo "- Do not treat a Dependabot PR as trusted solely because of the actor"
+            echo "- This workflow runs in pull_request context only; no publish secrets are exposed"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+  docker-smoke-main:
+    needs: inspect
+    if: github.actor == 'dependabot[bot]' && needs.inspect.outputs.root_docker_changed == 'true'
+    uses: ./.github/workflows/_docker-pipeline.yml
+    permissions:
+      contents: read
+    with:
+      name: socket-basics
+      dockerfile: Dockerfile
+      context: .
+      check_set: main
+      push: false
+
+  docker-smoke-app-tests:
+    needs: inspect
+    if: github.actor == 'dependabot[bot]' && needs.inspect.outputs.app_tests_docker_changed == 'true'
+    uses: ./.github/workflows/_docker-pipeline.yml
+    permissions:
+      contents: read
+    with:
+      name: socket-basics-app-tests
+      dockerfile: app_tests/Dockerfile
+      context: .
+      check_set: app-tests
+      push: false
+
+  workflow-notice:
+    needs: inspect
+    if: github.actor == 'dependabot[bot]' && needs.inspect.outputs.workflow_or_action_changed == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Flag workflow-sensitive updates
+        run: |
+          {
+            echo "## Sensitive File Notice"
+            echo "This Dependabot PR changes workflow or action metadata files."
+            echo "Require explicit human review before merge."
+          } >> "$GITHUB_STEP_SUMMARY"

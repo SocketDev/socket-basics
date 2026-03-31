@@ -21,9 +21,9 @@
 
 <!-- Only fill this out if this PR is cutting a new release (e.g. v2.1.0). -->
 
+- [ ] `pyproject.toml` `version:` field updated to new version
+- [ ] `python3 scripts/sync_release_version.py --write` run after updating `pyproject.toml`
 - [ ] `socket_basics/version.py` updated to new version
-- [ ] `pyproject.toml` `version:` field updated to match
-- [ ] `action.yml` `image:` ref updated to `docker://ghcr.io/socketdev/socket-basics:<new-version>` *(auto-updated by `publish-docker.yml`
+- [ ] `socket_basics/__init__.py` updated to the same version
+- [ ] `action.yml` `image:` ref updated to `docker://ghcr.io/socketdev/socket-basics:<new-version>`
 - [ ] `CHANGELOG.md` `[Unreleased]` section reviewed
-
-> See [docs/releasing.md](../docs/releasing.md) for the full release process.
