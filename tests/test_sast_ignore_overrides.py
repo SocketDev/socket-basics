@@ -1,5 +1,6 @@
 from socket_basics.core.config import (
     Config,
+    normalize_repo_relative_path,
     parse_sast_ignore_overrides,
 )
 from socket_basics.core.connector.normalizer import _normalize_alert
@@ -72,6 +73,47 @@ def test_normalize_alert_accepts_windows_style_override_paths():
     )
 
     alert = _normalize_alert(_build_alert('src/unsafe/demo.js'), connector=connector)
+
+    assert alert['action'] == 'ignore'
+
+
+def test_normalize_repo_relative_path_strips_github_actions_workspace_prefix(monkeypatch):
+    monkeypatch.setenv('GITHUB_WORKSPACE', '/github/workspace')
+
+    assert normalize_repo_relative_path('github/workspace/index.js') == 'index.js'
+
+
+def test_normalize_repo_relative_path_strips_gitlab_workspace_prefix(monkeypatch):
+    monkeypatch.setenv('CI_PROJECT_DIR', '/builds/acme/sample-repo')
+
+    assert normalize_repo_relative_path('/builds/acme/sample-repo/src/index.js') == 'src/index.js'
+
+
+def test_normalize_repo_relative_path_strips_bitbucket_workspace_prefix(monkeypatch):
+    monkeypatch.setenv('BITBUCKET_CLONE_DIR', '/opt/atlassian/pipelines/agent/build')
+
+    assert normalize_repo_relative_path('/opt/atlassian/pipelines/agent/build/index.js') == 'index.js'
+
+
+def test_normalize_repo_relative_path_strips_buildkite_workspace_prefix(monkeypatch):
+    monkeypatch.setenv('BUILDKITE_BUILD_CHECKOUT_PATH', '/var/lib/buildkite-agent/builds/agent-1/org/repo')
+
+    assert normalize_repo_relative_path(
+        '/var/lib/buildkite-agent/builds/agent-1/org/repo/app/index.js'
+    ) == 'app/index.js'
+
+
+def test_normalize_alert_strips_github_actions_workspace_prefix(monkeypatch):
+    monkeypatch.setenv('GITHUB_WORKSPACE', '/github/workspace')
+
+    connector = _DummyConnector(
+        Config({'workspace': '.', 'sast_ignore_overrides': 'js-sql-injection:index.js'})
+    )
+
+    alert = _normalize_alert(
+        _build_alert('github/workspace/index.js'),
+        connector=connector,
+    )
 
     assert alert['action'] == 'ignore'
 
