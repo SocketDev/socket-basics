@@ -134,5 +134,5 @@ def test_notify_rewrites_existing_section_to_all_clear_when_notifications_are_em
     notifier.notify({'notifications': []})
 
     assert len(updated_bodies) == 1
-    assert 'No active findings remain for this scanner in the latest run.' in updated_bodies[0]
+    assert 'Socket Basics found no active findings in the latest run.' in updated_bodies[0]
     assert '<!-- sast-javascript start -->' in updated_bodies[0]
