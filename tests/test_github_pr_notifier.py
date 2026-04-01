@@ -104,3 +104,35 @@ def test_notify_reconciles_labels_even_when_notifications_are_empty(monkeypatch)
     notifier.notify({'notifications': []})
 
     assert reconciled == [(123, [])]
+
+
+def test_notify_rewrites_existing_section_to_all_clear_when_notifications_are_empty(monkeypatch):
+    notifier = GithubPRNotifier(
+        {
+            'repository': 'SocketDev/socket-basics',
+            'pr_labels_enabled': True,
+        }
+    )
+
+    comment_body = """<!-- sast-javascript start -->
+## <img src="https://example.test/logo.png" width="24" height="24"> Socket SAST JavaScript
+
+### Summary
+🟡 Medium: 1
+<!-- sast-javascript end -->"""
+    updated_bodies: list[str] = []
+
+    monkeypatch.setattr(notifier, '_get_pr_number', lambda: 123)
+    monkeypatch.setattr(notifier, '_reconcile_pr_labels', lambda pr_number, labels: True)
+    monkeypatch.setattr(notifier, '_get_pr_comments', lambda pr_number: [{'id': 99, 'body': comment_body}])
+    monkeypatch.setattr(
+        notifier,
+        '_update_comment',
+        lambda pr_number, comment_id, body: updated_bodies.append(body) or True,
+    )
+
+    notifier.notify({'notifications': []})
+
+    assert len(updated_bodies) == 1
+    assert 'No active findings remain for this scanner in the latest run.' in updated_bodies[0]
+    assert '<!-- sast-javascript start -->' in updated_bodies[0]

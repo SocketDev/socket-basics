@@ -59,6 +59,7 @@ class GithubPRNotifier(BaseNotifier):
                 pr_number = self._get_pr_number()
                 if pr_number:
                     self._reconcile_pr_labels(pr_number, [])
+                    self._replace_existing_sections_with_all_clear(pr_number)
                 else:
                     logger.warning('GithubPRNotifier: unable to determine PR number for label reconciliation')
             logger.info('GithubPRNotifier: no notifications present; skipping comments')
@@ -288,6 +289,25 @@ class GithubPRNotifier(BaseNotifier):
         
         return None
 
+    def _extract_all_section_types(self, comment_body: str) -> List[str]:
+        """Extract all managed section markers from a comment body."""
+        import re
+
+        pattern = r'<!-- ([a-zA-Z0-9\-_]+) start -->'
+        return re.findall(pattern, comment_body or '')
+
+    def _extract_section_title(self, section_content: str) -> str:
+        """Extract the display title from a wrapped PR comment section."""
+        import re
+
+        for line in (section_content or '').splitlines():
+            stripped = line.strip()
+            if stripped.startswith('## '):
+                title = stripped[3:].strip()
+                title = re.sub(r'<img[^>]+>\s*', '', title).strip()
+                return title or 'Socket Security'
+        return 'Socket Security'
+
     def _find_comment_with_section(self, comments: List[Dict[str, Any]], section_type: str) -> Optional[Dict[str, Any]]:
         """Find an existing comment that contains the given section type."""
         import re
@@ -312,6 +332,49 @@ class GithubPRNotifier(BaseNotifier):
         updated_body = re.sub(pattern, lambda m: new_section_content, comment_body, flags=re.DOTALL)
         
         return updated_body
+
+    def _build_all_clear_section(self, section_type: str, existing_section_content: str) -> str:
+        """Build an all-clear replacement for an existing managed section."""
+        from socket_basics.core.notification import github_pr_helpers as helpers
+
+        title = self._extract_section_title(existing_section_content)
+        body = "✅ Socket Basics found no active findings in the latest run."
+        return helpers.wrap_pr_comment_section(section_type, title, body, self.full_scan_url)
+
+    def _replace_existing_sections_with_all_clear(self, pr_number: int) -> None:
+        """Rewrite existing managed PR comment sections to an all-clear state."""
+        existing_comments = self._get_pr_comments(pr_number)
+        for comment in existing_comments:
+            original_body = comment.get('body', '')
+            if not original_body:
+                continue
+
+            updated_body = original_body
+            changed = False
+            for section_type in self._extract_all_section_types(original_body):
+                section_match = self._extract_section_markers(updated_body)
+                if not section_match or section_match.get('type') != section_type:
+                    import re
+                    pattern = rf'<!-- {re.escape(section_type)} start -->.*?<!-- {re.escape(section_type)} end -->'
+                    match = re.search(pattern, updated_body, re.DOTALL)
+                    if not match:
+                        continue
+                    section_content = match.group(0)
+                else:
+                    section_content = section_match['content']
+
+                all_clear_section = self._build_all_clear_section(section_type, section_content)
+                next_body = self._update_section_in_comment(updated_body, section_type, all_clear_section)
+                if next_body != updated_body:
+                    updated_body = next_body
+                    changed = True
+
+            if changed:
+                success = self._update_comment(pr_number, comment['id'], updated_body)
+                if success:
+                    logger.info('GithubPRNotifier: updated existing comment %s to all-clear state', comment['id'])
+                else:
+                    logger.error('GithubPRNotifier: failed to update comment %s to all-clear state', comment['id'])
 
     def _truncate_comment_if_needed(self, comment_body: str, full_scan_url: Optional[str] = None) -> str:
         """Truncate comment if it exceeds GitHub's character limit.
