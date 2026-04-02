@@ -639,7 +639,7 @@ jobs:
           javascript_sast_enabled: 'true'
           javascript_enabled_rules: 'eval-usage,prototype-pollution'
 
-          # Ignore a specific SAST rule globally or for one exact file
+          # Ignore one or more SAST rules globally or for exact repo-relative files
           sast_ignore_overrides: 'js-sql-injection:index.js'
 ```
 
@@ -651,6 +651,7 @@ Examples:
 - `js-sql-injection`
 - `js-sql-injection:index.js`
 - `js-sql-injection:src/unsafe/demo.js`
+- `js-express-async-no-error-handler,js-sql-injection:index.js,js-missing-helmet`
 
 Notes:
 - Paths must be exact repo-relative paths using `/` separators after normalization.

@@ -253,6 +253,9 @@ socket-basics --javascript --sast-ignore-overrides "js-sql-injection"
 
 # Ignore a rule only for one exact repo-relative file
 socket-basics --javascript --sast-ignore-overrides "js-sql-injection:index.js"
+
+# Mix rule-only and rule+path overrides in one comma-separated list
+socket-basics --javascript --sast-ignore-overrides "js-express-async-no-error-handler,js-sql-injection:index.js,js-missing-helmet"
 ```
 
 Notes:

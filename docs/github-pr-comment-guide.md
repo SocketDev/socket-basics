@@ -249,6 +249,7 @@ pr_label_high: 'security-high'               # Gets orange color automatically
 **How it works:**
 - Each run keeps only the current highest-severity managed PR label: critical → high → medium → low
 - Stale managed severity labels from earlier runs are removed automatically
+- If a later run has no active findings, the managed severity label is removed
 - Labels are created automatically if they don't exist
 - Existing labels are not modified (preserves your customizations)
 - Requires a token with `repo` scope to create new labels; without it, label creation may fail (comments still post)
@@ -280,6 +281,22 @@ Every PR comment section includes the Socket shield logo inline with the title h
 ```
 
 The logo is a 32px PNG rendered at 24x24 for retina-crisp display, with a transparent background that works in both GitHub light and dark modes.
+
+---
+
+### 9. All-Clear Comment Updates
+
+When a later Socket Basics run no longer has active findings for a previously-reported scanner section, the existing PR comment section is updated in place instead of being left stale or deleted.
+
+**Behavior:**
+- Existing Socket-managed sections are preserved for auditability
+- Stale findings content is replaced with a short all-clear message
+- This keeps the PR history readable while making it obvious that the latest run is clean
+
+**Example all-clear message:**
+```text
+✅ Socket Basics found no active findings in the latest run.
+```
 
 ---
 
