@@ -4,8 +4,7 @@ author: "Socket"
 
 runs:
   using: "docker"
-  # TODO: revert to the published GHCR image before merging/releasing.
-  image: "Dockerfile"
+  image: "docker://ghcr.io/socketdev/socket-basics:2.0.2"
   env:
     # Core GitHub variables (these are automatically available, but we explicitly pass GITHUB_TOKEN)
     GITHUB_TOKEN: ${{ inputs.github_token }}
