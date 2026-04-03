@@ -241,6 +241,32 @@ socket-basics --go --go-enabled-rules "error-handling,sql-injection"
 - `--rust-enabled-rules` / `--rust-disabled-rules`
 - `--elixir-enabled-rules` / `--elixir-disabled-rules`
 
+### `--sast-ignore-overrides SAST_IGNORE_OVERRIDES`
+Comma-separated list of SAST ignore overrides in `rule_id` or `rule_id:path` format.
+
+**Environment Variable:** `INPUT_SAST_IGNORE_OVERRIDES`
+
+**Examples:**
+```bash
+# Ignore a rule everywhere in the repo
+socket-basics --javascript --sast-ignore-overrides "js-sql-injection"
+
+# Ignore a rule only for one exact repo-relative file
+socket-basics --javascript --sast-ignore-overrides "js-sql-injection:index.js"
+
+# Mix rule-only and rule+path overrides in one comma-separated list
+socket-basics --javascript --sast-ignore-overrides "js-express-async-no-error-handler,js-sql-injection:index.js,js-missing-helmet"
+```
+
+Notes:
+- Paths must be exact repo-relative paths.
+- Paths are normalized to forward-slash form, so Windows-style input such as `src\\unsafe\\demo.js` is accepted.
+- Globs and directory-prefix matching are not supported in this first version.
+- A `rule_id:path` entry uses exact `rule_id AND path` matching. A bad path does not degrade into a rule-only ignore.
+- If the configured path does not exist under the current workspace, Socket Basics logs a warning to help catch typos or copied paths from another repo.
+- If the same rule is also disabled via `<language>-disabled-rules` or dashboard policy, that broader ignore still applies across the repo.
+- Ignored alerts in `.socket.facts.json` include `actionReason` so you can distinguish `sast_ignore_override` from `disabled_rule`.
+
 ### `--opengrep-notify OPENGREP_NOTIFY`
 Notification method for OpenGrep SAST results (e.g., console, slack).
 
@@ -520,6 +546,7 @@ All notification integrations support environment variables as alternatives to C
 | Variable | Description |
 |----------|-------------|
 | `INPUT_OPENGREP_RULES_DIR` | Custom directory containing SAST rules |
+| `INPUT_SAST_IGNORE_OVERRIDES` | Comma-separated `rule_id` or `rule_id:path` SAST ignore overrides |
 
 ## Configuration File
 
@@ -537,6 +564,7 @@ You can provide configuration via a JSON file using `--config`:
   "python_sast_enabled": true,
   "javascript_sast_enabled": true,
   "go_sast_enabled": true,
+  "sast_ignore_overrides": "js-sql-injection:index.js",
   
   "secrets_enabled": true,
   "trufflehog_exclude_dir": "node_modules,vendor,dist,.git",

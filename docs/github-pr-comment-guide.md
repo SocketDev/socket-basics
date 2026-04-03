@@ -236,6 +236,7 @@ Automatically tag PRs with severity-based labels **and matching colors**.
 - `security: critical` 🔴 - Red (`#D73A4A`)
 - `security: high` 🟠 - Orange (`#D93F0B`)
 - `security: medium` 🟡 - Yellow (`#FBCA04`)
+- `security: low` ⚪ - Light gray (`#E4E4E4`)
 
 **Smart color detection:**
 Labels are automatically created with colors matching the severity emojis. If you customize label names, the system intelligently detects severity keywords and applies appropriate colors:
@@ -246,7 +247,9 @@ pr_label_high: 'security-high'               # Gets orange color automatically
 ```
 
 **How it works:**
-- First scan checks for critical → high → medium (highest severity wins)
+- Each run keeps only the current highest-severity managed PR label: critical → high → medium → low
+- Stale managed severity labels from earlier runs are removed automatically
+- If a later run has no active findings, the managed severity label is removed
 - Labels are created automatically if they don't exist
 - Existing labels are not modified (preserves your customizations)
 - Requires a token with `repo` scope to create new labels; without it, label creation may fail (comments still post)
@@ -257,6 +260,7 @@ pr_labels_enabled: 'true'
 pr_label_critical: 'vulnerability: critical'
 pr_label_high: 'vulnerability: high'
 pr_label_medium: 'vulnerability: medium'
+pr_label_low: 'vulnerability: low'
 ```
 
 **Disable:**
@@ -280,6 +284,22 @@ The logo is a 32px PNG rendered at 24x24 for retina-crisp display, with a transp
 
 ---
 
+### 9. All-Clear Comment Updates
+
+When a later Socket Basics run no longer has active findings for a previously-reported scanner section, the existing PR comment section is updated in place instead of being left stale or deleted.
+
+**Behavior:**
+- Existing Socket-managed sections are preserved for auditability
+- Stale findings content is replaced with a short all-clear message
+- This keeps the PR history readable while making it obvious that the latest run is clean
+
+**Example all-clear message:**
+```text
+✅ Socket Basics found no active findings in the latest run.
+```
+
+---
+
 ## 📋 Configuration Reference
 
 ### All Options
@@ -295,6 +315,7 @@ The logo is a 32px PNG rendered at 24x24 for retina-crisp display, with a transp
 | `pr_label_critical` | `"security: critical"` | string | Label name for critical findings |
 | `pr_label_high` | `"security: high"` | string | Label name for high findings |
 | `pr_label_medium` | `"security: medium"` | string | Label name for medium findings |
+| `pr_label_low` | `"security: low"` | string | Label name for low findings |
 
 ### Configuration Methods
 

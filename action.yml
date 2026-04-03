@@ -40,6 +40,7 @@ runs:
     INPUT_JAVASCRIPT_DISABLED_RULES: ${{ inputs.javascript_disabled_rules }}
     INPUT_JAVASCRIPT_ENABLED_RULES: ${{ inputs.javascript_enabled_rules }}
     INPUT_JAVASCRIPT_SAST_ENABLED: ${{ inputs.javascript_sast_enabled }}
+    INPUT_SAST_IGNORE_OVERRIDES: ${{ inputs.sast_ignore_overrides }}
     INPUT_JAVA_DISABLED_RULES: ${{ inputs.java_disabled_rules }}
     INPUT_JAVA_ENABLED_RULES: ${{ inputs.java_enabled_rules }}
     INPUT_JAVA_SAST_ENABLED: ${{ inputs.java_sast_enabled }}
@@ -96,6 +97,7 @@ runs:
     INPUT_PR_LABEL_CRITICAL: ${{ inputs.pr_label_critical }}
     INPUT_PR_LABEL_HIGH: ${{ inputs.pr_label_high }}
     INPUT_PR_LABEL_MEDIUM: ${{ inputs.pr_label_medium }}
+    INPUT_PR_LABEL_LOW: ${{ inputs.pr_label_low }}
 
 inputs:
   workspace:
@@ -246,6 +248,10 @@ inputs:
     description: "Enable JavaScript/TypeScript SAST scanning"
     required: false
     default: "false"
+  sast_ignore_overrides:
+    description: "Comma-separated list of SAST ignore overrides in rule_id or rule_id:path format"
+    required: false
+    default: ""
   jira_api_token:
     description: "Jira Api Token"
     required: false
@@ -450,7 +456,11 @@ inputs:
     description: "Label name for medium severity findings"
     required: false
     default: "security: medium"
+  pr_label_low:
+    description: "Label name for low severity findings"
+    required: false
+    default: "security: low"
 
 branding:
   icon: "shield"
-  color: "blue"
+  color: "purple"
