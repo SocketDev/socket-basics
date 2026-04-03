@@ -262,6 +262,10 @@ Notes:
 - Paths must be exact repo-relative paths.
 - Paths are normalized to forward-slash form, so Windows-style input such as `src\\unsafe\\demo.js` is accepted.
 - Globs and directory-prefix matching are not supported in this first version.
+- A `rule_id:path` entry uses exact `rule_id AND path` matching. A bad path does not degrade into a rule-only ignore.
+- If the configured path does not exist under the current workspace, Socket Basics logs a warning to help catch typos or copied paths from another repo.
+- If the same rule is also disabled via `<language>-disabled-rules` or dashboard policy, that broader ignore still applies across the repo.
+- Ignored alerts in `.socket.facts.json` include `actionReason` so you can distinguish `sast_ignore_override` from `disabled_rule`.
 
 ### `--opengrep-notify OPENGREP_NOTIFY`
 Notification method for OpenGrep SAST results (e.g., console, slack).

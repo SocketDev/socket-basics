@@ -46,6 +46,7 @@ def _normalize_alert(a: Dict[str, Any], connector: Any | None = None, default_ge
                 if alert_matches_sast_ignore_override(a, override):
                     logger.debug("Alert matched sast_ignore_overrides entry %s", override)
                     a['action'] = 'ignore'
+                    a['actionReason'] = 'sast_ignore_override'
                     return a
     except Exception:
         logger.debug('Failed to check SAST ignore overrides for alert', exc_info=True)
@@ -73,6 +74,7 @@ def _normalize_alert(a: Dict[str, Any], connector: Any | None = None, default_ge
                             if rule_id in disabled_rules:
                                 logger.debug(f"Rule {rule_id} is disabled via {param}, setting action to 'ignore'")
                                 a['action'] = 'ignore'
+                                a['actionReason'] = 'disabled_rule'
                                 return a
                     except Exception:
                         pass

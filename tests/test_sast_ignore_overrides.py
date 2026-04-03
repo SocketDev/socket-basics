@@ -55,6 +55,7 @@ def test_normalize_alert_ignores_rule_only_override():
     alert = _normalize_alert(_build_alert(), connector=connector)
 
     assert alert['action'] == 'ignore'
+    assert alert['actionReason'] == 'sast_ignore_override'
 
 
 def test_normalize_alert_ignores_matching_rule_and_path_override():
@@ -65,6 +66,7 @@ def test_normalize_alert_ignores_matching_rule_and_path_override():
     alert = _normalize_alert(_build_alert(), connector=connector)
 
     assert alert['action'] == 'ignore'
+    assert alert['actionReason'] == 'sast_ignore_override'
 
 
 def test_normalize_alert_accepts_windows_style_override_paths():
@@ -75,6 +77,22 @@ def test_normalize_alert_accepts_windows_style_override_paths():
     alert = _normalize_alert(_build_alert('src/unsafe/demo.js'), connector=connector)
 
     assert alert['action'] == 'ignore'
+    assert alert['actionReason'] == 'sast_ignore_override'
+
+
+def test_get_sast_ignore_overrides_warns_when_path_does_not_exist(tmp_path, caplog):
+    config = Config(
+        {
+            'workspace': str(tmp_path),
+            'sast_ignore_overrides': 'js-sql-injection:src/services/credential_sync/api.ts',
+        }
+    )
+
+    parsed = config.get_sast_ignore_overrides()
+
+    assert parsed == [{'rule_id': 'js-sql-injection', 'path': 'src/services/credential_sync/api.ts'}]
+    assert 'does not exist under workspace' in caplog.text
+    assert 'will not fall back to rule-only matching' in caplog.text
 
 
 def test_normalize_repo_relative_path_strips_github_actions_workspace_prefix(monkeypatch):
@@ -126,6 +144,18 @@ def test_normalize_alert_does_not_ignore_non_matching_path_override():
     alert = _normalize_alert(_build_alert(), connector=connector)
 
     assert alert['action'] == 'error'
+    assert 'actionReason' not in alert
+
+
+def test_normalize_alert_marks_disabled_rule_ignores():
+    connector = _DummyConnector(
+        Config({'workspace': '.', 'javascript_disabled_rules': 'js-sql-injection'})
+    )
+
+    alert = _normalize_alert(_build_alert('src/services/credential_sync/api.ts'), connector=connector)
+
+    assert alert['action'] == 'ignore'
+    assert alert['actionReason'] == 'disabled_rule'
 
 
 def test_count_blocking_alerts_skips_ignored_findings():

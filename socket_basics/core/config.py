@@ -271,7 +271,39 @@ class Config:
         """Return parsed SAST ignore overrides from config."""
         if not hasattr(self, '_sast_ignore_overrides_cache'):
             raw_value = self.get('sast_ignore_overrides', '')
-            self._sast_ignore_overrides_cache = parse_sast_ignore_overrides(raw_value)
+            overrides = parse_sast_ignore_overrides(raw_value)
+
+            workspace_value = self.get('workspace') or os.getcwd()
+            try:
+                workspace_root = Path(str(workspace_value)).expanduser()
+            except Exception:
+                workspace_root = Path(os.getcwd())
+
+            for override in overrides:
+                override_path = override.get('path')
+                if not override_path:
+                    continue
+
+                try:
+                    candidate = workspace_root.joinpath(*str(override_path).split('/'))
+                    if not candidate.exists():
+                        logger.warning(
+                            "SAST ignore override path %r for rule %r does not exist under workspace %s; "
+                            "exact path overrides require a repo-relative file path and will not fall back to "
+                            "rule-only matching.",
+                            override_path,
+                            override.get('rule_id'),
+                            workspace_root,
+                        )
+                except Exception:
+                    logger.debug(
+                        "Failed to validate SAST ignore override path %r under workspace %r",
+                        override_path,
+                        workspace_value,
+                        exc_info=True,
+                    )
+
+            self._sast_ignore_overrides_cache = overrides
         return self._sast_ignore_overrides_cache
     
     @property
