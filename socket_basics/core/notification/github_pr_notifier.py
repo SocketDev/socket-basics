@@ -54,12 +54,18 @@ class GithubPRNotifier(BaseNotifier):
             else:
                 logger.warning('GithubPRNotifier: skipping invalid notification item: %s', type(item))
 
+        notification_section_types = self._extract_section_types_from_notifications(valid_notifications)
+        facts_section_types = self._infer_section_types_from_facts(facts)
+
         if not valid_notifications:
             if labels_enabled:
                 pr_number = self._get_pr_number()
                 if pr_number:
                     self._reconcile_pr_labels(pr_number, [])
-                    self._replace_existing_sections_with_all_clear(pr_number)
+                    self._replace_existing_sections_with_all_clear(
+                        pr_number,
+                        section_types=facts_section_types,
+                    )
                 else:
                     logger.warning('GithubPRNotifier: unable to determine PR number for label reconciliation')
             logger.info('GithubPRNotifier: no notifications present; skipping comments')
@@ -120,6 +126,10 @@ class GithubPRNotifier(BaseNotifier):
                 logger.info('GithubPRNotifier: posted individual comment for section')
             else:
                 logger.error('GithubPRNotifier: failed to post individual comment')
+
+        stale_section_types = facts_section_types - notification_section_types
+        if stale_section_types:
+            self._replace_existing_sections_with_all_clear(pr_number, section_types=stale_section_types)
 
         # Add labels to PR if enabled
         if labels_enabled and pr_number:
@@ -296,6 +306,51 @@ class GithubPRNotifier(BaseNotifier):
         pattern = r'<!-- ([a-zA-Z0-9\-_]+) start -->'
         return re.findall(pattern, comment_body or '')
 
+    def _extract_section_types_from_notifications(self, notifications: List[Dict[str, Any]]) -> set[str]:
+        """Return the managed section types present in notifier payload content."""
+        section_types: set[str] = set()
+        for notification in notifications or []:
+            if not isinstance(notification, dict):
+                continue
+            section_match = self._extract_section_markers(notification.get('content', ''))
+            if section_match and section_match.get('type'):
+                section_types.add(section_match['type'])
+        return section_types
+
+    def _infer_section_types_from_facts(self, facts: Dict[str, Any]) -> set[str]:
+        """Infer managed PR section types represented by the current run's components."""
+        section_types: set[str] = set()
+
+        for component in facts.get('components', []) or []:
+            if not isinstance(component, dict):
+                continue
+
+            alerts = component.get('alerts', []) or []
+            for alert in alerts:
+                if not isinstance(alert, dict):
+                    continue
+
+                generated_by = (alert.get('generatedBy') or '').strip().lower()
+                subtype = (alert.get('subType') or alert.get('subtype') or '').strip().lower()
+
+                if subtype.startswith('sast-'):
+                    section_types.add(subtype)
+                    continue
+
+                if generated_by == 'socket-tier1' or subtype == 'socket-tier1':
+                    section_types.add('socket-tier1')
+                    continue
+
+                if generated_by == 'trufflehog' or subtype == 'secrets':
+                    section_types.add('trufflehog-secrets')
+                    continue
+
+                if generated_by.startswith('trivy-') or subtype in {'dockerfile', 'container-image'}:
+                    section_types.add('trivy-container')
+                    continue
+
+        return section_types
+
     def _extract_section_title(self, section_content: str) -> str:
         """Extract the display title from a wrapped PR comment section."""
         import re
@@ -341,7 +396,7 @@ class GithubPRNotifier(BaseNotifier):
         body = "✅ Socket Basics found no active findings in the latest run."
         return helpers.wrap_pr_comment_section(section_type, title, body, self.full_scan_url)
 
-    def _replace_existing_sections_with_all_clear(self, pr_number: int) -> None:
+    def _replace_existing_sections_with_all_clear(self, pr_number: int, section_types: Optional[set[str]] = None) -> None:
         """Rewrite existing managed PR comment sections to an all-clear state."""
         existing_comments = self._get_pr_comments(pr_number)
         for comment in existing_comments:
@@ -352,6 +407,8 @@ class GithubPRNotifier(BaseNotifier):
             updated_body = original_body
             changed = False
             for section_type in self._extract_all_section_types(original_body):
+                if section_types is not None and section_type not in section_types:
+                    continue
                 section_match = self._extract_section_markers(updated_body)
                 if not section_match or section_match.get('type') != section_type:
                     import re

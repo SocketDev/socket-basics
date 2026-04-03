@@ -131,8 +131,85 @@ def test_notify_rewrites_existing_section_to_all_clear_when_notifications_are_em
         lambda pr_number, comment_id, body: updated_bodies.append(body) or True,
     )
 
-    notifier.notify({'notifications': []})
+    notifier.notify(
+        {
+            'notifications': [],
+            'components': [
+                {
+                    'alerts': [
+                        {
+                            'generatedBy': 'opengrep-javascript',
+                            'subType': 'sast-javascript',
+                            'action': 'ignore',
+                        }
+                    ]
+                }
+            ],
+        }
+    )
 
     assert len(updated_bodies) == 1
     assert 'Socket Basics found no active findings in the latest run.' in updated_bodies[0]
     assert '<!-- sast-javascript start -->' in updated_bodies[0]
+
+
+def test_notify_empty_sast_notifications_do_not_rewrite_unrelated_sections(monkeypatch):
+    notifier = GithubPRNotifier(
+        {
+            'repository': 'SocketDev/socket-basics',
+            'pr_labels_enabled': True,
+        }
+    )
+
+    sast_comment = """<!-- sast-javascript start -->
+## <img src="https://example.test/logo.png" width="24" height="24"> Socket SAST JavaScript
+
+### Summary
+🟡 Medium: 1
+<!-- sast-javascript end -->"""
+    tier1_comment = """<!-- socket-tier1 start -->
+## <img src="https://example.test/logo.png" width="24" height="24"> Socket Security Tier 1
+
+### Summary
+🟠 High: 2
+<!-- socket-tier1 end -->"""
+    updated_comments: list[tuple[int, str]] = []
+
+    monkeypatch.setattr(notifier, '_get_pr_number', lambda: 123)
+    monkeypatch.setattr(notifier, '_reconcile_pr_labels', lambda pr_number, labels: True)
+    monkeypatch.setattr(
+        notifier,
+        '_get_pr_comments',
+        lambda pr_number: [
+            {'id': 99, 'body': sast_comment},
+            {'id': 100, 'body': tier1_comment},
+        ],
+    )
+    monkeypatch.setattr(
+        notifier,
+        '_update_comment',
+        lambda pr_number, comment_id, body: updated_comments.append((comment_id, body)) or True,
+    )
+
+    notifier.notify(
+        {
+            'notifications': [],
+            'components': [
+                {
+                    'alerts': [
+                        {
+                            'generatedBy': 'opengrep-javascript',
+                            'subType': 'sast-javascript',
+                            'action': 'ignore',
+                        }
+                    ]
+                }
+            ],
+        }
+    )
+
+    assert len(updated_comments) == 1
+    assert updated_comments[0][0] == 99
+    assert '<!-- sast-javascript start -->' in updated_comments[0][1]
+    assert 'Socket Basics found no active findings in the latest run.' in updated_comments[0][1]
+    assert '<!-- socket-tier1 start -->' not in updated_comments[0][1]
