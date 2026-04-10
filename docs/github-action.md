@@ -603,8 +603,12 @@ jobs:
 
 ### Custom Rule Configuration
 
+Use custom rules from your repository by setting `use_custom_sast_rules` and
+`custom_sast_rule_path`. This path is resolved relative to `GITHUB_WORKSPACE`
+in GitHub Actions.
+
 ```yaml
-name: Security Scan with Custom Rules
+name: Security Scan with Custom SAST Rules
 on:
   pull_request:
     types: [opened, synchronize, reopened]
@@ -625,20 +629,24 @@ jobs:
           GITHUB_PR_NUMBER: ${{ github.event.pull_request.number || github.event.issue.number }}
         with:
           github_token: ${{ secrets.GITHUB_TOKEN }}
-          
-          # Enable Python SAST
+
+          # Enable SAST languages you expect to run.
           python_sast_enabled: 'true'
-          
-          # Enable specific Python rules
-          python_enabled_rules: 'sql-injection,xss,hardcoded-credentials'
-          
-          # Disable noisy rules
-          python_disabled_rules: 'unused-import,line-too-long'
-          
-          # JavaScript with custom rules
           javascript_sast_enabled: 'true'
-          javascript_enabled_rules: 'eval-usage,prototype-pollution'
+
+          # Enable custom rules from repository path.
+          use_custom_sast_rules: 'true'
+          custom_sast_rule_path: '.socket/rules'
+
+          # Optional: to avoid allowlist exclusions, run all rules for enabled languages.
+          all_rules_enabled: 'true'
 ```
+
+Important behavior:
+- `socket_security_api_key` + `socket_org` enables dashboard config loading.
+- Dashboard/API settings override overlapping `with:` values.
+- `<language>_enabled_rules` is an allowlist and can suppress custom rule IDs.
+- `all_rules_enabled: 'true'` disables allowlist filtering for enabled languages.
 
 ## Configuration Reference
 
@@ -667,6 +675,8 @@ See [`action.yml`](../action.yml) for the complete list of inputs.
 **Rule Configuration (per language):**
 - `<language>_enabled_rules` — Comma-separated rules to enable
 - `<language>_disabled_rules` — Comma-separated rules to disable
+- `use_custom_sast_rules` — Enable custom SAST rule discovery from repo files
+- `custom_sast_rule_path` — Relative path to custom SAST rule directory
 
 **Security Scanning:**
 - `secret_scanning_enabled` — Enable secret scanning
