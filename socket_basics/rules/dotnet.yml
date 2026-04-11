@@ -266,6 +266,26 @@ rules:
           - pattern: $REQ.Form[...]
           - pattern: $REQ.Headers[...]
           - pattern: $REQ.Cookies[...]
+          # ASP.NET Core controller parameter binding
+          - patterns:
+              - pattern: $PARAM
+              - pattern-inside: |
+                  public $RET $METHOD(..., [FromQuery] $TYPE $PARAM, ...) { ... }
+          - patterns:
+              - pattern: $PARAM
+              - pattern-inside: |
+                  public $RET $METHOD(..., [FromBody] $TYPE $PARAM, ...) { ... }
+          - patterns:
+              - pattern: $PARAM
+              - pattern-inside: |
+                  public $RET $METHOD(..., [FromRoute] $TYPE $PARAM, ...) { ... }
+          - patterns:
+              - pattern: $PARAM
+              - pattern-inside: |
+                  public $RET $METHOD(..., [FromForm] $TYPE $PARAM, ...) { ... }
+          # IFormFile upload sources
+          - pattern: (IFormFile $F).FileName
+          - pattern: (IFormFile $F).ContentType
           # Network input sources (Juliet-style)
           - pattern: (StreamReader $SR).ReadLine()
           - pattern: (TextReader $TR).ReadLine()
@@ -283,9 +303,14 @@ rules:
     pattern-sinks:
       - pattern-either:
           - pattern: Response.Write(...)
+          - pattern: Response.WriteAsync(...)
           - pattern: HttpContext.Response.Write(...)
+          - pattern: HttpContext.Response.WriteAsync(...)
           # HttpResponse parameter pattern (Juliet, ASP.NET handlers)
           - pattern: $RESP.Write(...)
+          - pattern: $RESP.WriteAsync(...)
+          # Razor unencoded output
+          - pattern: Html.Raw(...)
     pattern-sanitizers:
       - pattern-either:
           - pattern: HttpUtility.HtmlEncode(...)
@@ -321,6 +346,25 @@ rules:
           - pattern: $REQ.Query[...]
           - pattern: $REQ.Form[...]
           - pattern: $REQ.RouteValues[...]
+          # ASP.NET Core controller parameter binding
+          - patterns:
+              - pattern: $PARAM
+              - pattern-inside: |
+                  public $RET $METHOD(..., [FromQuery] $TYPE $PARAM, ...) { ... }
+          - patterns:
+              - pattern: $PARAM
+              - pattern-inside: |
+                  public $RET $METHOD(..., [FromBody] $TYPE $PARAM, ...) { ... }
+          - patterns:
+              - pattern: $PARAM
+              - pattern-inside: |
+                  public $RET $METHOD(..., [FromRoute] $TYPE $PARAM, ...) { ... }
+          - patterns:
+              - pattern: $PARAM
+              - pattern-inside: |
+                  public $RET $METHOD(..., [FromForm] $TYPE $PARAM, ...) { ... }
+          # IFormFile upload sources
+          - pattern: (IFormFile $F).FileName
           # Network input sources (Juliet-style)
           - pattern: (StreamReader $SR).ReadLine()
           - pattern: (TextReader $TR).ReadLine()
@@ -348,6 +392,14 @@ rules:
           - pattern: File.OpenWrite(...)
           - pattern: File.Exists(...)
           - pattern: File.Delete(...)
+          # Fully-qualified System.IO variants (common in ASP.NET Core)
+          - pattern: System.IO.File.ReadAllText(...)
+          - pattern: System.IO.File.ReadAllBytes(...)
+          - pattern: System.IO.File.WriteAllText(...)
+          - pattern: System.IO.File.WriteAllBytes(...)
+          - pattern: System.IO.File.Exists(...)
+          - pattern: System.IO.File.Open(...)
+          - pattern: System.IO.File.Delete(...)
           - pattern: new FileStream(...)
           - pattern: new StreamReader(...)
           - pattern: new StreamWriter(...)
