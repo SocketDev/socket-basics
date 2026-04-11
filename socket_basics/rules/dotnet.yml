@@ -141,23 +141,37 @@ rules:
 
   # === High Severity Rules ===
 
-  # Hardcoded credentials
+  # Hardcoded credentials - matches both variable-name patterns AND credential API usage
   - id: dotnet-hardcoded-credentials
     message: "Hard-coded credentials detected. Embedding secrets in source code makes them easily discoverable and impossible to rotate. Use environment variables or a secrets manager instead."
     severity: HIGH
     languages: [csharp]
-    patterns:
-      - pattern-either:
-          # C#
-          - pattern: |
-              private const string $VAR = "...";
-          - pattern: |
-              public const string $VAR = "...";
-          - pattern: |
-              string $VAR = "...";
-      - metavariable-regex:
-          metavariable: $VAR
-          regex: (?i).*(password|passwd|pwd|secret|token|key|api_key|connection_string).*
+    pattern-either:
+      # Pattern 1: Variable name suggests credential AND value is a non-empty literal
+      - patterns:
+          - pattern-either:
+              - pattern: |
+                  private const string $VAR = "$VALUE";
+              - pattern: |
+                  public const string $VAR = "$VALUE";
+              - pattern: |
+                  string $VAR = "$VALUE";
+          - metavariable-regex:
+              metavariable: $VAR
+              regex: (?i).*(password|passwd|pwd|secret|token|api_key|connection_string).*
+          - metavariable-regex:
+              metavariable: $VALUE
+              # Must look like an actual secret: 6+ chars, not a config path or empty
+              regex: ^(?!$).{6,}
+          - metavariable-regex:
+              metavariable: $VALUE
+              # Exclude config key paths and property names
+              regex: ^(?!.*\.\w+\.\w+)(?!.*\b(Use|Enable|Disable|Is|Has|Get|Set|On)\w+).*$
+      # Pattern 2: Credential APIs called with hardcoded string literals
+      - pattern: new NetworkCredential($USER, "...", ...)
+      - pattern: new NetworkCredential("...", "...", ...)
+      - pattern: new SqlConnection("...");
+      - pattern: new PasswordDeriveBytes("...", ...)
     metadata:
       category: security
       cwe: CWE-798
@@ -223,35 +237,181 @@ rules:
       owasp: "A07:2021"
       fix: "Never return true from ServerCertificateCustomValidationCallback. Use the default certificate validation from ServicePointManager."
 
-  # XSS vulnerabilities
+  # XSS vulnerabilities - taint mode for accurate user-input tracking
   - id: dotnet-xss-response-write
     message: "Cross-site scripting (XSS) vulnerability detected. User input is rendered in HTML output without proper escaping, allowing attackers to inject malicious scripts. Sanitize or escape all user input before rendering."
     severity: HIGH
     languages: [csharp]
-    pattern-either:
-      - pattern: Response.Write($USER_INPUT)
-      - pattern: $RESPONSE.Write($USER_INPUT)
-      - pattern: HttpContext.Response.Write($USER_INPUT)
+    mode: taint
+    pattern-sources:
+      - pattern-either:
+          # ASP.NET request input sources
+          - pattern: Request.QueryString[...]
+          - pattern: Request.Form[...]
+          - pattern: Request.Params[...]
+          - pattern: Request.Cookies[...]
+          - pattern: Request[$KEY]
+          - pattern: Request.Headers[...]
+          - pattern: Request.UserAgent
+          - pattern: Request.RawUrl
+          - pattern: Request.Url
+          - pattern: Request.Path
+          - pattern: Request.PathInfo
+          - pattern: (HttpRequest $REQ).QueryString[...]
+          - pattern: (HttpRequest $REQ).Form[...]
+          - pattern: (HttpRequest $REQ).Params[...]
+          - pattern: (HttpRequest $REQ)[$KEY]
+          # ASP.NET Core model binding
+          - pattern: $REQ.Query[...]
+          - pattern: $REQ.Form[...]
+          - pattern: $REQ.Headers[...]
+          - pattern: $REQ.Cookies[...]
+          # ASP.NET Core controller parameter binding
+          - patterns:
+              - pattern: $PARAM
+              - pattern-inside: |
+                  public $RET $METHOD(..., [FromQuery] $TYPE $PARAM, ...) { ... }
+          - patterns:
+              - pattern: $PARAM
+              - pattern-inside: |
+                  public $RET $METHOD(..., [FromBody] $TYPE $PARAM, ...) { ... }
+          - patterns:
+              - pattern: $PARAM
+              - pattern-inside: |
+                  public $RET $METHOD(..., [FromRoute] $TYPE $PARAM, ...) { ... }
+          - patterns:
+              - pattern: $PARAM
+              - pattern-inside: |
+                  public $RET $METHOD(..., [FromForm] $TYPE $PARAM, ...) { ... }
+          # IFormFile upload sources
+          - pattern: (IFormFile $F).FileName
+          - pattern: (IFormFile $F).ContentType
+          # Network input sources (Juliet-style)
+          - pattern: (StreamReader $SR).ReadLine()
+          - pattern: (TextReader $TR).ReadLine()
+          - pattern: Console.ReadLine()
+    pattern-propagators:
+      - pattern: (string $A) + (string $B)
+        from: $B
+        to: $A
+      - pattern: String.Format($FMT, ..., (string $X), ...)
+        from: $X
+        to: $FMT
+      - pattern: String.Concat(..., (string $X), ...)
+        from: $X
+        to: String.Concat
+    pattern-sinks:
+      - pattern-either:
+          - pattern: Response.Write(...)
+          - pattern: Response.WriteAsync(...)
+          - pattern: HttpContext.Response.Write(...)
+          - pattern: HttpContext.Response.WriteAsync(...)
+          # HttpResponse parameter pattern (Juliet, ASP.NET handlers)
+          - pattern: $RESP.Write(...)
+          - pattern: $RESP.WriteAsync(...)
+          # Razor unencoded output
+          - pattern: Html.Raw(...)
+    pattern-sanitizers:
+      - pattern-either:
+          - pattern: HttpUtility.HtmlEncode(...)
+          - pattern: HtmlEncoder.Default.Encode(...)
+          - pattern: WebUtility.HtmlEncode(...)
+          - pattern: Server.HtmlEncode(...)
+          - pattern: AntiXssEncoder.HtmlEncode(...)
     metadata:
       category: security
       cwe: CWE-79
-      confidence: medium
+      confidence: high
       subcategory: xss
       vulnerability_class: "Cross-Site Scripting (XSS)"
       owasp: "A03:2021"
       fix: "Use Razor auto-encoding or HtmlEncoder.Default.Encode(). Never use Html.Raw() with user input. Validate input on both client and server."
 
-  # Path traversal
+  # Path traversal - taint mode for accurate user-input tracking
   - id: dotnet-path-traversal
     message: "Path traversal vulnerability detected. User input is used in file paths without validation, allowing attackers to access files outside the intended directory. Validate and canonicalize paths before use."
     severity: HIGH
     languages: [csharp]
-    pattern-either:
-      - pattern: File.ReadAllText($PATH + $USER_INPUT)
-      - pattern: File.ReadAllBytes($PATH + $USER_INPUT)
-      - pattern: File.WriteAllText($PATH + $USER_INPUT, ...)
-      - pattern: new FileStream($PATH + $USER_INPUT, ...)
-      - pattern: Path.Combine($BASE, $USER_INPUT)
+    mode: taint
+    pattern-sources:
+      - pattern-either:
+          # ASP.NET request sources
+          - pattern: Request.QueryString[...]
+          - pattern: Request.Form[...]
+          - pattern: Request.Params[...]
+          - pattern: Request[$KEY]
+          - pattern: Request.Path
+          - pattern: Request.PathInfo
+          # ASP.NET Core
+          - pattern: $REQ.Query[...]
+          - pattern: $REQ.Form[...]
+          - pattern: $REQ.RouteValues[...]
+          # ASP.NET Core controller parameter binding
+          - patterns:
+              - pattern: $PARAM
+              - pattern-inside: |
+                  public $RET $METHOD(..., [FromQuery] $TYPE $PARAM, ...) { ... }
+          - patterns:
+              - pattern: $PARAM
+              - pattern-inside: |
+                  public $RET $METHOD(..., [FromBody] $TYPE $PARAM, ...) { ... }
+          - patterns:
+              - pattern: $PARAM
+              - pattern-inside: |
+                  public $RET $METHOD(..., [FromRoute] $TYPE $PARAM, ...) { ... }
+          - patterns:
+              - pattern: $PARAM
+              - pattern-inside: |
+                  public $RET $METHOD(..., [FromForm] $TYPE $PARAM, ...) { ... }
+          # IFormFile upload sources
+          - pattern: (IFormFile $F).FileName
+          # Network input sources (Juliet-style)
+          - pattern: (StreamReader $SR).ReadLine()
+          - pattern: (TextReader $TR).ReadLine()
+          - pattern: Console.ReadLine()
+          # Environment and system sources
+          - pattern: Environment.GetEnvironmentVariable(...)
+    pattern-propagators:
+      - pattern: (string $A) + (string $B)
+        from: $B
+        to: $A
+      - pattern: Path.Combine(..., (string $X), ...)
+        from: $X
+        to: Path.Combine
+      - pattern: String.Format($FMT, ..., (string $X), ...)
+        from: $X
+        to: $FMT
+    pattern-sinks:
+      - pattern-either:
+          - pattern: File.ReadAllText(...)
+          - pattern: File.ReadAllBytes(...)
+          - pattern: File.WriteAllText(...)
+          - pattern: File.WriteAllBytes(...)
+          - pattern: File.Open(...)
+          - pattern: File.OpenRead(...)
+          - pattern: File.OpenWrite(...)
+          - pattern: File.Exists(...)
+          - pattern: File.Delete(...)
+          # Fully-qualified System.IO variants (common in ASP.NET Core)
+          - pattern: System.IO.File.ReadAllText(...)
+          - pattern: System.IO.File.ReadAllBytes(...)
+          - pattern: System.IO.File.WriteAllText(...)
+          - pattern: System.IO.File.WriteAllBytes(...)
+          - pattern: System.IO.File.Exists(...)
+          - pattern: System.IO.File.Open(...)
+          - pattern: System.IO.File.Delete(...)
+          - pattern: new FileStream(...)
+          - pattern: new StreamReader(...)
+          - pattern: new StreamWriter(...)
+          - pattern: Directory.GetFiles(...)
+          - pattern: Directory.EnumerateFiles(...)
+    pattern-sanitizers:
+      - pattern-either:
+          - pattern: Path.GetFullPath(...)
+          - pattern: Path.GetFileName(...)
+          # Framework-provided base paths are safe sources, not sanitizers,
+          # but if the result is validated against a base we consider it sanitized
+          - pattern: $X.StartsWith($BASE)
     metadata:
       category: security
       cwe: CWE-22
@@ -623,23 +783,34 @@ rules:
       vulnerability_class: "Access Control Violation"
       fix: "Review authorization logic for bypass conditions. Use policy-based authorization with IAuthorizationHandler. Test authorization with different user roles."
 
-  # A02: Cryptographic Failures
+  # A02: Cryptographic Failures - targets actual weak algorithm usage
   - id: dotnet-crypto-failures
     message: "Weak cryptographic algorithm detected. Using broken or outdated algorithms may allow attackers to decrypt data or forge signatures. Use modern algorithms like AES-256, SHA-256, or Ed25519."
     severity: HIGH
     languages: [csharp]
     pattern-either:
-      - pattern: Encoding.UTF8.GetBytes($PASSWORD)
-      - pattern: Convert.ToBase64String(Encoding.UTF8.GetBytes($SECRET))
+      # Weak symmetric ciphers
+      - pattern: new TripleDESCryptoServiceProvider()
+      - pattern: new DESCryptoServiceProvider()
+      - pattern: new RC2CryptoServiceProvider()
+      - pattern: TripleDES.Create()
+      - pattern: DES.Create()
+      - pattern: RC2.Create()
+      # Obsolete RijndaelManaged (use Aes.Create() instead)
+      - pattern: new RijndaelManaged()
+      # Using raw password bytes directly as crypto key (no KDF)
       - pattern: new RijndaelManaged() { Key = Encoding.UTF8.GetBytes($KEY) }
+      - pattern: new AesCryptoServiceProvider() { Key = Encoding.UTF8.GetBytes($KEY) }
+      # Encoding password for storage without hashing (storing plaintext)
+      - pattern: Convert.ToBase64String(Encoding.UTF8.GetBytes($SECRET))
     metadata:
       category: security
       owasp: A02
       cwe: CWE-327
-      confidence: medium
+      confidence: high
       subcategory: crypto
       vulnerability_class: "Cryptographic Weakness"
-      fix: "Use SHA256.Create() instead of MD5/SHA1. Use Aes.Create() with CipherMode.CBC or AesGcm for encryption."
+      fix: "Use Aes.Create() instead of 3DES/DES/RC2. Use Rfc2898DeriveBytes or HKDF for key derivation from passwords. Never use raw Encoding.GetBytes() as a crypto key."
 
   # A03: Injection (additional patterns)
   - id: dotnet-xpath-injection
