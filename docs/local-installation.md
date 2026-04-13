@@ -202,6 +202,22 @@ export SOCKET_SECURITY_API_KEY="your-api-key"
 > container-based distribution where possible. Review the upstream install path
 > and artifacts carefully before using this in production CI.
 
+> [!IMPORTANT]
+> Socket's interim recommendation for customers who still need Trivy is to pin
+> the binary or Docker image to `v0.69.3`.
+> Aqua's final incident report lists the known-safe Trivy binary range as
+> `v0.69.2` to `v0.69.3`; the corresponding Docker image tags are `0.69.2` to
+> `0.69.3` without the `v` prefix. We standardize on `v0.69.3` / Docker tag
+> `0.69.3` because it is the latest version Aqua still classifies as known-safe.
+> Do not use `v0.69.4`, and audit any cached Docker Hub images for `0.69.5` and
+> `0.69.6`.
+> If you use Aqua's own GitHub Actions independently of Socket Basics, Aqua's
+> published safe versions are `aquasecurity/trivy-action@v0.35.0` and
+> `aquasecurity/setup-trivy@v0.2.6`; pin those by full commit SHA rather than by
+> tag.
+> Reference:
+> https://www.aquasec.com/blog/trivy-supply-chain-attack-what-you-need-to-know/
+
 **Installation:**
 
 ```bash
@@ -231,6 +247,12 @@ docker pull aquasec/trivy:0.69.3
 # Verify installation
 trivy --version
 ```
+
+For this interim path, `trivy --version` should report `Version: 0.69.3`, and a
+container-based install should use image tag `aquasec/trivy:0.69.3`. If your
+package manager or container reference resolves to some other version, treat
+that as a separate review decision rather than assuming it matches the current
+Socket Basics guidance.
 
 **Documentation:** https://github.com/aquasecurity/trivy
 

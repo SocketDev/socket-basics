@@ -75,6 +75,22 @@ Socket Basics can also run locally or in other CI/CD environments:
 > additional review. Review the upstream install path and artifacts carefully
 > before adopting it in production CI.
 
+> [!IMPORTANT]
+> Interim Trivy guidance outside Socket Basics: the current Socket Basics
+> recommendation is to pin independent Trivy usage to `v0.69.3` while we work to
+> restore bundled support safely. Aqua's final incident report lists the
+> known-safe Trivy binary range as `v0.69.2` to `v0.69.3`; the corresponding
+> Docker image tags are `0.69.2` to `0.69.3` without the `v` prefix. We
+> standardize on the latest known-safe version, `v0.69.3` / Docker tag `0.69.3`.
+> Do not use `v0.69.4`, and audit any cached Docker Hub images for `0.69.5` and
+> `0.69.6`.
+> If you use Aqua's own GitHub Actions directly outside Socket Basics, Aqua's
+> published safe versions are `aquasecurity/trivy-action@v0.35.0` and
+> `aquasecurity/setup-trivy@v0.2.6`, and those should still be pinned to full
+> commit SHAs.
+> Reference:
+> https://www.aquasec.com/blog/trivy-supply-chain-attack-what-you-need-to-know/
+
 - **[Pre-Commit Hook](docs/pre-commit-hook.md)** — Catch issues before they're committed
 - **[Local Docker Installation](docs/local-install-docker.md)** — Run in Docker with no tool installation required
 - **[Local Installation](docs/local-installation.md)** — Install security tools natively on your machine

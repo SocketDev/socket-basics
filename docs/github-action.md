@@ -498,6 +498,21 @@ jobs:
 > pinned pre-built distribution model. Review the upstream install path and
 > artifacts carefully before using it in production CI.
 
+> [!IMPORTANT]
+> Customer guidance while Trivy is disabled in the Socket Basics GitHub Action:
+> if you must keep using Trivy independently in the same workflow, Socket's
+> interim recommendation is to pin the Trivy binary to `v0.69.3`.
+> Aqua's final incident report lists `v0.69.2` to `v0.69.3` as the
+> known-safe binary range; the corresponding Docker image tags are `0.69.2` to
+> `0.69.3` without the `v` prefix. We standardize on `v0.69.3` / Docker tag
+> `0.69.3` in our examples.
+> Do not use `v0.69.4`, and audit any Docker Hub use of `0.69.5` and `0.69.6`.
+> If you use Aqua's own actions directly outside Socket Basics, use
+> `aquasecurity/trivy-action@v0.35.0` and `aquasecurity/setup-trivy@v0.2.6`, and
+> pin them to full commit SHAs.
+> Reference:
+> https://www.aquasec.com/blog/trivy-supply-chain-attack-what-you-need-to-know/
+
 ```yaml
 name: Container Security
 on:
@@ -533,6 +548,11 @@ jobs:
           trivy image --exit-code 1 --severity HIGH,CRITICAL "myapp:${{ github.sha }}"
           trivy config --exit-code 1 --severity HIGH,CRITICAL Dockerfile
 ```
+
+If you replace the manual install step with Aqua-maintained actions in your own
+workflow outside Socket Basics, Aqua's published safe versions are
+`aquasecurity/trivy-action@v0.35.0` and `aquasecurity/setup-trivy@v0.2.6`.
+Pin those to full SHAs rather than mutable tags.
 
 ### Dockerfile Auto-Discovery
 
