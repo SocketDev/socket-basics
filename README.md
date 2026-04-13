@@ -71,7 +71,7 @@ Socket Basics can also run locally or in other CI/CD environments:
 > again.
 > If you need Trivy in the meantime, use the native/manual path and pin to
 > `v0.69.3` or Docker tag `0.69.3`.
-> [Aqua's final incident report](https://www.aquasec.com/blog/trivy-supply-chain-attack-what-you-need-to-know/)
+> [Aqua's official incident summary](https://www.aquasec.com/blog/trivy-supply-chain-attack-what-you-need-to-know/)
 > lists the known-safe Trivy binary range as `v0.69.2` to `v0.69.3`; we
 > standardize on the latest known-safe version.
 > Do not use `v0.69.4`, and audit any cached Docker Hub images for `0.69.5` and

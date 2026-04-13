@@ -41,9 +41,10 @@ trufflehog --version
 > The supported pre-built GitHub Action and Docker image paths currently ship
 > _without_ Trivy while we evaluate the safest way to bundle it with Basics
 > again.
-> If you need container or Dockerfile scanning today, use the native/manual
-> installation guidance below and review the upstream install path and artifacts
-> carefully before adopting it in production CI.
+> If you need container or Dockerfile scanning today, use
+> [Trivy (Container Scanning)](#trivy-container-scanning) and review the
+> upstream install path and artifacts carefully before adopting it in production
+> CI.
 
 For detailed installation instructions, continue reading below.
 
@@ -200,7 +201,7 @@ export SOCKET_SECURITY_API_KEY="your-api-key"
 > - Do not use `v0.69.4` of the binary.
 > - Audit any cached Docker Hub images for `0.69.5` and `0.69.6`.
 >
-> [Aqua's final incident report](https://www.aquasec.com/blog/trivy-supply-chain-attack-what-you-need-to-know/)
+> [Aqua's official incident summary](https://www.aquasec.com/blog/trivy-supply-chain-attack-what-you-need-to-know/)
 > lists the known-safe Trivy binary range as `v0.69.2` to `v0.69.3`; the
 > corresponding Docker image tags are `0.69.2` to `0.69.3` without the `v`
 > prefix. We standardize on `v0.69.3` / Docker tag `0.69.3`.
