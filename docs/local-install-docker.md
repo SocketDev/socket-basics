@@ -55,28 +55,15 @@ docker inspect ghcr.io/socketdev/socket-basics:2.0.2 \
 # }
 ```
 
-> [!NOTE]
-> Container and Dockerfile scanning remain part of Socket Basics, but the current
-> pre-built image path has Trivy-backed support temporarily disabled while we
-> complete additional security review of the underlying scanner dependency path.
-> If container or Dockerfile scanning is a near-term requirement, the
-> [native installation path](local-installation.md) remains available as a
-> temporary workaround while the pre-built path is under additional review.
-> Review the upstream install path and artifacts carefully before adopting it in
-> production CI.
-
 > [!IMPORTANT]
-> Socket Basics does not currently publish a pre-built Docker image with Trivy
-> enabled. If you need Trivy in the meantime, run it separately from Socket
-> Basics and pin the independent Trivy image or binary to `v0.69.3`.
-> Aqua's final incident report lists `v0.69.2` to `v0.69.3` as the
-> known-safe Trivy binary range; the corresponding Docker image tags are
-> `0.69.2` to `0.69.3` without the `v` prefix. Socket's interim recommendation is
-> the latest known-safe version, `v0.69.3` / Docker tag `0.69.3`.
+> The supported pre-built Docker image currently ships _without_ Trivy while we
+> evaluate the safest way to bundle it with Basics again.
+> If you need Trivy in the meantime, run it separately from Socket Basics and
+> pin to `v0.69.3` or Docker tag `0.69.3`.
 > Do not use `v0.69.4`, and audit any Docker Hub pulls or caches for `0.69.5`
 > and `0.69.6`.
-> Reference:
-> https://www.aquasec.com/blog/trivy-supply-chain-attack-what-you-need-to-know/
+> See [Local Installation](local-installation.md#trivy-container-scanning) for
+> the detailed version guidance and install options.
 
 ### Registries
 
@@ -380,20 +367,15 @@ docker run --rm \
 
 ### Container Scanning Status
 
-> [!NOTE]
-> Container and Dockerfile scanning remain part of Socket Basics, but the current
-> pre-built Docker image path has Trivy-backed support temporarily disabled while
-> we complete additional security review of the underlying scanner dependency path.
-> If container or Dockerfile scanning is a near-term requirement, the
-> [native installation path](local-installation.md) remains available as a
-> temporary workaround while the pre-built path is under additional review.
-> Review the upstream install path and artifacts carefully before adopting it in
-> production CI.
-
-For customers who still need Trivy before it returns to the Socket Basics image,
-the interim recommendation is to run a separate `aquasec/trivy:0.69.3` step or a
-host-native `trivy` install pinned to `v0.69.3`, rather than rebuilding the
-Socket Basics image and re-enabling Trivy ad hoc.
+> [!IMPORTANT]
+> The supported pre-built Docker image currently ships _without_ Trivy while we
+> evaluate the safest way to bundle it with Basics again.
+> If you need Trivy before it returns to the image, run a separate
+> `aquasec/trivy:0.69.3` step or a host-native `trivy` install pinned to
+> `v0.69.3`, rather than rebuilding the Socket Basics image and re-enabling
+> Trivy ad hoc.
+> See [Local Installation](local-installation.md#trivy-container-scanning) for
+> the detailed version guidance.
 
 ### Save Results to File
 

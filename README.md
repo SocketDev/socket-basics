@@ -65,31 +65,20 @@ jobs:
 
 Socket Basics can also run locally or in other CI/CD environments:
 
-> [!NOTE]
-> Container and Dockerfile scanning remain part of Socket Basics, but the current
-> GitHub Action and pre-built image paths have Trivy-backed support temporarily
-> disabled while we complete additional security review of the underlying scanner
-> dependency path. If container or Dockerfile scanning is a near-term
-> requirement, the [native installation path](docs/local-installation.md) remains
-> available as a temporary workaround while the pre-built path is under
-> additional review. Review the upstream install path and artifacts carefully
-> before adopting it in production CI.
-
 > [!IMPORTANT]
-> Interim Trivy guidance outside Socket Basics: the current Socket Basics
-> recommendation is to pin independent Trivy usage to `v0.69.3` while we work to
-> restore bundled support safely. Aqua's final incident report lists the
-> known-safe Trivy binary range as `v0.69.2` to `v0.69.3`; the corresponding
-> Docker image tags are `0.69.2` to `0.69.3` without the `v` prefix. We
-> standardize on the latest known-safe version, `v0.69.3` / Docker tag `0.69.3`.
+> The supported pre-built GitHub Action and Docker image paths currently ship
+> _without_ Trivy while we evaluate the safest way to bundle it with Basics
+> again.
+> If you need Trivy in the meantime, use the native/manual path and pin to
+> `v0.69.3` or Docker tag `0.69.3`.
+> [Aqua's final incident report](https://www.aquasec.com/blog/trivy-supply-chain-attack-what-you-need-to-know/)
+> lists the known-safe Trivy binary range as `v0.69.2` to `v0.69.3`; we
+> standardize on the latest known-safe version.
 > Do not use `v0.69.4`, and audit any cached Docker Hub images for `0.69.5` and
 > `0.69.6`.
-> If you use Aqua's own GitHub Actions directly outside Socket Basics, Aqua's
-> published safe versions are `aquasecurity/trivy-action@v0.35.0` and
-> `aquasecurity/setup-trivy@v0.2.6`, and those should still be pinned to full
-> commit SHAs.
-> Reference:
-> https://www.aquasec.com/blog/trivy-supply-chain-attack-what-you-need-to-know/
+> See [Local Installation](docs/local-installation.md#trivy-container-scanning)
+> for the detailed version guidance, installation options, and the
+> corresponding Aqua action versions.
 
 - **[Pre-Commit Hook](docs/pre-commit-hook.md)** — Catch issues before they're committed
 - **[Local Docker Installation](docs/local-install-docker.md)** — Run in Docker with no tool installation required

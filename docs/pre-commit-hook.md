@@ -204,6 +204,10 @@ See [Local Installation Guide](local-installation.md) for detailed instructions 
 - OpenGrep
 - TruffleHog
 
+The Trivy section in that guide also covers the current Basics status and the
+recommended self-service version pins:
+[Trivy (Container Scanning)](local-installation.md#trivy-container-scanning).
+
 ### Setup Steps
 
 **1. Create pre-commit hook:**

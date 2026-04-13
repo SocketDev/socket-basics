@@ -15,9 +15,10 @@ All scanners share the same UX enhancements for a consistent, professional exper
 
 > [!NOTE]
 > Container-scanning UX is still supported by Socket Basics, but the current
-> pre-built GitHub Action image does not emit Trivy-backed container findings
-> while we complete additional security review of the underlying scanner
-> dependency path.
+> pre-built GitHub Action image currently ships _without_ Trivy while we
+> evaluate the safest way to bundle it with Basics again. For the current Trivy
+> status, version guidance, and temporary self-service path, see
+> [Local Installation](local-installation.md#trivy-container-scanning).
 
 ## 🎯 Quick Start
 
