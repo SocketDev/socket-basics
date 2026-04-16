@@ -158,7 +158,7 @@ rules:
                   string $VAR = "$VALUE";
           - metavariable-regex:
               metavariable: $VAR
-              regex: (?i).*(password|passwd|pwd|secret|token|api_key|connection_string).*
+              regex: (?i).*(password|passwd|pwd|secret|secretKey|token|authToken|api_?key|apiKey|accessKey|privateKey|connection_?string|connectionString).*
           - metavariable-regex:
               metavariable: $VALUE
               # Must look like an actual secret: 6+ chars, not a config path or empty
@@ -407,7 +407,6 @@ rules:
           - pattern: Directory.EnumerateFiles(...)
     pattern-sanitizers:
       - pattern-either:
-          - pattern: Path.GetFullPath(...)
           - pattern: Path.GetFileName(...)
           # Framework-provided base paths are safe sources, not sanitizers,
           # but if the result is validated against a base we consider it sanitized
@@ -801,8 +800,6 @@ rules:
       # Using raw password bytes directly as crypto key (no KDF)
       - pattern: new RijndaelManaged() { Key = Encoding.UTF8.GetBytes($KEY) }
       - pattern: new AesCryptoServiceProvider() { Key = Encoding.UTF8.GetBytes($KEY) }
-      # Encoding password for storage without hashing (storing plaintext)
-      - pattern: Convert.ToBase64String(Encoding.UTF8.GetBytes($SECRET))
     metadata:
       category: security
       owasp: A02
