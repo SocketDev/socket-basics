@@ -5,7 +5,7 @@ Complete guide to integrating Socket Basics into your GitHub Actions workflows f
 ## Table of Contents
 
 - [Quick Start](#quick-start)
-- [Performance and Caching](#performance-and-caching) *(maintainers: see [releasing.md](releasing.md))*
+- [Performance and Caching](#performance-and-caching)
 - [Basic Configuration](#basic-configuration)
 - [Enterprise Features](#enterprise-features)
 - [Advanced Workflows](#advanced-workflows)
@@ -57,10 +57,10 @@ With just your `SOCKET_SECURITY_API_KEY`, all scanning configurations are manage
 
 ### How the action is currently built
 
-When you reference `uses: SocketDev/socket-basics@v2.0.2`, GitHub Actions builds the
-`Dockerfile` from source at the start of every workflow run. As of `1.1.3` the
-Dockerfile uses a **multi-stage build** with BuildKit cache mounts, which provides
-two categories of improvement:
+When you reference `uses: SocketDev/socket-basics@v2.0.2`, GitHub Actions pulls the
+pre-built image referenced by [`action.yml`](../action.yml). The historical multi-stage
+Docker build still matters for maintainers because it determines what lands in the
+published image:
 
 | Improvement | Benefit |
 |-------------|---------|
@@ -69,19 +69,15 @@ two categories of improvement:
 | `--mount=type=cache` for apt / uv / npm | Faster repeated builds locally and on self-hosted runners with a persistent cache |
 
 **On standard GitHub-hosted runners** (ephemeral, no persistent Docker cache between
-jobs), the multi-stage improvement is most visible when the same runner picks up a
-cached layer — typically within a workflow run or when GitHub's runner image itself
-includes the base layers. Cold runs still download and run all tool-install steps.
+jobs), users mainly benefit from pulling a ready-made image instead of rebuilding
+Socket Basics from source in every workflow run.
 
 ### Pre-built image
 
 Starting with v2, the action pulls a pre-built image from GHCR rather than
-building from source on every run. Pinning to a specific version tag (e.g. `@v2.0.0`)
+building from source on every run. Pinning to a specific version tag (e.g. `@v2.0.2`)
 means the action starts in seconds — the image is built, integration-tested, and
 published before the release tag is ever created.
-
-> **Maintainers:** see [releasing.md](releasing.md) for the publish-before-tag
-> release process and the PR checklist.
 
 ### If you're running socket-basics outside of the GitHub Action
 
@@ -89,7 +85,7 @@ If you run socket-basics in other CI systems (Jenkins, GitLab, CircleCI, etc.) o
 as a standalone `docker run`, pull the pre-built image directly:
 
 ```bash
-docker pull ghcr.io/socketdev/socket-basics:1.1.3
+docker pull ghcr.io/socketdev/socket-basics:2.0.2
 ```
 
 See [Local Docker Installation](local-install-docker.md) for usage examples.
@@ -104,7 +100,7 @@ is immediately affected. We've seen this happen across the ecosystem:
   A single bad push silently reaches all users with no review gate. This is
   structurally identical to `docker pull :latest` — the anti-pattern we
   explicitly warn against in our Docker docs.
-- **Version tags** (`@v2.0.0`) are better, but tags are mutable by default.
+- **Version tags** (`@v2.0.2`) are better, but tags are mutable by default.
   A tag can be deleted and recreated pointing at a different commit. There are
   documented cases of this happening — maliciously and accidentally.
 - **Commit SHAs** are the only truly immutable reference. A SHA cannot be
@@ -112,7 +108,7 @@ is immediately affected. We've seen this happen across the ecosystem:
   human review gate at zero ongoing maintenance cost.
 
 We don't publish a floating major tag (`v2`). We do publish immutable version
-tags (`v2.0.0`) protected by tag protection rules in GitHub — but SHA pinning
+tags (`v2.0.2`) protected by tag protection rules in GitHub — but SHA pinning
 is still the recommendation for defence in depth.
 
 ### Pinning strategies
@@ -128,14 +124,14 @@ The only truly immutable reference. Dependabot keeps it current automatically.
 ```yaml
 - name: Run Socket Basics
   # Dependabot keeps this SHA up to date — see .github/dependabot.yml setup below.
-  uses: SocketDev/socket-basics@<sha>  # v2.0.0
+  uses: SocketDev/socket-basics@<sha>  # v2.0.2
   with:
     socket_security_api_key: ${{ secrets.SOCKET_SECURITY_API_KEY }}
 ```
 
 Get the SHA for any release:
 ```bash
-git ls-remote https://github.com/SocketDev/socket-basics refs/tags/v2.0.0
+git ls-remote https://github.com/SocketDev/socket-basics refs/tags/v2.0.2
 ```
 
 ---
@@ -168,7 +164,7 @@ updates:
 ```
 
 Dependabot opens a PR for each new release, updating the SHA or version tag
-and keeping the `# v2.0.0` comment in sync. You review, approve, and merge
+and keeping the `# v2.0.2` comment in sync. You review, approve, and merge
 on your own schedule — automated upgrades with a human gate.
 
 ---
@@ -178,7 +174,7 @@ on your own schedule — automated upgrades with a human gate.
 | Strategy | Immutable? | Auto-updates | Review gate |
 |---|---|---|---|
 | `@v2` floating tag | ❌ (not published) | — | — |
-| `@v2.0.0` + Dependabot | ✅ (tag protection enforced) | Yes (weekly PR) | Yes |
+| `@v2.0.2` + Dependabot | ✅ (tag protection enforced) | Yes (weekly PR) | Yes |
 | `@<sha>` + Dependabot | ✅ always | Yes (weekly PR) | Yes |
 
 ## Basic Configuration
@@ -235,11 +231,22 @@ Include these in your workflow's `jobs.<job_id>.permissions` section.
 - uses: SocketDev/socket-basics@v2.0.2
   with:
     github_token: ${{ secrets.GITHUB_TOKEN }}
-    # Scan Docker images (auto-enables container scanning)
-    container_images: 'myorg/myapp:latest,redis:7'
-    # Scan Dockerfiles (auto-enables Dockerfile scanning)
-    dockerfiles: 'Dockerfile,docker/Dockerfile.prod'
+    # The supported pre-built GitHub Action path currently ships without
+    # Trivy while we evaluate the safest way to bundle it with Basics again.
+    # Use a native install if you need container scanning today.
+    # See docs/local-installation.md#trivy-container-scanning.
 ```
+
+> [!NOTE]
+> The supported pre-built GitHub Action and Docker image paths currently ship
+> _without_ Trivy while we evaluate the safest way to bundle it with Basics
+> again.
+> If you need container or Dockerfile scanning today, use the
+> [native installation path](local-installation.md). See
+> [Trivy (Container Scanning)](local-installation.md#trivy-container-scanning)
+> for the current version guidance and install options, and review the upstream
+> install path and artifacts carefully before adopting that path in production
+> CI.
 
 **Socket Tier 1 Reachability:**
 ```yaml
@@ -298,7 +305,8 @@ Configure Socket Basics centrally from the [Socket Dashboard](https://socket.dev
     socket_security_api_key: ${{ secrets.SOCKET_SECURITY_API_KEY }}
 ```
 
-> **Note:** You can also pass credentials using environment variables instead of the `with:` section:
+> [!NOTE]
+> You can also pass credentials using environment variables instead of the `with:` section:
 > ```yaml
 > - uses: SocketDev/socket-basics@v2.0.2
 >   env:
@@ -423,9 +431,6 @@ jobs:
           secret_scanning_enabled: 'true'
           socket_tier_1_enabled: 'true'
           
-          # Container scanning
-          dockerfiles: 'Dockerfile'
-          
           # Notifications (Enterprise)
           slack_webhook_url: ${{ secrets.SLACK_WEBHOOK_URL }}
 ```
@@ -480,6 +485,17 @@ jobs:
 
 ### Container Security Pipeline
 
+> [!IMPORTANT]
+> The supported pre-built GitHub Action path currently ships _without_ Trivy
+> while we evaluate the safest way to bundle it with Basics again.
+> If you need Trivy in the meantime, install and run it independently in the
+> workflow, pin to `v0.69.3` or Docker tag `0.69.3`, and review the upstream
+> install path and artifacts carefully.
+> Do not use `v0.69.4`, and audit any Docker Hub use of `0.69.5` and `0.69.6`.
+> See [Local Installation](local-installation.md#trivy-container-scanning) for
+> the detailed version guidance, corresponding Aqua action versions, and install
+> options.
+
 ```yaml
 name: Container Security
 on:
@@ -504,19 +520,16 @@ jobs:
       - name: Build Docker Image
         run: docker build -t myapp:${{ github.sha }} .
       
+      - name: Install pinned Trivy
+        run: |
+          TRIVY_VERSION=0.69.3
+          curl -fsSL https://raw.githubusercontent.com/aquasecurity/trivy/main/contrib/install.sh \
+            | sh -s -- -b /usr/local/bin "v${TRIVY_VERSION}"
+
       - name: Scan Container
-        uses: SocketDev/socket-basics@v2.0.2
-        env:
-          GITHUB_PR_NUMBER: ${{ github.event.pull_request.number || github.event.issue.number }}
-        with:
-          github_token: ${{ secrets.GITHUB_TOKEN }}
-          
-          # Scan built image and Dockerfile
-          container_images: 'myapp:${{ github.sha }}'
-          dockerfiles: 'Dockerfile'
-          
-          # Additional Trivy options
-          trivy_vuln_enabled: 'true'
+        run: |
+          trivy image --exit-code 1 --severity HIGH,CRITICAL "myapp:${{ github.sha }}"
+          trivy config --exit-code 1 --severity HIGH,CRITICAL Dockerfile
 ```
 
 ### Dockerfile Auto-Discovery
@@ -573,8 +586,11 @@ jobs:
           GITHUB_PR_NUMBER: ${{ github.event.pull_request.number || github.event.issue.number }}
         with:
           github_token: ${{ secrets.GITHUB_TOKEN }}
-          dockerfiles: ${{ needs.discover-dockerfiles.outputs.dockerfiles }}
-          trivy_vuln_enabled: 'true'
+          # Dockerfile discovery remains useful context for future container
+          # scanning support, but the current pre-built action path currently
+          # ships _without_ Trivy while we evaluate the safest way to bundle it
+          # with Basics again.
+          verbose: 'true'
 ```
 
 **How it works:**
@@ -674,11 +690,20 @@ See [`action.yml`](../action.yml) for the complete list of inputs.
 - `trufflehog_show_unverified` — Show unverified secrets
 - `socket_tier_1_enabled` — Socket Tier 1 reachability
 
-**Container Scanning:**
+**Container Scanning (configuration surface):**
 - `container_images` — Comma-separated images to scan
 - `dockerfiles` — Comma-separated Dockerfiles to scan
 - `trivy_disabled_rules` — Trivy rules to disable
 - `trivy_vuln_enabled` — Enable vulnerability scanning
+
+> [!NOTE]
+> These inputs remain part of the action interface, but the current pre-built
+> GitHub Action path currently ships _without_ Trivy while we evaluate the
+> safest way to bundle it with Basics again.
+> Use the [native installation path](local-installation.md) if container
+> scanning is a near-term requirement. See
+> [Trivy (Container Scanning)](local-installation.md#trivy-container-scanning)
+> for the current version guidance and install options.
 
 **Notifications (Enterprise Required):**
 - `slack_webhook_url` — Slack webhook
@@ -734,8 +759,15 @@ permissions:
 **Problem:** Container image scanning fails.
 
 **Solutions:**
-1. Ensure Docker is available in runner
-2. For private images, add authentication:
+> [!NOTE]
+> The current pre-built GitHub Action path ships _without_ Trivy while we
+> evaluate the safest way to bundle it with Basics again. If container scanning
+> is a near-term requirement, switch to a native Trivy install in the workflow.
+> See
+> [Trivy (Container Scanning)](local-installation.md#trivy-container-scanning)
+> for the current version guidance and install options.
+
+1. For private images, add authentication:
 ```yaml
 - name: Login to Registry
   run: echo "${{ secrets.DOCKER_PASSWORD }}" | docker login -u "${{ secrets.DOCKER_USERNAME }}" --password-stdin
