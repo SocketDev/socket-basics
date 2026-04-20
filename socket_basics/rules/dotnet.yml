@@ -406,11 +406,14 @@ rules:
           - pattern: Directory.GetFiles(...)
           - pattern: Directory.EnumerateFiles(...)
     pattern-sanitizers:
-      - pattern-either:
-          - pattern: Path.GetFileName(...)
-          # Framework-provided base paths are safe sources, not sanitizers,
-          # but if the result is validated against a base we consider it sanitized
+      - pattern: Path.GetFileName(...)
+      # Treat the checked path variable as sanitized after a base-path validation.
+      # focus-metavariable + by-side-effect cleans $X itself, not just the
+      # StartsWith(...) boolean expression.
+      - patterns:
           - pattern: $X.StartsWith($BASE)
+          - focus-metavariable: $X
+        by-side-effect: true
     metadata:
       category: security
       cwe: CWE-22
