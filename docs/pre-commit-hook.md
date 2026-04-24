@@ -35,7 +35,7 @@ Best for: Teams wanting consistent environments without installing security tool
 
 ```bash
 # Pull the pre-built image (no build step required)
-docker pull ghcr.io/socketdev/socket-basics:2.0.2
+docker pull ghcr.io/socketdev/socket-basics:2.0.3
 ```
 
 **2. Create pre-commit hook:**
