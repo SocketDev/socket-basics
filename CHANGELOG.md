@@ -8,6 +8,21 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [2.0.3] - 2026-04-24
+
+<!-- Release notes generated using configuration in .github/release.yml at main -->
+
+## What's Changed
+### 🔧 Other Changes
+* fix: Harden GHA workflows by @reberhardt7 in https://github.com/SocketDev/socket-basics/pull/58
+* docs: cleanup docs guidance, additional workflow hardening by @lelia in https://github.com/SocketDev/socket-basics/pull/60
+* fix(rules): improve precision of 4 high-FP dotnet opengrep rules by @dc-larsen in https://github.com/SocketDev/socket-basics/pull/63
+
+## New Contributors
+* @reberhardt7 made their first contribution in https://github.com/SocketDev/socket-basics/pull/58
+
+**Full Changelog**: https://github.com/SocketDev/socket-basics/compare/v2.0.2...v2.0.3
+
 ## [2.0.2] - 2026-03-23
 
 <!-- Release notes generated using configuration in .github/release.yml at v2.0.2 -->

@@ -16,7 +16,7 @@ Run Socket Basics locally using Docker without installing security tools on your
 
 ```bash
 # 1. Pull a pinned release from GHCR (no build step required)
-docker pull ghcr.io/socketdev/socket-basics:2.0.2
+docker pull ghcr.io/socketdev/socket-basics:2.0.3
 
 # 2. Create .env file with your credentials
 cat > .env << 'EOF'
@@ -28,14 +28,14 @@ EOF
 docker run --rm \
   -v "$PWD:/workspace" \
   --env-file .env \
-  ghcr.io/socketdev/socket-basics:2.0.2 \
+  ghcr.io/socketdev/socket-basics:2.0.3 \
   --workspace /workspace \
   --python \
   --secrets \
   --console-tabular-enabled
 ```
 
-The Docker image should always be pinned to an exact version such as `2.0.2`. Avoid
+The Docker image should always be pinned to an exact version such as `2.0.3`. Avoid
 floating tags like `:latest` in CI/CD.
 
 ## Using Pre-built Images
@@ -45,12 +45,12 @@ The baked-in security tool versions are recorded in the image labels so you can 
 inspect exactly what's inside:
 
 ```bash
-docker inspect ghcr.io/socketdev/socket-basics:2.0.2 \
+docker inspect ghcr.io/socketdev/socket-basics:2.0.3 \
   | jq '.[0].Config.Labels'
 # {
 #   "com.socket.trufflehog-version": "3.93.8",
 #   "com.socket.opengrep-version": "v1.16.5",
-#   "org.opencontainers.image.version": "2.0.2",
+#   "org.opencontainers.image.version": "2.0.3",
 #   ...
 # }
 ```
@@ -84,7 +84,7 @@ docker inspect ghcr.io/socketdev/socket-basics:2.0.2 \
       -v "$GITHUB_WORKSPACE:/workspace" \
       -e SOCKET_SECURITY_API_KEY=${{ secrets.SOCKET_API_KEY }} \
       -e SOCKET_ORG=${{ secrets.SOCKET_ORG }} \
-      ghcr.io/socketdev/socket-basics:2.0.2 \
+      ghcr.io/socketdev/socket-basics:2.0.3 \
       --workspace /workspace \
       --all-languages \
       --secrets \
@@ -95,7 +95,7 @@ docker inspect ghcr.io/socketdev/socket-basics:2.0.2 \
 
 ```yaml
 security-scan:
-  image: ghcr.io/socketdev/socket-basics:2.0.2
+  image: ghcr.io/socketdev/socket-basics:2.0.3
   stage: test
   script:
     - socket-basics
@@ -112,7 +112,7 @@ security-scan:
 
 ```dockerfile
 # Pin socket-basics and let Dependabot send upgrade PRs automatically
-FROM ghcr.io/socketdev/socket-basics:2.0.2
+FROM ghcr.io/socketdev/socket-basics:2.0.3
 ```
 
 ### Staying Up to Date with Dependabot
@@ -130,7 +130,7 @@ updates:
       interval: "weekly"
 ```
 
-Dependabot will detect the `FROM ghcr.io/socketdev/socket-basics:2.0.2` reference
+Dependabot will detect the `FROM ghcr.io/socketdev/socket-basics:2.0.3` reference
 and open a PR with the version bump when a new release is available.
 
 ## Building the Docker Image
@@ -141,10 +141,10 @@ Pull a specific release without building locally:
 
 ```bash
 # GHCR (preferred)
-docker pull ghcr.io/socketdev/socket-basics:2.0.2
+docker pull ghcr.io/socketdev/socket-basics:2.0.3
 
 # Docker Hub
-docker pull socketdev/socket-basics:2.0.2
+docker pull socketdev/socket-basics:2.0.3
 ```
 
 ### Build from Source
@@ -157,7 +157,7 @@ git clone https://github.com/SocketDev/socket-basics.git
 cd socket-basics
 
 # Build with version tag (multi-stage; first build is slower, subsequent ones are fast)
-docker build -t socket-basics:2.0.2 .
+docker build -t socket-basics:2.0.3 .
 
 # Verify the build
 docker images | grep socket-basics
@@ -166,7 +166,7 @@ docker images | grep socket-basics
 ### Build for a Specific Platform (M1/M2 Macs)
 
 ```bash
-docker build --platform linux/amd64 -t socket-basics:2.0.2 .
+docker build --platform linux/amd64 -t socket-basics:2.0.3 .
 ```
 
 ### Build with Custom Tool Versions
@@ -177,7 +177,7 @@ The image pins the bundled tools to specific versions. You can override them at 
 docker build \
   --build-arg TRUFFLEHOG_VERSION=3.93.8 \
   --build-arg OPENGREP_VERSION=v1.16.5 \
-  -t socket-basics:2.0.2 .
+  -t socket-basics:2.0.3 .
 ```
 
 `TRIVY_VERSION` still exists in the Dockerfile for maintainers, but the current
@@ -188,10 +188,10 @@ from the `app_tests` directory and use the same build args.
 
 ```bash
 # Check that all tools are available in the container
-docker run --rm socket-basics:2.0.2 socket-basics --version
-docker run --rm socket-basics:2.0.2 socket --version
-docker run --rm socket-basics:2.0.2 opengrep --version
-docker run --rm socket-basics:2.0.2 trufflehog --version
+docker run --rm socket-basics:2.0.3 socket-basics --version
+docker run --rm socket-basics:2.0.3 socket --version
+docker run --rm socket-basics:2.0.3 opengrep --version
+docker run --rm socket-basics:2.0.3 trufflehog --version
 ```
 
 ### Smoke Test
@@ -226,7 +226,7 @@ Mount your project directory into the container:
 # Scan current directory
 docker run --rm \
   -v "$PWD:/workspace" \
-  socket-basics:2.0.2 \
+  socket-basics:2.0.3 \
   --workspace /workspace \
   --python \
   --secrets \
@@ -243,7 +243,7 @@ docker run --rm \
 # Scan a specific project directory
 docker run --rm \
   -v "/path/to/your/project:/workspace" \
-  socket-basics:2.0.2 \
+  socket-basics:2.0.3 \
   --workspace /workspace \
   --javascript \
   --secrets
@@ -254,7 +254,7 @@ docker run --rm \
 ```bash
 docker run --rm \
   -v "$PWD:/workspace" \
-  socket-basics:2.0.2 \
+  socket-basics:2.0.3 \
   --workspace /workspace \
   --all-languages \
   --secrets \
@@ -302,7 +302,7 @@ VERBOSE=false
 docker run --rm \
   -v "$PWD:/workspace" \
   --env-file .env \
-  socket-basics:2.0.2 \
+  socket-basics:2.0.3 \
   --workspace /workspace \
   --python \
   --secrets
@@ -317,7 +317,7 @@ docker run --rm \
   -v "$PWD:/workspace" \
   -e "SOCKET_SECURITY_API_KEY=scrt_your_api_key" \
   -e "SOCKET_ORG=your-org-slug" \
-  socket-basics:2.0.2 \
+  socket-basics:2.0.3 \
   --workspace /workspace \
   --python \
   --secrets \
@@ -339,7 +339,7 @@ docker run --rm \
   --env-file .env.socket \
   --env-file .env.notifiers \
   --env-file .env.scanning \
-  socket-basics:2.0.2 \
+  socket-basics:2.0.3 \
   --workspace /workspace \
   --all-languages
 ```
@@ -358,7 +358,7 @@ docker run --rm \
   -v "$PWD:/workspace" \
   -e "SOCKET_SECURITY_API_KEY=$SOCKET_SECURITY_API_KEY" \
   -e "SOCKET_ORG=$SOCKET_ORG" \
-  socket-basics:2.0.2 \
+  socket-basics:2.0.3 \
   --workspace /workspace \
   --python
 ```
@@ -390,7 +390,7 @@ docker run --rm \
   -v "$PWD:/workspace" \
   -v "$PWD/scan-results:/results" \
   --env-file .env \
-  socket-basics:2.0.2 \
+  socket-basics:2.0.3 \
   --workspace /workspace \
   --python \
   --secrets \
@@ -407,7 +407,7 @@ docker run --rm -it \
   -v "$PWD:/workspace" \
   --env-file .env \
   --entrypoint /bin/bash \
-  socket-basics:2.0.2
+  socket-basics:2.0.3
 
 # Inside container, run commands manually:
 # cd /workspace
@@ -436,7 +436,7 @@ docker run --rm \
   -v "$PWD:/workspace" \
   -v "$PWD/socket-config.json:/config.json" \
   --env-file .env \
-  socket-basics:2.0.2 \
+  socket-basics:2.0.3 \
   --workspace /workspace \
   --config /config.json
 ```
@@ -460,7 +460,7 @@ for PROJECT in "${PROJECTS[@]}"; do
   docker run --rm \
     -v "$PROJECT:/workspace" \
     --env-file .env \
-    socket-basics:2.0.2 \
+    socket-basics:2.0.3 \
     --workspace /workspace \
     --all-languages \
     --secrets \
@@ -484,7 +484,7 @@ pipeline {
         stage('Security Scan') {
             steps {
                 script {
-                    docker.image('ghcr.io/socketdev/socket-basics:2.0.2').inside(
+                    docker.image('ghcr.io/socketdev/socket-basics:2.0.3').inside(
                         "-v ${WORKSPACE}:/workspace --env-file .env"
                     ) {
                         sh '''
@@ -506,7 +506,7 @@ pipeline {
 
 ```yaml
 security-scan:
-  image: ghcr.io/socketdev/socket-basics:2.0.2
+  image: ghcr.io/socketdev/socket-basics:2.0.3
   stage: test
   script:
     - socket-basics
@@ -532,7 +532,7 @@ security-scan:
    docker run --rm \
      -v "$PWD:/workspace" \
      --user "$(id -u):$(id -g)" \
-     socket-basics:2.0.2 \
+     socket-basics:2.0.3 \
      --workspace /workspace
    ```
 
@@ -551,14 +551,14 @@ security-scan:
    ```bash
    docker run --rm \
      -v "$(pwd):/workspace" \  # Use $(pwd) instead of $PWD
-     socket-basics:2.0.2
+     socket-basics:2.0.3
    ```
 
 2. Verify mount:
    ```bash
    docker run --rm \
      -v "$PWD:/workspace" \
-     socket-basics:2.0.2 \
+     socket-basics:2.0.3 \
      ls -la /workspace
    ```
 
@@ -588,7 +588,7 @@ security-scan:
    docker run --rm \
      -v "$PWD:/workspace" \
      --env-file "$(pwd)/.env" \
-     socket-basics:2.0.2
+     socket-basics:2.0.3
    ```
 
 ### Container Image Too Large
@@ -619,7 +619,7 @@ security-scan:
    ```bash
    docker run --rm \
      -v "$PWD:/workspace" \
-     socket-basics:2.0.2 \
+     socket-basics:2.0.3 \
      --workspace /workspace \
      --python \
      --secrets \
@@ -640,7 +640,7 @@ security-scan:
    ```bash
    docker run --rm \
      -v "$PWD:/workspace" \
-     socket-basics:2.0.2 \
+     socket-basics:2.0.3 \
      --workspace /workspace \
      --output /workspace/results.json  # Save to mounted directory
    ```
@@ -651,7 +651,7 @@ security-scan:
    docker run --rm \
      -v "$PWD:/workspace" \
      -v "$PWD/results:/results" \
-     socket-basics:2.0.2 \
+     socket-basics:2.0.3 \
      --workspace /workspace \
      --output /results/scan.json
    ```
@@ -662,7 +662,7 @@ Add these to your `~/.bashrc` or `~/.zshrc` for quick access:
 
 ```bash
 # Socket Basics Docker aliases
-alias sb-docker='docker run --rm -v "$PWD:/workspace" --env-file .env ghcr.io/socketdev/socket-basics:2.0.2 --workspace /workspace'
+alias sb-docker='docker run --rm -v "$PWD:/workspace" --env-file .env ghcr.io/socketdev/socket-basics:2.0.3 --workspace /workspace'
 alias sb-quick='sb-docker --secrets --console-tabular-enabled'
 alias sb-python='sb-docker --python --secrets --console-tabular-enabled'
 alias sb-js='sb-docker --javascript --secrets --console-tabular-enabled'
@@ -687,7 +687,7 @@ sb-all
 ## Best Practices
 
 1. **Use pre-built images** — Pull `ghcr.io/socketdev/socket-basics:<version>` instead of building locally
-2. **Pin to a specific version** — Avoid `:latest` in production CI; pin to `2.0.2` and upgrade deliberately
+2. **Pin to a specific version** — Avoid `:latest` in production CI; pin to `2.0.3` and upgrade deliberately
 3. **Use Dependabot** — Reference the image in your Dockerfile/Compose to get automatic upgrade PRs
 4. **Inspect baked-in labels** — Run `docker inspect <image> | jq '.[0].Config.Labels'` to verify tool versions
 5. **Use .env files** — Keep credentials out of command history
@@ -706,7 +706,7 @@ set -e
 # Configuration
 PROJECT_DIR="$(pwd)"
 RESULTS_DIR="./scan-results"
-IMAGE_NAME="socket-basics:2.0.2"
+IMAGE_NAME="socket-basics:2.0.3"
 ENV_FILE=".env"
 
 # Create results directory

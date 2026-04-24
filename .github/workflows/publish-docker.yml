@@ -80,38 +80,22 @@ jobs:
       DOCKERHUB_USERNAME: ${{ secrets.DOCKERHUB_USERNAME }}
       DOCKERHUB_TOKEN: ${{ secrets.DOCKERHUB_TOKEN }}
 
-  # ── Job 3: Create GitHub release + update CHANGELOG ────────────────────────
+  # ── Job 3: Create GitHub release ───────────────────────────────────────────
   # Runs once after the image is successfully pushed (not for workflow_dispatch
   # re-publishes — those don't create new releases).
-  # Generates categorised release notes from merged PR labels (.github/release.yml),
-  # creates the GitHub Release, then commits the CHANGELOG update back to main.
+  # Generates categorised release notes from merged PR labels (.github/release.yml).
+  # CHANGELOG updates are intentionally human-authored in the release PR so this
+  # workflow never needs to push commits to the protected default branch.
   create-release:
     needs: [resolve-version, build-test-push]
     if: github.ref_type == 'tag'
     permissions:
-      contents: write   # create GitHub release + commit CHANGELOG back to main
+      contents: write   # create GitHub release
     runs-on: ubuntu-latest
-    env:
-      VERSION: ${{ needs.resolve-version.outputs.version }}
     steps:
-      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
-        with:
-          ref: main
-          fetch-depth: 0
-          persist-credentials: false
-
-      - name: 🤖 Generate socket-release-bot token
-        id: bot
-        uses: actions/create-github-app-token@29824e69f54612133e76f7eaac726eef6c875baf # v2.2.1
-        with:
-          app-id: ${{ secrets.GH_BOT_APP_ID }}
-          private-key: ${{ secrets.GH_BOT_APP_PEM_FILE }}
-          owner: SocketDev
-          repositories: socket-basics
-
       - name: 📝 Create GitHub release with auto-generated notes
         env:
-          GH_TOKEN: ${{ steps.bot.outputs.token }}
+          GH_TOKEN: ${{ github.token }}
           REF_NAME: ${{ github.ref_name }}
         run: |
           gh release create "$REF_NAME" \
@@ -119,25 +103,3 @@ jobs:
             --generate-notes \
             --verify-tag \
           || echo "Release already exists (re-run scenario) — skipping creation"
-
-      - name: 📋 Update CHANGELOG.md
-        env:
-          GH_TOKEN: ${{ steps.bot.outputs.token }}
-          REF_NAME: ${{ github.ref_name }}
-        run: |
-          NOTES=$(gh release view "$REF_NAME" --json body --jq .body)
-          DATE=$(date +%Y-%m-%d)
-          echo "$NOTES" | python scripts/update_changelog.py \
-            --version "$VERSION" \
-            --date "$DATE"
-
-      - name: 🔀 Commit CHANGELOG back to main
-        env:
-          BOT_TOKEN: ${{ steps.bot.outputs.token }}
-        run: |
-          git config user.name "socket-release-bot[bot]"
-          git config user.email "socket-release-bot[bot]@users.noreply.github.com"
-          git remote set-url origin "https://x-access-token:${BOT_TOKEN}@github.com/SocketDev/socket-basics.git"
-          git add CHANGELOG.md
-          git diff --cached --quiet || git commit -m "chore: release ${github.ref_name} — update CHANGELOG [skip ci]"
-          git push origin HEAD:main

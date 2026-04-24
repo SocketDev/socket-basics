@@ -26,4 +26,4 @@
 - [ ] `socket_basics/version.py` updated to new version
 - [ ] `socket_basics/__init__.py` updated to the same version
 - [ ] `action.yml` `image:` ref updated to `docker://ghcr.io/socketdev/socket-basics:<new-version>`
-- [ ] `CHANGELOG.md` `[Unreleased]` section reviewed
+- [ ] `CHANGELOG.md` updated with human-authored release notes for this version

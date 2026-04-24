@@ -2,9 +2,9 @@
 """
 update_changelog.py — Prepend a new release section to CHANGELOG.md.
 
-Called automatically by the publish-docker workflow after a GitHub Release
-is created. Reads the generated release notes, inserts a new version section
-immediately after [Unreleased], and updates the comparison links at the bottom.
+Legacy helper for applying generated release notes locally. The publish-docker
+workflow intentionally does not call this script anymore, because release
+changelog updates are human-authored in the release PR.
 
 Usage:
     # Notes from a file:
