@@ -510,6 +510,15 @@ class NotificationManager:
                     notifier_data = per_notifier_notifications[notification_key]
                     notifier_facts['notifications'] = notifier_data
                     logger.debug('Using pre-formatted data for notifier %s: %s items', notifier_name, len(notifier_data) if isinstance(notifier_data, list) else 1)
+                elif notification_key == 'github_pr':
+                    # GitHub PR label reconciliation still needs to run on "all clear"
+                    # reruns where there are no current notification sections.
+                    notifier_facts['notifications'] = []
+                    logger.debug(
+                        'No pre-formatted data found for notifier %s (key: %s); passing empty notifications for label reconciliation',
+                        notifier_name,
+                        notification_key,
+                    )
                 else:
                     # No pre-formatted data available - skip this notifier to avoid sending wrong format
                     logger.debug('No pre-formatted data found for notifier %s (key: %s), skipping to avoid format mismatch', notifier_name, notification_key)

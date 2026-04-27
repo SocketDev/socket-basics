@@ -191,6 +191,12 @@ connectors:
         env_variable: INPUT_JAVASCRIPT_DISABLED_RULES
         type: str
         default: ""
+      - name: sast_ignore_overrides
+        option: --sast-ignore-overrides
+        description: "Comma-separated list of SAST ignore overrides in rule_id or rule_id:path format"
+        env_variable: INPUT_SAST_IGNORE_OVERRIDES
+        type: str
+        default: ""
 
       # Go rule configuration
       - name: go_enabled_rules

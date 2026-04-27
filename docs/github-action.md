@@ -654,7 +654,28 @@ jobs:
           # JavaScript with custom rules
           javascript_sast_enabled: 'true'
           javascript_enabled_rules: 'eval-usage,prototype-pollution'
+
+          # Ignore one or more SAST rules globally or for exact repo-relative files
+          sast_ignore_overrides: 'js-sql-injection:index.js'
 ```
+
+`sast_ignore_overrides` supports:
+- `rule_id` to ignore a SAST rule everywhere in the repo
+- `rule_id:path` to ignore a SAST rule for one exact repo-relative file
+
+Examples:
+- `js-sql-injection`
+- `js-sql-injection:index.js`
+- `js-sql-injection:src/unsafe/demo.js`
+- `js-express-async-no-error-handler,js-sql-injection:index.js,js-missing-helmet`
+
+Notes:
+- Paths must be exact repo-relative paths using `/` separators after normalization.
+- Windows-style input such as `src\\unsafe\\demo.js` is accepted and normalized automatically.
+- Globs and directory-prefix matching are not supported in this first version.
+- A `rule_id:path` entry is an exact `rule_id AND path` match. If the path does not match, Socket Basics will not fall back to a rule-only ignore.
+- Broad dashboard rule disables such as `<language>_disabled_rules` still ignore that rule everywhere in the repo. If both are configured, the broad disabled-rule behavior can make it look like a narrow path override matched when it did not.
+- In `.socket.facts.json`, ignored alerts include `actionReason` so you can see whether the ignore came from `sast_ignore_override` or `disabled_rule`.
 
 ## Configuration Reference
 
@@ -683,6 +704,7 @@ See [`action.yml`](../action.yml) for the complete list of inputs.
 **Rule Configuration (per language):**
 - `<language>_enabled_rules` — Comma-separated rules to enable
 - `<language>_disabled_rules` — Comma-separated rules to disable
+- `sast_ignore_overrides` — Comma-separated `rule_id` or `rule_id:path` SAST ignore overrides
 
 **Security Scanning:**
 - `secret_scanning_enabled` — Enable secret scanning
@@ -781,6 +803,20 @@ permissions:
 1. Verify Socket Enterprise subscription is active
 2. Check that `socket_org` and `socket_security_api_key` are set correctly
 3. Confirm API key has required permissions in Socket Dashboard
+
+### `sast_ignore_overrides` Seems Too Broad
+
+**Problem:** A `rule_id:path` override appears to ignore findings outside the specified file.
+
+**Likely cause:** The rule is also disabled more broadly in dashboard settings or other config through `<language>_disabled_rules`.
+
+**How to confirm:**
+1. Open the generated `.socket.facts.json`
+2. Find the ignored alert and inspect `actionReason`
+3. `actionReason: "sast_ignore_override"` means the exact path override matched
+4. `actionReason: "disabled_rule"` means the finding was ignored by a broad rule disable instead
+
+**Additional signal:** If the configured path does not exist under the workspace, Socket Basics logs a warning and does not fall back to rule-only matching.
 
 ### High Memory Usage
 

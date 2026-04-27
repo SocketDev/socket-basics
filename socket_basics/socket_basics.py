@@ -54,6 +54,18 @@ except ImportError:
 logger = logging.getLogger(__name__)
 
 
+def count_blocking_alerts(results: Dict[str, Any]) -> int:
+    """Count alerts that should fail the run."""
+    blocking_alerts = 0
+    for comp in results.get('components', []):
+        for alert in comp.get('alerts', []):
+            if (alert.get('action') or '').strip().lower() == 'ignore':
+                continue
+            if alert.get('severity') in ['high', 'critical']:
+                blocking_alerts += 1
+    return blocking_alerts
+
+
 class SecurityScanner:
     """Main security scanning orchestrator using dynamic connectors"""
 
@@ -456,11 +468,7 @@ def main():
     logger.info(f"Total alerts: {total_alerts}")
     
     # Exit with non-zero code if high/critical issues found
-    high_critical_alerts = 0
-    for comp in results.get('components', []):
-        for alert in comp.get('alerts', []):
-            if alert.get('severity') in ['high', 'critical']:
-                high_critical_alerts += 1
+    high_critical_alerts = count_blocking_alerts(results)
     
     exit_code = 1 if high_critical_alerts > 0 else 0
     if high_critical_alerts > 0:

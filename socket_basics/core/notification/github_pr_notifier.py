@@ -1,5 +1,6 @@
 from typing import Any, Dict, List, Optional
 import logging
+from urllib.parse import quote
 
 from socket_basics.core.notification.base import BaseNotifier
 from socket_basics.core.config import get_github_token, get_github_repository, get_github_pr_number
@@ -35,13 +36,10 @@ class GithubPRNotifier(BaseNotifier):
 
     def notify(self, facts: Dict[str, Any]) -> None:
         notifications = facts.get('notifications', []) or []
+        labels_enabled = self.config.get('pr_labels_enabled', True)
         
         if not isinstance(notifications, list):
             logger.error('GithubPRNotifier: only supports new format - list of dicts with title/content')
-            return
-            
-        if not notifications:
-            logger.info('GithubPRNotifier: no notifications present; skipping')
             return
 
         # Get full scan URL if available and store it for use in truncation
@@ -56,7 +54,21 @@ class GithubPRNotifier(BaseNotifier):
             else:
                 logger.warning('GithubPRNotifier: skipping invalid notification item: %s', type(item))
 
+        notification_section_types = self._extract_section_types_from_notifications(valid_notifications)
+        facts_section_types = self._infer_section_types_from_facts(facts)
+
         if not valid_notifications:
+            if labels_enabled:
+                pr_number = self._get_pr_number()
+                if pr_number:
+                    self._reconcile_pr_labels(pr_number, [])
+                    self._replace_existing_sections_with_all_clear(
+                        pr_number,
+                        section_types=facts_section_types,
+                    )
+                else:
+                    logger.warning('GithubPRNotifier: unable to determine PR number for label reconciliation')
+            logger.info('GithubPRNotifier: no notifications present; skipping comments')
             return
 
         # Get PR number for current branch
@@ -115,11 +127,46 @@ class GithubPRNotifier(BaseNotifier):
             else:
                 logger.error('GithubPRNotifier: failed to post individual comment')
 
+        stale_section_types = facts_section_types - notification_section_types
+        if stale_section_types:
+            self._replace_existing_sections_with_all_clear(pr_number, section_types=stale_section_types)
+
         # Add labels to PR if enabled
-        if self.config.get('pr_labels_enabled', True) and pr_number:
+        if labels_enabled and pr_number:
             labels = self._determine_pr_labels(valid_notifications)
-            if labels:
-                self._add_pr_labels(pr_number, labels)
+            self._reconcile_pr_labels(pr_number, labels)
+    def _managed_pr_label_config(self) -> Dict[str, str]:
+        """Return the managed severity label names configured for PRs."""
+        return {
+            'critical': self.config.get('pr_label_critical', 'security: critical'),
+            'high': self.config.get('pr_label_high', 'security: high'),
+            'medium': self.config.get('pr_label_medium', 'security: medium'),
+            'low': self.config.get('pr_label_low', 'security: low'),
+        }
+
+    def _get_label_color_info(self, label: str) -> Optional[tuple[str, str]]:
+        """Infer color/description for managed or custom severity labels."""
+        label_colors = {
+            self.config.get('pr_label_critical', 'security: critical'): ('D73A4A', 'Critical security vulnerabilities'),
+            self.config.get('pr_label_high', 'security: high'): ('D93F0B', 'High severity security issues'),
+            self.config.get('pr_label_medium', 'security: medium'): ('FBCA04', 'Medium severity security issues'),
+            self.config.get('pr_label_low', 'security: low'): ('E4E4E4', 'Low severity security issues'),
+        }
+        color_info = label_colors.get(label)
+        if color_info:
+            return color_info
+
+        label_lower = label.lower()
+        if 'critical' in label_lower:
+            return ('D73A4A', 'Critical security vulnerabilities')
+        if 'high' in label_lower:
+            return ('D93F0B', 'High severity security issues')
+        if 'medium' in label_lower:
+            return ('FBCA04', 'Medium severity security issues')
+        if 'low' in label_lower:
+            return ('E4E4E4', 'Low severity security issues')
+        return None
+
 
     def _send_pr_comment(self, facts: Dict[str, Any], title: str, content: str) -> None:
         """Send a single PR comment with title and content."""
@@ -252,6 +299,70 @@ class GithubPRNotifier(BaseNotifier):
         
         return None
 
+    def _extract_all_section_types(self, comment_body: str) -> List[str]:
+        """Extract all managed section markers from a comment body."""
+        import re
+
+        pattern = r'<!-- ([a-zA-Z0-9\-_]+) start -->'
+        return re.findall(pattern, comment_body or '')
+
+    def _extract_section_types_from_notifications(self, notifications: List[Dict[str, Any]]) -> set[str]:
+        """Return the managed section types present in notifier payload content."""
+        section_types: set[str] = set()
+        for notification in notifications or []:
+            if not isinstance(notification, dict):
+                continue
+            section_match = self._extract_section_markers(notification.get('content', ''))
+            if section_match and section_match.get('type'):
+                section_types.add(section_match['type'])
+        return section_types
+
+    def _infer_section_types_from_facts(self, facts: Dict[str, Any]) -> set[str]:
+        """Infer managed PR section types represented by the current run's components."""
+        section_types: set[str] = set()
+
+        for component in facts.get('components', []) or []:
+            if not isinstance(component, dict):
+                continue
+
+            alerts = component.get('alerts', []) or []
+            for alert in alerts:
+                if not isinstance(alert, dict):
+                    continue
+
+                generated_by = (alert.get('generatedBy') or '').strip().lower()
+                subtype = (alert.get('subType') or alert.get('subtype') or '').strip().lower()
+
+                if subtype.startswith('sast-'):
+                    section_types.add(subtype)
+                    continue
+
+                if generated_by == 'socket-tier1' or subtype == 'socket-tier1':
+                    section_types.add('socket-tier1')
+                    continue
+
+                if generated_by == 'trufflehog' or subtype == 'secrets':
+                    section_types.add('trufflehog-secrets')
+                    continue
+
+                if generated_by.startswith('trivy-') or subtype in {'dockerfile', 'container-image'}:
+                    section_types.add('trivy-container')
+                    continue
+
+        return section_types
+
+    def _extract_section_title(self, section_content: str) -> str:
+        """Extract the display title from a wrapped PR comment section."""
+        import re
+
+        for line in (section_content or '').splitlines():
+            stripped = line.strip()
+            if stripped.startswith('## '):
+                title = stripped[3:].strip()
+                title = re.sub(r'<img[^>]+>\s*', '', title).strip()
+                return title or 'Socket Security'
+        return 'Socket Security'
+
     def _find_comment_with_section(self, comments: List[Dict[str, Any]], section_type: str) -> Optional[Dict[str, Any]]:
         """Find an existing comment that contains the given section type."""
         import re
@@ -276,6 +387,51 @@ class GithubPRNotifier(BaseNotifier):
         updated_body = re.sub(pattern, lambda m: new_section_content, comment_body, flags=re.DOTALL)
         
         return updated_body
+
+    def _build_all_clear_section(self, section_type: str, existing_section_content: str) -> str:
+        """Build an all-clear replacement for an existing managed section."""
+        from socket_basics.core.notification import github_pr_helpers as helpers
+
+        title = self._extract_section_title(existing_section_content)
+        body = "✅ Socket Basics found no active findings in the latest run."
+        return helpers.wrap_pr_comment_section(section_type, title, body, self.full_scan_url)
+
+    def _replace_existing_sections_with_all_clear(self, pr_number: int, section_types: Optional[set[str]] = None) -> None:
+        """Rewrite existing managed PR comment sections to an all-clear state."""
+        existing_comments = self._get_pr_comments(pr_number)
+        for comment in existing_comments:
+            original_body = comment.get('body', '')
+            if not original_body:
+                continue
+
+            updated_body = original_body
+            changed = False
+            for section_type in self._extract_all_section_types(original_body):
+                if section_types is not None and section_type not in section_types:
+                    continue
+                section_match = self._extract_section_markers(updated_body)
+                if not section_match or section_match.get('type') != section_type:
+                    import re
+                    pattern = rf'<!-- {re.escape(section_type)} start -->.*?<!-- {re.escape(section_type)} end -->'
+                    match = re.search(pattern, updated_body, re.DOTALL)
+                    if not match:
+                        continue
+                    section_content = match.group(0)
+                else:
+                    section_content = section_match['content']
+
+                all_clear_section = self._build_all_clear_section(section_type, section_content)
+                next_body = self._update_section_in_comment(updated_body, section_type, all_clear_section)
+                if next_body != updated_body:
+                    updated_body = next_body
+                    changed = True
+
+            if changed:
+                success = self._update_comment(pr_number, comment['id'], updated_body)
+                if success:
+                    logger.info('GithubPRNotifier: updated existing comment %s to all-clear state', comment['id'])
+                else:
+                    logger.error('GithubPRNotifier: failed to update comment %s to all-clear state', comment['id'])
 
     def _truncate_comment_if_needed(self, comment_body: str, full_scan_url: Optional[str] = None) -> str:
         """Truncate comment if it exceeds GitHub's character limit.
@@ -423,19 +579,93 @@ class GithubPRNotifier(BaseNotifier):
                     logger.info('GithubPRNotifier: created label "%s" with color #%s', label_name, color)
                     return True
                 else:
-                    logger.warning('GithubPRNotifier: failed to create label "%s": %s',
-                                 label_name, create_resp.status_code)
+                    logger.warning(
+                        'GithubPRNotifier: failed to create label "%s": %s %s',
+                        label_name,
+                        create_resp.status_code,
+                        create_resp.text[:200],
+                    )
                     return False
             else:
-                logger.warning('GithubPRNotifier: unexpected response checking label: %s', resp.status_code)
+                logger.warning(
+                    'GithubPRNotifier: unexpected response checking label "%s": %s %s',
+                    label_name,
+                    resp.status_code,
+                    resp.text[:200],
+                )
                 return False
 
         except Exception as e:
             logger.debug('GithubPRNotifier: exception ensuring label exists: %s', e)
             return False
 
+    def _ensure_pr_labels_exist(self, labels: List[str]) -> None:
+        """Ensure desired labels exist in the repository with appropriate colors."""
+        for label in labels:
+            color_info = self._get_label_color_info(label)
+            if color_info:
+                color, description = color_info
+                self._ensure_label_exists_with_color(label, color, description)
+
+    def _get_current_pr_label_names(self, pr_number: int) -> List[str]:
+        """Fetch current label names for the PR."""
+        if not self.repository:
+            return []
+
+        try:
+            import requests
+            headers = {
+                'Authorization': f'token {self.token}',
+                'Accept': 'application/vnd.github.v3+json'
+            }
+            url = f"{self.api_base}/repos/{self.repository}/issues/{pr_number}/labels"
+            resp = requests.get(url, headers=headers, timeout=10)
+            if resp.status_code == 200:
+                payload = resp.json()
+                return [label.get('name') for label in payload if isinstance(label, dict) and label.get('name')]
+            logger.warning(
+                'GithubPRNotifier: failed to fetch current labels for PR %s: %s %s',
+                pr_number,
+                resp.status_code,
+                resp.text[:200],
+            )
+        except Exception as e:
+            logger.error('GithubPRNotifier: exception fetching current labels: %s', e)
+        return []
+
+    def _remove_pr_label(self, pr_number: int, label: str) -> bool:
+        """Remove a label from a PR."""
+        if not self.repository or not label:
+            return False
+
+        try:
+            import requests
+            headers = {
+                'Authorization': f'token {self.token}',
+                'Accept': 'application/vnd.github.v3+json'
+            }
+            encoded_label = quote(label, safe='')
+            url = f"{self.api_base}/repos/{self.repository}/issues/{pr_number}/labels/{encoded_label}"
+            resp = requests.delete(url, headers=headers, timeout=10)
+            if resp.status_code == 200:
+                logger.info('GithubPRNotifier: removed label from PR %s: %s', pr_number, label)
+                return True
+            if resp.status_code == 404:
+                logger.debug('GithubPRNotifier: label %s already absent from PR %s', label, pr_number)
+                return True
+            logger.warning(
+                'GithubPRNotifier: failed to remove label "%s" from PR %s: %s %s',
+                label,
+                pr_number,
+                resp.status_code,
+                resp.text[:200],
+            )
+        except Exception as e:
+            logger.error('GithubPRNotifier: exception removing label %s: %s', label, e)
+        return False
+
     def _add_pr_labels(self, pr_number: int, labels: List[str]) -> bool:
-        """Add labels to a PR, ensuring they exist with appropriate colors.
+        """Add missing labels to a PR.
 
         Args:
             pr_number: PR number
@@ -446,34 +676,6 @@ class GithubPRNotifier(BaseNotifier):
         """
         if not self.repository or not labels:
             return False
-
-        # Color mapping for severity labels (matching emoji colors)
-        label_colors = {
-            'security: critical': ('D73A4A', 'Critical security vulnerabilities'),
-            'security: high': ('D93F0B', 'High severity security issues'),
-            'security: medium': ('FBCA04', 'Medium severity security issues'),
-            'security: low': ('E4E4E4', 'Low severity security issues'),
-        }
-
-        # Ensure labels exist with correct colors
-        for label in labels:
-            # Get color and description if this is a known severity label
-            color_info = label_colors.get(label)
-            if color_info:
-                color, description = color_info
-                self._ensure_label_exists_with_color(label, color, description)
-            # For custom label names, use a default color
-            elif ':' in label:
-                # Try to infer severity from label name
-                label_lower = label.lower()
-                if 'critical' in label_lower:
-                    self._ensure_label_exists_with_color(label, 'D73A4A', 'Critical security vulnerabilities')
-                elif 'high' in label_lower:
-                    self._ensure_label_exists_with_color(label, 'D93F0B', 'High severity security issues')
-                elif 'medium' in label_lower:
-                    self._ensure_label_exists_with_color(label, 'FBCA04', 'Medium severity security issues')
-                elif 'low' in label_lower:
-                    self._ensure_label_exists_with_color(label, 'E4E4E4', 'Low severity security issues')
 
         try:
             import requests
@@ -490,11 +692,32 @@ class GithubPRNotifier(BaseNotifier):
                 logger.info('GithubPRNotifier: added labels to PR %s: %s', pr_number, ', '.join(labels))
                 return True
             else:
-                logger.warning('GithubPRNotifier: failed to add labels: %s', resp.status_code)
+                logger.warning('GithubPRNotifier: failed to add labels: %s %s', resp.status_code, resp.text[:200])
                 return False
         except Exception as e:
             logger.error('GithubPRNotifier: exception adding labels: %s', e)
             return False
+
+    def _reconcile_pr_labels(self, pr_number: int, desired_labels: List[str]) -> bool:
+        """Reconcile managed severity labels on the PR to match the latest run."""
+        managed_labels = set(filter(None, self._managed_pr_label_config().values()))
+        current_labels = set(self._get_current_pr_label_names(pr_number))
+        desired_label_set = set(filter(None, desired_labels))
+
+        stale_labels = sorted(label for label in current_labels if label in managed_labels and label not in desired_label_set)
+        labels_to_add = sorted(label for label in desired_label_set if label not in current_labels)
+
+        success = True
+        for label in stale_labels:
+            success = self._remove_pr_label(pr_number, label) and success
+
+        if labels_to_add:
+            self._ensure_pr_labels_exist(labels_to_add)
+            success = self._add_pr_labels(pr_number, labels_to_add) and success
+
+        if not stale_labels and not labels_to_add:
+            logger.info('GithubPRNotifier: PR %s severity labels already up to date', pr_number)
+        return success
 
     def _determine_pr_labels(self, notifications: List[Dict[str, Any]]) -> List[str]:
         """Determine which labels to add based on notifications.
@@ -517,6 +740,7 @@ class GithubPRNotifier(BaseNotifier):
             critical_match = re.search(r'Critical:\s*(\d+)', content)
             high_match = re.search(r'High:\s*(\d+)', content)
             medium_match = re.search(r'Medium:\s*(\d+)', content)
+            low_match = re.search(r'Low:\s*(\d+)', content)
 
             if critical_match and int(critical_match.group(1)) > 0:
                 severities_found.add('critical')
@@ -524,6 +748,8 @@ class GithubPRNotifier(BaseNotifier):
                 severities_found.add('high')
             if medium_match and int(medium_match.group(1)) > 0:
                 severities_found.add('medium')
+            if low_match and int(low_match.group(1)) > 0:
+                severities_found.add('low')
 
         # Map severities to label names (using configurable labels)
         labels = []
@@ -535,6 +761,9 @@ class GithubPRNotifier(BaseNotifier):
             labels.append(label_name)
         elif 'medium' in severities_found:
             label_name = self.config.get('pr_label_medium', 'security: medium')
+            labels.append(label_name)
+        elif 'low' in severities_found:
+            label_name = self.config.get('pr_label_low', 'security: low')
             labels.append(label_name)
 
         return labels

@@ -144,6 +144,12 @@ notifiers:
         type: str
         default: "security: medium"
         description: "Label name for medium severity findings"
+      - name: pr_label_low
+        option: --pr-label-low
+        env_variable: INPUT_PR_LABEL_LOW
+        type: str
+        default: "security: low"
+        description: "Label name for low severity findings"
 
   msteams:
     module_path: "socket_basics.core.notification.ms_teams_notifier"

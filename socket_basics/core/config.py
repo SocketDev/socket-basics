@@ -15,6 +15,160 @@ from typing import Dict, Any, List, Optional
 logger = logging.getLogger(__name__)
 
 
+def _normalize_path_parts(path_value: str | None) -> List[str] | None:
+    """Normalize a path-like string into comparable POSIX-style path segments."""
+    if path_value is None:
+        return None
+
+    path_str = str(path_value).strip()
+    if not path_str:
+        return None
+
+    path_str = path_str.replace('\\', '/')
+    while path_str.startswith('./'):
+        path_str = path_str[2:]
+    path_str = path_str.lstrip('/')
+
+    normalized_parts: List[str] = []
+    for part in path_str.split('/'):
+        if not part or part == '.':
+            continue
+        if part == '..':
+            return None
+        normalized_parts.append(part)
+
+    return normalized_parts or None
+
+
+def _get_workspace_prefix_candidates() -> List[List[str]]:
+    """Return normalized workspace roots from common CI systems and local cwd."""
+    candidate_values: List[str] = []
+    for env_var in (
+        'BITBUCKET_CLONE_DIR',
+        'BUILD_SOURCESDIRECTORY',
+        'BUILDKITE_BUILD_CHECKOUT_PATH',
+        'CI_PROJECT_DIR',
+        'CIRCLE_WORKING_DIRECTORY',
+        'DRONE_WORKSPACE',
+        'GITHUB_WORKSPACE',
+        'SYSTEM_DEFAULTWORKINGDIRECTORY',
+        'WORKSPACE',
+    ):
+        env_value = os.getenv(env_var)
+        if env_value:
+            candidate_values.append(env_value)
+
+    try:
+        candidate_values.append(os.getcwd())
+    except Exception:
+        pass
+
+    normalized_candidates: List[List[str]] = []
+    seen: set[tuple[str, ...]] = set()
+    for value in candidate_values:
+        parts = _normalize_path_parts(value)
+        if not parts:
+            continue
+        parts_key = tuple(parts)
+        if parts_key in seen:
+            continue
+        seen.add(parts_key)
+        normalized_candidates.append(parts)
+
+    # Check longer, more specific prefixes first.
+    normalized_candidates.sort(key=len, reverse=True)
+    return normalized_candidates
+
+
+def normalize_repo_relative_path(path_value: str | None) -> str | None:
+    """Normalize a repo-relative path to the POSIX form emitted by SAST alerts."""
+    normalized_parts = _normalize_path_parts(path_value)
+    if not normalized_parts:
+        return None
+
+    for workspace_parts in _get_workspace_prefix_candidates():
+        if len(normalized_parts) > len(workspace_parts) and normalized_parts[:len(workspace_parts)] == workspace_parts:
+            normalized_parts = normalized_parts[len(workspace_parts):]
+            break
+
+    normalized = '/'.join(normalized_parts)
+    return normalized or None
+
+
+def parse_sast_ignore_overrides(raw_value: str | None) -> List[Dict[str, str | None]]:
+    """Parse `rule_id` and `rule_id:path` ignore override entries."""
+    overrides: List[Dict[str, str | None]] = []
+    seen: set[tuple[str, str | None]] = set()
+
+    if not raw_value:
+        return overrides
+
+    for raw_entry in str(raw_value).split(','):
+        entry = raw_entry.strip()
+        if not entry:
+            continue
+
+        rule_id = entry
+        path = None
+
+        if ':' in entry:
+            rule_id, path_part = entry.split(':', 1)
+            rule_id = rule_id.strip()
+            path_part = path_part.strip()
+
+            if not rule_id or not path_part:
+                logger.warning("Ignoring malformed SAST ignore override: %r", entry)
+                continue
+
+            if any(ch in path_part for ch in ('*', '?', '[')):
+                logger.warning(
+                    "Ignoring unsupported SAST ignore override with glob syntax: %r",
+                    entry,
+                )
+                continue
+
+            path = normalize_repo_relative_path(path_part)
+            if not path:
+                logger.warning("Ignoring invalid repo-relative path in SAST override: %r", entry)
+                continue
+        else:
+            rule_id = rule_id.strip()
+            if not rule_id:
+                logger.warning("Ignoring malformed SAST ignore override: %r", entry)
+                continue
+
+        key = (rule_id, path)
+        if key in seen:
+            continue
+        seen.add(key)
+        overrides.append({'rule_id': rule_id, 'path': path})
+
+    return overrides
+
+
+def alert_matches_sast_ignore_override(
+    alert: Dict[str, Any],
+    override: Dict[str, str | None],
+) -> bool:
+    """Return True when an alert matches a parsed SAST ignore override."""
+    props = alert.get('props', {}) or {}
+    rule_id = props.get('ruleId') or alert.get('title') or alert.get('ruleId')
+    if not rule_id or rule_id != override.get('rule_id'):
+        return False
+
+    override_path = override.get('path')
+    if not override_path:
+        return True
+
+    alert_path = (
+        props.get('filePath')
+        or (alert.get('location') or {}).get('path')
+        or ''
+    )
+    normalized_alert_path = normalize_repo_relative_path(alert_path)
+    return normalized_alert_path == override_path
+
+
 class Config:
     """Configuration object that provides unified access to all settings"""
     
@@ -112,6 +266,45 @@ class Config:
         else:
             # Default action for unknown severities
             return 'monitor'
+
+    def get_sast_ignore_overrides(self) -> List[Dict[str, str | None]]:
+        """Return parsed SAST ignore overrides from config."""
+        if not hasattr(self, '_sast_ignore_overrides_cache'):
+            raw_value = self.get('sast_ignore_overrides', '')
+            overrides = parse_sast_ignore_overrides(raw_value)
+
+            workspace_value = self.get('workspace') or os.getcwd()
+            try:
+                workspace_root = Path(str(workspace_value)).expanduser()
+            except Exception:
+                workspace_root = Path(os.getcwd())
+
+            for override in overrides:
+                override_path = override.get('path')
+                if not override_path:
+                    continue
+
+                try:
+                    candidate = workspace_root.joinpath(*str(override_path).split('/'))
+                    if not candidate.exists():
+                        logger.warning(
+                            "SAST ignore override path %r for rule %r does not exist under workspace %s; "
+                            "exact path overrides require a repo-relative file path and will not fall back to "
+                            "rule-only matching.",
+                            override_path,
+                            override.get('rule_id'),
+                            workspace_root,
+                        )
+                except Exception:
+                    logger.debug(
+                        "Failed to validate SAST ignore override path %r under workspace %r",
+                        override_path,
+                        workspace_value,
+                        exc_info=True,
+                    )
+
+            self._sast_ignore_overrides_cache = overrides
+        return self._sast_ignore_overrides_cache
     
     @property
     def repo(self) -> str:
