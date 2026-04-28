@@ -160,6 +160,17 @@ Configure scanning policies, notification channels, and rule sets for your entir
 
 ![Socket Basics Section Config](docs/screenshots/socket_basics_section_config.png)
 
+### Required API Token Scopes
+
+Create your `SOCKET_SECURITY_API_KEY` in the Socket Dashboard under **Settings → API Tokens**. Socket Basics needs the following scopes:
+
+| Scope | Required for |
+|-------|--------------|
+| `socket-basics` | Loading scanner configuration from the Socket Dashboard |
+| `full-scans` | Submitting scan results to your organization |
+
+If your token is missing the `socket-basics` scope, you will see `Insufficient permissions` when Socket Basics tries to load dashboard config. As a workaround, set `SOCKET_ORG` explicitly in your workflow to skip the dashboard config load and run with CLI/environment configuration only.
+
 ## 💻 Other Usage Methods
 
 For GitHub Actions, see the [Quick Start](#-quick-start---github-actions) above or the **[Complete GitHub Actions Guide](docs/github-action.md)** for advanced workflows.
@@ -251,6 +262,7 @@ Add new connectors by:
 **Socket API errors:**
 - Ensure `SOCKET_SECURITY_API_KEY` and `SOCKET_ORG` are set correctly
 - Verify your Socket Enterprise subscription is active
+- If you see `Insufficient permissions`, confirm your API token has the `socket-basics` and `full-scans` scopes (see [Required API Token Scopes](#required-api-token-scopes))
 
 **Notifier errors:**
 - Check that notification credentials (Slack webhook, Jira token, etc.) are properly configured
