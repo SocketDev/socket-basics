@@ -897,6 +897,10 @@ def normalize_api_config(api_config: Dict[str, Any]) -> Dict[str, Any]:
         
         # OpenGrep/SAST Configuration
         'openGrepNotificationMethod': 'opengrep_notification_method',
+        'useCustomSastRules': 'use_custom_sast_rules',
+        'customSastRulePath': 'custom_sast_rule_path',
+        # Accept common pluralized variant for robustness.
+        'customSastRulesPath': 'custom_sast_rule_path',
         
         # Socket Tier 1
         'socketTier1Enabled': 'socket_tier_1_enabled',
@@ -1004,13 +1008,15 @@ def merge_json_and_env_config(json_config: Dict[str, Any] | None = None) -> Dict
     Returns:
         Merged configuration dictionary
     """
+    logger = logging.getLogger(__name__)
+
     # Start with environment defaults (lowest priority)
     config = load_config_from_env()
+    logger.info("Configuration sources: environment defaults loaded")
     
     # Override with Socket Basics API config if no explicit JSON config provided
     # API config takes precedence over environment defaults
     if not json_config:
-        logger = logging.getLogger(__name__)
         logger.debug(" No JSON config provided, attempting to load Socket Basics API config")
         socket_basics_config = load_socket_basics_config()
         logger.debug(f" Socket Basics API config result: {socket_basics_config is not None}")
@@ -1027,7 +1033,10 @@ def merge_json_and_env_config(json_config: Dict[str, Any] | None = None) -> Dict
                     continue
                 filtered_config[k] = v
             config.update(filtered_config)
-            logging.getLogger(__name__).info("Loaded Socket Basics API configuration (overrides environment defaults)")
+            if bool(filtered_config.get('socket_has_enterprise', False)):
+                logging.getLogger(__name__).info("Loaded Socket Basics API configuration (overrides environment defaults)")
+            else:
+                logging.getLogger(__name__).info("Loaded Socket plan metadata (free/non-enterprise mode; no dashboard overrides)")
         else:
             logger.debug(" No Socket Basics API config loaded")
     
@@ -1049,6 +1058,13 @@ def merge_json_and_env_config(json_config: Dict[str, Any] | None = None) -> Dict
     
     # Note: CLI arguments are handled separately and take highest priority
     # They override the config object after this merge completes
+    logger.info(
+        "Effective custom SAST config: use_custom_sast_rules=%s custom_sast_rule_path=%s all_languages_enabled=%s all_rules_enabled=%s",
+        bool(config.get('use_custom_sast_rules', False)),
+        config.get('custom_sast_rule_path', ''),
+        bool(config.get('all_languages_enabled', False)),
+        bool(config.get('all_rules_enabled', False)),
+    )
     
     return config
 
@@ -1087,9 +1103,9 @@ def add_dynamic_cli_args(parser: argparse.ArgumentParser):
                 if param_type == 'bool':
                     parser.add_argument(option, action='store_true', help=description)
                 elif param_type == 'str':
-                    parser.add_argument(option, type=str, default=default, help=description)
+                    parser.add_argument(option, type=str, default=None, help=description)
                 elif param_type == 'int':
-                    parser.add_argument(option, type=int, default=default, help=description)
+                    parser.add_argument(option, type=int, default=None, help=description)
                     
     except Exception as e:
         logging.getLogger(__name__).warning("Warning: Could not load dynamic CLI args: %s", e)
@@ -1116,9 +1132,9 @@ def add_dynamic_cli_args(parser: argparse.ArgumentParser):
                     if p_type == 'bool':
                         parser.add_argument(option, action='store_true', help=desc)
                     elif p_type == 'int':
-                        parser.add_argument(option, type=int, default=default, help=desc)
+                        parser.add_argument(option, type=int, default=None, help=desc)
                     else:
-                        parser.add_argument(option, type=str, default=default, help=desc)
+                        parser.add_argument(option, type=str, default=None, help=desc)
     except Exception:
         pass
 
@@ -1127,7 +1143,7 @@ def parse_cli_args():
     """Parse command line arguments and return argument parser"""
     parser = argparse.ArgumentParser(description='Socket Security Basics - Dynamic security scanning')
     parser.add_argument('--config', type=str, 
-                       help='Path to JSON configuration file. JSON config is merged with environment variables (environment takes precedence)')
+                       help='Path to JSON configuration file. JSON config is merged with environment variables (JSON takes precedence)')
     parser.add_argument('--output', type=str, default='.socket.facts.json', 
                        help='Output file name (default: .socket.facts.json)')
     parser.add_argument('--workspace', type=str, help='Workspace directory to scan')

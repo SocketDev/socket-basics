@@ -194,6 +194,10 @@ Use custom SAST rules instead of bundled rules (falls back to bundled rules for 
 socket-basics --python --use-custom-sast-rules
 ```
 
+When this is enabled, custom rules are loaded from YAML files under
+`--custom-sast-rule-path`. Each rule must include a `languages` list so Socket
+Basics can map it to the correct OpenGrep language rule file.
+
 ### `--custom-sast-rule-path CUSTOM_SAST_RULE_PATH`
 Relative path to custom SAST rules directory (relative to workspace if set, otherwise cwd).
 
@@ -205,6 +209,11 @@ Relative path to custom SAST rules directory (relative to workspace if set, othe
 ```bash
 socket-basics --python --use-custom-sast-rules --custom-sast-rule-path "my_custom_rules"
 ```
+
+Custom rule file notes:
+- `.yml` and `.yaml` files are discovered recursively.
+- Files ending in `.test.yml` or `.test.yaml` are ignored.
+- Rules without `languages` are skipped.
 
 ### Language-Specific Rule Configuration
 
@@ -531,7 +540,9 @@ All notification integrations support environment variables as alternatives to C
 
 | Variable | Description |
 |----------|-------------|
-| `INPUT_OPENGREP_RULES_DIR` | Custom directory containing SAST rules |
+| `INPUT_OPENGREP_RULES_DIR` | Override directory for bundled OpenGrep rule files (`*.yml`) |
+| `INPUT_USE_CUSTOM_SAST_RULES` | Enable repository custom SAST rules |
+| `INPUT_CUSTOM_SAST_RULE_PATH` | Relative directory path for repository custom SAST rules |
 
 ## Configuration File
 
@@ -548,6 +559,8 @@ You can provide configuration via a JSON file using `--config`:
   
   "python_sast_enabled": true,
   "javascript_sast_enabled": true,
+  "use_custom_sast_rules": true,
+  "custom_sast_rule_path": ".socket/rules",
   "go_sast_enabled": true,
   
   "secrets_enabled": true,
@@ -571,17 +584,18 @@ You can provide configuration via a JSON file using `--config`:
 Configuration is merged in the following order (later sources override earlier ones):
 
 1. Default values
-2. JSON configuration file (via `--config`)
-3. Environment variables
-4. Command-line arguments
+2. Environment variables
+3. Socket Basics API configuration (when available and no `--config` file is used)
+4. JSON configuration file (via `--config`)
+5. Command-line arguments
 
 **Example:**
 ```bash
-# JSON file sets python_sast_enabled: true
-# Environment has PYTHON_SAST_ENABLED=false
+# Environment sets python_sast_enabled=true
+# Dashboard/API sets python_sast_enabled=false
 # CLI has --javascript
-# Result: JavaScript enabled, Python disabled (env override), other settings from JSON
-socket-basics --config config.json --javascript
+# Result: JavaScript enabled, Python follows dashboard/API value, other settings from env/API
+socket-basics --javascript
 ```
 
 ## Common Usage Patterns
