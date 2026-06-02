@@ -271,6 +271,57 @@ Include these in your workflow's `jobs.<job_id>.permissions` section.
     verbose: 'true'
 ```
 
+## Diff-Only Mode (Changed Files)
+
+By default the scanners run against the **entire repository**, so every PR
+re-reports the whole repo's existing findings. To report only on what the PR
+changed — the way Socket SCA Pull Request alerts behave — use the
+`changed_files` input. This scopes SAST/OpenGrep, secret, and container scans to
+the changed files and dramatically reduces PR finding volume.
+
+```yaml
+name: Socket Basics (PR diff-only)
+on:
+  pull_request:
+
+jobs:
+  socket-basics:
+    permissions:
+      contents: read
+      pull-requests: write
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          # Required so the PR base branch is available for the diff
+          fetch-depth: 0
+
+      - name: Run Socket Basics (changed files only)
+        uses: SocketDev/socket-basics@v2.0.3
+        env:
+          GITHUB_PR_NUMBER: ${{ github.event.pull_request.number }}
+        with:
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          # Diff-only: scope all scanners to files changed in this PR
+          changed_files: 'auto'
+          python_sast_enabled: 'true'
+          javascript_sast_enabled: 'true'
+          secret_scanning_enabled: 'true'
+```
+
+`changed_files` accepts:
+
+- `auto` — diff against the PR base branch in CI (`GITHUB_BASE_REF`), else staged changes
+- `pr` — diff against the PR base branch (`GITHUB_BASE_REF`)
+- a commit hash — files changed in that commit
+- a comma-separated file list — e.g. `src/app.py,src/utils.js`
+
+> [!IMPORTANT]
+> For `auto`/`pr` modes, check out with `fetch-depth: 0` so the base branch is
+> available to diff against. Deletions are excluded, so a delete-only PR scans
+> nothing rather than falling back to the whole repo. To scan an explicit file
+> list regardless of git state, use the `scan_files` input instead.
+
 ## PR Comment Customization
 
 Socket Basics automatically posts enhanced PR comments with **smart defaults that work out of the box** — clickable file links, collapsible sections, syntax highlighting, CVE links, CVSS scores, and auto-labels are all enabled by default.
