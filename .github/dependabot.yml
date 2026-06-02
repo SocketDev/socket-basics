@@ -1,8 +1,50 @@
+# Dependabot configuration for socket-basics.
+#
+# Design notes:
+# - Every ecosystem is grouped into a weekly minor/patch PR plus a separate
+#   major-update PR, so routine bumps land as one reviewable bundle while
+#   breaking majors stay isolated.
+# - 7-day cooldown across all ecosystems (skip just-published releases).
+# - Python deps (idna, urllib3, pygments, pytest, ...) are uv-tracked via
+#   uv.lock — the `uv` ecosystem governs them. Without this entry the uv PRs
+#   pile up ungrouped.
+# - The two Dockerfiles track their pinned tool/base images; OPENGREP_VERSION
+#   is NOT Dependabot-trackable (no Docker image) — bump it manually.
+# - GitHub Actions scans the workflows AND the local composite actions under
+#   /.github/actions/*.
+
 version: 2
 updates:
 
+  # Python deps (uv-tracked via uv.lock)
+  - package-ecosystem: "uv"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+    open-pull-requests-limit: 2
+    groups:
+      python-minor-patch:
+        patterns:
+          - "*"
+        update-types:
+          - "minor"
+          - "patch"
+      python-major:
+        patterns:
+          - "*"
+        update-types:
+          - "major"
+    labels:
+      - "dependencies"
+      - "python:uv"
+    commit-message:
+      prefix: "chore"
+      include: "scope"
+    cooldown:
+      default-days: 7
+
   # Main Dockerfile — tracks aquasec/trivy, trufflesecurity/trufflehog,
-  # ghcr.io/astral-sh/uv, and python base image.
+  # ghcr.io/astral-sh/uv, and the python base image.
   # NOTE: OPENGREP_VERSION is not trackable via Dependabot (no Docker image);
   #       update it manually in the Dockerfile ARG.
   - package-ecosystem: "docker"
@@ -15,6 +57,18 @@ updates:
       - dependency-name: "ghcr.io/astral-sh/uv"
       - dependency-name: "trufflesecurity/trufflehog"
       - dependency-name: "aquasec/trivy"
+    groups:
+      docker-main-minor-patch:
+        patterns:
+          - "*"
+        update-types:
+          - "minor"
+          - "patch"
+      docker-main-major:
+        patterns:
+          - "*"
+        update-types:
+          - "major"
     labels:
       - "dependencies"
       - "docker"
@@ -36,6 +90,18 @@ updates:
       - dependency-name: "securego/gosec"
       - dependency-name: "trufflesecurity/trufflehog"
       - dependency-name: "aquasec/trivy"
+    groups:
+      docker-app-tests-minor-patch:
+        patterns:
+          - "*"
+        update-types:
+          - "minor"
+          - "patch"
+      docker-app-tests-major:
+        patterns:
+          - "*"
+        update-types:
+          - "major"
     labels:
       - "dependencies"
       - "docker"
@@ -45,9 +111,11 @@ updates:
     cooldown:
       default-days: 7
 
-  # GitHub Actions — tracks all uses: ... action versions.
+  # GitHub Actions used in workflows and local composite actions.
   - package-ecosystem: "github-actions"
-    directory: "/"
+    directories:
+      - "/"
+      - "/.github/actions/*"
     schedule:
       interval: "weekly"
     open-pull-requests-limit: 4
@@ -58,6 +126,11 @@ updates:
         update-types:
           - "minor"
           - "patch"
+      github-actions-major:
+        patterns:
+          - "*"
+        update-types:
+          - "major"
     labels:
       - "dependencies"
       - "github-actions"

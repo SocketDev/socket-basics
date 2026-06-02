@@ -1,0 +1,37 @@
+name: "Set up Socket Firewall"
+description: >-
+  Set up Python 3.12 + uv and install Socket Firewall so subsequent steps can
+  run package-manager commands wrapped with `sfw`. Defaults to free/anonymous
+  mode (no API token -- safe on untrusted / Dependabot / fork PRs). Pass
+  mode: firewall-enterprise + socket-token for full org-policy enforcement on
+  trusted maintainer PRs.
+
+inputs:
+  uv:
+    description: "Install uv (Python is always set up)"
+    default: "true"
+  mode:
+    description: "socketdev/action mode: firewall-free or firewall-enterprise"
+    default: "firewall-free"
+  socket-token:
+    description: "Socket API token (only used/required for firewall-enterprise)"
+    default: ""
+
+runs:
+  using: "composite"
+  steps:
+    - uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405 # v6.2.0
+      with:
+        python-version: "3.12"
+
+    # Official Socket setup action. Wires up sfw routing correctly.
+    # socket-token is ignored in firewall-free mode and empty when absent.
+    - uses: socketdev/action@ba6de6cc0565af1f42295590380973573297e31f # v1.3.2
+      with:
+        mode: ${{ inputs.mode }}
+        socket-token: ${{ inputs.socket-token }}
+
+    - if: ${{ inputs.uv == 'true' }}
+      name: Install uv
+      shell: bash
+      run: python -m pip install --upgrade pip uv
