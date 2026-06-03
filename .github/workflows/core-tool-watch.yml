@@ -15,9 +15,9 @@ name: core-tool-watch
 #   - pull_request / push touching the pins → mode=build: analyze the versions
 #     this change would bake into the image. Fails on a malware/critical alert.
 #
-# Socket scoring needs SOCKET_SFW_API_TOKEN (the `socket-firewall` environment
-# secret). When it is absent — e.g. fork PRs — version-drift detection still
-# runs and scoring is skipped with a notice.
+# Socket scoring needs the SOCKET_SFW_API_TOKEN repo/org secret. When it is
+# absent — e.g. fork PRs — version-drift detection still runs and scoring is
+# skipped with a notice.
 
 on:
   schedule:
@@ -53,7 +53,10 @@ jobs:
   analyze:
     runs-on: ubuntu-latest
     timeout-minutes: 15
-    environment: socket-firewall
+    # No `environment:` -- the SOCKET_SFW_API_TOKEN is a plain repo/org secret.
+    # An environment approval gate would hang scheduled runs waiting for a
+    # manual reviewer (and is the bypass footgun we removed from
+    # dependency-review.yml -- see its header note).
     permissions:
       contents: read
       issues: write # upsert the drift tracking issue on scheduled runs
