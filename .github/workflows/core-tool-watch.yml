@@ -15,9 +15,10 @@ name: core-tool-watch
 #   - pull_request / push touching the pins → mode=build: analyze the versions
 #     this change would bake into the image. Fails on a malware/critical alert.
 #
-# Socket scoring needs the SOCKET_SFW_API_TOKEN repo/org secret. When it is
-# absent — e.g. fork PRs — version-drift detection still runs and scoring is
-# skipped with a notice.
+# Socket scoring needs SOCKET_SFW_API_TOKEN, scoped to the `socket-firewall`
+# environment (which must carry NO approval rule -- see dependency-review.yml).
+# When the token is absent — e.g. fork PRs — version-drift detection still runs
+# and scoring is skipped with a notice.
 
 on:
   schedule:
@@ -53,10 +54,12 @@ jobs:
   analyze:
     runs-on: ubuntu-latest
     timeout-minutes: 15
-    # No `environment:` -- the SOCKET_SFW_API_TOKEN is a plain repo/org secret.
-    # An environment approval gate would hang scheduled runs waiting for a
-    # manual reviewer (and is the bypass footgun we removed from
-    # dependency-review.yml -- see its header note).
+    # `environment:` scopes SOCKET_SFW_API_TOKEN to this job. The environment
+    # MUST have no required-reviewers rule -- an approval gate would hang the
+    # scheduled cron run forever (and is the bypass footgun called out in
+    # dependency-review.yml). Configure it with `reviewers: null` (see that
+    # file's header for the gh api command).
+    environment: socket-firewall
     permissions:
       contents: read
       issues: write # upsert the drift tracking issue on scheduled runs
