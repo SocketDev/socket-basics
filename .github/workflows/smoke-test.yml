@@ -29,12 +29,25 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  # Native build + smoke per arch. amd64 covers the standard runner; arm64
+  # covers ubuntu-24.04-arm and Apple Silicon self-hosted runners (issue #69).
+  # Native runners build ~5x faster than QEMU and exercise the real binaries.
   smoke:
-    name: smoke (socket-basics)
+    name: smoke (${{ matrix.arch }})
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - arch: amd64
+            runs_on: ubuntu-latest
+          - arch: arm64
+            runs_on: ubuntu-24.04-arm
     uses: ./.github/workflows/_docker-pipeline.yml
     with:
       name: socket-basics
       dockerfile: Dockerfile
       context: .
       check_set: main
+      runs_on: ${{ matrix.runs_on }}
+      arch_label: ${{ matrix.arch }}
       push: false

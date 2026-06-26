@@ -1,13 +1,16 @@
 name: _docker-pipeline (reusable)
 
-# Reusable workflow — the single lego brick for all Docker CI steps.
+# Reusable workflow — the per-arch lego brick for all Docker CI steps.
 #
-# Called by smoke-test.yml (push: false) and publish-docker.yml (push: true).
-# Step visibility is controlled by the push/tag_push inputs; the caller sets permissions.
+# Called by smoke-test.yml, dependabot-review.yml (push: false) and
+# publish-docker.yml (push: true, once per arch via matrix).
 #
 # Two modes:
 #   push: false  →  build + smoke test + integration test (main image only)
-#   push: true   →  above + push exact version tags to GHCR/Docker Hub
+#   push: true   →  above + push the built image by digest to GHCR + Docker Hub,
+#                   and upload the resulting digest as an artifact. The caller's
+#                   merge-manifests job assembles per-arch digests into a
+#                   multi-arch manifest list at the user-facing tags.
 #
 # Permissions required from the calling workflow:
 #   push: false  →  contents: read
@@ -33,22 +36,23 @@ on:
         description: "Smoke-test tool set: main or app-tests"
         type: string
         required: true
-      push:
-        description: "Push to GHCR and Docker Hub after testing"
-        type: boolean
+      runs_on:
+        description: "Runner label (e.g. ubuntu-latest, ubuntu-24.04-arm). The build/test steps run natively on this arch."
+        type: string
         required: false
-        default: false
-      tag_push:
-        description: >
-          True when the caller was triggered by a tag push (e.g. v2.0.0).
-          Controls semver metadata-action tagging for exact release tags.
-          Passed explicitly rather than relying on github.ref_type inside the callee,
-          since context propagation in reusable workflows can be ambiguous.
+        default: "ubuntu-latest"
+      arch_label:
+        description: "Short arch identifier used for digest artifact name and cache scope (e.g. amd64, arm64). Required when push=true."
+        type: string
+        required: false
+        default: ""
+      push:
+        description: "Push to GHCR + Docker Hub by digest after testing. The publish workflow merges per-arch digests into a multi-arch manifest list."
         type: boolean
         required: false
         default: false
       version:
-        description: "Semver without v prefix (e.g. 2.0.0) — used for OCI labels and push tags"
+        description: "Semver without v prefix (e.g. 2.0.0) — passed as the SOCKET_BASICS_VERSION build-arg, baked into OCI labels"
         type: string
         required: false
         default: "dev"
@@ -60,7 +64,7 @@ on:
 
 jobs:
   pipeline:
-    runs-on: ubuntu-latest
+    runs-on: ${{ inputs.runs_on }}
     timeout-minutes: 60
 
     steps:
@@ -87,31 +91,10 @@ jobs:
       # requests including pulling public base images (python, trivy, trufflehog).
       # Those public images pull fine without auth; only the push needs credentials.
 
-      - name: Extract image metadata
-        if: inputs.push
-        id: meta
-        uses: docker/metadata-action@c299e40c65443455700f0fdfc63efafe5b349051 # v5.10.0
-        with:
-          images: |
-            ghcr.io/socketdev/${{ inputs.name }}
-            ${{ secrets.DOCKERHUB_USERNAME }}/${{ inputs.name }}
-          # Disable the automatic :latest tag — metadata-action adds it by default
-          # for semver tag pushes. Mutable tags are inappropriate for a security tool.
-          flavor: |
-            latest=false
-          tags: |
-            # Tag push (v2.0.0) → exact immutable version tag only.
-            # Minor (2.0) and latest tags are intentionally omitted.
-            type=semver,pattern={{version}}
-            # workflow_dispatch re-publish → use the version input directly
-            type=raw,value=${{ inputs.version }},enable=${{ !inputs.tag_push }}
-          labels: |
-            org.opencontainers.image.title=${{ inputs.name }}
-            org.opencontainers.image.source=https://github.com/SocketDev/socket-basics
-
       # ── Step 1: Build ──────────────────────────────────────────────────────
       # Loads image into the local Docker daemon without pushing.
-      # Writes all layers to the GHA cache so the push step is just an upload.
+      # Per-arch cache scope ensures amd64 and arm64 builds don't pollute each
+      # other's layer cache. arch_label defaults to "smoke" when push=false.
       - name: 🔨 Build (load for testing)
         uses: docker/build-push-action@10e90e3645eae34f1e60eeb005ba3a3d33f178e8 # v6.19.2
         with:
@@ -125,8 +108,8 @@ jobs:
             SOCKET_BASICS_VERSION=${{ inputs.version }}
             VCS_REF=${{ github.sha }}
             BUILD_DATE=${{ github.event.repository.updated_at }}
-          cache-from: type=gha,scope=${{ inputs.name }}
-          cache-to: type=gha,mode=max,scope=${{ inputs.name }}
+          cache-from: type=gha,scope=${{ inputs.name }}-${{ inputs.arch_label || 'smoke' }}
+          cache-to: type=gha,mode=max,scope=${{ inputs.name }}-${{ inputs.arch_label || 'smoke' }}
           # Disable attestations for the test build — provenance/SBOM cause BuildKit
           # to pull docker/buildkit-syft-scanner from Docker Hub, which fails with a
           # repo-scoped token. Attestations are enabled on the push step only.
@@ -153,7 +136,7 @@ jobs:
           bash ./scripts/integration-test-docker.sh \
             --image-tag "$IMAGE_NAME:pipeline-test"
 
-      # ── Step 4: Push to registries (publish mode only) ─────────────────────
+      # ── Step 4: Push by digest (publish mode only) ─────────────────────────
       # Docker Hub login happens here — after build and tests, immediately before
       # push. Keeping it here prevents the repo-scoped token from interfering
       # with public image pulls during the build step.
@@ -164,30 +147,50 @@ jobs:
           username: ${{ secrets.DOCKERHUB_USERNAME }}
           password: ${{ secrets.DOCKERHUB_TOKEN }}
 
-      # All layers are in the GHA cache from step 1 — this is just an upload.
-      - name: 🚀 Push to registries
+      # Per-arch by-digest push to BOTH registries. No tags are written here;
+      # the publish workflow's merge-manifests job creates the multi-arch
+      # manifest list at user-facing tags via `docker buildx imagetools create`.
+      # Layer cache from step 1 means this is mostly a metadata write + push.
+      - name: 🚀 Build & push by digest
         if: inputs.push
+        id: build-digest
         uses: docker/build-push-action@10e90e3645eae34f1e60eeb005ba3a3d33f178e8 # v6.19.2
         with:
           # zizmor: ignore[template-injection] — safe: always hardcoded "." from same-repo callers; passed as array element to exec, not shell-interpolated
           context: ${{ inputs.context }}
           file: ${{ inputs.dockerfile }}
-          load: false
-          push: true
-          tags: ${{ steps.meta.outputs.tags }}
-          labels: ${{ steps.meta.outputs.labels }}
           build-args: |
             SOCKET_BASICS_VERSION=${{ inputs.version }}
             VCS_REF=${{ github.sha }}
             BUILD_DATE=${{ github.event.repository.updated_at }}
-          cache-from: type=gha,scope=${{ inputs.name }}
+          # One `--output` per registry → blobs land in both, by digest.
+          # build-push-action splits this scalar on newlines into separate outputs.
+          outputs: |
+            type=image,name=ghcr.io/socketdev/${{ inputs.name }},push-by-digest=true,name-canonical=true,push=true
+            type=image,name=${{ secrets.DOCKERHUB_USERNAME }}/${{ inputs.name }},push-by-digest=true,name-canonical=true,push=true
+          cache-from: type=gha,scope=${{ inputs.name }}-${{ inputs.arch_label }}
+          cache-to: type=gha,mode=max,scope=${{ inputs.name }}-${{ inputs.arch_label }}
           # SBOM and provenance generation pull docker/buildkit-syft-scanner from
           # Docker Hub, which fails with a repo-scoped token. Disabled until a
           # token with broader Docker Hub read access is available.
           provenance: false
           sbom: false
 
-      # Floating major version tags (v2 → latest v2.x.y) have been intentionally
-      # removed. Mutable tags are structurally equivalent to :latest and are
-      # inappropriate for a security tool. Users should pin to an immutable
-      # version tag or digest and use Dependabot to manage upgrades.
+      # Persist the per-arch digest as an artifact so the merge-manifests job
+      # can reference it via `<image>@sha256:<digest>` when creating the list.
+      - name: 📤 Export digest
+        if: inputs.push
+        env:
+          DIGEST: ${{ steps.build-digest.outputs.digest }}
+        run: |
+          mkdir -p /tmp/digests
+          touch "/tmp/digests/${DIGEST#sha256:}"
+
+      - name: ⬆️ Upload digest artifact
+        if: inputs.push
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: digests-${{ inputs.name }}-${{ inputs.arch_label }}
+          path: /tmp/digests/*
+          if-no-files-found: error
+          retention-days: 1
