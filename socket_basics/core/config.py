@@ -43,9 +43,19 @@ class Config:
             self._config = merge_json_and_env_config()
         
         self._config = self._config
-        
-        # DEBUG: Log final configuration values
+
+        # Log where the configuration is being loaded from
         logger = logging.getLogger(__name__)
+        config_source = self._config.get('_config_source', 'environment')
+        source_descriptions = {
+            'api': 'Socket dashboard (API)',
+            'json_file': 'JSON config file (--config)',
+            'environment': 'environment variables',
+        }
+        source_desc = source_descriptions.get(config_source, config_source)
+        logger.info(f"Configuration loaded from: {source_desc}")
+
+        # DEBUG: Log final configuration values
         logger.debug("Final Config object created with key values:")
         logger.debug(f"  javascript_sast_enabled: {self._config.get('javascript_sast_enabled')}")
         logger.debug(f"  socket_tier_1_enabled: {self._config.get('socket_tier_1_enabled')}")
