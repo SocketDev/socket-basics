@@ -8,7 +8,7 @@
 #
 # Usage:
 #   ./scripts/integration-test-docker.sh [--image-tag TAG]
-#   ./scripts/integration-test-docker.sh --image-tag socket-basics:1.1.3
+#   ./scripts/integration-test-docker.sh --image-tag socket-basics:2.0.3
 
 set -euo pipefail
 

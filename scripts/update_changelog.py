@@ -85,11 +85,11 @@ def _update_links(content: str, version: str, prev_tag: str) -> str:
     Update the comparison links block at the bottom of the changelog.
 
     Before:
-        [Unreleased]: .../compare/1.1.3...HEAD
+        [Unreleased]: .../compare/v2.0.3...HEAD
 
-    After publishing v2.0.1:
-        [Unreleased]: .../compare/v2.0.1...HEAD
-        [2.0.1]:      .../compare/v2.0.0...v2.0.1
+    After publishing v2.0.4:
+        [Unreleased]: .../compare/v2.0.4...HEAD
+        [2.0.4]:      .../compare/v2.0.3...v2.0.4
     """
     new_tag = _tag(version)
 
