@@ -48,6 +48,13 @@ class OpenGrepScanner(BaseConnector):
 
 		targets = self.config.get_scan_targets()
 
+		# Diff-only / explicit file scoping resolved to no existing files (for
+		# example a delete-only PR). Running OpenGrep without any target makes it
+		# scan its own working directory and emit spurious findings, so skip.
+		if not targets:
+			logger.info('No scan targets to analyze (scoped scan matched no existing files); skipping OpenGrep')
+			return {}
+
 		# Check if custom rules mode is enabled
 		custom_rules_path = self.config.get_custom_rules_path()
 		custom_rule_files: Dict[str, Path] = {}

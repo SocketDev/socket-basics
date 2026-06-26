@@ -92,7 +92,11 @@ socket-basics --committers "user1@example.com,user2@example.com"
 ```
 
 ### `--scan-files SCAN_FILES`
-Comma-separated list of files to scan.
+Explicit comma-separated list of files to scan. Scopes **all** scanners —
+SAST/OpenGrep, secrets, and container scanning — to just these files instead of
+the whole workspace. Used when `--changed-files` is not set (`--changed-files`
+takes precedence when both are provided). Paths that do not exist are skipped;
+if none exist, the scanners are skipped rather than scanning the whole repo.
 
 **Example:**
 ```bash
@@ -100,7 +104,21 @@ socket-basics --scan-files "src/app.py,src/utils.js"
 ```
 
 ### `--changed-files CHANGED_FILES`
-Comma-separated list of files to scan or 'auto' to detect changed files from git.
+Diff-only mode: scope **all** scanners (SAST/OpenGrep, secrets, containers) to
+changed files only, the way Socket SCA Pull Request alerts behave. Accepts:
+
+- a comma-separated file list (e.g. `src/app.py,src/utils.js`)
+- a commit hash — files changed in that commit
+- `auto` — the PR base-ref diff when running in a PR CI context
+  (`GITHUB_BASE_REF` is set), otherwise staged (`--cached`) changes
+- `pr` — diff against the PR base branch (`GITHUB_BASE_REF`)
+- `current-commit` — files in the `HEAD` commit
+
+Deletions are excluded from PR/`auto`/`pr` diffs so removed paths never become
+scan targets. When the diff resolves to no existing files (e.g. a delete-only
+PR), the scanners are skipped rather than falling back to scanning the whole
+repository. For PR/`auto`/`pr` modes, check out with full history (e.g.
+`actions/checkout` with `fetch-depth: 0`) so the base branch is available.
 
 **Example:**
 ```bash
@@ -622,6 +640,9 @@ socket-basics \
 ```
 
 ### CI/CD Scan (Changed Files Only)
+
+Scope every scanner — SAST/OpenGrep included — to only the files the PR changed,
+so each PR reports findings for its own changes rather than the whole repo:
 
 ```bash
 socket-basics \

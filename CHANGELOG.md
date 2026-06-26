@@ -8,6 +8,18 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [2.1.0] - 2026-06-02
+
+### Added
+- Diff-only scan scoping now applies to SAST/OpenGrep via `changed_files` and
+  `scan_files`.
+- Added GitHub Action inputs for `changed_files` and `scan_files`.
+
+### Fixed
+- Delete-only changed-file scans now skip instead of falling back to a full
+  workspace scan.
+- Updated parameter docs to reflect SAST/OpenGrep diff-only scoping.
+
 ## [2.0.3] - 2026-04-24
 
 <!-- Release notes generated using configuration in .github/release.yml at main -->
