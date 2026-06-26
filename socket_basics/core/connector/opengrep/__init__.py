@@ -61,6 +61,26 @@ class OpenGrepScanner(BaseConnector):
 			logger.info('No scan targets to analyze (scoped scan matched no existing files); skipping OpenGrep')
 			return {}
 
+		# Locate bundled rules directory for fallback and all-language expansion.
+		module_dir = Path(__file__).resolve().parents[3]
+		bundled_rules_dir = module_dir / 'rules'
+		rules_dir = self.config.get('opengrep_rules_dir') or (str(bundled_rules_dir) if bundled_rules_dir.exists() else None)
+		if not rules_dir:
+			logger.error('No rules directory found')
+			return {}
+
+		if not rule_files and self.config.get('all_languages_enabled', False):
+			try:
+				rule_files = [
+					p.name
+					for p in Path(rules_dir).glob('*.yml')
+					if p.name != 'tests.yml'
+				]
+				logger.info("Expanded all-languages scan to rule files: %s", rule_files)
+			except Exception:
+				logger.debug('Failed expanding all-languages into rule files', exc_info=True)
+				rule_files = []
+
 		# Check if custom rules mode is enabled
 		custom_rules_path = self.config.get_custom_rules_path()
 		custom_rule_files: Dict[str, Path] = {}
@@ -79,14 +99,6 @@ class OpenGrepScanner(BaseConnector):
 			except Exception as e:
 				logger.error(f"Failed to build custom rule files: {e}", exc_info=True)
 				custom_rule_files = {}
-
-		# Locate bundled rules directory for fallback
-		module_dir = Path(__file__).resolve().parents[3]
-		bundled_rules_dir = module_dir / 'rules'
-		rules_dir = self.config.get('opengrep_rules_dir') or (str(bundled_rules_dir) if bundled_rules_dir.exists() else None)
-		if not rules_dir:
-			logger.error('No rules directory found')
-			return {}
 
 		# Read filtered rule definitions if available
 		try:
@@ -788,4 +800,3 @@ class OpenGrepScanner(BaseConnector):
 		notifications_by_notifier['webhook'] = webhook.format_notifications(groups)
 		
 		return notifications_by_notifier
-

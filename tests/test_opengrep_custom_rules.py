@@ -76,6 +76,45 @@ def test_scan_uses_custom_rule_file_when_available(tmp_path, monkeypatch):
     assert str(bundled_rules_dir / "javascript_typescript.yml") not in cmd_str
 
 
+def test_all_languages_custom_rules_without_individual_language_flags(tmp_path, monkeypatch):
+    workspace = tmp_path / "workspace"
+    workspace.mkdir(parents=True, exist_ok=True)
+
+    custom_rules_file = workspace / ".socket" / "rules" / "org-rules.yml"
+    _write_custom_rules_file(custom_rules_file, ["org.no-eval"])
+
+    bundled_rules_dir = tmp_path / "bundled-rules"
+    bundled_js_file = bundled_rules_dir / "javascript_typescript.yml"
+    bundled_python_file = bundled_rules_dir / "python.yml"
+    _write_rule_file(bundled_js_file, ["js-default-rule"])
+    _write_rule_file(bundled_python_file, ["py-default-rule"])
+
+    config = Config(
+        {
+            "workspace": str(workspace),
+            "output_dir": str(workspace),
+            "all_languages_enabled": True,
+            "use_custom_sast_rules": True,
+            "custom_sast_rule_path": ".socket/rules",
+            "opengrep_rules_dir": str(bundled_rules_dir),
+            "all_rules_enabled": False,
+            "verbose": False,
+        }
+    )
+    scanner = OpenGrepScanner(config)
+    scanner._convert_to_socket_facts = lambda _: {"components": []}
+    scanner.generate_notifications = lambda _: {}
+
+    captured_cmd: list[str] = []
+    _mock_subprocess_run(monkeypatch, captured_cmd)
+    scanner.scan()
+
+    cmd_str = " ".join(captured_cmd)
+    assert "socket_custom_rules_" in cmd_str
+    assert str(bundled_js_file) not in cmd_str
+    assert str(bundled_python_file) in cmd_str
+
+
 def test_scan_falls_back_to_bundled_file_when_custom_missing(tmp_path, monkeypatch):
     workspace = tmp_path / "workspace"
     workspace.mkdir(parents=True, exist_ok=True)
