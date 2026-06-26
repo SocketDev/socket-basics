@@ -240,7 +240,12 @@ class SecurityScanner:
                 
             socket_org = self.config.get('socket_org')
             if not socket_org:
-                logger.debug("No Socket organization configured, skipping full scan submission")
+                logger.warning(
+                    "No Socket organization configured - scan results will not be uploaded to the dashboard. "
+                    "This typically means your API key is missing the 'socket-basics:read' scope. "
+                    "Please create an API key with the required scopes in Settings > API Tokens "
+                    "in the Socket dashboard (https://socket.dev)."
+                )
                 return results
                 
             # Import socketdev SDK
