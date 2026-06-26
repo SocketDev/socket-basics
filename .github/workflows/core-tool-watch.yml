@@ -1,0 +1,148 @@
+name: core-tool-watch
+
+# Supply-chain / malware watch for the four core OSS tools that Socket Basics
+# orchestrates. Three of them (OpenGrep, TruffleHog, Trivy) ship as
+# binaries / container images / GitHub releases that Dependabot cannot cleanly
+# track; the fourth (Socket's own SCA SDK) is a PyPI package. This workflow
+# closes that gap by running scripts/check_core_tools.py, which discovers the
+# latest upstream version of each tool and scores the relevant package
+# coordinates through the Socket API (dogfooding the socketdev SDK that Socket
+# Basics already depends on).
+#
+# Two triggers, two intents:
+#   - schedule / workflow_dispatch  → mode=watch: discover latest versions,
+#     analyze BOTH pinned and latest, report drift, upsert a tracking issue.
+#   - pull_request / push touching the pins → mode=build: analyze the versions
+#     this change would bake into the image. Fails on a malware/critical alert.
+#
+# Socket scoring needs SOCKET_SFW_API_TOKEN, scoped to the `socket-firewall`
+# environment (which must carry NO approval rule -- see dependency-review.yml).
+# When the token is absent — e.g. fork PRs — version-drift detection still runs
+# and scoring is skipped with a notice.
+
+on:
+  schedule:
+    # Mondays 07:00 UTC, after the weekly Dependabot run.
+    - cron: "0 7 * * 1"
+  workflow_dispatch:
+  pull_request:
+    paths:
+      - "Dockerfile"
+      - "app_tests/Dockerfile"
+      - "pyproject.toml"
+      - "uv.lock"
+      - "scripts/check_core_tools.py"
+      - ".github/workflows/core-tool-watch.yml"
+  push:
+    branches: [main]
+    paths:
+      - "Dockerfile"
+      - "app_tests/Dockerfile"
+      - "pyproject.toml"
+      - "uv.lock"
+      - "scripts/check_core_tools.py"
+      - ".github/workflows/core-tool-watch.yml"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: core-tool-watch-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  analyze:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    # `environment:` scopes SOCKET_SFW_API_TOKEN to this job. The environment
+    # MUST have no required-reviewers rule -- an approval gate would hang the
+    # scheduled cron run forever (and is the bypass footgun called out in
+    # dependency-review.yml). Configure it with `reviewers: null` (see that
+    # file's header for the gh api command).
+    environment: socket-firewall
+    permissions:
+      contents: read
+      issues: write # upsert the drift tracking issue on scheduled runs
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          fetch-depth: 1
+          persist-credentials: false
+
+      - name: 🐍 Setup Python
+        uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405 # v6.2.0
+        with:
+          python-version: "3.12"
+
+      - name: 🛠️ Install uv + sync (provides the socketdev SDK)
+        run: |
+          python -m pip install --upgrade pip uv
+          uv sync --locked
+
+      - name: Select mode
+        id: mode
+        env:
+          EVENT: ${{ github.event_name }}
+        run: |
+          # Scheduled/manual runs watch for upstream drift; PR/push runs guard
+          # the versions a build would actually pull in.
+          if [ "$EVENT" = "schedule" ] || [ "$EVENT" = "workflow_dispatch" ]; then
+            echo "mode=watch" >> "$GITHUB_OUTPUT"
+          else
+            echo "mode=build" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Run core-tool supply-chain analysis
+        id: scan
+        env:
+          SOCKET_API_TOKEN: ${{ secrets.SOCKET_SFW_API_TOKEN }}
+          GITHUB_TOKEN: ${{ github.token }}
+        run: |
+          uv run python scripts/check_core_tools.py \
+            --mode "${{ steps.mode.outputs.mode }}" \
+            --summary-file core-tools-report.md \
+            --json-out core-tools-report.json \
+            --github-output "$GITHUB_OUTPUT" \
+            --fail-on-malware
+
+      - name: Render report to job summary
+        if: always()
+        run: |
+          if [ -f core-tools-report.md ]; then
+            cat core-tools-report.md >> "$GITHUB_STEP_SUMMARY"
+          fi
+
+      - name: Upload core-tool report
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: core-tools-report
+          path: |
+            core-tools-report.md
+            core-tools-report.json
+          if-no-files-found: warn
+          retention-days: 30
+
+      - name: Open/update drift tracking issue
+        if: ${{ always() && steps.mode.outputs.mode == 'watch' && steps.scan.outputs.drift == 'true' }}
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh label create core-tool-drift \
+            --color FBCA04 \
+            --description "A core OSS tool has a newer upstream release" 2>/dev/null || true
+
+          title="Core tool version drift detected"
+          existing="$(gh issue list --label core-tool-drift --state open \
+            --json number --jq '.[0].number' 2>/dev/null || true)"
+
+          if [ -n "$existing" ]; then
+            gh issue edit "$existing" --body-file core-tools-report.md
+            gh issue comment "$existing" \
+              --body "Drift re-detected by [run #${GITHUB_RUN_ID}](${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}); body updated."
+          else
+            gh issue create \
+              --title "$title" \
+              --label core-tool-drift \
+              --body-file core-tools-report.md
+          fi

@@ -1,0 +1,349 @@
+name: dependency-review
+
+# Supply-chain guardrails for dependency-change PRs -- for BOTH Dependabot and
+# maintainers. `inspect` classifies the PR, then the right Socket Firewall (sfw)
+# smoke job runs when Python deps change:
+#
+#   - python-sfw-smoke-enterprise -- trusted authors: any in-repo (non-fork) PR
+#     other than Dependabot's (i.e. someone with write access). Runs the
+#     authenticated enterprise edition for full org-policy enforcement, reading
+#     the SOCKET_SFW_API_TOKEN secret.
+#   - python-sfw-smoke-free -- everyone else (Dependabot + all fork PRs from
+#     external contributors). Anonymous free edition, no token. Never references
+#     the secret.
+#
+# Splitting the jobs (rather than picking a mode in one job) means only the
+# enterprise job ever names the token; the free path (Dependabot/forks) has no
+# secret-leak surface. Both run in the unprivileged `pull_request` context.
+#
+# Secret scoping vs. the approval-gate trap (matches socket-python-cli#224):
+# The enterprise job uses `environment: socket-firewall` so the
+# SOCKET_SFW_API_TOKEN can be scoped to that environment -- only this job can
+# read it. KEEP the environment; it is good secret hygiene. What must NOT exist
+# on that environment is a "required reviewers" approval rule. That rule is the
+# trap: the enterprise SFW check cannot itself be a required status check (it is
+# skipped on Dependabot/fork PRs, which only run the free edition, and a
+# never-created required check blocks merge forever), so a manual deployment
+# gate is both self-approvable (prevent_self_review defaults off; admins bypass)
+# AND skippable -- maintainers merge without it ever running. Configure the
+# environment with no reviewers:
+#
+#   gh api -X PUT repos/SocketDev/socket-basics/environments/socket-firewall \
+#     --input - <<<'{"wait_timer":0,"prevent_self_review":false,"reviewers":null,"deployment_branch_policy":null}'
+#
+# Coverage is instead enforced by the always-on `dependency-review-gate` job
+# below -- mark THAT as the single required status check. It runs on every PR
+# (if: always(), never skipped, so the required context is always created),
+# requires the free job for Dependabot/forks and the enterprise job for
+# maintainers, and is a no-op when no Python deps changed.
+#
+# Docker dependency changes: the main image is already build-smoke-tested by
+# smoke-test.yml on every PR, so only the app_tests image (uncovered elsewhere)
+# is built here.
+#
+# Pattern adapted from SocketDev/socket-sdk-python and SocketDev/socket-python-cli.
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened, ready_for_review]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: dependency-review-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  inspect:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      python_deps_changed: ${{ steps.diff.outputs.python_deps_changed }}
+      app_tests_docker_changed: ${{ steps.diff.outputs.app_tests_docker_changed }}
+      workflow_or_action_changed: ${{ steps.diff.outputs.workflow_or_action_changed }}
+      is_trusted: ${{ steps.trust.outputs.is_trusted }}
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Inspect changed files
+        id: diff
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        run: |
+          CHANGED_FILES="$(git diff --name-only "$BASE_SHA" "$HEAD_SHA")"
+
+          {
+            echo "## Changed files"
+            echo '```'
+            printf '%s\n' "$CHANGED_FILES"
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+
+          has_file() {
+            local pattern="$1"
+            if printf '%s\n' "$CHANGED_FILES" | grep -Eq "$pattern"; then
+              echo "true"
+            else
+              echo "false"
+            fi
+          }
+
+          {
+            echo "python_deps_changed=$(has_file '^(pyproject\.toml|uv\.lock)$')"
+            echo "app_tests_docker_changed=$(has_file '^app_tests/Dockerfile$')"
+            echo "workflow_or_action_changed=$(has_file '^\.github/workflows/|^\.github/actions/|^action\.yml$|^\.github/dependabot\.yml$')"
+          } >> "$GITHUB_OUTPUT"
+
+      - name: Classify PR trust
+        id: trust
+        # Trusted == any in-repo (non-fork) PR that isn't Dependabot's. Only
+        # accounts with write access can push a branch to this repo, so a
+        # non-fork PR already implies a trusted author -- the same boundary
+        # GitHub uses to decide whether secrets are exposed at all.
+        #
+        # NB: author_association is deliberately NOT used to require strict org
+        # membership. It only reflects PUBLIC org membership, so private members
+        # (the common case) show up as CONTRIBUTOR and would be misclassified.
+        # This step references NO secret regardless -- it only decides which
+        # smoke job runs.
+        env:
+          IS_DEPENDABOT: ${{ github.event.pull_request.user.login == 'dependabot[bot]' }}
+          IS_FORK: ${{ github.event.pull_request.head.repo.full_name != github.repository }}
+          AUTHOR_ASSOC: ${{ github.event.pull_request.author_association }}
+        run: |
+          is_trusted=false
+          if [ "$IS_DEPENDABOT" != "true" ] && [ "$IS_FORK" != "true" ]; then
+            is_trusted=true
+          fi
+
+          echo "is_trusted=$is_trusted" >> "$GITHUB_OUTPUT"
+          {
+            echo "## Socket Firewall edition: \`$([ "$is_trusted" = true ] && echo enterprise || echo free)\`"
+            echo "- author_association: \`$AUTHOR_ASSOC\`"
+            echo "- dependabot: \`$IS_DEPENDABOT\` | fork: \`$IS_FORK\`"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Summarize review expectations
+        env:
+          PR_URL: ${{ github.event.pull_request.html_url }}
+        run: |
+          {
+            echo "## Dependency Review Checklist"
+            echo "- PR: $PR_URL"
+            echo "- Confirm upstream release notes before merge"
+            echo "- Do not treat a dependency PR as trusted solely because of the actor"
+            echo "- This workflow runs in pull_request context only; no publish secrets are exposed"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+  # Untrusted PRs (Dependabot, forks, outside collaborators, externals):
+  # anonymous free edition. Never references the token.
+  python-sfw-smoke-free:
+    needs: inspect
+    if: needs.inspect.outputs.python_deps_changed == 'true' && needs.inspect.outputs.is_trusted != 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          fetch-depth: 1
+          persist-credentials: false
+
+      - uses: ./.github/actions/setup-sfw
+        with:
+          uv: "true"
+          mode: firewall-free
+
+      - name: Sync project through Socket Firewall (free)
+        env:
+          UV_PYTHON: "3.12"
+          UV_PYTHON_DOWNLOADS: never
+        run: |
+          set -o pipefail
+          sfw uv sync --locked --extra dev 2>&1 | tee sfw-report-free.log
+
+      - name: Collect Socket Firewall JSON report
+        if: always()
+        # socketdev/action writes a structured report to $SFW_JSON_REPORT_PATH.
+        run: cp "${SFW_JSON_REPORT_PATH:-/nonexistent}" sfw-report-free.json 2>/dev/null || echo "no SFW JSON report produced"
+
+      - name: Import smoke test
+        run: |
+          uv run python -c "
+          import socket_basics
+          from socket_basics.version import __version__
+          print('import smoke OK', __version__)
+          "
+
+      - name: Upload Socket Firewall report
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: sfw-report-free
+          path: |
+            sfw-report-free.log
+            sfw-report-free.json
+          if-no-files-found: warn
+          retention-days: 14
+
+  # Trusted SocketDev members: authenticated enterprise edition. Only this job
+  # references the token (the free job never does). `environment:` scopes the
+  # secret to this job -- the environment must have NO required-reviewers rule
+  # (see the header note); coverage is enforced by dependency-review-gate, not a
+  # manual approval gate.
+  python-sfw-smoke-enterprise:
+    needs: inspect
+    if: needs.inspect.outputs.python_deps_changed == 'true' && needs.inspect.outputs.is_trusted == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    environment: socket-firewall
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          fetch-depth: 1
+          persist-credentials: false
+
+      - uses: ./.github/actions/setup-sfw
+        with:
+          uv: "true"
+          mode: firewall-enterprise
+          socket-token: ${{ secrets.SOCKET_SFW_API_TOKEN }}
+
+      - name: Sync project through Socket Firewall (enterprise)
+        # UV_PYTHON pins the runner's interpreter so uv does not fetch a
+        # uv-managed Python through the firewall (blocked by its TLS interception).
+        env:
+          UV_PYTHON: "3.12"
+          UV_PYTHON_DOWNLOADS: never
+        run: |
+          set -o pipefail
+          sfw uv sync --locked --extra dev 2>&1 | tee sfw-report-enterprise.log
+
+      - name: Collect Socket Firewall JSON report
+        if: always()
+        # socketdev/action writes a structured report to $SFW_JSON_REPORT_PATH.
+        run: cp "${SFW_JSON_REPORT_PATH:-/nonexistent}" sfw-report-enterprise.json 2>/dev/null || echo "no SFW JSON report produced"
+
+      - name: Import smoke test
+        run: |
+          uv run python -c "
+          import socket_basics
+          from socket_basics.version import __version__
+          print('import smoke OK', __version__)
+          "
+
+      - name: Upload Socket Firewall report
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: sfw-report-enterprise
+          path: |
+            sfw-report-enterprise.log
+            sfw-report-enterprise.json
+          if-no-files-found: warn
+          retention-days: 14
+
+  # app_tests image build-smoke (the main image is covered by smoke-test.yml).
+  docker-smoke-app-tests:
+    needs: inspect
+    if: needs.inspect.outputs.app_tests_docker_changed == 'true'
+    uses: ./.github/workflows/_docker-pipeline.yml
+    permissions:
+      contents: read
+    with:
+      name: socket-basics-app-tests
+      dockerfile: app_tests/Dockerfile
+      context: .
+      check_set: app-tests
+      push: false
+
+  workflow-notice:
+    needs: inspect
+    if: needs.inspect.outputs.workflow_or_action_changed == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 2
+    steps:
+      - name: Flag workflow-sensitive updates
+        run: |
+          {
+            echo "## Sensitive File Notice"
+            echo "This PR changes workflow, composite-action, action.yml, or dependabot config files."
+            echo "Require explicit human review before merge."
+          } >> "$GITHUB_STEP_SUMMARY"
+
+  # Aggregator gate (socket-python-cli#224, Pattern 2). Single always-on status
+  # that closes the bypass blindspot -- mark THIS job (and only this job) as the
+  # required status check for the branch (Settings -> Branches). Two rules:
+  #
+  #   1. Fail if ANY needed conditional job ended in failure/cancelled
+  #      (success and skipped both pass -- a skipped job is a legitimate no-run).
+  #   2. Coverage: when Python deps changed, the trust-appropriate SFW edition
+  #      (enterprise for maintainers, free for Dependabot/forks) must have
+  #      actually succeeded -- not merely been skipped.
+  #
+  # It runs on every PR (if: always(), never skipped via a job-level condition,
+  # so the required context is always created -- avoiding the "Expected --
+  # Waiting for status" deadlock that strands a required-but-skipped check), and
+  # never waits on a manual gate. IMPORTANT: merge this job to main BEFORE adding
+  # it to branch protection, or every other open PR strands on the same trap.
+  dependency-review-gate:
+    needs:
+      - inspect
+      - python-sfw-smoke-free
+      - python-sfw-smoke-enterprise
+      - docker-smoke-app-tests
+    if: always()
+    runs-on: ubuntu-latest
+    timeout-minutes: 2
+    steps:
+      - name: Enforce dependency-review coverage
+        env:
+          DEPS_CHANGED: ${{ needs.inspect.outputs.python_deps_changed }}
+          IS_TRUSTED: ${{ needs.inspect.outputs.is_trusted }}
+          FREE_RESULT: ${{ needs.python-sfw-smoke-free.result }}
+          ENTERPRISE_RESULT: ${{ needs.python-sfw-smoke-enterprise.result }}
+          DOCKER_RESULT: ${{ needs.docker-smoke-app-tests.result }}
+        run: |
+          fail=0
+
+          # Rule 1: any real failure/cancellation in a conditional job blocks.
+          for pair in \
+            "python-sfw-smoke-free=$FREE_RESULT" \
+            "python-sfw-smoke-enterprise=$ENTERPRISE_RESULT" \
+            "docker-smoke-app-tests=$DOCKER_RESULT"; do
+            name="${pair%%=*}"; res="${pair#*=}"
+            echo "$name: $res"
+            if [ "$res" = "failure" ] || [ "$res" = "cancelled" ]; then
+              echo "::error::$name ended in $res"
+              fail=1
+            fi
+          done
+
+          # Rule 2: when deps changed, the required SFW edition must have run+passed.
+          if [ "$DEPS_CHANGED" = "true" ]; then
+            if [ "$IS_TRUSTED" = "true" ]; then
+              edition="enterprise"; required="$ENTERPRISE_RESULT"
+            else
+              edition="free"; required="$FREE_RESULT"
+            fi
+            echo "Python deps changed; required Socket Firewall edition: $edition ($required)"
+            if [ "$required" != "success" ]; then
+              echo "::error::Required Socket Firewall smoke ($edition) did not succeed (result: $required). This PR changes Python dependencies and must pass the Socket Firewall check before merge."
+              fail=1
+            fi
+          else
+            echo "No Python dependency changes -- Socket Firewall smoke not required."
+          fi
+
+          if [ "$fail" -eq 0 ]; then
+            echo "dependency-review-gate: all required checks satisfied. ✅"
+          fi
+          exit "$fail"
