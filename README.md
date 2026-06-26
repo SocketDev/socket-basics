@@ -50,7 +50,7 @@ jobs:
 > with a review gate. See [docs/github-action.md](docs/github-action.md#pinning-strategies)
 > for the full explanation and Dependabot setup.
 
-**That's it!** With just your `SOCKET_SECURITY_API_KEY`, all scanning configurations are managed through the [Socket Dashboard](https://socket.dev/dashboard) — no workflow changes needed.
+**That's it!** With a properly scoped `SOCKET_SECURITY_API_KEY`, all scanning configurations are managed through the [Socket Dashboard](https://socket.dev/dashboard) — no workflow changes needed. See [Required API Token Scopes](#required-api-token-scopes) for details.
 
 ### What You Get
 
@@ -162,14 +162,16 @@ Configure scanning policies, notification channels, and rule sets for your entir
 
 ### Required API Token Scopes
 
-Create your `SOCKET_SECURITY_API_KEY` in the Socket Dashboard under **Settings → API Tokens**. Socket Basics needs the following scopes:
+Create your `SOCKET_SECURITY_API_KEY` in the [Socket Dashboard](https://socket.dev/dashboard) under **Settings → API Tokens**. Dashboard routes can depend on your organization and login session, so start from the dashboard or see the [Socket API Tokens docs](https://docs.socket.dev/docs/api-keys) for token-management details. Socket Basics needs the following scopes:
 
 | Scope | Required for |
 |-------|--------------|
-| `socket-basics` | Loading scanner configuration from the Socket Dashboard |
 | `full-scans` | Submitting scan results to your organization |
+| `socket-basics` | Loading scanner configuration from the Socket Dashboard |
 
-If your token is missing the `socket-basics` scope, you will see `Insufficient permissions` when Socket Basics tries to load dashboard config. As a workaround, set `SOCKET_ORG` explicitly in your workflow to skip the dashboard config load and run with CLI/environment configuration only.
+If Socket Basics is configured from the Socket Dashboard, the `socket-basics` scope is required. If it is missing, you will see `Insufficient permissions` when Socket Basics loads dashboard configuration.
+
+If Socket Basics is configured with CLI arguments, environment variables, or a JSON config file, only `full-scans` permissions are required for result submission. Set `SOCKET_ORG` explicitly in your workflow when using this mode.
 
 ## 💻 Other Usage Methods
 
@@ -262,7 +264,7 @@ Add new connectors by:
 **Socket API errors:**
 - Ensure `SOCKET_SECURITY_API_KEY` and `SOCKET_ORG` are set correctly
 - Verify your Socket Enterprise subscription is active
-- If you see `Insufficient permissions`, confirm your API token has the `socket-basics` and `full-scans` scopes (see [Required API Token Scopes](#required-api-token-scopes))
+- If you see `Insufficient permissions`, confirm your API token has the scopes required for your configuration mode (see [Required API Token Scopes](#required-api-token-scopes))
 
 **Notifier errors:**
 - Check that notification credentials (Slack webhook, Jira token, etc.) are properly configured
