@@ -230,24 +230,58 @@ class Config:
         return [f.strip() for f in scan_files_str.split(',') if f.strip()]
     
     def get_scan_targets(self) -> List[str]:
-        """Determine files to scan based on configuration"""
-        # If explicit 'scan_all' set, return workspace directory
+        """Determine files to scan based on configuration.
+
+        Precedence (highest to lowest):
+          1. ``scan_all`` -> scan the entire workspace (explicit override).
+          2. ``changed_files`` -> scope the scan to the PR/diff changed files
+             (diff-only mode; mirrors how Socket SCA Pull Request alerts behave).
+          3. ``scan_files`` -> explicit user-provided file list.
+          4. default -> scan the entire workspace.
+
+        For the scoped modes (2 and 3) an empty list may be returned when none
+        of the requested paths exist (for example a delete-only PR). Callers
+        MUST treat an empty result as "nothing to scan" and skip the scanner
+        rather than falling back to scanning the whole workspace or their own
+        working directory.
+        """
+        # Explicit "scan everything" override.
         if self.get('scan_all', False):
             return [str(self.workspace)]
 
-        # If user provided specific files to scan, validate their existence
-        if self.scan_files:
-            targets = [self.workspace / f for f in self.scan_files]
-            valid = []
-            for t in targets:
-                if t.exists():
-                    valid.append(str(t))
-                else:
-                    logging.getLogger(__name__).warning("Scan target does not exist: %s", str(t))
-            return valid
+        # Diff-only mode: scope the scan to the files changed in the PR/commit.
+        # Keep honoring the scope when git resolves to zero files, e.g. a
+        # delete-only PR, so callers skip instead of scanning the workspace.
+        changed_files = self.get('changed_files', []) or []
+        if changed_files or self.get('changed_files_scope_requested', False):
+            return self._resolve_file_targets(changed_files)
 
-        # Default: scan the workspace itself
+        # Explicit list of files to scan.
+        if self.scan_files:
+            return self._resolve_file_targets(self.scan_files)
+
+        # Default: scan the workspace itself.
         return [str(self.workspace)]
+
+    def _resolve_file_targets(self, files: List[str]) -> List[str]:
+        """Resolve a list of file paths to absolute scan targets.
+
+        Relative paths are resolved against the workspace; absolute paths are
+        used as-is. Paths that do not exist are skipped with a warning (a
+        common case for delete-only PRs). Returns an empty list when none of
+        the provided paths exist, signalling callers that there is nothing to
+        scan.
+        """
+        valid: List[str] = []
+        for f in files:
+            p = Path(f)
+            if not p.is_absolute():
+                p = self.workspace / f
+            if p.exists():
+                valid.append(str(p))
+            else:
+                logging.getLogger(__name__).warning("Scan target does not exist: %s", str(p))
+        return valid
     
     def get_action_for_severity(self, severity: str) -> str:
         """Map severity to action according to security policy"""
@@ -1289,7 +1323,10 @@ def add_dynamic_cli_args(parser: argparse.ArgumentParser):
 
     # Add optional changed-files CLI argument to limit scans to changed files
     parser.add_argument('--changed-files', type=str, default='',
-                        help="Comma-separated list of files to scan or 'auto' to detect changed files from git")
+                        help="Scope all scanners (SAST/OpenGrep, secrets, containers) to changed "
+                             "files only. Accepts a comma-separated file list, a commit hash, "
+                             "'auto' (PR base-ref diff in CI, else staged changes), 'pr' (diff "
+                             "against GITHUB_BASE_REF), or 'current-commit'.")
 
     # Also add CLI args for notification plugins declared in notifications.yaml
     try:
@@ -1496,17 +1533,30 @@ def create_config_from_args(args) -> Config:
     except Exception:
         pass
 
-    # Handle changed-files: CLI overrides env/config. Accept 'auto' to detect via git
+    # Handle changed-files: CLI overrides env/config. Accept 'auto' to detect via git.
+    # When invoked via the GitHub Action (entrypoint passes no CLI args) the value
+    # arrives through the INPUT_CHANGED_FILES environment variable instead.
     changed_files_arg = getattr(args, 'changed_files', '') if args is not None else ''
+    if not changed_files_arg:
+        changed_files_arg = os.getenv('INPUT_CHANGED_FILES', '')
     if changed_files_arg:
         val = str(changed_files_arg).strip()
-        # 'auto' defaults to staged changes (--cached)
+        config_dict['changed_files_scope_requested'] = True
+        # 'auto' resolves to the PR base-ref diff in CI, else staged changes.
         if val.lower() == 'auto':
             try:
-                git_changed = _detect_git_changed_files(config_dict.get('workspace', os.getcwd()), mode='staged')
+                git_changed = _detect_git_changed_files(config_dict.get('workspace', os.getcwd()), mode='auto')
                 config_dict['changed_files'] = git_changed
             except Exception as e:
-                logging.getLogger(__name__).warning("Warning: failed to detect git changed files (staged): %s", e)
+                logging.getLogger(__name__).warning("Warning: failed to detect git changed files (auto): %s", e)
+                config_dict['changed_files'] = []
+        elif val.lower() == 'pr':
+            # Explicit PR diff against the base branch (GITHUB_BASE_REF).
+            try:
+                git_changed = _detect_git_changed_files(config_dict.get('workspace', os.getcwd()), mode='pr')
+                config_dict['changed_files'] = git_changed
+            except Exception as e:
+                logging.getLogger(__name__).warning("Warning: failed to detect git changed files (pr): %s", e)
                 config_dict['changed_files'] = []
         elif val.lower() in ('current-commit', 'current_commit'):
             try:
@@ -1563,27 +1613,34 @@ def create_config_from_args(args) -> Config:
     return Config(config_dict)
 
 
-def _detect_git_changed_files(workspace_path: str, mode: str = 'staged', commit: str | None = None) -> List[str]:
+def _detect_git_changed_files(workspace_path: str, mode: str = 'staged', commit: str | None = None, base_ref: str | None = None) -> List[str]:
     """Detect changed files in a git repository.
 
     mode:
-      - 'staged' -> files staged for commit (git diff --name-only --cached)
-      - 'current-commit' -> files included in HEAD commit
-      - 'commit' -> files included in the given commit hash (commit param required)
+      - 'staged'         -> files staged for commit (git diff --name-only --cached)
+      - 'current-commit' -> files included in the HEAD commit
+      - 'commit'         -> files included in the given commit hash (commit param required)
+      - 'pr'             -> files changed relative to a base ref (a GitHub PR).
+                            Uses ``base_ref`` or ``GITHUB_BASE_REF`` and excludes
+                            deletions so removed paths never become scan targets.
+      - 'auto'           -> the PR base-ref diff when running in a PR CI context
+                            (``GITHUB_BASE_REF`` is set), otherwise staged changes.
+                            This is what ``--changed-files auto`` resolves to.
 
-    Returns a list of file paths relative to the workspace root. If not a git repo or detection fails, returns [].
+    Returns a list of file paths relative to the workspace root. If not a git
+    repo or detection fails, returns [].
     """
     try:
         from subprocess import check_output, CalledProcessError
         import subprocess
-        
+
         # Prefer GITHUB_WORKSPACE if set (GitHub Actions environment)
         # Otherwise use the provided workspace_path
         if os.environ.get('GITHUB_WORKSPACE'):
             ws = Path(os.environ['GITHUB_WORKSPACE'])
         else:
             ws = Path(workspace_path) if workspace_path else Path.cwd()
-            
+
         if not ws.exists():
             return []
 
@@ -1597,24 +1654,61 @@ def _detect_git_changed_files(workspace_path: str, mode: str = 'staged', commit:
         original_cwd = os.getcwd()
         try:
             os.chdir(str(ws))
-            
-            if mode == 'staged':
+
+            def _split(out: str) -> List[str]:
+                return [line.strip() for line in out.splitlines() if line.strip()]
+
+            def _diff_against_base(ref: str) -> Optional[List[str]]:
+                """Diff changed files (excluding deletions) against a base ref.
+
+                Tries the remote-tracking ref (``origin/<ref>``) first, then the
+                bare ref. Returns None when neither ref can be resolved so the
+                caller can fall back to another detection strategy. The
+                ``--diff-filter=ACMR`` excludes deleted paths so they never
+                become scan targets.
+                """
+                if not ref:
+                    return None
+                for candidate in (f'origin/{ref}', ref):
+                    try:
+                        out = check_output(
+                            ['git', 'diff', '--name-only', '--diff-filter=ACMR', f'{candidate}...HEAD'],
+                            text=True, stderr=subprocess.DEVNULL,
+                        )
+                        return _split(out)
+                    except CalledProcessError:
+                        continue
+                return None
+
+            if mode == 'auto':
+                # Prefer the PR base-ref diff in CI; fall back to staged changes
+                # for local/pre-commit use.
+                base = base_ref or os.environ.get('GITHUB_BASE_REF', '')
+                pr_files = _diff_against_base(base)
+                if pr_files is not None:
+                    return pr_files
+                out = check_output(['git', 'diff', '--name-only', '--cached'], text=True, stderr=subprocess.DEVNULL)
+                return _split(out)
+            elif mode == 'pr':
+                base = base_ref or os.environ.get('GITHUB_BASE_REF', '')
+                return _diff_against_base(base) or []
+            elif mode == 'staged':
                 # staged but not yet committed
                 out = check_output(['git', 'diff', '--name-only', '--cached'], text=True, stderr=subprocess.DEVNULL)
+                return _split(out)
             elif mode == 'current-commit':
                 # files that are part of HEAD commit
                 out = check_output(['git', 'diff-tree', '--no-commit-id', '--name-only', '-r', 'HEAD'], text=True, stderr=subprocess.DEVNULL)
+                return _split(out)
             elif mode == 'commit' and commit:
                 out = check_output(['git', 'diff-tree', '--no-commit-id', '--name-only', '-r', commit], text=True, stderr=subprocess.DEVNULL)
+                return _split(out)
             else:
                 return []
-
-            files = [line.strip() for line in out.splitlines() if line.strip()]
-            return files
         finally:
             # Always restore original working directory
             os.chdir(original_cwd)
-            
+
     except CalledProcessError:
         return []
     except Exception:

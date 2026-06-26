@@ -92,7 +92,11 @@ socket-basics --committers "user1@example.com,user2@example.com"
 ```
 
 ### `--scan-files SCAN_FILES`
-Comma-separated list of files to scan.
+Explicit comma-separated list of files to scan. Scopes **all** scanners —
+SAST/OpenGrep, secrets, and container scanning — to just these files instead of
+the whole workspace. Used when `--changed-files` is not set (`--changed-files`
+takes precedence when both are provided). Paths that do not exist are skipped;
+if none exist, the scanners are skipped rather than scanning the whole repo.
 
 **Example:**
 ```bash
@@ -100,7 +104,21 @@ socket-basics --scan-files "src/app.py,src/utils.js"
 ```
 
 ### `--changed-files CHANGED_FILES`
-Comma-separated list of files to scan or 'auto' to detect changed files from git.
+Diff-only mode: scope **all** scanners (SAST/OpenGrep, secrets, containers) to
+changed files only, the way Socket SCA Pull Request alerts behave. Accepts:
+
+- a comma-separated file list (e.g. `src/app.py,src/utils.js`)
+- a commit hash — files changed in that commit
+- `auto` — the PR base-ref diff when running in a PR CI context
+  (`GITHUB_BASE_REF` is set), otherwise staged (`--cached`) changes
+- `pr` — diff against the PR base branch (`GITHUB_BASE_REF`)
+- `current-commit` — files in the `HEAD` commit
+
+Deletions are excluded from PR/`auto`/`pr` diffs so removed paths never become
+scan targets. When the diff resolves to no existing files (e.g. a delete-only
+PR), the scanners are skipped rather than falling back to scanning the whole
+repository. For PR/`auto`/`pr` modes, check out with full history (e.g.
+`actions/checkout` with `fetch-depth: 0`) so the base branch is available.
 
 **Example:**
 ```bash
@@ -319,12 +337,24 @@ socket-basics --secrets --show-unverified
 
 ## Container Scanning
 
+> [!NOTE]
+> These parameters remain part of the Socket Basics interface for container
+> scanning. In the current pre-built GitHub Action and Docker image paths,
+> Socket Basics currently ships _without_ Trivy while we evaluate the safest way
+> to bundle it with Basics again. The parameters still apply for the
+> [native installation path](local-installation.md) as a temporary workaround,
+> and for future container scanner support in the pre-built paths.
+> Review the upstream install path and artifacts carefully before adopting that
+> workaround in production CI. See
+> [Trivy (Container Scanning)](local-installation.md#trivy-container-scanning)
+> for the current version guidance and installation options.
+
 ### `--images IMAGES`
 Comma-separated list of container images to scan (auto-enables image scanning).
 
 **Example:**
 ```bash
-socket-basics --images "nginx:latest,redis:7,postgres:15"
+socket-basics --images "nginx:1.27.4,redis:7.4,postgres:15.8"
 ```
 
 ### `--dockerfiles DOCKERFILES`
@@ -340,7 +370,7 @@ Notification method for Trivy container scanning results.
 
 **Example:**
 ```bash
-socket-basics --images "nginx:latest" --trivy-notify console
+socket-basics --images "nginx:1.27.4" --trivy-notify console
 ```
 
 ### `--trivy-disabled-rules TRIVY_DISABLED_RULES`
@@ -348,7 +378,7 @@ Comma-separated list of Trivy rules to disable.
 
 **Example:**
 ```bash
-socket-basics --images "nginx:latest" --trivy-disabled-rules "CVE-2023-1234,CVE-2023-5678"
+socket-basics --images "nginx:1.27.4" --trivy-disabled-rules "CVE-2023-1234,CVE-2023-5678"
 ```
 
 ### `--trivy-image-scanning-disabled`
@@ -574,7 +604,7 @@ You can provide configuration via a JSON file using `--config`:
   "socket_org": "your-org-slug",
   "socket_api_key": "scrt_your_api_key",
   
-  "images": "nginx:latest,redis:7",
+  "images": "nginx:1.27.4,redis:7.4",
   "trivy_vuln_enabled": true,
   
   "slack_webhook_url": "https://hooks.slack.com/services/T00/B00/XXXX",
@@ -621,7 +651,7 @@ socket-basics \
   --all-languages \
   --secrets \
   --socket-tier1 \
-  --images "myapp:latest" \
+  --images "myapp:1.0.0" \
   --console-tabular-enabled \
   --verbose
 ```
@@ -639,6 +669,9 @@ socket-basics \
 
 ### CI/CD Scan (Changed Files Only)
 
+Scope every scanner — SAST/OpenGrep included — to only the files the PR changed,
+so each PR reports findings for its own changes rather than the whole repo:
+
 ```bash
 socket-basics \
   --changed-files auto \
@@ -652,7 +685,7 @@ socket-basics \
 
 ```bash
 socket-basics \
-  --images "nginx:latest,postgres:15" \
+  --images "nginx:1.27.4,postgres:15.8" \
   --dockerfiles "Dockerfile" \
   --trivy-vuln-enabled \
   --console-tabular-enabled

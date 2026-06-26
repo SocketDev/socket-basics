@@ -4,11 +4,14 @@ author: "Socket"
 
 runs:
   using: "docker"
-  image: "docker://ghcr.io/socketdev/socket-basics:2.0.2"
+  image: "docker://ghcr.io/socketdev/socket-basics:2.0.3"
   env:
     # Core GitHub variables (these are automatically available, but we explicitly pass GITHUB_TOKEN)
     GITHUB_TOKEN: ${{ inputs.github_token }}
     INPUT_WORKSPACE: ${{ inputs.workspace }}
+    # Scan scope
+    INPUT_CHANGED_FILES: ${{ inputs.changed_files }}
+    INPUT_SCAN_FILES: ${{ inputs.scan_files }}
     # Input mappings for all parameters
     INPUT_ALL_LANGUAGES_ENABLED: ${{ inputs.all_languages_enabled }}
     INPUT_ALL_RULES_ENABLED: ${{ inputs.all_rules_enabled }}
@@ -77,6 +80,7 @@ runs:
     INPUT_SWIFT_DISABLED_RULES: ${{ inputs.swift_disabled_rules }}
     INPUT_SWIFT_ENABLED_RULES: ${{ inputs.swift_enabled_rules }}
     INPUT_SWIFT_SAST_ENABLED: ${{ inputs.swift_sast_enabled }}
+    # Trivy-backed scanning is temporarily disabled in the pre-built GitHub Action image.
     INPUT_TRIVY_DISABLED_RULES: ${{ inputs.trivy_disabled_rules }}
     INPUT_TRIVY_IMAGE_SCANNING_DISABLED: ${{ inputs.trivy_image_scanning_disabled }}
     INPUT_TRIVY_NOTIFICATION_METHOD: ${{ inputs.trivy_notification_method }}
@@ -102,6 +106,25 @@ runs:
 inputs:
   workspace:
     description: "Workspace directory to scan (defaults to GITHUB_WORKSPACE)"
+    required: false
+    default: ""
+  changed_files:
+    description: >-
+      Diff-only mode: scope every scanner (SAST/OpenGrep, secrets, containers)
+      to changed files only, instead of the whole repository. Accepts a
+      comma-separated file list, a commit hash, 'auto' (diffs against the PR
+      base branch in CI, else staged changes), 'pr' (diff against
+      GITHUB_BASE_REF), or 'current-commit'. For PR/'auto' modes, check out with
+      actions/checkout fetch-depth: 0 so the base branch is available. When the
+      diff resolves to no existing files (e.g. a delete-only PR) the scanners
+      are skipped rather than scanning the whole repo.
+    required: false
+    default: ""
+  scan_files:
+    description: >-
+      Explicit comma-separated list of files to scan. Scopes SAST/OpenGrep,
+      secret, and container scans to just these files. Used when changed_files
+      is not set; changed_files takes precedence when both are provided.
     required: false
     default: ""
   socket_org:
@@ -389,19 +412,19 @@ inputs:
     required: false
     default: "false"
   trivy_disabled_rules:
-    description: "Comma-separated list of Trivy rules to disable"
+    description: "Comma-separated list of Trivy rules to disable. Trivy-backed scanning is temporarily unavailable in the pre-built GitHub Action image."
     required: false
     default: ""
   trivy_image_scanning_disabled:
-    description: "Disable Trivy image scanning"
+    description: "Disable Trivy image scanning. Trivy-backed scanning is temporarily unavailable in the pre-built GitHub Action image."
     required: false
     default: "false"
   trivy_notification_method:
-    description: "Notification method for Trivy (e.g., console, slack)"
+    description: "Notification method for Trivy (e.g., console, slack). Trivy-backed scanning is temporarily unavailable in the pre-built GitHub Action image."
     required: false
     default: ""
   trivy_vuln_enabled:
-    description: "Enable Trivy vulnerability scanning for all supported language ecosystems"
+    description: "Enable Trivy vulnerability scanning for all supported language ecosystems. Trivy-backed scanning is temporarily unavailable in the pre-built GitHub Action image."
     required: false
     default: "false"
   trufflehog_exclude_dir:

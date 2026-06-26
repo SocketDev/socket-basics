@@ -7,11 +7,11 @@ name: _docker-pipeline (reusable)
 #
 # Two modes:
 #   push: false  →  build + smoke test + integration test (main image only)
-#   push: true   →  above + push to GHCR/Docker Hub + update floating v-tag
+#   push: true   →  above + push exact version tags to GHCR/Docker Hub
 #
 # Permissions required from the calling workflow:
 #   push: false  →  contents: read
-#   push: true   →  contents: write, packages: write
+#   push: true   →  contents: read, packages: write
 
 on:
   workflow_call:
@@ -41,7 +41,7 @@ on:
       tag_push:
         description: >
           True when the caller was triggered by a tag push (e.g. v2.0.0).
-          Controls the floating major-version tag update and the 'latest' Docker tag.
+          Controls semver metadata-action tagging for exact release tags.
           Passed explicitly rather than relying on github.ref_type inside the callee,
           since context propagation in reusable workflows can be ambiguous.
         type: boolean
@@ -66,6 +66,8 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          persist-credentials: false
 
       - name: 🔨 Set up Docker Buildx
         uses: docker/setup-buildx-action@4d04d5d9486b7bd6fa91e7baf45bbb4f8b9deedd # v4.0.0

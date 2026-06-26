@@ -1,6 +1,6 @@
 # Local Installation Guide
 
-Complete guide to installing Socket Basics and all security tools for native execution on your local machine.
+Complete guide to installing Socket Basics and security tools for native execution on your local machine.
 
 ## Table of Contents
 
@@ -23,7 +23,7 @@ git clone https://github.com/SocketDev/socket-basics.git
 cd socket-basics
 pip install -e .
 
-# Install security tools
+# Install pinned security tools
 brew install socket trivy trufflehog
 
 # Install OpenGrep (SAST scanning)
@@ -36,6 +36,15 @@ trivy --version
 opengrep --version
 trufflehog --version
 ```
+
+> [!NOTE]
+> The supported pre-built GitHub Action and Docker image paths currently ship
+> _without_ Trivy while we evaluate the safest way to bundle it with Basics
+> again.
+> If you need container or Dockerfile scanning today, use
+> [Trivy (Container Scanning)](#trivy-container-scanning) and review the
+> upstream install path and artifacts carefully before adopting it in production
+> CI.
 
 For detailed installation instructions, continue reading below.
 
@@ -148,7 +157,8 @@ pip install -e .
 
 ## Security Tools Installation
 
-Socket Basics orchestrates multiple security tools. Install the ones you need:
+Socket Basics orchestrates multiple security tools. Install only the scanners you plan
+to use, and prefer exact version pins whenever your package manager supports them.
 
 ### Socket CLI (Dependency Analysis)
 
@@ -180,6 +190,26 @@ export SOCKET_SECURITY_API_KEY="your-api-key"
 
 **Required for:** Container image and Dockerfile vulnerability scanning
 
+> [!IMPORTANT]
+> The supported pre-built GitHub Action and Docker image paths currently ship
+> _without_ Trivy while we evaluate the safest way to bundle it with Basics
+> again.
+>
+> If you need Trivy before it formally returns to Socket Basics:
+> - Pin the binary to `v0.69.3` or the Docker image to
+>   `aquasec/trivy:0.69.3`.
+> - Do not use `v0.69.4` of the binary.
+> - Audit any cached Docker Hub images for `0.69.5` and `0.69.6`.
+>
+> [Aqua's official incident summary](https://www.aquasec.com/blog/trivy-supply-chain-attack-what-you-need-to-know/)
+> lists the known-safe Trivy binary range as `v0.69.2` to `v0.69.3`; the
+> corresponding Docker image tags are `0.69.2` to `0.69.3` without the `v`
+> prefix. We standardize on `v0.69.3` / Docker tag `0.69.3`.
+>
+> If you use Aqua's own GitHub Actions independently of Socket Basics, pin
+> `aquasecurity/trivy-action@v0.35.0` and `aquasecurity/setup-trivy@v0.2.6` by
+> full commit SHA rather than by tag.
+
 **Installation:**
 
 ```bash
@@ -203,12 +233,18 @@ enabled=1
 EOF
 sudo yum -y install trivy
 
-# Using Docker (alternative):
-docker pull aquasec/trivy:latest
+# Using Docker (alternative; pin explicitly):
+docker pull aquasec/trivy:0.69.3
 
 # Verify installation
 trivy --version
 ```
+
+For this interim path, `trivy --version` should report `Version: 0.69.3`, and a
+container-based install should use image tag `aquasec/trivy:0.69.3`. If your
+package manager or container reference resolves to some other version, treat
+that as a separate review decision rather than assuming it matches the current
+Socket Basics guidance.
 
 **Documentation:** https://github.com/aquasecurity/trivy
 
@@ -245,17 +281,17 @@ OpenGrep works with the bundled Socket Basics SAST rules. No additional configur
 # macOS/Linux with Homebrew:
 brew install trufflehog
 
-# Using Docker (alternative):
-docker pull trufflesecurity/trufflehog:latest
+# Using Docker (alternative; pin explicitly):
+docker pull trufflesecurity/trufflehog:v3.93.8
 
 # Manual installation (Linux):
-wget https://github.com/trufflesecurity/trufflehog/releases/latest/download/trufflehog_linux_amd64.tar.gz
-tar -xzf trufflehog_linux_amd64.tar.gz
+wget https://github.com/trufflesecurity/trufflehog/releases/download/v3.93.8/trufflehog_3.93.8_linux_amd64.tar.gz
+tar -xzf trufflehog_3.93.8_linux_amd64.tar.gz
 sudo mv trufflehog /usr/local/bin/
 
 # Manual installation (macOS):
-wget https://github.com/trufflesecurity/trufflehog/releases/latest/download/trufflehog_darwin_arm64.tar.gz
-tar -xzf trufflehog_darwin_arm64.tar.gz
+wget https://github.com/trufflesecurity/trufflehog/releases/download/v3.93.8/trufflehog_3.93.8_darwin_arm64.tar.gz
+tar -xzf trufflehog_3.93.8_darwin_arm64.tar.gz
 sudo mv trufflehog /usr/local/bin/
 
 # Verify installation
@@ -493,7 +529,7 @@ socket-basics \
 
 # Container scanning
 socket-basics \
-  --container-images nginx:latest,redis:7 \
+  --container-images nginx:1.27.4,redis:7.4 \
   --dockerfiles Dockerfile,docker/Dockerfile.prod
 
 # Scan specific workspace
