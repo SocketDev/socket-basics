@@ -24,11 +24,31 @@ runs:
       with:
         python-version: "3.12"
 
+    # Resolve the effective mode. socketdev/action's firewall-enterprise mode
+    # HARD-ERRORS on an empty token (it does not silently fall back), so a
+    # trusted PR opened before the SOCKET_SFW_API_TOKEN secret exists would
+    # fail. Degrade to firewall-free in that case: the anonymous edition is
+    # still a real supply-chain check, the workflow ships green today, and it
+    # auto-upgrades to enterprise the moment the secret is added. Token is read
+    # via env (not interpolated into the script) so it never lands in the log.
+    - id: resolve
+      shell: bash
+      env:
+        REQUESTED_MODE: ${{ inputs.mode }}
+        SOCKET_TOKEN: ${{ inputs.socket-token }}
+      run: |
+        mode="$REQUESTED_MODE"
+        if [ "$mode" = "firewall-enterprise" ] && [ -z "$SOCKET_TOKEN" ]; then
+          echo "::warning::firewall-enterprise requested but no socket-token is set; falling back to firewall-free. Add the SOCKET_SFW_API_TOKEN secret to enable enterprise org-policy enforcement."
+          mode="firewall-free"
+        fi
+        echo "mode=$mode" >> "$GITHUB_OUTPUT"
+
     # Official Socket setup action. Wires up sfw routing correctly.
     # socket-token is ignored in firewall-free mode and empty when absent.
     - uses: socketdev/action@ba6de6cc0565af1f42295590380973573297e31f # v1.3.2
       with:
-        mode: ${{ inputs.mode }}
+        mode: ${{ steps.resolve.outputs.mode }}
         socket-token: ${{ inputs.socket-token }}
 
     - if: ${{ inputs.uv == 'true' }}

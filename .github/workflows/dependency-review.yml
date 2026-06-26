@@ -168,6 +168,11 @@ jobs:
           set -o pipefail
           sfw uv sync --locked --extra dev 2>&1 | tee sfw-report-free.log
 
+      - name: Collect Socket Firewall JSON report
+        if: always()
+        # socketdev/action writes a structured report to $SFW_JSON_REPORT_PATH.
+        run: cp "${SFW_JSON_REPORT_PATH:-/nonexistent}" sfw-report-free.json 2>/dev/null || echo "no SFW JSON report produced"
+
       - name: Import smoke test
         run: |
           uv run python -c "
@@ -181,7 +186,9 @@ jobs:
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
           name: sfw-report-free
-          path: sfw-report-free.log
+          path: |
+            sfw-report-free.log
+            sfw-report-free.json
           if-no-files-found: warn
           retention-days: 14
 
@@ -220,6 +227,11 @@ jobs:
           set -o pipefail
           sfw uv sync --locked --extra dev 2>&1 | tee sfw-report-enterprise.log
 
+      - name: Collect Socket Firewall JSON report
+        if: always()
+        # socketdev/action writes a structured report to $SFW_JSON_REPORT_PATH.
+        run: cp "${SFW_JSON_REPORT_PATH:-/nonexistent}" sfw-report-enterprise.json 2>/dev/null || echo "no SFW JSON report produced"
+
       - name: Import smoke test
         run: |
           uv run python -c "
@@ -233,7 +245,9 @@ jobs:
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
           name: sfw-report-enterprise
-          path: sfw-report-enterprise.log
+          path: |
+            sfw-report-enterprise.log
+            sfw-report-enterprise.json
           if-no-files-found: warn
           retention-days: 14
 
