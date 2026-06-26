@@ -40,6 +40,12 @@ class OpenGrepScanner(BaseConnector):
 			rule_files = self.config.build_opengrep_rules() or []
 		except Exception:
 			rule_files = []
+		logger.info(
+			"OpenGrep config summary: all_languages_enabled=%s all_rules_enabled=%s requested_rule_files=%s",
+			bool(self.config.get('all_languages_enabled', False)),
+			bool(self.config.get('all_rules_enabled', False)),
+			rule_files,
+		)
 
 		# If no languages selected and not explicitly allowing all, skip
 		if not rule_files and not self.config.get('all_languages_enabled', False):
@@ -55,9 +61,35 @@ class OpenGrepScanner(BaseConnector):
 			logger.info('No scan targets to analyze (scoped scan matched no existing files); skipping OpenGrep')
 			return {}
 
+		# Locate bundled rules directory for fallback and all-language expansion.
+		module_dir = Path(__file__).resolve().parents[3]
+		bundled_rules_dir = module_dir / 'rules'
+		rules_dir = self.config.get('opengrep_rules_dir') or (str(bundled_rules_dir) if bundled_rules_dir.exists() else None)
+		if not rules_dir:
+			logger.error('No rules directory found')
+			return {}
+
+		if not rule_files and self.config.get('all_languages_enabled', False):
+			try:
+				rule_files = [
+					p.name
+					for p in Path(rules_dir).glob('*.yml')
+					if p.name != 'tests.yml'
+				]
+				logger.info("Expanded all-languages scan to rule files: %s", rule_files)
+			except Exception:
+				logger.debug('Failed expanding all-languages into rule files', exc_info=True)
+				rule_files = []
+
 		# Check if custom rules mode is enabled
 		custom_rules_path = self.config.get_custom_rules_path()
 		custom_rule_files: Dict[str, Path] = {}
+		logger.info(
+			"Custom SAST requested=%s custom_path=%s resolved_path=%s",
+			bool(self.config.get('use_custom_sast_rules', False)),
+			self.config.get('custom_sast_rule_path', ''),
+			str(custom_rules_path) if custom_rules_path else '(none)',
+		)
 		
 		if custom_rules_path:
 			logger.info(f"Custom SAST rules enabled, loading from: {custom_rules_path}")
@@ -68,19 +100,16 @@ class OpenGrepScanner(BaseConnector):
 				logger.error(f"Failed to build custom rule files: {e}", exc_info=True)
 				custom_rule_files = {}
 
-		# Locate bundled rules directory for fallback
-		module_dir = Path(__file__).resolve().parents[3]
-		bundled_rules_dir = module_dir / 'rules'
-		rules_dir = self.config.get('opengrep_rules_dir') or (str(bundled_rules_dir) if bundled_rules_dir.exists() else None)
-		if not rules_dir:
-			logger.error('No rules directory found')
-			return {}
-
 		# Read filtered rule definitions if available
 		try:
 			filtered = self.config.build_filtered_opengrep_rules() or {}
 		except Exception:
 			filtered = {}
+		if filtered:
+			filtered_counts = {k: len(v or []) for k, v in filtered.items()}
+			logger.info("Per-language enabled-rule filters detected: %s", filtered_counts)
+		else:
+			logger.info("Per-language enabled-rule filters disabled for this run")
 
 		# Debugging: log computed rule files and filtered rules for diagnosis
 		try:
@@ -98,25 +127,42 @@ class OpenGrepScanner(BaseConnector):
 		# Process all enabled languages - use filtered rules if specified, otherwise use all rules
 		for rf in rule_files:
 			# Check if we have a custom rule file for this language
+			using_custom_rules = bool(custom_rule_files and rf in custom_rule_files)
 			if custom_rule_files and rf in custom_rule_files:
 				p = custom_rule_files[rf]
-				logger.info(f"Using custom rules for {rf}")
+				logger.info("Using custom rules for %s from %s", rf, p)
 			else:
 				# Fall back to bundled rules
 				p = Path(rules_dir) / rf
 				if not p.exists():
 					logger.debug('Rule file missing: %s', p)
 					continue
+				logger.info("Using bundled rules for %s from %s", rf, p)
 			
 			# Check if this language has specific rules enabled (filtered mode)
 			if filtered and rf in filtered:
 				enabled_ids = filtered[rf]
-				logger.debug(f"Using filtered rules for {rf}: {len(enabled_ids)} rules enabled")
+				logger.info("Filtering rules for %s: %d enabled IDs configured", rf, len(enabled_ids))
 				try:
 					with open(p, 'r') as fh:
 						data = yaml.safe_load(fh) or {}
 					all_ids = [r.get('id') for r in (data.get('rules') or []) if r.get('id')]
-					to_exclude = [rid for rid in all_ids if rid not in (enabled_ids or [])]
+					# Custom-rule mode can coexist with legacy bundled allowlists.
+					# If none of the configured enabled IDs match custom IDs, keep all
+					# custom IDs active to avoid silently disabling user-authored rules.
+					if using_custom_rules:
+						matched_enabled_ids = [rid for rid in all_ids if rid in (enabled_ids or [])]
+						if enabled_ids and not matched_enabled_ids:
+							logger.warning(
+								"No configured enabled-rule IDs matched custom rules for %s; using all custom rules from %s",
+								rf,
+								p,
+							)
+							config_args.extend(['--config', str(p)])
+							continue
+						to_exclude = [rid for rid in all_ids if rid not in matched_enabled_ids]
+					else:
+						to_exclude = [rid for rid in all_ids if rid not in (enabled_ids or [])]
 					config_args.extend(['--config', str(p)])
 					for ex in to_exclude:
 						config_args.extend(['--exclude-rule', ex])
@@ -762,4 +808,3 @@ class OpenGrepScanner(BaseConnector):
 		notifications_by_notifier['webhook'] = webhook.format_notifications(groups)
 		
 		return notifications_by_notifier
-
