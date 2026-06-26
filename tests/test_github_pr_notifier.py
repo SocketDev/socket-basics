@@ -98,12 +98,19 @@ def test_notify_reconciles_labels_even_when_notifications_are_empty(monkeypatch)
     )
 
     reconciled: list[tuple[int, list[str]]] = []
+    all_clear_calls: list[tuple[int, set[str]]] = []
     monkeypatch.setattr(notifier, '_get_pr_number', lambda: 123)
     monkeypatch.setattr(notifier, '_reconcile_pr_labels', lambda pr_number, labels: reconciled.append((pr_number, labels)) or True)
+    monkeypatch.setattr(
+        notifier,
+        '_replace_existing_sections_with_all_clear',
+        lambda pr_number, section_types=None: all_clear_calls.append((pr_number, section_types)) or None,
+    )
 
     notifier.notify({'notifications': []})
 
     assert reconciled == [(123, [])]
+    assert all_clear_calls == [(123, set())]
 
 
 def test_notify_rewrites_existing_section_to_all_clear_when_notifications_are_empty(monkeypatch):
@@ -213,3 +220,130 @@ def test_notify_empty_sast_notifications_do_not_rewrite_unrelated_sections(monke
     assert '<!-- sast-javascript start -->' in updated_comments[0][1]
     assert 'Socket Basics found no active findings in the latest run.' in updated_comments[0][1]
     assert '<!-- socket-tier1 start -->' not in updated_comments[0][1]
+
+
+def test_notify_rewrites_all_clear_even_when_pr_labels_are_disabled(monkeypatch):
+    notifier = GithubPRNotifier(
+        {
+            'repository': 'SocketDev/socket-basics',
+            'pr_labels_enabled': False,
+        }
+    )
+
+    comment_body = """<!-- sast-javascript start -->
+## Socket SAST JavaScript
+
+### Summary
+🟠 High: 1
+<!-- sast-javascript end -->"""
+    updated_bodies: list[str] = []
+
+    monkeypatch.setattr(notifier, '_get_pr_number', lambda: 123)
+    monkeypatch.setattr(
+        notifier,
+        '_reconcile_pr_labels',
+        lambda pr_number, labels: (_ for _ in ()).throw(AssertionError('labels are disabled')),
+    )
+    monkeypatch.setattr(notifier, '_get_pr_comments', lambda pr_number: [{'id': 99, 'body': comment_body}])
+    monkeypatch.setattr(
+        notifier,
+        '_update_comment',
+        lambda pr_number, comment_id, body: updated_bodies.append(body) or True,
+    )
+
+    notifier.notify(
+        {
+            'notifications': [],
+            'components': [
+                {
+                    'alerts': [
+                        {
+                            'generatedBy': 'opengrep-javascript',
+                            'subType': 'sast-javascript',
+                            'action': 'ignore',
+                        }
+                    ]
+                }
+            ],
+        }
+    )
+
+    assert len(updated_bodies) == 1
+    assert 'Socket Basics found no active findings in the latest run.' in updated_bodies[0]
+    assert '<!-- sast-javascript start -->' in updated_bodies[0]
+
+
+def test_notify_zero_alert_component_metadata_rewrites_matching_section(monkeypatch):
+    notifier = GithubPRNotifier(
+        {
+            'repository': 'SocketDev/socket-basics',
+            'pr_labels_enabled': True,
+        }
+    )
+
+    comment_body = """<!-- sast-javascript start -->
+## Socket SAST JavaScript
+
+### Summary
+🟠 High: 1
+<!-- sast-javascript end -->"""
+    updated_bodies: list[str] = []
+
+    monkeypatch.setattr(notifier, '_get_pr_number', lambda: 123)
+    monkeypatch.setattr(notifier, '_reconcile_pr_labels', lambda pr_number, labels: True)
+    monkeypatch.setattr(notifier, '_get_pr_comments', lambda pr_number: [{'id': 99, 'body': comment_body}])
+    monkeypatch.setattr(
+        notifier,
+        '_update_comment',
+        lambda pr_number, comment_id, body: updated_bodies.append(body) or True,
+    )
+
+    notifier.notify(
+        {
+            'notifications': [],
+            'components': [
+                {
+                    'id': 'src/index.js',
+                    'subPath': 'sast-javascript',
+                    'alerts': [],
+                }
+            ],
+        }
+    )
+
+    assert len(updated_bodies) == 1
+    assert 'Socket Basics found no active findings in the latest run.' in updated_bodies[0]
+    assert '<!-- sast-javascript start -->' in updated_bodies[0]
+
+
+def test_notify_zero_alert_enabled_sast_config_rewrites_matching_section(monkeypatch):
+    notifier = GithubPRNotifier(
+        {
+            'repository': 'SocketDev/socket-basics',
+            'pr_labels_enabled': True,
+        }
+    )
+    notifier.app_config = {'javascript_sast_enabled': True}
+
+    comment_body = """<!-- sast-javascript start -->
+## Socket SAST JavaScript
+
+### Summary
+🟠 High: 1
+<!-- sast-javascript end -->"""
+    updated_bodies: list[str] = []
+
+    monkeypatch.setattr(notifier, '_get_pr_number', lambda: 123)
+    monkeypatch.setattr(notifier, '_reconcile_pr_labels', lambda pr_number, labels: True)
+    monkeypatch.setattr(notifier, '_get_pr_comments', lambda pr_number: [{'id': 99, 'body': comment_body}])
+    monkeypatch.setattr(
+        notifier,
+        '_update_comment',
+        lambda pr_number, comment_id, body: updated_bodies.append(body) or True,
+    )
+
+    notifier.notify({'notifications': [], 'components': []})
+
+    assert len(updated_bodies) == 1
+    assert 'Socket Basics found no active findings in the latest run.' in updated_bodies[0]
+    assert '<!-- sast-javascript start -->' in updated_bodies[0]

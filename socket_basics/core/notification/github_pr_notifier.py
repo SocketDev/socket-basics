@@ -58,16 +58,16 @@ class GithubPRNotifier(BaseNotifier):
         facts_section_types = self._infer_section_types_from_facts(facts)
 
         if not valid_notifications:
-            if labels_enabled:
-                pr_number = self._get_pr_number()
-                if pr_number:
+            pr_number = self._get_pr_number()
+            if pr_number:
+                if labels_enabled:
                     self._reconcile_pr_labels(pr_number, [])
-                    self._replace_existing_sections_with_all_clear(
-                        pr_number,
-                        section_types=facts_section_types,
-                    )
-                else:
-                    logger.warning('GithubPRNotifier: unable to determine PR number for label reconciliation')
+                self._replace_existing_sections_with_all_clear(
+                    pr_number,
+                    section_types=facts_section_types,
+                )
+            else:
+                logger.warning('GithubPRNotifier: unable to determine PR number for all-clear reconciliation')
             logger.info('GithubPRNotifier: no notifications present; skipping comments')
             return
 
@@ -325,29 +325,163 @@ class GithubPRNotifier(BaseNotifier):
             if not isinstance(component, dict):
                 continue
 
+            self._add_section_type_from_component(component, section_types)
+
             alerts = component.get('alerts', []) or []
             for alert in alerts:
                 if not isinstance(alert, dict):
                     continue
 
-                generated_by = (alert.get('generatedBy') or '').strip().lower()
-                subtype = (alert.get('subType') or alert.get('subtype') or '').strip().lower()
+                self._add_section_type_from_alert(alert, section_types)
 
-                if subtype.startswith('sast-'):
-                    section_types.add(subtype)
-                    continue
+        section_types.update(self._infer_section_types_from_config())
+        return section_types
 
-                if generated_by == 'socket-tier1' or subtype == 'socket-tier1':
-                    section_types.add('socket-tier1')
-                    continue
+    def _add_section_type_from_alert(self, alert: Dict[str, Any], section_types: set[str]) -> None:
+        """Add a managed section type based on alert metadata."""
+        generated_by = (alert.get('generatedBy') or '').strip().lower()
+        subtype = (alert.get('subType') or alert.get('subtype') or '').strip().lower()
 
-                if generated_by == 'trufflehog' or subtype == 'secrets':
-                    section_types.add('trufflehog-secrets')
-                    continue
+        if subtype.startswith('sast-'):
+            section_types.add(subtype)
+            return
 
-                if generated_by.startswith('trivy-') or subtype in {'dockerfile', 'container-image'}:
-                    section_types.add('trivy-container')
-                    continue
+        if generated_by == 'socket-tier1' or subtype == 'socket-tier1':
+            section_types.add('socket-tier1')
+            return
+
+        if generated_by == 'trufflehog' or subtype == 'secrets':
+            section_types.add('trufflehog-secrets')
+            return
+
+        if generated_by.startswith('trivy-') or subtype in {'dockerfile', 'container-image'}:
+            section_types.add('trivy-container')
+
+    def _add_section_type_from_component(self, component: Dict[str, Any], section_types: set[str]) -> None:
+        """Add a managed section type based on component metadata."""
+        subtype = (
+            component.get('subType')
+            or component.get('subtype')
+            or component.get('subPath')
+            or ''
+        )
+        subtype = str(subtype).strip().lower()
+        if subtype.startswith('sast-'):
+            section_types.add(subtype)
+            return
+
+        qualifiers = component.get('qualifiers') or {}
+        if not isinstance(qualifiers, dict):
+            qualifiers = {}
+
+        scanner = str(qualifiers.get('scanner') or '').strip().lower()
+        language = str(qualifiers.get('type') or qualifiers.get('language') or '').strip().lower()
+        if scanner in {'sast', 'opengrep'} and language:
+            mapped = self._sast_language_section_type(language)
+            if mapped:
+                section_types.add(mapped)
+
+    def _runtime_config_value(self, key: str, default: Any = None) -> Any:
+        """Return notifier params, falling back to the application config."""
+        if isinstance(self.config, dict) and key in self.config:
+            return self.config.get(key)
+
+        app_config = getattr(self, 'app_config', None)
+        if isinstance(app_config, dict) and key in app_config:
+            return app_config.get(key)
+
+        return default
+
+    def _runtime_config_enabled(self, key: str) -> bool:
+        """Interpret a runtime config value as a boolean enablement flag."""
+        value = self._runtime_config_value(key, False)
+        if isinstance(value, str):
+            return value.strip().lower() in {'1', 'true', 'yes', 'on'}
+        return bool(value)
+
+    def _sast_language_section_type(self, language: str) -> Optional[str]:
+        """Map a SAST language/config name to the GitHub PR section marker."""
+        normalized = language.strip().lower().replace('_', '-')
+        mapping = {
+            'python': 'sast-python',
+            'javascript': 'sast-javascript',
+            'typescript': 'sast-javascript',
+            'js': 'sast-javascript',
+            'ts': 'sast-javascript',
+            'go': 'sast-golang',
+            'golang': 'sast-golang',
+            'java': 'sast-java',
+            'php': 'sast-php',
+            'ruby': 'sast-ruby',
+            'csharp': 'sast-csharp',
+            'c-sharp': 'sast-csharp',
+            'dotnet': 'sast-dotnet',
+            '.net': 'sast-dotnet',
+            'c': 'sast-c',
+            'cpp': 'sast-cpp',
+            'c++': 'sast-cpp',
+            'kotlin': 'sast-kotlin',
+            'scala': 'sast-scala',
+            'swift': 'sast-swift',
+            'rust': 'sast-rust',
+            'elixir': 'sast-elixir',
+            'erlang': 'sast-erlang',
+        }
+        return mapping.get(normalized)
+
+    def _infer_section_types_from_config(self) -> set[str]:
+        """Infer managed PR sections from enabled scanner configuration."""
+        section_types: set[str] = set()
+        sast_flags = {
+            'python_sast_enabled': 'python',
+            'javascript_sast_enabled': 'javascript',
+            'typescript_sast_enabled': 'typescript',
+            'go_sast_enabled': 'go',
+            'golang_sast_enabled': 'golang',
+            'java_sast_enabled': 'java',
+            'php_sast_enabled': 'php',
+            'ruby_sast_enabled': 'ruby',
+            'csharp_sast_enabled': 'csharp',
+            'dotnet_sast_enabled': 'dotnet',
+            'c_sast_enabled': 'c',
+            'cpp_sast_enabled': 'cpp',
+            'kotlin_sast_enabled': 'kotlin',
+            'scala_sast_enabled': 'scala',
+            'swift_sast_enabled': 'swift',
+            'rust_sast_enabled': 'rust',
+            'elixir_sast_enabled': 'elixir',
+            'erlang_sast_enabled': 'erlang',
+        }
+
+        if self._runtime_config_enabled('all_languages_enabled'):
+            for language in sast_flags.values():
+                mapped = self._sast_language_section_type(language)
+                if mapped:
+                    section_types.add(mapped)
+        else:
+            for flag, language in sast_flags.items():
+                if self._runtime_config_enabled(flag):
+                    mapped = self._sast_language_section_type(language)
+                    if mapped:
+                        section_types.add(mapped)
+
+        if self._runtime_config_enabled('socket_tier_1_enabled'):
+            section_types.add('socket-tier1')
+
+        if (
+            self._runtime_config_enabled('secret_scanning_enabled')
+            or self._runtime_config_enabled('secrets_enabled')
+        ):
+            section_types.add('trufflehog-secrets')
+
+        if (
+            self._runtime_config_enabled('trivy_image_enabled')
+            or self._runtime_config_enabled('container_image_scanning_enabled')
+            or self._runtime_config_enabled('trivy_dockerfile_enabled')
+            or self._runtime_config_enabled('dockerfile_scanning_enabled')
+            or self._runtime_config_enabled('trivy_vuln_enabled')
+        ):
+            section_types.add('trivy-container')
 
         return section_types
 
