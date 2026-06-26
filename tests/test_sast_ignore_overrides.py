@@ -171,10 +171,19 @@ def test_count_blocking_alerts_skips_ignored_findings():
 
 def test_opengrep_notifications_skip_ignored_findings():
     scanner = OpenGrepScanner(Config({'workspace': '.'}))
+    # A genuinely-suppressed finding carries an actionReason (the normalizer
+    # attaches one for disabled rules and SAST ignore overrides). Notifications
+    # gate on that reason rather than action == 'ignore', because 'ignore' is
+    # also the default action for low-severity findings.
     component = {
         'id': 'index.js',
         'qualifiers': {'scanner': 'opengrep', 'type': 'javascript'},
-        'alerts': [{**_build_alert(), 'action': 'ignore', 'subType': 'sast-javascript'}],
+        'alerts': [{
+            **_build_alert(),
+            'action': 'ignore',
+            'actionReason': 'disabled_rule',
+            'subType': 'sast-javascript',
+        }],
     }
 
     notifications = scanner.generate_notifications([component])
