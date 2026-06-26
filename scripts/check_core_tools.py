@@ -85,8 +85,14 @@ class Tool:
     # Builds a Socket PURL for a given version string.
     purl: Callable[[str], str]
     note: str = ""
+    # Optional fallback coordinate scored when `purl` has no Socket coverage
+    # (e.g. pkg:github). Returns a fully-formed PURL string (or None). Used for
+    # reporting only -- a proxy is never build-failing.
+    proxy_purl: Callable[[], Optional[str]] | None = None
+    proxy_label: str = ""
     pinned: Optional[str] = None
     latest: Optional[str] = None
+    resolved_proxy_purl: Optional[str] = None
     analyses: dict[str, dict[str, Any]] = field(default_factory=dict)
 
 
@@ -118,6 +124,12 @@ def _pypi_latest(package: str) -> Optional[str]:
     except Exception as exc:  # noqa: BLE001
         print(f"  ! PyPI latest lookup failed for {package}: {exc}", file=sys.stderr)
         return None
+
+
+def _pypi_purl(package: str) -> Optional[str]:
+    """Latest-version PyPI PURL for a package, or None if discovery fails."""
+    v = _pypi_latest(package)
+    return f"pkg:pypi/{package}@{v}" if v else None
 
 
 # ── pin readers ─────────────────────────────────────────────────────────────
@@ -166,8 +178,17 @@ def build_tools() -> list[Tool]:
             discover_latest=lambda: _github_latest_release("opengrep/opengrep"),
             # No package-registry coordinate; use the GitHub source PURL.
             purl=lambda v: f"pkg:github/opengrep/opengrep@{_ensure_v(v)}",
-            note="GitHub-release binary; not Dependabot-trackable. Socket coverage of "
-            "pkg:github coordinates may be limited -- a missing result is reported, not failed.",
+            # OpenGrep is a hard fork of Semgrep and Socket has no data for the
+            # pkg:github coordinate, so fall back to scoring the upstream Semgrep
+            # lineage as a project-health proxy. (The npm `opengrep` package is a
+            # single-version squat, not the official distribution -- not used.)
+            proxy_purl=lambda: _pypi_purl("semgrep"),
+            proxy_label="semgrep upstream proxy",
+            note="GitHub-release binary; not Dependabot-trackable and not covered by "
+            "Socket's pkg:github coordinates. Falls back to the upstream Semgrep "
+            "lineage (pkg:pypi/semgrep) as a project-health proxy -- this does NOT "
+            "analyze OpenGrep's own release artifacts, so it is reported, never "
+            "build-failing.",
         ),
         Tool(
             key="trufflehog",
@@ -279,14 +300,20 @@ def render_markdown(tools: list[Tool], token_present: bool) -> str:
             if not token_present:
                 return "skipped"
             a = _match_analysis(t.analyses, t.purl(version))
+            suffix = ""
+            if not a and t.resolved_proxy_purl:
+                a = _match_analysis(t.analyses, t.resolved_proxy_purl)
+                if a:
+                    suffix = f" _(via {t.proxy_label})_"
             if not a:
                 return "no data"
             if a.get("malware"):
-                return "🚨 MALWARE: " + ", ".join(a["malware"])
+                return "🚨 MALWARE: " + ", ".join(a["malware"]) + suffix
             if a.get("critical"):
-                return "⚠️ " + ", ".join(sorted(set(a["critical"])))
+                return "⚠️ " + ", ".join(sorted(set(a["critical"]))) + suffix
             n_alerts = len(a.get("alerts", []))
-            return f"✅ clean ({n_alerts} alerts)" if n_alerts else "✅ clean"
+            base = f"✅ clean ({n_alerts} alerts)" if n_alerts else "✅ clean"
+            return base + suffix
 
         lines.append(
             f"| {t.label} | `{t.pinned or '?'}` | `{t.latest or '?'}` | {drift} "
@@ -328,6 +355,9 @@ def main() -> int:
         if args.mode == "watch":
             t.latest = t.discover_latest()
             print(f"    latest={t.latest}")
+        if t.proxy_purl:
+            t.resolved_proxy_purl = t.proxy_purl()
+            print(f"    proxy={t.resolved_proxy_purl}")
 
     # Collect the versions we actually want Socket to analyze.
     purls: list[str] = []
@@ -335,6 +365,8 @@ def main() -> int:
         for v in {t.pinned, t.latest if args.mode == "watch" else None}:
             if v:
                 purls.append(t.purl(v))
+        if t.resolved_proxy_purl:
+            purls.append(t.resolved_proxy_purl)
     purls = sorted(set(purls))
 
     analyses: dict[str, dict[str, Any]] = {}
@@ -370,6 +402,15 @@ def main() -> int:
                 tool_finding["analyses"][v] = a
                 if a.get("malware") or a.get("critical"):
                     any_malware = any_malware or bool(a.get("malware"))
+        # Proxy coverage (e.g. semgrep for opengrep) is reported, never build-failing.
+        if t.resolved_proxy_purl:
+            pa = _match_analysis(t.analyses, t.resolved_proxy_purl)
+            if pa:
+                tool_finding["proxy"] = {
+                    "purl": t.resolved_proxy_purl,
+                    "label": t.proxy_label,
+                    "analysis": pa,
+                }
         findings.append(tool_finding)
 
     markdown = render_markdown(tools, token_present)
