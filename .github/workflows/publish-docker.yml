@@ -50,19 +50,36 @@ jobs:
           EVENT_NAME: ${{ github.event_name }}
           INPUT_TAG: ${{ inputs.tag }}
           REF_NAME: ${{ github.ref_name }}
+          REPO_URL: https://x-access-token:${{ github.token }}@github.com/${{ github.repository }}.git
         run: |
           if [ "$EVENT_NAME" = "workflow_dispatch" ]; then
-            CLEAN="$INPUT_TAG"      # full tag as provided (e.g. 2.0.3 or v2.0.3)
+            RAW="${INPUT_TAG#refs/tags/}"  # full tag as provided (e.g. 2.0.3 or v2.0.3)
           else
-            CLEAN="$REF_NAME"       # e.g. v2.0.3
+            RAW="$REF_NAME"         # e.g. v2.0.3
           fi
-          CLEAN="${CLEAN#v}"        # strip leading v if present → 2.0.3
+          CLEAN="${RAW#v}"          # strip leading v if present → 2.0.3
           if [[ ! "$CLEAN" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
             echo "Invalid release tag: $CLEAN" >&2
             exit 1
           fi
+
+          REF_TAG="$RAW"
+          if [ "$EVENT_NAME" = "workflow_dispatch" ]; then
+            REF_TAG=""
+            for candidate in "$RAW" "v$CLEAN" "$CLEAN"; do
+              if git ls-remote --exit-code --tags "$REPO_URL" "refs/tags/$candidate" >/dev/null 2>&1; then
+                REF_TAG="$candidate"
+                break
+              fi
+            done
+            if [ -z "$REF_TAG" ]; then
+              echo "No matching release tag found for input: $INPUT_TAG" >&2
+              exit 1
+            fi
+          fi
+
           echo "clean=$CLEAN" >> "$GITHUB_OUTPUT"
-          echo "ref=refs/tags/v$CLEAN" >> "$GITHUB_OUTPUT"
+          echo "ref=refs/tags/$REF_TAG" >> "$GITHUB_OUTPUT"
 
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
         with:
@@ -194,7 +211,8 @@ jobs:
               esac
             done <<< "$META_TAGS"
             if [ ${#tag_args[@]} -eq 0 ]; then
-              echo "→ no tags resolved for $image; skipping" && continue
+              echo "::error::no tags resolved for $image"
+              exit 1
             fi
             sources=()
             for digest in *; do
@@ -207,8 +225,11 @@ jobs:
       - name: 🔍 Inspect published manifest
         env:
           GHCR_IMAGE: ghcr.io/socketdev/${{ matrix.image }}
+          DH_IMAGE: ${{ secrets.DOCKERHUB_USERNAME }}/${{ matrix.image }}
           VERSION: ${{ needs.resolve-version.outputs.version }}
-        run: docker buildx imagetools inspect "${GHCR_IMAGE}:${VERSION}"
+        run: |
+          docker buildx imagetools inspect "${GHCR_IMAGE}:${VERSION}"
+          docker buildx imagetools inspect "${DH_IMAGE}:${VERSION}"
 
   # ── Job 4: Create GitHub release ───────────────────────────────────────────
   # Runs once after the manifest is published (not for workflow_dispatch
