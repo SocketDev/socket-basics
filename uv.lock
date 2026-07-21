@@ -302,15 +302,15 @@ wheels = [
 
 [[package]]
 name = "light-s3-client"
-version = "0.0.30"
+version = "0.0.40"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "requests" },
     { name = "xmltodict" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/d5/dd/d42c0badca0071e19e004ce2c783dac3a1c646d5a7b59b65d0ec79be3f9f/light_s3_client-0.0.30.tar.gz", hash = "sha256:91bcdbf51b7f15f2b947acd180df81eb890577a3b36636519c9b054edb641ee5", size = 7642, upload-time = "2025-08-25T09:11:29.458Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/ba/3e/e3b09bf358e030f43bb1a71e95b5517473e7bfd54a0e6e82bb4a13233d25/light_s3_client-0.0.40.tar.gz", hash = "sha256:73cd22d141a19813b5351edebd962db00a770d26be52e3c47eae5ce5d3b41851", size = 11312, upload-time = "2026-07-12T00:02:29.851Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/cb/18/5bf1ce41bbba606f48c08423c3fd03172e3eabe5c71b3d82189aa9d55508/light_s3_client-0.0.30-py3-none-any.whl", hash = "sha256:c60275b0c2d3fd7576ba30729c581468dac8a6b466d1e92b52a3a4773fa05461", size = 6890, upload-time = "2025-08-25T09:11:28.034Z" },
+    { url = "https://files.pythonhosted.org/packages/3f/f7/dc0da16ce05f84d03428f33b391b5ef855db323eeb887c3b66e2e57fe89f/light_s3_client-0.0.40-py3-none-any.whl", hash = "sha256:9bea67138cc1b451965ee559f7f34e6b6818c2cd1b725f7eb6abccb03b9800a8", size = 15669, upload-time = "2026-07-12T00:02:28.773Z" },
 ]
 
 [[package]]
@@ -486,7 +486,7 @@ wheels = [
 
 [[package]]
 name = "requests"
-version = "2.31.0"
+version = "2.34.2"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "certifi" },
@@ -494,9 +494,9 @@ dependencies = [
     { name = "idna" },
     { name = "urllib3" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/9d/be/10918a2eac4ae9f02f6cfe6414b7a155ccd8f7f9d4380d62fd5b955065c3/requests-2.31.0.tar.gz", hash = "sha256:942c5a758f98d790eaed1a29cb6eefc7ffb0d1cf7af05c3d2791656dbd6ad1e1", size = 110794, upload-time = "2023-05-22T15:12:44.175Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/ac/c3/e2a2b89f2d3e2179abd6d00ebd70bff6273f37fb3e0cc209f48b39d00cbf/requests-2.34.2.tar.gz", hash = "sha256:f288924cae4e29463698d6d60bc6a4da69c89185ad1e0bcc4104f584e960b9ed", size = 142856, upload-time = "2026-05-14T19:25:27.735Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/70/8e/0e2d847013cb52cd35b38c009bb167a1a26b2ce6cd6965bf26b47bc0bf44/requests-2.31.0-py3-none-any.whl", hash = "sha256:58cd2187c01e70e6e26505bca751777aa9f2ee0b7f4300988b709f44e013003f", size = 62574, upload-time = "2023-05-22T15:12:42.313Z" },
+    { url = "https://files.pythonhosted.org/packages/a0/f4/c67b0b3f1b9245e8d266f0f112c500d50e5b4e83cb6f3b71b6528104182a/requests-2.34.2-py3-none-any.whl", hash = "sha256:2a0d60c172f83ac6ab31e4554906c0f3b3588d37b5cb939b1c061f4907e278e0", size = 73075, upload-time = "2026-05-14T19:25:26.443Z" },
 ]
 
 [[package]]
@@ -652,7 +652,7 @@ requires-dist = [
     { name = "pytest", marker = "extra == 'dev'", specifier = ">=7.0.0" },
     { name = "pytest-cov", marker = "extra == 'dev'", specifier = ">=4.0.0" },
     { name = "pyyaml", specifier = ">=6.0.0" },
-    { name = "requests", specifier = ">=2.31.0" },
+    { name = "requests", specifier = ">=2.33.0" },
     { name = "socketdev", specifier = ">=3.0.29" },
     { name = "tabulate", specifier = "~=0.9.0" },
     { name = "tomli", marker = "python_full_version < '3.11'" },
