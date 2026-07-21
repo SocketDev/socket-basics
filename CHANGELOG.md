@@ -8,6 +8,15 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [2.1.0] - 2026-07-21
+
+### Added
+- Publish multi-arch Docker images for `linux/amd64` and `linux/arm64`.
+- Add `socket-basics-heavy` image variant with Socket Basics and the pinned Python Socket CLI.
+
+### Fixed
+- Normalize manual Docker release tag inputs before checkout.
+
 ## [2.0.3] - 2026-04-24
 
 <!-- Release notes generated using configuration in .github/release.yml at main -->
