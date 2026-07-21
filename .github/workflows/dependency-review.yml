@@ -306,6 +306,7 @@ jobs:
     steps:
       - name: Enforce dependency-review coverage
         env:
+          INSPECT_RESULT: ${{ needs.inspect.result }}
           DEPS_CHANGED: ${{ needs.inspect.outputs.python_deps_changed }}
           IS_TRUSTED: ${{ needs.inspect.outputs.is_trusted }}
           FREE_RESULT: ${{ needs.python-sfw-smoke-free.result }}
@@ -313,6 +314,15 @@ jobs:
           DOCKER_RESULT: ${{ needs.docker-smoke-app-tests.result }}
         run: |
           fail=0
+
+          # Rule 0: inspect must succeed -- its outputs drive every rule below.
+          # If it failed/cancelled, DEPS_CHANGED/IS_TRUSTED are empty and the
+          # coverage rules would silently pass, so fail closed instead.
+          echo "inspect: $INSPECT_RESULT"
+          if [ "$INSPECT_RESULT" != "success" ]; then
+            echo "::error::inspect job did not succeed (result: $INSPECT_RESULT); cannot trust PR classification. Failing closed."
+            fail=1
+          fi
 
           # Rule 1: any real failure/cancellation in a conditional job blocks.
           for pair in \

@@ -32,8 +32,11 @@ with a notice (graceful degradation, mirroring the free/enterprise split in
 dependency-review.yml).
 
 Exit code is 0 unless --fail-on-malware is set AND a malware/critical alert is
-found. Drift alone never fails the run; it is surfaced via the JSON report and
-the `drift`/`malware` GitHub outputs so the workflow decides what to do.
+found on a PINNED version (or, with a token, Socket scoring itself errored --
+fail-closed). Drift alone never fails the run, and the discovered *latest*
+version is scored for reporting only; both are surfaced via the JSON report and
+the `drift`/`malware`/`critical` GitHub outputs so the workflow decides what to
+do.
 """
 
 from __future__ import annotations
@@ -49,7 +52,9 @@ from pathlib import Path
 from typing import Any, Callable, Optional
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
-DOCKERFILE = REPO_ROOT / "Dockerfile"
+# Both Dockerfiles pin the core tools and can drift independently, so scoring
+# must cover every version pinned across all of them.
+DOCKERFILES = [REPO_ROOT / "Dockerfile", REPO_ROOT / "app_tests" / "Dockerfile"]
 UV_LOCK = REPO_ROOT / "uv.lock"
 
 # Alert types Socket uses for outright supply-chain compromise / active risk.
@@ -77,9 +82,9 @@ CRITICAL_SEVERITIES = {"critical", "high"}
 class Tool:
     key: str
     label: str
-    # Returns the version string currently pinned in the repo (no leading v
-    # normalization -- as written).
-    read_pinned: Callable[[], Optional[str]]
+    # Returns every distinct version currently pinned in the repo (across both
+    # Dockerfiles / uv.lock; no leading-v normalization -- as written).
+    read_pinned: Callable[[], list[str]]
     # Returns the latest upstream version tag (as published).
     discover_latest: Callable[[], Optional[str]]
     # Builds a Socket PURL for a given version string.
@@ -90,7 +95,7 @@ class Tool:
     # reporting only -- a proxy is never build-failing.
     proxy_purl: Callable[[], Optional[str]] | None = None
     proxy_label: str = ""
-    pinned: Optional[str] = None
+    pinned: list[str] = field(default_factory=list)
     latest: Optional[str] = None
     resolved_proxy_purl: Optional[str] = None
     analyses: dict[str, dict[str, Any]] = field(default_factory=dict)
@@ -135,24 +140,35 @@ def _pypi_purl(package: str) -> Optional[str]:
 # ── pin readers ─────────────────────────────────────────────────────────────
 
 
-def _read_dockerfile_arg(name: str) -> Optional[str]:
-    if not DOCKERFILE.exists():
-        return None
-    m = re.search(rf"^ARG\s+{re.escape(name)}=(.+)$", DOCKERFILE.read_text(), re.MULTILINE)
-    return m.group(1).strip() if m else None
+def _read_dockerfile_args(name: str) -> list[str]:
+    """Distinct pinned versions of an ARG across all Dockerfiles (order preserved).
+
+    The root and app_tests Dockerfiles pin the same tools independently, so a
+    version can appear in one, both, or (if they diverge) at two different
+    values -- all of which must be scored.
+    """
+    versions: list[str] = []
+    for df in DOCKERFILES:
+        if not df.exists():
+            continue
+        m = re.search(rf"^ARG\s+{re.escape(name)}=(.+)$", df.read_text(), re.MULTILINE)
+        if m:
+            v = m.group(1).strip()
+            if v and v not in versions:
+                versions.append(v)
+    return versions
 
 
-def _read_locked_version(package: str) -> Optional[str]:
-    """Read the resolved version of a package from uv.lock."""
+def _read_locked_versions(package: str) -> list[str]:
+    """Resolved version of a package from uv.lock, as a (0- or 1-element) list."""
     if not UV_LOCK.exists():
-        return None
+        return []
     # uv.lock is TOML with [[package]] blocks: name = "x"\nversion = "y"
-    text = UV_LOCK.read_text()
     m = re.search(
         rf'name = "{re.escape(package)}"\s*\nversion = "([^"]+)"',
-        text,
+        UV_LOCK.read_text(),
     )
-    return m.group(1) if m else None
+    return [m.group(1)] if m else []
 
 
 # ── version normalization for PURLs ───────────────────────────────────────────
@@ -174,7 +190,7 @@ def build_tools() -> list[Tool]:
         Tool(
             key="opengrep",
             label="OpenGrep (SAST engine)",
-            read_pinned=lambda: _read_dockerfile_arg("OPENGREP_VERSION"),
+            read_pinned=lambda: _read_dockerfile_args("OPENGREP_VERSION"),
             discover_latest=lambda: _github_latest_release("opengrep/opengrep"),
             # No package-registry coordinate; use the GitHub source PURL.
             purl=lambda v: f"pkg:github/opengrep/opengrep@{_ensure_v(v)}",
@@ -193,21 +209,21 @@ def build_tools() -> list[Tool]:
         Tool(
             key="trufflehog",
             label="TruffleHog (secret scanner)",
-            read_pinned=lambda: _read_dockerfile_arg("TRUFFLEHOG_VERSION"),
+            read_pinned=lambda: _read_dockerfile_args("TRUFFLEHOG_VERSION"),
             discover_latest=lambda: _github_latest_release("trufflesecurity/trufflehog"),
             purl=lambda v: f"pkg:golang/github.com/trufflesecurity/trufflehog/v3@{_ensure_v(v)}",
         ),
         Tool(
             key="trivy",
             label="Trivy (container scanner)",
-            read_pinned=lambda: _read_dockerfile_arg("TRIVY_VERSION"),
+            read_pinned=lambda: _read_dockerfile_args("TRIVY_VERSION"),
             discover_latest=lambda: _github_latest_release("aquasecurity/trivy"),
             purl=lambda v: f"pkg:golang/github.com/aquasecurity/trivy@{_ensure_v(v)}",
         ),
         Tool(
             key="socketdev",
             label="Socket SCA (socketdev SDK)",
-            read_pinned=lambda: _read_locked_version("socketdev"),
+            read_pinned=lambda: _read_locked_versions("socketdev"),
             discover_latest=lambda: _pypi_latest("socketdev"),
             purl=lambda v: f"pkg:pypi/socketdev@{_strip_v(v)}",
         ),
@@ -292,7 +308,8 @@ def render_markdown(tools: list[Tool], token_present: bool) -> str:
     for t in tools:
         drift = "—"
         if t.pinned and t.latest:
-            drift = "✅ current" if _strip_v(t.pinned) == _strip_v(t.latest) else f"⬆️ `{t.latest}`"
+            current = all(_strip_v(p) == _strip_v(t.latest) for p in t.pinned)
+            drift = "✅ current" if current else f"⬆️ `{t.latest}`"
 
         def verdict(version: Optional[str]) -> str:
             if not version:
@@ -315,9 +332,14 @@ def render_markdown(tools: list[Tool], token_present: bool) -> str:
             base = f"✅ clean ({n_alerts} alerts)" if n_alerts else "✅ clean"
             return base + suffix
 
+        pinned_cell = ", ".join(f"`{p}`" for p in t.pinned) if t.pinned else "`?`"
+        if len(t.pinned) > 1:
+            pinned_verdict = "; ".join(f"`{p}`: {verdict(p)}" for p in t.pinned)
+        else:
+            pinned_verdict = verdict(t.pinned[0]) if t.pinned else "—"
         lines.append(
-            f"| {t.label} | `{t.pinned or '?'}` | `{t.latest or '?'}` | {drift} "
-            f"| {verdict(t.pinned)} | {verdict(t.latest)} |"
+            f"| {t.label} | {pinned_cell} | `{t.latest or '?'}` | {drift} "
+            f"| {pinned_verdict} | {verdict(t.latest)} |"
         )
     notes = [t for t in tools if t.note]
     if notes:
@@ -339,7 +361,9 @@ def main() -> int:
     parser.add_argument(
         "--fail-on-malware",
         action="store_true",
-        help="Exit non-zero if any analyzed version has a malware/critical alert",
+        help="Exit non-zero if a PINNED version has a malware/critical alert, or "
+        "(when a token is present) if Socket scoring itself errored -- fail-closed. "
+        "The discovered latest version is report-only and never fails the run.",
     )
     args = parser.parse_args()
 
@@ -359,32 +383,40 @@ def main() -> int:
             t.resolved_proxy_purl = t.proxy_purl()
             print(f"    proxy={t.resolved_proxy_purl}")
 
-    # Collect the versions we actually want Socket to analyze.
+    # Collect the versions to analyze: every pinned version, plus the discovered
+    # latest (watch mode) for drift reporting, plus any proxy coordinate.
     purls: list[str] = []
     for t in tools:
-        for v in {t.pinned, t.latest if args.mode == "watch" else None}:
-            if v:
-                purls.append(t.purl(v))
+        for v in t.pinned:
+            purls.append(t.purl(v))
+        if args.mode == "watch" and t.latest:
+            purls.append(t.purl(t.latest))
         if t.resolved_proxy_purl:
             purls.append(t.resolved_proxy_purl)
     purls = sorted(set(purls))
 
     analyses: dict[str, dict[str, Any]] = {}
+    scoring_error = False
     if token_present and purls:
         print(f"== Scoring {len(purls)} PURLs through Socket ==")
         try:
             analyses = analyze_purls(purls, token)
         except Exception as exc:  # noqa: BLE001
             print(f"! Socket analysis failed: {exc}", file=sys.stderr)
+            scoring_error = True
     for t in tools:
         t.analyses = analyses
 
-    # Determine drift + malware across analyzed versions.
+    # Determine drift + fail-worthy alerts. Only PINNED versions (the ones
+    # actually baked into an image / in use) can fail the run; the discovered
+    # latest is analyzed for drift reporting only, so a scheduled watch never
+    # blocks on an upstream release we have not adopted yet.
     any_drift = False
     any_malware = False
+    any_critical = False
     findings: list[dict[str, Any]] = []
     for t in tools:
-        drift = bool(t.pinned and t.latest and _strip_v(t.pinned) != _strip_v(t.latest))
+        drift = bool(t.latest and any(_strip_v(p) != _strip_v(t.latest) for p in t.pinned))
         any_drift = any_drift or drift
         tool_finding: dict[str, Any] = {
             "tool": t.key,
@@ -394,14 +426,20 @@ def main() -> int:
             "drift": drift,
             "analyses": {},
         }
-        for v in {t.pinned, t.latest}:
-            if not v:
-                continue
+        # Pinned versions are fail-worthy.
+        for v in t.pinned:
             a = _match_analysis(t.analyses, t.purl(v))
             if a:
                 tool_finding["analyses"][v] = a
-                if a.get("malware") or a.get("critical"):
-                    any_malware = any_malware or bool(a.get("malware"))
+                if a.get("malware"):
+                    any_malware = True
+                if a.get("critical"):
+                    any_critical = True
+        # Latest is report-only (a drift signal); it never fails the run.
+        if t.latest:
+            a = _match_analysis(t.analyses, t.purl(t.latest))
+            if a:
+                tool_finding["analyses"].setdefault(t.latest, a)
         # Proxy coverage (e.g. semgrep for opengrep) is reported, never build-failing.
         if t.resolved_proxy_purl:
             pa = _match_analysis(t.analyses, t.resolved_proxy_purl)
@@ -423,7 +461,12 @@ def main() -> int:
     if args.json_out:
         Path(args.json_out).write_text(
             json.dumps(
-                {"mode": args.mode, "token_present": token_present, "findings": findings},
+                {
+                    "mode": args.mode,
+                    "token_present": token_present,
+                    "scoring_error": scoring_error,
+                    "findings": findings,
+                },
                 indent=2,
             )
         )
@@ -433,10 +476,24 @@ def main() -> int:
         with open(args.github_output, "a", encoding="utf-8") as fh:
             fh.write(f"drift={'true' if any_drift else 'false'}\n")
             fh.write(f"malware={'true' if any_malware else 'false'}\n")
+            fh.write(f"critical={'true' if any_critical else 'false'}\n")
 
-    if args.fail_on_malware and any_malware:
-        print("::error::Socket flagged malware/critical alerts on a core tool version.", file=sys.stderr)
-        return 1
+    if args.fail_on_malware:
+        if any_malware or any_critical:
+            print(
+                "::error::Socket flagged malware/critical alerts on a pinned core tool version.",
+                file=sys.stderr,
+            )
+            return 1
+        # Fail closed: a token was provided but scoring errored, so the pinned
+        # versions went unverified -- don't let a build pass unchecked.
+        if scoring_error:
+            print(
+                "::error::Socket scoring failed (API error); pinned core tool versions "
+                "could not be verified. Failing closed.",
+                file=sys.stderr,
+            )
+            return 1
     return 0
 
 
