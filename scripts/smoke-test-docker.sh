@@ -8,6 +8,7 @@ APP_TESTS_IMAGE_TAG="${APP_TESTS_IMAGE_TAG:-socket-basics-app-tests:smoke-test}"
 RUN_APP_TESTS=false
 SKIP_BUILD=false
 CHECK_SET="main"
+DOCKERFILE="Dockerfile"
 BUILD_PROGRESS="${SMOKE_TEST_BUILD_PROGRESS:-}"
 
 MAIN_TOOLS=(
@@ -23,6 +24,14 @@ APP_TESTS_TOOLS=(
   "command -v socket"
 )
 
+HEAVY_TOOLS=(
+  "socket-basics -h"
+  "socketcli --help"
+  "command -v socket"
+  "trufflehog --version"
+  "opengrep --version"
+)
+
 # TEMPORARY: trivy is being removed to assess impact. These checks FAIL if the
 # tool is still present in the image — ensures removal is complete.
 MUST_NOT_EXIST_TOOLS=(
@@ -30,9 +39,10 @@ MUST_NOT_EXIST_TOOLS=(
 )
 
 usage() {
-  echo "Usage: $0 [--image-tag TAG] [--app-tests] [--skip-build] [--check-set main|app-tests] [--build-progress MODE]"
+  echo "Usage: $0 [--image-tag TAG] [--app-tests] [--skip-build] [--check-set main|app-tests|heavy] [--dockerfile FILE] [--build-progress MODE]"
   echo "  --skip-build:     skip docker build; verify tools in a pre-built image"
-  echo "  --check-set:      which tool set to verify: main (default) or app-tests"
+  echo "  --check-set:      which tool set to verify: main (default), app-tests, or heavy"
+  echo "  --dockerfile:     Dockerfile to build in non-skip mode (default: Dockerfile)"
   echo "  --build-progress: auto|plain|tty (default: auto locally, plain in CI)"
 }
 
@@ -49,6 +59,10 @@ while [[ $# -gt 0 ]]; do
       [[ $# -lt 2 ]] && { echo "Error: --check-set requires a value"; exit 1; }
       CHECK_SET="$2"; shift 2
       ;;
+    --dockerfile)
+      [[ $# -lt 2 ]] && { echo "Error: --dockerfile requires a value"; exit 1; }
+      DOCKERFILE="$2"; shift 2
+      ;;
     --build-progress)
       [[ $# -lt 2 ]] && { echo "Error: --build-progress requires a value"; exit 1; }
       BUILD_PROGRESS="$2"; shift 2
@@ -58,8 +72,8 @@ while [[ $# -gt 0 ]]; do
 done
 
 case "$CHECK_SET" in
-  main|app-tests) ;;
-  *) echo "Error: invalid --check-set '$CHECK_SET' (must be 'main' or 'app-tests')"; exit 1 ;;
+  main|app-tests|heavy) ;;
+  *) echo "Error: invalid --check-set '$CHECK_SET' (must be 'main', 'app-tests', or 'heavy')"; exit 1 ;;
 esac
 
 if [[ -z "$BUILD_PROGRESS" ]]; then
@@ -133,6 +147,8 @@ if $SKIP_BUILD; then
   echo "Check set: $CHECK_SET"
   if [[ "$CHECK_SET" == "app-tests" ]]; then
     run_checks "$IMAGE_TAG" "${APP_TESTS_TOOLS[@]}"
+  elif [[ "$CHECK_SET" == "heavy" ]]; then
+    run_checks "$IMAGE_TAG" "${HEAVY_TOOLS[@]}"
   else
     run_checks "$IMAGE_TAG" "${MAIN_TOOLS[@]}"
   fi
@@ -141,15 +157,20 @@ else
   # ── Normal mode: build then verify ────────────────────────────────────────
   echo "==> Build main image"
   echo "Image: $IMAGE_TAG"
+  echo "Dockerfile: $DOCKERFILE"
   echo "Docker build progress mode: $BUILD_PROGRESS"
   build_args_for_tag "$IMAGE_TAG"
   main_build_start="$(date +%s)"
-  docker build "${BUILD_ARGS[@]}" .
+  docker build -f "$DOCKERFILE" "${BUILD_ARGS[@]}" .
   main_build_end="$(date +%s)"
   echo "Main image build completed in $((main_build_end - main_build_start))s"
 
   echo "==> Verify tools in main image"
-  run_checks "$IMAGE_TAG" "${MAIN_TOOLS[@]}"
+  if [[ "$CHECK_SET" == "heavy" ]]; then
+    run_checks "$IMAGE_TAG" "${HEAVY_TOOLS[@]}"
+  else
+    run_checks "$IMAGE_TAG" "${MAIN_TOOLS[@]}"
+  fi
   run_must_not_exist_checks "$IMAGE_TAG" "${MUST_NOT_EXIST_TOOLS[@]}"
 
   if $RUN_APP_TESTS; then

@@ -1,12 +1,12 @@
 name: publish-docker
 
-# Builds, tests, and publishes a multi-arch socket-basics image
+# Builds, tests, and publishes multi-arch socket-basics image variants
 # (linux/amd64 + linux/arm64) to GHCR and Docker Hub.
 #
 # Flow:
 #   resolve-version
-#     → build-test-push  (matrix: amd64 native, arm64 native — each pushes by digest)
-#     → merge-manifests  (assembles per-arch digests into a multi-arch manifest list)
+#     → build-test-push  (matrix: image variant + native arch, pushes by digest)
+#     → merge-manifests  (assembles per-image per-arch digests into manifest lists)
 #     → create-release   (tag pushes only)
 #
 # Tag convention:
@@ -69,12 +69,12 @@ jobs:
           ref: ${{ steps.version.outputs.ref }}
           persist-credentials: false
 
-  # ── Job 2: Build → test → push by digest (per arch, native runners) ────────
+  # ── Job 2: Build → test → push by digest (per image + arch) ────────────────
   # Each matrix entry runs the full build/smoke/integration pipeline on a
   # native runner for its target arch and pushes the resulting image by digest
   # to both registries. The digest is exported as an artifact for the merge job.
   build-test-push:
-    name: publish (${{ matrix.arch }})
+    name: publish (${{ matrix.image }}, ${{ matrix.arch }})
     needs: resolve-version
     permissions:
       contents: read
@@ -83,16 +83,32 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - arch: amd64
+          - image: socket-basics
+            dockerfile: Dockerfile
+            check_set: main
+            arch: amd64
             runs_on: ubuntu-latest
-          - arch: arm64
+          - image: socket-basics
+            dockerfile: Dockerfile
+            check_set: main
+            arch: arm64
+            runs_on: ubuntu-24.04-arm
+          - image: socket-basics-heavy
+            dockerfile: Dockerfile.heavy
+            check_set: heavy
+            arch: amd64
+            runs_on: ubuntu-latest
+          - image: socket-basics-heavy
+            dockerfile: Dockerfile.heavy
+            check_set: heavy
+            arch: arm64
             runs_on: ubuntu-24.04-arm
     uses: ./.github/workflows/_docker-pipeline.yml
     with:
-      name: socket-basics
-      dockerfile: Dockerfile
+      name: ${{ matrix.image }}
+      dockerfile: ${{ matrix.dockerfile }}
       context: .
-      check_set: main
+      check_set: ${{ matrix.check_set }}
       runs_on: ${{ matrix.runs_on }}
       arch_label: ${{ matrix.arch }}
       push: true
@@ -106,18 +122,24 @@ jobs:
   # Mutable tags are structurally equivalent to :latest and inappropriate for a
   # security tool. Users should pin to an exact version and use Dependabot.
   merge-manifests:
-    name: merge-manifests
+    name: merge-manifests (${{ matrix.image }})
     needs: [resolve-version, build-test-push]
     permissions:
       contents: read
       packages: write
     runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        image:
+          - socket-basics
+          - socket-basics-heavy
     steps:
       - name: ⬇️ Download per-arch digest artifacts
         uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
         with:
           path: /tmp/digests
-          pattern: digests-socket-basics-*
+          pattern: digests-${{ matrix.image }}__*
           merge-multiple: true
 
       - name: 🔨 Set up Docker Buildx
@@ -141,8 +163,8 @@ jobs:
         uses: docker/metadata-action@c299e40c65443455700f0fdfc63efafe5b349051 # v5.10.0
         with:
           images: |
-            ghcr.io/socketdev/socket-basics
-            ${{ secrets.DOCKERHUB_USERNAME }}/socket-basics
+            ghcr.io/socketdev/${{ matrix.image }}
+            ${{ secrets.DOCKERHUB_USERNAME }}/${{ matrix.image }}
           # Disable the automatic :latest tag — metadata-action adds it by default
           # for semver tag pushes. Mutable tags are inappropriate for a security tool.
           flavor: |
@@ -156,8 +178,8 @@ jobs:
       - name: 🧬 Create multi-arch manifest list
         working-directory: /tmp/digests
         env:
-          GHCR_IMAGE: ghcr.io/socketdev/socket-basics
-          DH_IMAGE: ${{ secrets.DOCKERHUB_USERNAME }}/socket-basics
+          GHCR_IMAGE: ghcr.io/socketdev/${{ matrix.image }}
+          DH_IMAGE: ${{ secrets.DOCKERHUB_USERNAME }}/${{ matrix.image }}
           META_TAGS: ${{ steps.meta.outputs.tags }}
         run: |
           set -euo pipefail
@@ -184,7 +206,7 @@ jobs:
 
       - name: 🔍 Inspect published manifest
         env:
-          GHCR_IMAGE: ghcr.io/socketdev/socket-basics
+          GHCR_IMAGE: ghcr.io/socketdev/${{ matrix.image }}
           VERSION: ${{ needs.resolve-version.outputs.version }}
         run: docker buildx imagetools inspect "${GHCR_IMAGE}:${VERSION}"
 
