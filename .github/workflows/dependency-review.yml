@@ -4,16 +4,27 @@ name: dependency-review
 # maintainers. `inspect` classifies the PR, then the right Socket Firewall (sfw)
 # smoke job runs when Python deps change:
 #
-#   - python-sfw-smoke-enterprise -- trusted authors: any in-repo (non-fork) PR
-#     other than Dependabot's (i.e. someone with write access). Runs the
-#     authenticated enterprise edition for full org-policy enforcement, reading
-#     the SOCKET_SFW_API_TOKEN secret.
-#   - python-sfw-smoke-free -- everyone else (Dependabot + all fork PRs from
-#     external contributors). Anonymous free edition, no token. Never references
-#     the secret.
+#   - python-sfw-smoke-enterprise -- trusted authors: any in-repo (non-fork)
+#     PR, i.e. maintainers with write access AND Dependabot (its dependabot/*
+#     branches live in-repo). Runs the authenticated enterprise edition for
+#     full org-policy enforcement, reading the SOCKET_SFW_API_TOKEN secret.
+#     Dependabot-triggered runs read secrets from the *Dependabot* secret
+#     store, never Actions/environment secrets, so the token must ALSO be
+#     mirrored there (one-time admin step):
+#
+#       gh secret set SOCKET_SFW_API_TOKEN --app dependabot
+#
+#     This is NOT the pull_request_target footgun: Dependabot secrets are
+#     handed only to runs actually triggered by dependabot[bot], still in the
+#     unprivileged read-only pull_request context -- fork PRs from external
+#     contributors can never read them. Until the mirror exists, setup-sfw
+#     degrades Dependabot runs to firewall-free with a warning (see that
+#     action's resolve step), so nothing strands.
+#   - python-sfw-smoke-free -- fork PRs from external contributors. Anonymous
+#     free edition, no token. Never references the secret.
 #
 # Splitting the jobs (rather than picking a mode in one job) means only the
-# enterprise job ever names the token; the free path (Dependabot/forks) has no
+# enterprise job ever names the token; the free path (forks) has no
 # secret-leak surface. Both run in the unprivileged `pull_request` context.
 #
 # Secret scoping vs. the approval-gate trap (matches socket-python-cli#224):
@@ -22,7 +33,7 @@ name: dependency-review
 # read it. KEEP the environment; it is good secret hygiene. What must NOT exist
 # on that environment is a "required reviewers" approval rule. That rule is the
 # trap: the enterprise SFW check cannot itself be a required status check (it is
-# skipped on Dependabot/fork PRs, which only run the free edition, and a
+# skipped on fork PRs, which only run the free edition, and a
 # never-created required check blocks merge forever), so a manual deployment
 # gate is both self-approvable (prevent_self_review defaults off; admins bypass)
 # AND skippable -- maintainers merge without it ever running. Configure the
@@ -34,8 +45,8 @@ name: dependency-review
 # Coverage is instead enforced by the always-on `dependency-review-gate` job
 # below -- mark THAT as the single required status check. It runs on every PR
 # (if: always(), never skipped, so the required context is always created),
-# requires the free job for Dependabot/forks and the enterprise job for
-# maintainers, and is a no-op when no Python deps changed.
+# requires the free job for forks and the enterprise job for maintainers and
+# Dependabot, and is a no-op when no Python deps changed.
 #
 # Docker dependency changes: the main image is already build-smoke-tested by
 # smoke-test.yml on every PR, so only the app_tests image (uncovered elsewhere)
@@ -101,10 +112,14 @@ jobs:
 
       - name: Classify PR trust
         id: trust
-        # Trusted == any in-repo (non-fork) PR that isn't Dependabot's. Only
-        # accounts with write access can push a branch to this repo, so a
-        # non-fork PR already implies a trusted author -- the same boundary
-        # GitHub uses to decide whether secrets are exposed at all.
+        # Trusted == any in-repo (non-fork) PR. Only accounts with write access
+        # can push a branch to this repo, so a non-fork PR already implies a
+        # trusted author -- the same boundary GitHub uses to decide whether
+        # secrets are exposed at all. That includes Dependabot: its
+        # dependabot/* branches are in-repo, and dependency bumps are exactly
+        # where org-policy (enterprise) enforcement matters most. The
+        # enterprise job's token resolves from the Dependabot secret store on
+        # its runs (see the header note).
         #
         # NB: author_association is deliberately NOT used to require strict org
         # membership. It only reflects PUBLIC org membership, so private members
@@ -117,7 +132,7 @@ jobs:
           AUTHOR_ASSOC: ${{ github.event.pull_request.author_association }}
         run: |
           is_trusted=false
-          if [ "$IS_DEPENDABOT" != "true" ] && [ "$IS_FORK" != "true" ]; then
+          if [ "$IS_FORK" != "true" ]; then
             is_trusted=true
           fi
 
@@ -140,7 +155,7 @@ jobs:
             echo "- This workflow runs in pull_request context only; no publish secrets are exposed"
           } >> "$GITHUB_STEP_SUMMARY"
 
-  # Untrusted PRs (Dependabot, forks, outside collaborators, externals):
+  # Untrusted PRs (forks from outside collaborators / externals):
   # anonymous free edition. Never references the token.
   python-sfw-smoke-free:
     needs: inspect
@@ -174,8 +189,11 @@ jobs:
         run: cp "${SFW_JSON_REPORT_PATH:-/nonexistent}" sfw-report-free.json 2>/dev/null || echo "no SFW JSON report produced"
 
       - name: Import smoke test
+        # --no-sync: plain `uv run` would re-sync (and potentially hit package
+        # indexes) OUTSIDE the firewall wrapper; the env was already synced
+        # through sfw above.
         run: |
-          uv run python -c "
+          uv run --no-sync python -c "
           import socket_basics
           from socket_basics.version import __version__
           print('import smoke OK', __version__)
@@ -192,11 +210,13 @@ jobs:
           if-no-files-found: warn
           retention-days: 14
 
-  # Trusted SocketDev members: authenticated enterprise edition. Only this job
-  # references the token (the free job never does). `environment:` scopes the
-  # secret to this job -- the environment must have NO required-reviewers rule
-  # (see the header note); coverage is enforced by dependency-review-gate, not a
-  # manual approval gate.
+  # Trusted authors (SocketDev members + Dependabot): authenticated enterprise
+  # edition. Only this job references the token (the free job never does).
+  # `environment:` scopes the secret to this job for maintainer runs; on
+  # Dependabot runs the same expression resolves from the Dependabot secret
+  # store instead (mirror required -- header note). The environment must have
+  # NO required-reviewers rule (see the header note); coverage is enforced by
+  # dependency-review-gate, not a manual approval gate.
   python-sfw-smoke-enterprise:
     needs: inspect
     if: needs.inspect.outputs.python_deps_changed == 'true' && needs.inspect.outputs.is_trusted == 'true'
@@ -233,8 +253,11 @@ jobs:
         run: cp "${SFW_JSON_REPORT_PATH:-/nonexistent}" sfw-report-enterprise.json 2>/dev/null || echo "no SFW JSON report produced"
 
       - name: Import smoke test
+        # --no-sync: plain `uv run` would re-sync (and potentially hit package
+        # indexes) OUTSIDE the firewall wrapper; the env was already synced
+        # through sfw above.
         run: |
-          uv run python -c "
+          uv run --no-sync python -c "
           import socket_basics
           from socket_basics.version import __version__
           print('import smoke OK', __version__)
@@ -286,7 +309,7 @@ jobs:
   #   1. Fail if ANY needed conditional job ended in failure/cancelled
   #      (success and skipped both pass -- a skipped job is a legitimate no-run).
   #   2. Coverage: when Python deps changed, the trust-appropriate SFW edition
-  #      (enterprise for maintainers, free for Dependabot/forks) must have
+  #      (enterprise for maintainers + Dependabot, free for forks) must have
   #      actually succeeded -- not merely been skipped.
   #
   # It runs on every PR (if: always(), never skipped via a job-level condition,

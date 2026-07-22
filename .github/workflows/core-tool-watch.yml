@@ -17,15 +17,21 @@ name: core-tool-watch
 #
 # Socket scoring needs SOCKET_SFW_API_TOKEN, scoped to the `socket-firewall`
 # environment (which must carry NO approval rule -- see dependency-review.yml).
-# When the token is absent — fork PRs, and Dependabot PRs (Dependabot-triggered
-# runs only receive *Dependabot* secrets, never Actions/environment secrets) —
-# version-drift detection still runs and scoring is skipped with a notice. To
-# get pre-merge scoring on Dependabot's own bump PRs, mirror the token into
-# Dependabot secrets:
+# Dependabot-triggered runs only receive *Dependabot* secrets, never
+# Actions/environment secrets, so the token must ALSO be mirrored into the
+# Dependabot store (one-time admin step, same as dependency-review.yml):
 #
 #   gh secret set SOCKET_SFW_API_TOKEN --app dependabot
 #
-# Either way the push-to-main run re-scores with the real token after merge.
+# That mirror is the EXPECTED setup: Dependabot's pin bumps are precisely what
+# build mode exists to score pre-merge. It is safe to hand this job the token
+# on Dependabot PRs because the scan's Python environment is synced from the
+# DEFAULT BRANCH lockfile (see the .scan-env checkout below) -- the
+# token-holding step never imports packages bumped by the PR under review; it
+# only READS the PR's pins. When the token is absent anyway (fork PRs, or
+# before the mirror exists), version-drift detection still runs and scoring is
+# skipped with a notice; the push-to-main run re-scores after merge as a
+# backstop.
 
 on:
   schedule:
@@ -79,15 +85,28 @@ jobs:
           fetch-depth: 1
           persist-credentials: false
 
+      # Second checkout: the DEFAULT BRANCH, used only to build the scan's
+      # Python environment. The socketdev SDK (and its dependency chain) is
+      # imported by the token-holding scan step, so it must come from
+      # already-merged, already-scored lockfile versions -- never from the PR
+      # under review, whose freshly-bumped packages are the very thing being
+      # judged. On push/schedule runs both checkouts are identical.
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          ref: main
+          path: .scan-env
+          fetch-depth: 1
+          persist-credentials: false
+
       - name: 🐍 Setup Python
         uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405 # v6.2.0
         with:
           python-version: "3.12"
 
-      - name: 🛠️ Install uv + sync (provides the socketdev SDK)
+      - name: 🛠️ Install uv + sync scan env from main's lockfile (provides the socketdev SDK)
         run: |
           python -m pip install --upgrade pip uv
-          uv sync --locked
+          uv sync --locked --project .scan-env
 
       - name: Select mode
         id: mode
@@ -104,11 +123,14 @@ jobs:
 
       - name: Run core-tool supply-chain analysis
         id: scan
+        # --project .scan-env --no-sync: execute with main's already-vetted
+        # dependency versions (never the PR's bumps) while the script itself
+        # reads the pins from this checkout's working tree.
         env:
           SOCKET_API_TOKEN: ${{ secrets.SOCKET_SFW_API_TOKEN }}
           GITHUB_TOKEN: ${{ github.token }}
         run: |
-          uv run python scripts/check_core_tools.py \
+          uv run --project .scan-env --no-sync python scripts/check_core_tools.py \
             --mode "${{ steps.mode.outputs.mode }}" \
             --summary-file core-tools-report.md \
             --json-out core-tools-report.json \

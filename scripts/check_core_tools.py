@@ -31,12 +31,15 @@ version discovery + drift reporting still run; the Socket scoring is skipped
 with a notice (graceful degradation, mirroring the free/enterprise split in
 dependency-review.yml).
 
-Exit code is 0 unless --fail-on-malware is set AND a malware/critical alert is
-found on a PINNED version (or, with a token, Socket scoring itself errored --
-fail-closed). Drift alone never fails the run, and the discovered *latest*
-version is scored for reporting only; both are surfaced via the JSON report and
-the `drift`/`malware`/`critical` GitHub outputs so the workflow decides what to
-do.
+Exit code is 0 unless --fail-on-malware is set AND a PINNED version trips the
+(deliberately strict) thresholds: any alert type in MALWARE_ALERT_TYPES -- a
+curated list that goes beyond outright malware to include strong risk signals
+like install scripts, obfuscation, and telemetry -- OR any alert of high or
+critical severity. With a token present, a Socket scoring error also fails
+(fail-closed: unverified pins must not ship). Drift alone never fails the run,
+and the discovered *latest* version is scored for reporting only; both are
+surfaced via the JSON report and the `drift`/`malware`/`critical` GitHub
+outputs so the workflow decides what to do.
 """
 
 from __future__ import annotations
@@ -57,9 +60,13 @@ REPO_ROOT = Path(__file__).resolve().parent.parent
 DOCKERFILES = [REPO_ROOT / "Dockerfile", REPO_ROOT / "app_tests" / "Dockerfile"]
 UV_LOCK = REPO_ROOT / "uv.lock"
 
-# Alert types Socket uses for outright supply-chain compromise / active risk.
-# Anything in this set on an analyzed version is treated as malware-grade and
-# (with --fail-on-malware) fails the run.
+# Alert types treated as fail-worthy on a pinned version. Deliberately broader
+# than literal malware: alongside outright compromise (malware, trojan,
+# backdoor) it includes strong risk signals (obfuscation, install scripts,
+# shell access, telemetry, typosquat hints) -- for the four core tools we bake
+# into the image, any of these deserves a hard stop and a human look, at the
+# cost of occasional false positives. Trim this set rather than disabling
+# --fail-on-malware if it proves too noisy.
 MALWARE_ALERT_TYPES = {
     "malware",
     "gptMalware",
@@ -75,6 +82,7 @@ MALWARE_ALERT_TYPES = {
     "trojan",
     "backdoor",
 }
+# Severities that count as fail-worthy: includes "high", not just "critical".
 CRITICAL_SEVERITIES = {"critical", "high"}
 
 
@@ -361,9 +369,11 @@ def main() -> int:
     parser.add_argument(
         "--fail-on-malware",
         action="store_true",
-        help="Exit non-zero if a PINNED version has a malware/critical alert, or "
-        "(when a token is present) if Socket scoring itself errored -- fail-closed. "
-        "The discovered latest version is report-only and never fails the run.",
+        help="Exit non-zero if a PINNED version has a malware-class alert (see "
+        "MALWARE_ALERT_TYPES -- deliberately broader than literal malware) or any "
+        "high/critical severity alert, or (when a token is present) if Socket "
+        "scoring itself errored -- fail-closed. The discovered latest version is "
+        "report-only and never fails the run.",
     )
     args = parser.parse_args()
 
