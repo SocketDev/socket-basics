@@ -2,7 +2,7 @@ name: _docker-pipeline (reusable)
 
 # Reusable workflow — the per-arch lego brick for all Docker CI steps.
 #
-# Called by smoke-test.yml, dependabot-review.yml (push: false) and
+# Called by smoke-test.yml, dependency-review.yml (push: false) and
 # publish-docker.yml (push: true, once per arch via matrix).
 #
 # Two modes:
@@ -93,12 +93,12 @@ jobs:
         run: echo "revision=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
 
       - name: 🔨 Set up Docker Buildx
-        uses: docker/setup-buildx-action@4d04d5d9486b7bd6fa91e7baf45bbb4f8b9deedd # v4.0.0
+        uses: docker/setup-buildx-action@d7f5e7f509e45cec5c76c4d5afdd7de93d0b3df5 # v4.1.0
 
       # GHCR login runs before the build — needed to pull ghcr.io/astral-sh/uv.
       - name: Login to GHCR
         if: inputs.push
-        uses: docker/login-action@c94ce9fb468520275223c153574b00df6fe4bcc9 # v3.7.0
+        uses: docker/login-action@650006c6eb7dba73a995cc03b0b2d7f5ca915bee # v4.2.0
         with:
           registry: ghcr.io
           username: ${{ github.actor }}
@@ -115,7 +115,7 @@ jobs:
       # Per-arch cache scope ensures amd64 and arm64 builds don't pollute each
       # other's layer cache. arch_label defaults to "smoke" when push=false.
       - name: 🔨 Build (load for testing)
-        uses: docker/build-push-action@10e90e3645eae34f1e60eeb005ba3a3d33f178e8 # v6.19.2
+        uses: docker/build-push-action@f9f3042f7e2789586610d6e8b85c8f03e5195baf # v7.2.0
         with:
           # zizmor: ignore[template-injection] — safe: always hardcoded "." from same-repo callers; passed as array element to exec, not shell-interpolated
           context: ${{ inputs.context }}
@@ -161,7 +161,7 @@ jobs:
       # with public image pulls during the build step.
       - name: Login to Docker Hub
         if: inputs.push
-        uses: docker/login-action@c94ce9fb468520275223c153574b00df6fe4bcc9 # v3.7.0
+        uses: docker/login-action@650006c6eb7dba73a995cc03b0b2d7f5ca915bee # v4.2.0
         with:
           username: ${{ secrets.DOCKERHUB_USERNAME }}
           password: ${{ secrets.DOCKERHUB_TOKEN }}
@@ -173,7 +173,7 @@ jobs:
       - name: 🚀 Build & push by digest
         if: inputs.push
         id: build-digest
-        uses: docker/build-push-action@10e90e3645eae34f1e60eeb005ba3a3d33f178e8 # v6.19.2
+        uses: docker/build-push-action@f9f3042f7e2789586610d6e8b85c8f03e5195baf # v7.2.0
         with:
           # zizmor: ignore[template-injection] — safe: always hardcoded "." from same-repo callers; passed as array element to exec, not shell-interpolated
           context: ${{ inputs.context }}

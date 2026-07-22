@@ -58,8 +58,7 @@ RUN --mount=type=cache,target=/root/.npm \
 
 # Python project files
 COPY socket_basics  /socket-basics/socket_basics
-COPY pyproject.toml README.md LICENSE.md uv.lock /socket-basics/
-RUN cp /socket-basics/LICENSE.md /socket-basics/LICENSE
+COPY pyproject.toml README.md LICENSE uv.lock /socket-basics/
 
 # Install Python deps (uv cache speeds up repeated local builds)
 ENV UV_LINK_MODE=copy

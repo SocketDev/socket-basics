@@ -18,7 +18,6 @@ scripts/*
 # Markdown (keep README.md — it's copied explicitly in the Dockerfile)
 *.md
 !README.md
-!LICENSE.md
 
 # Python build artifacts
 __pycache__/

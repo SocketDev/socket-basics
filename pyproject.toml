@@ -23,7 +23,7 @@ classifiers = [
 ]
 dependencies = [
     # Keep runtime deps minimal and explicit. Remove unused packages (mdutils, PyGithub)
-    "requests>=2.31.0",
+    "requests>=2.33.0",
     "tabulate~=0.9.0",
     "light-s3-client~=0.0.30",
     "PyYAML>=6.0.0",

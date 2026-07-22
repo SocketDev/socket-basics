@@ -37,15 +37,21 @@ jobs:
           fetch-depth: 1
           persist-credentials: false
       - name: 🐍 Setup Python
-        uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405 # v6.2.0
+        uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6.3.0
         with:
           python-version: "3.12"
           cache: "pip"
       - name: 🛠️ Install deps
+        # `uv sync --locked` installs exactly the versions in uv.lock, so tests
+        # run against the locked dependency set (not a fresh pip resolution).
         run: |
-          python -m pip install --upgrade pip
-          pip install -e ".[dev]"
+          python -m pip install --upgrade pip uv
+          uv sync --locked --extra dev
+      - name: 🔐 Assert uv.lock is in sync with pyproject.toml
+        # Catches dependency PRs (Dependabot or maintainer) that change
+        # pyproject.toml without regenerating the lock, or vice versa.
+        run: uv lock --locked
       - name: 🔒 Assert release version metadata is in sync
         run: python3 scripts/sync_release_version.py --check
       - name: 🧪 Run tests
-        run: pytest -q tests/
+        run: uv run --no-sync pytest -q tests/
