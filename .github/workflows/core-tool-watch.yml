@@ -133,8 +133,10 @@ jobs:
             --description "A core OSS tool has a newer upstream release" 2>/dev/null || true
 
           title="Core tool version drift detected"
+          # `// empty` so an absent issue yields "" (not the literal "null",
+          # which is non-empty in bash and would send us to `gh issue edit null`).
           existing="$(gh issue list --label core-tool-drift --state open \
-            --json number --jq '.[0].number' 2>/dev/null || true)"
+            --json number --jq '.[0].number // empty' 2>/dev/null || true)"
 
           if [ -n "$existing" ]; then
             gh issue edit "$existing" --body-file core-tools-report.md
