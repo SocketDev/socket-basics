@@ -9,6 +9,7 @@ RUN_APP_TESTS=false
 SKIP_BUILD=false
 CHECK_SET="main"
 DOCKERFILE="Dockerfile"
+DOCKERFILE_SET=false
 BUILD_PROGRESS="${SMOKE_TEST_BUILD_PROGRESS:-}"
 
 MAIN_TOOLS=(
@@ -61,7 +62,7 @@ while [[ $# -gt 0 ]]; do
       ;;
     --dockerfile)
       [[ $# -lt 2 ]] && { echo "Error: --dockerfile requires a value"; exit 1; }
-      DOCKERFILE="$2"; shift 2
+      DOCKERFILE="$2"; DOCKERFILE_SET=true; shift 2
       ;;
     --build-progress)
       [[ $# -lt 2 ]] && { echo "Error: --build-progress requires a value"; exit 1; }
@@ -75,6 +76,10 @@ case "$CHECK_SET" in
   main|app-tests|heavy) ;;
   *) echo "Error: invalid --check-set '$CHECK_SET' (must be 'main', 'app-tests', or 'heavy')"; exit 1 ;;
 esac
+
+if [[ "$CHECK_SET" == "heavy" && "$DOCKERFILE_SET" == "false" ]]; then
+  DOCKERFILE="Dockerfile.heavy"
+fi
 
 if [[ -z "$BUILD_PROGRESS" ]]; then
   if [[ "${GITHUB_ACTIONS:-}" == "true" ]]; then

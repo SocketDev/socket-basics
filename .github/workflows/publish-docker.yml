@@ -43,6 +43,7 @@ jobs:
     runs-on: ubuntu-latest
     outputs:
       version: ${{ steps.version.outputs.clean }}
+      ref: ${{ steps.version.outputs.ref }}
     steps:
       - name: 🏷️ Resolve version
         id: version
@@ -130,6 +131,7 @@ jobs:
       arch_label: ${{ matrix.arch }}
       push: true
       version: ${{ needs.resolve-version.outputs.version }}
+      ref: ${{ needs.resolve-version.outputs.ref }}
     secrets:
       DOCKERHUB_USERNAME: ${{ secrets.DOCKERHUB_USERNAME }}
       DOCKERHUB_TOKEN: ${{ secrets.DOCKERHUB_TOKEN }}
