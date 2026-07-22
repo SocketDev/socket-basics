@@ -245,12 +245,40 @@ def analyze_purls(purls: list[str], token: str) -> dict[str, dict[str, Any]]:
     """Score a batch of PURLs through the Socket API via the socketdev SDK.
 
     Returns a map of purl -> {score, alerts, malware: [...], critical: [...]}.
+    Raises on an empty API result: the SDK returns [] on ANY non-200 (expired
+    token, dropped endpoint, outage) without raising, and every run scores
+    coordinates Socket definitely has data for (pkg:pypi/socketdev at minimum),
+    so an empty result is an API failure, not a clean bill -- surfacing it lets
+    the caller fail closed instead of reporting "no data" and exiting 0.
     """
+    import inspect
+
     from socketdev import socketdev  # imported lazily; only needed with a token
 
     client = socketdev(token=token, timeout=60)
+
+    # Prefer the org-scoped purl endpoint. socketdev >= 3.1 deprecates the
+    # legacy POST /v0/purl (used when org_slug is absent) in favor of
+    # POST /v0/orgs/{org_slug}/purl, and a future major may drop the legacy
+    # route entirely. The pinned 3.0.29 predates the parameter, so pass it
+    # only when the installed SDK supports it (the scan env tracks main's
+    # lockfile -- this activates automatically on the eventual SDK bump).
+    kwargs: dict[str, Any] = {}
+    if "org_slug" in inspect.signature(client.purl.post).parameters:
+        orgs = (client.org.get() or {}).get("organizations") or {}
+        slug = next((o.get("slug") for o in orgs.values() if o.get("slug")), None)
+        if slug:
+            kwargs["org_slug"] = slug
+        else:
+            print("  ! could not resolve org slug; using legacy purl endpoint", file=sys.stderr)
+
     components = [{"purl": p} for p in purls]
-    results = client.purl.post(license="false", components=components) or []
+    results = client.purl.post(license="false", components=components, **kwargs) or []
+    if not results:
+        raise RuntimeError(
+            f"Socket purl API returned no results for {len(purls)} PURLs "
+            "(the SDK swallows non-200s into an empty list) -- treating as a scoring failure"
+        )
 
     by_purl: dict[str, dict[str, Any]] = {}
     for item in results:
