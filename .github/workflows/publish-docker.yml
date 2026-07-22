@@ -200,8 +200,16 @@ jobs:
           GHCR_IMAGE: ghcr.io/socketdev/${{ matrix.image }}
           DH_IMAGE: ${{ secrets.DOCKERHUB_USERNAME }}/${{ matrix.image }}
           META_TAGS: ${{ steps.meta.outputs.tags }}
+          EXPECTED_ARCHES: "2"
         run: |
           set -euo pipefail
+          shopt -s nullglob
+          digests=(*)
+          if [ "${#digests[@]}" -ne "$EXPECTED_ARCHES" ]; then
+            echo "::error::expected $EXPECTED_ARCHES per-arch digests for ${{ matrix.image }}, found ${#digests[@]}"
+            ls -la
+            exit 1
+          fi
           # Each by-digest push from the matrix step landed blobs in BOTH
           # registries, so per-registry imagetools-create only writes manifests.
           for image in "$GHCR_IMAGE" "$DH_IMAGE"; do
@@ -217,7 +225,7 @@ jobs:
               exit 1
             fi
             sources=()
-            for digest in *; do
+            for digest in "${digests[@]}"; do
               sources+=("${image}@sha256:${digest}")
             done
             echo "→ creating manifest list for $image with ${#sources[@]} arch sources"
@@ -230,8 +238,18 @@ jobs:
           DH_IMAGE: ${{ secrets.DOCKERHUB_USERNAME }}/${{ matrix.image }}
           VERSION: ${{ needs.resolve-version.outputs.version }}
         run: |
-          docker buildx imagetools inspect "${GHCR_IMAGE}:${VERSION}"
-          docker buildx imagetools inspect "${DH_IMAGE}:${VERSION}"
+          set -euo pipefail
+          for image in "$GHCR_IMAGE" "$DH_IMAGE"; do
+            ref="${image}:${VERSION}"
+            inspect="$(docker buildx imagetools inspect "$ref")"
+            echo "$inspect"
+            for platform in linux/amd64 linux/arm64; do
+              if ! grep -q "Platform:[[:space:]]*$platform" <<< "$inspect"; then
+                echo "::error::$ref is missing $platform"
+                exit 1
+              fi
+            done
+          done
 
   # ── Job 4: Create GitHub release ───────────────────────────────────────────
   # Runs once after the manifest is published (not for workflow_dispatch
