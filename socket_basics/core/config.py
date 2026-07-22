@@ -15,6 +15,160 @@ from typing import Dict, Any, List, Optional
 logger = logging.getLogger(__name__)
 
 
+def _normalize_path_parts(path_value: str | None) -> List[str] | None:
+    """Normalize a path-like string into comparable POSIX-style path segments."""
+    if path_value is None:
+        return None
+
+    path_str = str(path_value).strip()
+    if not path_str:
+        return None
+
+    path_str = path_str.replace('\\', '/')
+    while path_str.startswith('./'):
+        path_str = path_str[2:]
+    path_str = path_str.lstrip('/')
+
+    normalized_parts: List[str] = []
+    for part in path_str.split('/'):
+        if not part or part == '.':
+            continue
+        if part == '..':
+            return None
+        normalized_parts.append(part)
+
+    return normalized_parts or None
+
+
+def _get_workspace_prefix_candidates() -> List[List[str]]:
+    """Return normalized workspace roots from common CI systems and local cwd."""
+    candidate_values: List[str] = []
+    for env_var in (
+        'BITBUCKET_CLONE_DIR',
+        'BUILD_SOURCESDIRECTORY',
+        'BUILDKITE_BUILD_CHECKOUT_PATH',
+        'CI_PROJECT_DIR',
+        'CIRCLE_WORKING_DIRECTORY',
+        'DRONE_WORKSPACE',
+        'GITHUB_WORKSPACE',
+        'SYSTEM_DEFAULTWORKINGDIRECTORY',
+        'WORKSPACE',
+    ):
+        env_value = os.getenv(env_var)
+        if env_value:
+            candidate_values.append(env_value)
+
+    try:
+        candidate_values.append(os.getcwd())
+    except Exception:
+        pass
+
+    normalized_candidates: List[List[str]] = []
+    seen: set[tuple[str, ...]] = set()
+    for value in candidate_values:
+        parts = _normalize_path_parts(value)
+        if not parts:
+            continue
+        parts_key = tuple(parts)
+        if parts_key in seen:
+            continue
+        seen.add(parts_key)
+        normalized_candidates.append(parts)
+
+    # Check longer, more specific prefixes first.
+    normalized_candidates.sort(key=len, reverse=True)
+    return normalized_candidates
+
+
+def normalize_repo_relative_path(path_value: str | None) -> str | None:
+    """Normalize a repo-relative path to the POSIX form emitted by SAST alerts."""
+    normalized_parts = _normalize_path_parts(path_value)
+    if not normalized_parts:
+        return None
+
+    for workspace_parts in _get_workspace_prefix_candidates():
+        if len(normalized_parts) > len(workspace_parts) and normalized_parts[:len(workspace_parts)] == workspace_parts:
+            normalized_parts = normalized_parts[len(workspace_parts):]
+            break
+
+    normalized = '/'.join(normalized_parts)
+    return normalized or None
+
+
+def parse_sast_ignore_overrides(raw_value: str | None) -> List[Dict[str, str | None]]:
+    """Parse `rule_id` and `rule_id:path` ignore override entries."""
+    overrides: List[Dict[str, str | None]] = []
+    seen: set[tuple[str, str | None]] = set()
+
+    if not raw_value:
+        return overrides
+
+    for raw_entry in str(raw_value).split(','):
+        entry = raw_entry.strip()
+        if not entry:
+            continue
+
+        rule_id = entry
+        path = None
+
+        if ':' in entry:
+            rule_id, path_part = entry.split(':', 1)
+            rule_id = rule_id.strip()
+            path_part = path_part.strip()
+
+            if not rule_id or not path_part:
+                logger.warning("Ignoring malformed SAST ignore override: %r", entry)
+                continue
+
+            if any(ch in path_part for ch in ('*', '?', '[')):
+                logger.warning(
+                    "Ignoring unsupported SAST ignore override with glob syntax: %r",
+                    entry,
+                )
+                continue
+
+            path = normalize_repo_relative_path(path_part)
+            if not path:
+                logger.warning("Ignoring invalid repo-relative path in SAST override: %r", entry)
+                continue
+        else:
+            rule_id = rule_id.strip()
+            if not rule_id:
+                logger.warning("Ignoring malformed SAST ignore override: %r", entry)
+                continue
+
+        key = (rule_id, path)
+        if key in seen:
+            continue
+        seen.add(key)
+        overrides.append({'rule_id': rule_id, 'path': path})
+
+    return overrides
+
+
+def alert_matches_sast_ignore_override(
+    alert: Dict[str, Any],
+    override: Dict[str, str | None],
+) -> bool:
+    """Return True when an alert matches a parsed SAST ignore override."""
+    props = alert.get('props', {}) or {}
+    rule_id = props.get('ruleId') or alert.get('title') or alert.get('ruleId')
+    if not rule_id or rule_id != override.get('rule_id'):
+        return False
+
+    override_path = override.get('path')
+    if not override_path:
+        return True
+
+    alert_path = (
+        props.get('filePath')
+        or (alert.get('location') or {}).get('path')
+        or ''
+    )
+    normalized_alert_path = normalize_repo_relative_path(alert_path)
+    return normalized_alert_path == override_path
+
+
 class Config:
     """Configuration object that provides unified access to all settings"""
     
@@ -43,9 +197,19 @@ class Config:
             self._config = merge_json_and_env_config()
         
         self._config = self._config
-        
-        # DEBUG: Log final configuration values
+
+        # Log where the configuration is being loaded from
         logger = logging.getLogger(__name__)
+        config_source = self._config.get('_config_source', 'environment')
+        source_descriptions = {
+            'api': 'Socket dashboard (API)',
+            'json_file': 'JSON config file (--config)',
+            'environment': 'environment variables',
+        }
+        source_desc = source_descriptions.get(config_source, config_source)
+        logger.info(f"Configuration loaded from: {source_desc}")
+
+        # DEBUG: Log final configuration values
         logger.debug("Final Config object created with key values:")
         logger.debug(f"  javascript_sast_enabled: {self._config.get('javascript_sast_enabled')}")
         logger.debug(f"  socket_tier_1_enabled: {self._config.get('socket_tier_1_enabled')}")
@@ -76,24 +240,58 @@ class Config:
         return [f.strip() for f in scan_files_str.split(',') if f.strip()]
     
     def get_scan_targets(self) -> List[str]:
-        """Determine files to scan based on configuration"""
-        # If explicit 'scan_all' set, return workspace directory
+        """Determine files to scan based on configuration.
+
+        Precedence (highest to lowest):
+          1. ``scan_all`` -> scan the entire workspace (explicit override).
+          2. ``changed_files`` -> scope the scan to the PR/diff changed files
+             (diff-only mode; mirrors how Socket SCA Pull Request alerts behave).
+          3. ``scan_files`` -> explicit user-provided file list.
+          4. default -> scan the entire workspace.
+
+        For the scoped modes (2 and 3) an empty list may be returned when none
+        of the requested paths exist (for example a delete-only PR). Callers
+        MUST treat an empty result as "nothing to scan" and skip the scanner
+        rather than falling back to scanning the whole workspace or their own
+        working directory.
+        """
+        # Explicit "scan everything" override.
         if self.get('scan_all', False):
             return [str(self.workspace)]
 
-        # If user provided specific files to scan, validate their existence
-        if self.scan_files:
-            targets = [self.workspace / f for f in self.scan_files]
-            valid = []
-            for t in targets:
-                if t.exists():
-                    valid.append(str(t))
-                else:
-                    logging.getLogger(__name__).warning("Scan target does not exist: %s", str(t))
-            return valid
+        # Diff-only mode: scope the scan to the files changed in the PR/commit.
+        # Keep honoring the scope when git resolves to zero files, e.g. a
+        # delete-only PR, so callers skip instead of scanning the workspace.
+        changed_files = self.get('changed_files', []) or []
+        if changed_files or self.get('changed_files_scope_requested', False):
+            return self._resolve_file_targets(changed_files)
 
-        # Default: scan the workspace itself
+        # Explicit list of files to scan.
+        if self.scan_files:
+            return self._resolve_file_targets(self.scan_files)
+
+        # Default: scan the workspace itself.
         return [str(self.workspace)]
+
+    def _resolve_file_targets(self, files: List[str]) -> List[str]:
+        """Resolve a list of file paths to absolute scan targets.
+
+        Relative paths are resolved against the workspace; absolute paths are
+        used as-is. Paths that do not exist are skipped with a warning (a
+        common case for delete-only PRs). Returns an empty list when none of
+        the provided paths exist, signalling callers that there is nothing to
+        scan.
+        """
+        valid: List[str] = []
+        for f in files:
+            p = Path(f)
+            if not p.is_absolute():
+                p = self.workspace / f
+            if p.exists():
+                valid.append(str(p))
+            else:
+                logging.getLogger(__name__).warning("Scan target does not exist: %s", str(p))
+        return valid
     
     def get_action_for_severity(self, severity: str) -> str:
         """Map severity to action according to security policy"""
@@ -112,6 +310,45 @@ class Config:
         else:
             # Default action for unknown severities
             return 'monitor'
+
+    def get_sast_ignore_overrides(self) -> List[Dict[str, str | None]]:
+        """Return parsed SAST ignore overrides from config."""
+        if not hasattr(self, '_sast_ignore_overrides_cache'):
+            raw_value = self.get('sast_ignore_overrides', '')
+            overrides = parse_sast_ignore_overrides(raw_value)
+
+            workspace_value = self.get('workspace') or os.getcwd()
+            try:
+                workspace_root = Path(str(workspace_value)).expanduser()
+            except Exception:
+                workspace_root = Path(os.getcwd())
+
+            for override in overrides:
+                override_path = override.get('path')
+                if not override_path:
+                    continue
+
+                try:
+                    candidate = workspace_root.joinpath(*str(override_path).split('/'))
+                    if not candidate.exists():
+                        logger.warning(
+                            "SAST ignore override path %r for rule %r does not exist under workspace %s; "
+                            "exact path overrides require a repo-relative file path and will not fall back to "
+                            "rule-only matching.",
+                            override_path,
+                            override.get('rule_id'),
+                            workspace_root,
+                        )
+                except Exception:
+                    logger.debug(
+                        "Failed to validate SAST ignore override path %r under workspace %r",
+                        override_path,
+                        workspace_value,
+                        exc_info=True,
+                    )
+
+            self._sast_ignore_overrides_cache = overrides
+        return self._sast_ignore_overrides_cache
     
     @property
     def repo(self) -> str:
@@ -897,6 +1134,10 @@ def normalize_api_config(api_config: Dict[str, Any]) -> Dict[str, Any]:
         
         # OpenGrep/SAST Configuration
         'openGrepNotificationMethod': 'opengrep_notification_method',
+        'useCustomSastRules': 'use_custom_sast_rules',
+        'customSastRulePath': 'custom_sast_rule_path',
+        # Accept common pluralized variant for robustness.
+        'customSastRulesPath': 'custom_sast_rule_path',
         
         # Socket Tier 1
         'socketTier1Enabled': 'socket_tier_1_enabled',
@@ -1004,13 +1245,15 @@ def merge_json_and_env_config(json_config: Dict[str, Any] | None = None) -> Dict
     Returns:
         Merged configuration dictionary
     """
+    logger = logging.getLogger(__name__)
+
     # Start with environment defaults (lowest priority)
     config = load_config_from_env()
+    logger.info("Configuration sources: environment defaults loaded")
     
     # Override with Socket Basics API config if no explicit JSON config provided
     # API config takes precedence over environment defaults
     if not json_config:
-        logger = logging.getLogger(__name__)
         logger.debug(" No JSON config provided, attempting to load Socket Basics API config")
         socket_basics_config = load_socket_basics_config()
         logger.debug(f" Socket Basics API config result: {socket_basics_config is not None}")
@@ -1027,7 +1270,10 @@ def merge_json_and_env_config(json_config: Dict[str, Any] | None = None) -> Dict
                     continue
                 filtered_config[k] = v
             config.update(filtered_config)
-            logging.getLogger(__name__).info("Loaded Socket Basics API configuration (overrides environment defaults)")
+            if bool(filtered_config.get('socket_has_enterprise', False)):
+                logging.getLogger(__name__).info("Loaded Socket Basics API configuration (overrides environment defaults)")
+            else:
+                logging.getLogger(__name__).info("Loaded Socket plan metadata (free/non-enterprise mode; no dashboard overrides)")
         else:
             logger.debug(" No Socket Basics API config loaded")
     
@@ -1049,6 +1295,13 @@ def merge_json_and_env_config(json_config: Dict[str, Any] | None = None) -> Dict
     
     # Note: CLI arguments are handled separately and take highest priority
     # They override the config object after this merge completes
+    logger.info(
+        "Effective custom SAST config: use_custom_sast_rules=%s custom_sast_rule_path=%s all_languages_enabled=%s all_rules_enabled=%s",
+        bool(config.get('use_custom_sast_rules', False)),
+        config.get('custom_sast_rule_path', ''),
+        bool(config.get('all_languages_enabled', False)),
+        bool(config.get('all_rules_enabled', False)),
+    )
     
     return config
 
@@ -1087,16 +1340,19 @@ def add_dynamic_cli_args(parser: argparse.ArgumentParser):
                 if param_type == 'bool':
                     parser.add_argument(option, action='store_true', help=description)
                 elif param_type == 'str':
-                    parser.add_argument(option, type=str, default=default, help=description)
+                    parser.add_argument(option, type=str, default=None, help=description)
                 elif param_type == 'int':
-                    parser.add_argument(option, type=int, default=default, help=description)
+                    parser.add_argument(option, type=int, default=None, help=description)
                     
     except Exception as e:
         logging.getLogger(__name__).warning("Warning: Could not load dynamic CLI args: %s", e)
 
     # Add optional changed-files CLI argument to limit scans to changed files
     parser.add_argument('--changed-files', type=str, default='',
-                        help="Comma-separated list of files to scan or 'auto' to detect changed files from git")
+                        help="Scope all scanners (SAST/OpenGrep, secrets, containers) to changed "
+                             "files only. Accepts a comma-separated file list, a commit hash, "
+                             "'auto' (PR base-ref diff in CI, else staged changes), 'pr' (diff "
+                             "against GITHUB_BASE_REF), or 'current-commit'.")
 
     # Also add CLI args for notification plugins declared in notifications.yaml
     try:
@@ -1116,9 +1372,9 @@ def add_dynamic_cli_args(parser: argparse.ArgumentParser):
                     if p_type == 'bool':
                         parser.add_argument(option, action='store_true', help=desc)
                     elif p_type == 'int':
-                        parser.add_argument(option, type=int, default=default, help=desc)
+                        parser.add_argument(option, type=int, default=None, help=desc)
                     else:
-                        parser.add_argument(option, type=str, default=default, help=desc)
+                        parser.add_argument(option, type=str, default=None, help=desc)
     except Exception:
         pass
 
@@ -1127,7 +1383,7 @@ def parse_cli_args():
     """Parse command line arguments and return argument parser"""
     parser = argparse.ArgumentParser(description='Socket Security Basics - Dynamic security scanning')
     parser.add_argument('--config', type=str, 
-                       help='Path to JSON configuration file. JSON config is merged with environment variables (environment takes precedence)')
+                       help='Path to JSON configuration file. JSON config is merged with environment variables (JSON takes precedence)')
     parser.add_argument('--output', type=str, default='.socket.facts.json', 
                        help='Output file name (default: .socket.facts.json)')
     parser.add_argument('--workspace', type=str, help='Workspace directory to scan')
@@ -1303,17 +1559,30 @@ def create_config_from_args(args) -> Config:
     except Exception:
         pass
 
-    # Handle changed-files: CLI overrides env/config. Accept 'auto' to detect via git
+    # Handle changed-files: CLI overrides env/config. Accept 'auto' to detect via git.
+    # When invoked via the GitHub Action (entrypoint passes no CLI args) the value
+    # arrives through the INPUT_CHANGED_FILES environment variable instead.
     changed_files_arg = getattr(args, 'changed_files', '') if args is not None else ''
+    if not changed_files_arg:
+        changed_files_arg = os.getenv('INPUT_CHANGED_FILES', '')
     if changed_files_arg:
         val = str(changed_files_arg).strip()
-        # 'auto' defaults to staged changes (--cached)
+        config_dict['changed_files_scope_requested'] = True
+        # 'auto' resolves to the PR base-ref diff in CI, else staged changes.
         if val.lower() == 'auto':
             try:
-                git_changed = _detect_git_changed_files(config_dict.get('workspace', os.getcwd()), mode='staged')
+                git_changed = _detect_git_changed_files(config_dict.get('workspace', os.getcwd()), mode='auto')
                 config_dict['changed_files'] = git_changed
             except Exception as e:
-                logging.getLogger(__name__).warning("Warning: failed to detect git changed files (staged): %s", e)
+                logging.getLogger(__name__).warning("Warning: failed to detect git changed files (auto): %s", e)
+                config_dict['changed_files'] = []
+        elif val.lower() == 'pr':
+            # Explicit PR diff against the base branch (GITHUB_BASE_REF).
+            try:
+                git_changed = _detect_git_changed_files(config_dict.get('workspace', os.getcwd()), mode='pr')
+                config_dict['changed_files'] = git_changed
+            except Exception as e:
+                logging.getLogger(__name__).warning("Warning: failed to detect git changed files (pr): %s", e)
                 config_dict['changed_files'] = []
         elif val.lower() in ('current-commit', 'current_commit'):
             try:
@@ -1370,27 +1639,34 @@ def create_config_from_args(args) -> Config:
     return Config(config_dict)
 
 
-def _detect_git_changed_files(workspace_path: str, mode: str = 'staged', commit: str | None = None) -> List[str]:
+def _detect_git_changed_files(workspace_path: str, mode: str = 'staged', commit: str | None = None, base_ref: str | None = None) -> List[str]:
     """Detect changed files in a git repository.
 
     mode:
-      - 'staged' -> files staged for commit (git diff --name-only --cached)
-      - 'current-commit' -> files included in HEAD commit
-      - 'commit' -> files included in the given commit hash (commit param required)
+      - 'staged'         -> files staged for commit (git diff --name-only --cached)
+      - 'current-commit' -> files included in the HEAD commit
+      - 'commit'         -> files included in the given commit hash (commit param required)
+      - 'pr'             -> files changed relative to a base ref (a GitHub PR).
+                            Uses ``base_ref`` or ``GITHUB_BASE_REF`` and excludes
+                            deletions so removed paths never become scan targets.
+      - 'auto'           -> the PR base-ref diff when running in a PR CI context
+                            (``GITHUB_BASE_REF`` is set), otherwise staged changes.
+                            This is what ``--changed-files auto`` resolves to.
 
-    Returns a list of file paths relative to the workspace root. If not a git repo or detection fails, returns [].
+    Returns a list of file paths relative to the workspace root. If not a git
+    repo or detection fails, returns [].
     """
     try:
         from subprocess import check_output, CalledProcessError
         import subprocess
-        
+
         # Prefer GITHUB_WORKSPACE if set (GitHub Actions environment)
         # Otherwise use the provided workspace_path
         if os.environ.get('GITHUB_WORKSPACE'):
             ws = Path(os.environ['GITHUB_WORKSPACE'])
         else:
             ws = Path(workspace_path) if workspace_path else Path.cwd()
-            
+
         if not ws.exists():
             return []
 
@@ -1404,24 +1680,61 @@ def _detect_git_changed_files(workspace_path: str, mode: str = 'staged', commit:
         original_cwd = os.getcwd()
         try:
             os.chdir(str(ws))
-            
-            if mode == 'staged':
+
+            def _split(out: str) -> List[str]:
+                return [line.strip() for line in out.splitlines() if line.strip()]
+
+            def _diff_against_base(ref: str) -> Optional[List[str]]:
+                """Diff changed files (excluding deletions) against a base ref.
+
+                Tries the remote-tracking ref (``origin/<ref>``) first, then the
+                bare ref. Returns None when neither ref can be resolved so the
+                caller can fall back to another detection strategy. The
+                ``--diff-filter=ACMR`` excludes deleted paths so they never
+                become scan targets.
+                """
+                if not ref:
+                    return None
+                for candidate in (f'origin/{ref}', ref):
+                    try:
+                        out = check_output(
+                            ['git', 'diff', '--name-only', '--diff-filter=ACMR', f'{candidate}...HEAD'],
+                            text=True, stderr=subprocess.DEVNULL,
+                        )
+                        return _split(out)
+                    except CalledProcessError:
+                        continue
+                return None
+
+            if mode == 'auto':
+                # Prefer the PR base-ref diff in CI; fall back to staged changes
+                # for local/pre-commit use.
+                base = base_ref or os.environ.get('GITHUB_BASE_REF', '')
+                pr_files = _diff_against_base(base)
+                if pr_files is not None:
+                    return pr_files
+                out = check_output(['git', 'diff', '--name-only', '--cached'], text=True, stderr=subprocess.DEVNULL)
+                return _split(out)
+            elif mode == 'pr':
+                base = base_ref or os.environ.get('GITHUB_BASE_REF', '')
+                return _diff_against_base(base) or []
+            elif mode == 'staged':
                 # staged but not yet committed
                 out = check_output(['git', 'diff', '--name-only', '--cached'], text=True, stderr=subprocess.DEVNULL)
+                return _split(out)
             elif mode == 'current-commit':
                 # files that are part of HEAD commit
                 out = check_output(['git', 'diff-tree', '--no-commit-id', '--name-only', '-r', 'HEAD'], text=True, stderr=subprocess.DEVNULL)
+                return _split(out)
             elif mode == 'commit' and commit:
                 out = check_output(['git', 'diff-tree', '--no-commit-id', '--name-only', '-r', commit], text=True, stderr=subprocess.DEVNULL)
+                return _split(out)
             else:
                 return []
-
-            files = [line.strip() for line in out.splitlines() if line.strip()]
-            return files
         finally:
             # Always restore original working directory
             os.chdir(original_cwd)
-            
+
     except CalledProcessError:
         return []
     except Exception:
