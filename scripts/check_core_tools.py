@@ -35,8 +35,10 @@ Exit code is 0 unless --fail-on-malware is set AND a PINNED version trips the
 (deliberately strict) thresholds: any alert type in MALWARE_ALERT_TYPES -- a
 curated list that goes beyond outright malware to include strong risk signals
 like install scripts, obfuscation, and telemetry -- OR any alert of high or
-critical severity. With a token present, a Socket scoring error also fails
-(fail-closed: unverified pins must not ship). Drift alone never fails the run,
+critical severity. With a token present, a Socket scoring error -- or a
+covered pinned coordinate missing from the returned batch -- also fails
+(fail-closed: unverified pins must not ship; OpenGrep's documented pkg:github
+coverage gap is the one exemption). Drift alone never fails the run,
 and the discovered *latest* version is scored for reporting only; both are
 surfaced via the JSON report and the `drift`/`malware`/`critical` GitHub
 outputs so the workflow decides what to do.
@@ -103,6 +105,13 @@ class Tool:
     # reporting only -- a proxy is never build-failing.
     proxy_purl: Callable[[], Optional[str]] | None = None
     proxy_label: str = ""
+    # Whether Socket is expected to have data for this tool's primary PURL.
+    # When True, a pinned version with no matching analysis row is treated as
+    # UNVERIFIED and fails a --fail-on-malware run (an incomplete batch must
+    # not pass the guard). False only for tools with a documented coverage gap
+    # (OpenGrep's pkg:github coordinate), where "no data" is the known state
+    # and the proxy provides report-only signal instead.
+    socket_coverage: bool = True
     pinned: list[str] = field(default_factory=list)
     latest: Optional[str] = None
     resolved_proxy_purl: Optional[str] = None
@@ -208,6 +217,7 @@ def build_tools() -> list[Tool]:
             # single-version squat, not the official distribution -- not used.)
             proxy_purl=lambda: _pypi_purl("semgrep"),
             proxy_label="semgrep upstream proxy",
+            socket_coverage=False,  # documented gap: pkg:github has no Socket data
             note="GitHub-release binary; not Dependabot-trackable and not covered by "
             "Socket's pkg:github coordinates. Falls back to the upstream Semgrep "
             "lineage (pkg:pypi/semgrep) as a project-health proxy -- this does NOT "
@@ -458,6 +468,7 @@ def main() -> int:
     any_drift = False
     any_malware = False
     any_critical = False
+    unverified: list[str] = []
     findings: list[dict[str, Any]] = []
     for t in tools:
         drift = bool(t.latest and any(_strip_v(p) != _strip_v(t.latest) for p in t.pinned))
@@ -479,6 +490,12 @@ def main() -> int:
                     any_malware = True
                 if a.get("critical"):
                     any_critical = True
+            elif token_present and not scoring_error and t.socket_coverage:
+                # Scoring "succeeded" but this pinned coordinate has no row --
+                # a partial batch or a purl/echo mismatch. The guard's job is
+                # to verify every pin, so an unverified one is fail-worthy
+                # (except documented coverage gaps like OpenGrep).
+                unverified.append(f"{t.key} {t.purl(v)}")
         # Latest is report-only (a drift signal); it never fails the run.
         if t.latest:
             a = _match_analysis(t.analyses, t.purl(t.latest))
@@ -509,6 +526,7 @@ def main() -> int:
                     "mode": args.mode,
                     "token_present": token_present,
                     "scoring_error": scoring_error,
+                    "unverified": unverified,
                     "findings": findings,
                 },
                 indent=2,
@@ -535,6 +553,16 @@ def main() -> int:
             print(
                 "::error::Socket scoring failed (API error); pinned core tool versions "
                 "could not be verified. Failing closed.",
+                file=sys.stderr,
+            )
+            return 1
+        # Fail closed: scoring returned rows, but some covered pinned
+        # coordinate has none -- a partial batch is not a clean bill.
+        if unverified:
+            print(
+                "::error::Socket scoring returned no analysis for pinned coordinate(s): "
+                + "; ".join(unverified)
+                + ". Failing closed (unverified pins must not ship).",
                 file=sys.stderr,
             )
             return 1
