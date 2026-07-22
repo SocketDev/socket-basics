@@ -265,12 +265,18 @@ def analyze_purls(purls: list[str], token: str) -> dict[str, dict[str, Any]]:
     # lockfile -- this activates automatically on the eventual SDK bump).
     kwargs: dict[str, Any] = {}
     if "org_slug" in inspect.signature(client.purl.post).parameters:
+        # Match socket-python-cli's get_org_id_slug(): only trust the slug
+        # when the token maps to exactly one org -- guessing among several
+        # could score under the wrong org's policies.
         orgs = (client.org.get() or {}).get("organizations") or {}
-        slug = next((o.get("slug") for o in orgs.values() if o.get("slug")), None)
+        slug = next(iter(orgs.values())).get("slug") if len(orgs) == 1 else None
         if slug:
             kwargs["org_slug"] = slug
         else:
-            print("  ! could not resolve org slug; using legacy purl endpoint", file=sys.stderr)
+            print(
+                f"  ! org slug not resolvable ({len(orgs)} orgs on token); using legacy purl endpoint",
+                file=sys.stderr,
+            )
 
     components = [{"purl": p} for p in purls]
     results = client.purl.post(license="false", components=components, **kwargs) or []
