@@ -46,6 +46,15 @@ on:
         type: string
         required: false
         default: ""
+      push_name:
+        description: >
+          Registry repository to push to (defaults to name). Image variants share
+          the base repository and are distinguished by tag suffix (e.g. -heavy),
+          so the heavy build passes name=socket-basics-heavy (local tag, cache
+          scope, digest artifact) with push_name=socket-basics.
+        type: string
+        required: false
+        default: ""
       push:
         description: "Push to GHCR + Docker Hub by digest after testing. The publish workflow merges per-arch digests into a multi-arch manifest list."
         type: boolean
@@ -176,8 +185,8 @@ jobs:
           # One `--output` per registry → blobs land in both, by digest.
           # build-push-action splits this scalar on newlines into separate outputs.
           outputs: |
-            type=image,name=ghcr.io/socketdev/${{ inputs.name }},push-by-digest=true,name-canonical=true,push=true
-            type=image,name=${{ secrets.DOCKERHUB_USERNAME }}/${{ inputs.name }},push-by-digest=true,name-canonical=true,push=true
+            type=image,name=ghcr.io/socketdev/${{ inputs.push_name || inputs.name }},push-by-digest=true,name-canonical=true,push=true
+            type=image,name=${{ secrets.DOCKERHUB_USERNAME }}/${{ inputs.push_name || inputs.name }},push-by-digest=true,name-canonical=true,push=true
           cache-from: type=gha,scope=${{ inputs.name }}-${{ inputs.arch_label }}
           cache-to: type=gha,mode=max,scope=${{ inputs.name }}-${{ inputs.arch_label }}
           # SBOM and provenance generation pull docker/buildkit-syft-scanner from

@@ -15,7 +15,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   `scan_files`.
 - Added GitHub Action inputs for `changed_files` and `scan_files`.
 - Publish multi-arch Docker images for `linux/amd64` and `linux/arm64`.
-- Add `socket-basics-heavy` image variant with Socket Basics and the pinned Python Socket CLI.
+- Add a heavy image variant (`socket-basics:<version>-heavy` tag suffix) bundling
+  Socket Basics with the pinned Python Socket CLI.
 
 ### Fixed
 - Delete-only changed-file scans now skip instead of falling back to a full
