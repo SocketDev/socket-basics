@@ -271,6 +271,57 @@ Include these in your workflow's `jobs.<job_id>.permissions` section.
     verbose: 'true'
 ```
 
+## Diff-Only Mode (Changed Files)
+
+By default the scanners run against the **entire repository**, so every PR
+re-reports the whole repo's existing findings. To report only on what the PR
+changed — the way Socket SCA Pull Request alerts behave — use the
+`changed_files` input. This scopes SAST/OpenGrep, secret, and container scans to
+the changed files and dramatically reduces PR finding volume.
+
+```yaml
+name: Socket Basics (PR diff-only)
+on:
+  pull_request:
+
+jobs:
+  socket-basics:
+    permissions:
+      contents: read
+      pull-requests: write
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          # Required so the PR base branch is available for the diff
+          fetch-depth: 0
+
+      - name: Run Socket Basics (changed files only)
+        uses: SocketDev/socket-basics@v2.0.3
+        env:
+          GITHUB_PR_NUMBER: ${{ github.event.pull_request.number }}
+        with:
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          # Diff-only: scope all scanners to files changed in this PR
+          changed_files: 'auto'
+          python_sast_enabled: 'true'
+          javascript_sast_enabled: 'true'
+          secret_scanning_enabled: 'true'
+```
+
+`changed_files` accepts:
+
+- `auto` — diff against the PR base branch in CI (`GITHUB_BASE_REF`), else staged changes
+- `pr` — diff against the PR base branch (`GITHUB_BASE_REF`)
+- a commit hash — files changed in that commit
+- a comma-separated file list — e.g. `src/app.py,src/utils.js`
+
+> [!IMPORTANT]
+> For `auto`/`pr` modes, check out with `fetch-depth: 0` so the base branch is
+> available to diff against. Deletions are excluded, so a delete-only PR scans
+> nothing rather than falling back to the whole repo. To scan an explicit file
+> list regardless of git state, use the `scan_files` input instead.
+
 ## PR Comment Customization
 
 Socket Basics automatically posts enhanced PR comments with **smart defaults that work out of the box** — clickable file links, collapsible sections, syntax highlighting, CVE links, CVSS scores, and auto-labels are all enabled by default.
@@ -619,8 +670,12 @@ jobs:
 
 ### Custom Rule Configuration
 
+Use custom rules from your repository by setting `use_custom_sast_rules` and
+`custom_sast_rule_path`. This path is resolved relative to `GITHUB_WORKSPACE`
+in GitHub Actions.
+
 ```yaml
-name: Security Scan with Custom Rules
+name: Security Scan with Custom SAST Rules
 on:
   pull_request:
     types: [opened, synchronize, reopened]
@@ -641,20 +696,48 @@ jobs:
           GITHUB_PR_NUMBER: ${{ github.event.pull_request.number || github.event.issue.number }}
         with:
           github_token: ${{ secrets.GITHUB_TOKEN }}
-          
-          # Enable Python SAST
+
+          # Enable SAST languages you expect to run.
           python_sast_enabled: 'true'
-          
-          # Enable specific Python rules
-          python_enabled_rules: 'sql-injection,xss,hardcoded-credentials'
-          
-          # Disable noisy rules
-          python_disabled_rules: 'unused-import,line-too-long'
-          
-          # JavaScript with custom rules
           javascript_sast_enabled: 'true'
+
+          # Enable custom rules from repository path.
+          use_custom_sast_rules: 'true'
+          custom_sast_rule_path: '.socket/rules'
+
+          # Optional: to avoid allowlist exclusions, run all rules for enabled languages.
+          all_rules_enabled: 'true'
+
+          # Optional: enable specific bundled or custom rule IDs.
           javascript_enabled_rules: 'eval-usage,prototype-pollution'
+
+          # Ignore one or more SAST rules globally or for exact repo-relative files
+          sast_ignore_overrides: 'js-sql-injection:index.js'
 ```
+
+Important behavior:
+- `socket_security_api_key` + `socket_org` enables dashboard config loading.
+- Dashboard/API settings override overlapping `with:` values.
+- `<language>_enabled_rules` is an allowlist and can suppress custom rule IDs.
+- `all_rules_enabled: 'true'` disables allowlist filtering for enabled languages.
+
+`sast_ignore_overrides` supports:
+- `rule_id` to ignore a SAST rule everywhere in the repo
+- `rule_id:path` to ignore a SAST rule for one exact repo-relative file
+
+Examples:
+- `js-sql-injection`
+- `js-sql-injection:index.js`
+- `js-sql-injection:src/unsafe/demo.js`
+- `js-express-async-no-error-handler,js-sql-injection:index.js,js-missing-helmet`
+
+Notes:
+- Paths must be exact repo-relative paths using `/` separators after normalization.
+- Windows-style input such as `src\\unsafe\\demo.js` is accepted and normalized automatically.
+- Globs and directory-prefix matching are not supported in this first version.
+- A `rule_id:path` entry is an exact `rule_id AND path` match. If the path does not match, Socket Basics will not fall back to a rule-only ignore.
+- Broad dashboard rule disables such as `<language>_disabled_rules` still ignore that rule everywhere in the repo. If both are configured, the broad disabled-rule behavior can make it look like a narrow path override matched when it did not.
+- In `.socket.facts.json`, ignored alerts include `actionReason` so you can see whether the ignore came from `sast_ignore_override` or `disabled_rule`.
 
 ## Configuration Reference
 
@@ -683,6 +766,9 @@ See [`action.yml`](../action.yml) for the complete list of inputs.
 **Rule Configuration (per language):**
 - `<language>_enabled_rules` — Comma-separated rules to enable
 - `<language>_disabled_rules` — Comma-separated rules to disable
+- `use_custom_sast_rules` — Enable custom SAST rule discovery from repo files
+- `custom_sast_rule_path` — Relative path to custom SAST rule directory
+- `sast_ignore_overrides` — Comma-separated `rule_id` or `rule_id:path` SAST ignore overrides
 
 **Security Scanning:**
 - `secret_scanning_enabled` — Enable secret scanning
@@ -781,6 +867,20 @@ permissions:
 1. Verify Socket Enterprise subscription is active
 2. Check that `socket_org` and `socket_security_api_key` are set correctly
 3. Confirm API key has required permissions in Socket Dashboard
+
+### `sast_ignore_overrides` Seems Too Broad
+
+**Problem:** A `rule_id:path` override appears to ignore findings outside the specified file.
+
+**Likely cause:** The rule is also disabled more broadly in dashboard settings or other config through `<language>_disabled_rules`.
+
+**How to confirm:**
+1. Open the generated `.socket.facts.json`
+2. Find the ignored alert and inspect `actionReason`
+3. `actionReason: "sast_ignore_override"` means the exact path override matched
+4. `actionReason: "disabled_rule"` means the finding was ignored by a broad rule disable instead
+
+**Additional signal:** If the configured path does not exist under the workspace, Socket Basics logs a warning and does not fall back to rule-only matching.
 
 ### High Memory Usage
 

@@ -92,7 +92,11 @@ socket-basics --committers "user1@example.com,user2@example.com"
 ```
 
 ### `--scan-files SCAN_FILES`
-Comma-separated list of files to scan.
+Explicit comma-separated list of files to scan. Scopes **all** scanners —
+SAST/OpenGrep, secrets, and container scanning — to just these files instead of
+the whole workspace. Used when `--changed-files` is not set (`--changed-files`
+takes precedence when both are provided). Paths that do not exist are skipped;
+if none exist, the scanners are skipped rather than scanning the whole repo.
 
 **Example:**
 ```bash
@@ -100,7 +104,21 @@ socket-basics --scan-files "src/app.py,src/utils.js"
 ```
 
 ### `--changed-files CHANGED_FILES`
-Comma-separated list of files to scan or 'auto' to detect changed files from git.
+Diff-only mode: scope **all** scanners (SAST/OpenGrep, secrets, containers) to
+changed files only, the way Socket SCA Pull Request alerts behave. Accepts:
+
+- a comma-separated file list (e.g. `src/app.py,src/utils.js`)
+- a commit hash — files changed in that commit
+- `auto` — the PR base-ref diff when running in a PR CI context
+  (`GITHUB_BASE_REF` is set), otherwise staged (`--cached`) changes
+- `pr` — diff against the PR base branch (`GITHUB_BASE_REF`)
+- `current-commit` — files in the `HEAD` commit
+
+Deletions are excluded from PR/`auto`/`pr` diffs so removed paths never become
+scan targets. When the diff resolves to no existing files (e.g. a delete-only
+PR), the scanners are skipped rather than falling back to scanning the whole
+repository. For PR/`auto`/`pr` modes, check out with full history (e.g.
+`actions/checkout` with `fetch-depth: 0`) so the base branch is available.
 
 **Example:**
 ```bash
@@ -194,6 +212,10 @@ Use custom SAST rules instead of bundled rules (falls back to bundled rules for 
 socket-basics --python --use-custom-sast-rules
 ```
 
+When this is enabled, custom rules are loaded from YAML files under
+`--custom-sast-rule-path`. Each rule must include a `languages` list so Socket
+Basics can map it to the correct OpenGrep language rule file.
+
 ### `--custom-sast-rule-path CUSTOM_SAST_RULE_PATH`
 Relative path to custom SAST rules directory (relative to workspace if set, otherwise cwd).
 
@@ -205,6 +227,11 @@ Relative path to custom SAST rules directory (relative to workspace if set, othe
 ```bash
 socket-basics --python --use-custom-sast-rules --custom-sast-rule-path "my_custom_rules"
 ```
+
+Custom rule file notes:
+- `.yml` and `.yaml` files are discovered recursively.
+- Files ending in `.test.yml` or `.test.yaml` are ignored.
+- Rules without `languages` are skipped.
 
 ### Language-Specific Rule Configuration
 
@@ -240,6 +267,32 @@ socket-basics --go --go-enabled-rules "error-handling,sql-injection"
 - `--swift-enabled-rules` / `--swift-disabled-rules`
 - `--rust-enabled-rules` / `--rust-disabled-rules`
 - `--elixir-enabled-rules` / `--elixir-disabled-rules`
+
+### `--sast-ignore-overrides SAST_IGNORE_OVERRIDES`
+Comma-separated list of SAST ignore overrides in `rule_id` or `rule_id:path` format.
+
+**Environment Variable:** `INPUT_SAST_IGNORE_OVERRIDES`
+
+**Examples:**
+```bash
+# Ignore a rule everywhere in the repo
+socket-basics --javascript --sast-ignore-overrides "js-sql-injection"
+
+# Ignore a rule only for one exact repo-relative file
+socket-basics --javascript --sast-ignore-overrides "js-sql-injection:index.js"
+
+# Mix rule-only and rule+path overrides in one comma-separated list
+socket-basics --javascript --sast-ignore-overrides "js-express-async-no-error-handler,js-sql-injection:index.js,js-missing-helmet"
+```
+
+Notes:
+- Paths must be exact repo-relative paths.
+- Paths are normalized to forward-slash form, so Windows-style input such as `src\\unsafe\\demo.js` is accepted.
+- Globs and directory-prefix matching are not supported in this first version.
+- A `rule_id:path` entry uses exact `rule_id AND path` matching. A bad path does not degrade into a rule-only ignore.
+- If the configured path does not exist under the current workspace, Socket Basics logs a warning to help catch typos or copied paths from another repo.
+- If the same rule is also disabled via `<language>-disabled-rules` or dashboard policy, that broader ignore still applies across the repo.
+- Ignored alerts in `.socket.facts.json` include `actionReason` so you can distinguish `sast_ignore_override` from `disabled_rule`.
 
 ### `--opengrep-notify OPENGREP_NOTIFY`
 Notification method for OpenGrep SAST results (e.g., console, slack).
@@ -531,7 +584,10 @@ All notification integrations support environment variables as alternatives to C
 
 | Variable | Description |
 |----------|-------------|
-| `INPUT_OPENGREP_RULES_DIR` | Custom directory containing SAST rules |
+| `INPUT_OPENGREP_RULES_DIR` | Override directory for bundled OpenGrep rule files (`*.yml`) |
+| `INPUT_USE_CUSTOM_SAST_RULES` | Enable repository custom SAST rules |
+| `INPUT_CUSTOM_SAST_RULE_PATH` | Relative directory path for repository custom SAST rules |
+| `INPUT_SAST_IGNORE_OVERRIDES` | Comma-separated `rule_id` or `rule_id:path` SAST ignore overrides |
 
 ## Configuration File
 
@@ -548,7 +604,10 @@ You can provide configuration via a JSON file using `--config`:
   
   "python_sast_enabled": true,
   "javascript_sast_enabled": true,
+  "use_custom_sast_rules": true,
+  "custom_sast_rule_path": ".socket/rules",
   "go_sast_enabled": true,
+  "sast_ignore_overrides": "js-sql-injection:index.js",
   
   "secrets_enabled": true,
   "trufflehog_exclude_dir": "node_modules,vendor,dist,.git",
@@ -571,17 +630,18 @@ You can provide configuration via a JSON file using `--config`:
 Configuration is merged in the following order (later sources override earlier ones):
 
 1. Default values
-2. JSON configuration file (via `--config`)
-3. Environment variables
-4. Command-line arguments
+2. Environment variables
+3. Socket Basics API configuration (when available and no `--config` file is used)
+4. JSON configuration file (via `--config`)
+5. Command-line arguments
 
 **Example:**
 ```bash
-# JSON file sets python_sast_enabled: true
-# Environment has PYTHON_SAST_ENABLED=false
+# Environment sets python_sast_enabled=true
+# Dashboard/API sets python_sast_enabled=false
 # CLI has --javascript
-# Result: JavaScript enabled, Python disabled (env override), other settings from JSON
-socket-basics --config config.json --javascript
+# Result: JavaScript enabled, Python follows dashboard/API value, other settings from env/API
+socket-basics --javascript
 ```
 
 ## Common Usage Patterns
@@ -622,6 +682,9 @@ socket-basics \
 ```
 
 ### CI/CD Scan (Changed Files Only)
+
+Scope every scanner — SAST/OpenGrep included — to only the files the PR changed,
+so each PR reports findings for its own changes rather than the whole repo:
 
 ```bash
 socket-basics \
