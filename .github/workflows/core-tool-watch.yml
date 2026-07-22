@@ -17,8 +17,15 @@ name: core-tool-watch
 #
 # Socket scoring needs SOCKET_SFW_API_TOKEN, scoped to the `socket-firewall`
 # environment (which must carry NO approval rule -- see dependency-review.yml).
-# When the token is absent — e.g. fork PRs — version-drift detection still runs
-# and scoring is skipped with a notice.
+# When the token is absent — fork PRs, and Dependabot PRs (Dependabot-triggered
+# runs only receive *Dependabot* secrets, never Actions/environment secrets) —
+# version-drift detection still runs and scoring is skipped with a notice. To
+# get pre-merge scoring on Dependabot's own bump PRs, mirror the token into
+# Dependabot secrets:
+#
+#   gh secret set SOCKET_SFW_API_TOKEN --app dependabot
+#
+# Either way the push-to-main run re-scores with the real token after merge.
 
 on:
   schedule:
@@ -47,7 +54,10 @@ permissions:
   contents: read
 
 concurrency:
-  group: core-tool-watch-${{ github.ref }}
+  # Include the event name: schedule, workflow_dispatch, and push all run on
+  # refs/heads/main, and a shared group would let a merge to main cancel the
+  # in-flight weekly watch (or the cron cancel a push-triggered build guard).
+  group: core-tool-watch-${{ github.event_name }}-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:
