@@ -89,6 +89,31 @@ jobs:
           ref: ${{ steps.version.outputs.ref }}
           persist-credentials: false
 
+      # Guard: the release source must agree with the tag. The pre-commit
+      # version-check hook was removed in #46 with no automated replacement,
+      # which let v2.1.0 ship with version files still at 2.0.3. This is the
+      # release-time gate: mismatches fail here, before anything is built.
+      - name: 🔎 Verify source versions match release tag
+        env:
+          VERSION: ${{ steps.version.outputs.clean }}
+        run: |
+          set -euo pipefail
+          fail=0
+          check() {
+            if [ "$2" != "$VERSION" ]; then
+              echo "::error::$1 declares version '$2' but the release tag resolves to '$VERSION'"
+              fail=1
+            fi
+          }
+          check "socket_basics/version.py" "$(sed -n 's/^__version__ = "\(.*\)"$/\1/p' socket_basics/version.py | head -1)"
+          check "pyproject.toml" "$(sed -n 's/^version = "\(.*\)"$/\1/p' pyproject.toml | head -1)"
+          check "action.yml image tag" "$(sed -n 's#.*docker://ghcr.io/socketdev/socket-basics:\([^"]*\)".*#\1#p' action.yml | head -1)"
+          if [ "$fail" -ne 0 ]; then
+            echo "::error::Bump the version files in the release PR, merge, then re-tag."
+            exit 1
+          fi
+          echo "✅ version.py, pyproject.toml, and action.yml all agree on $VERSION"
+
   # ── Job 2: Build → test → push by digest (per image + arch) ────────────────
   # Each matrix entry runs the full build/smoke/integration pipeline on a
   # native runner for its target arch and pushes the resulting image by digest
