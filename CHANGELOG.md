@@ -8,21 +8,25 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
-## [2.1.0] - 2026-07-21
-
 ### Added
-- Diff-only scan scoping now applies to SAST/OpenGrep via `changed_files` and
-  `scan_files`.
-- Added GitHub Action inputs for `changed_files` and `scan_files`.
 - Publish multi-arch Docker images for `linux/amd64` and `linux/arm64`.
 - Add a heavy image variant (`socket-basics:<version>-heavy` tag suffix) bundling
   Socket Basics with the pinned Python Socket CLI.
 
 ### Fixed
+- Normalize manual Docker release tag inputs before checkout.
+
+## [2.1.0] - 2026-06-02
+
+### Added
+- Diff-only scan scoping now applies to SAST/OpenGrep via `changed_files` and
+  `scan_files`.
+- Added GitHub Action inputs for `changed_files` and `scan_files`.
+
+### Fixed
 - Delete-only changed-file scans now skip instead of falling back to a full
   workspace scan.
 - Updated parameter docs to reflect SAST/OpenGrep diff-only scoping.
-- Normalize manual Docker release tag inputs before checkout.
 
 ## [2.0.3] - 2026-04-24
 

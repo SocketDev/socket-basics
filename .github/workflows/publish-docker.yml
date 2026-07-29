@@ -157,7 +157,7 @@ jobs:
       fail-fast: false
       matrix:
         # Both variants live in the single socket-basics repository per registry,
-        # distinguished by tag suffix (2.1.0 vs 2.1.0-heavy). `variant` selects
+        # distinguished by tag suffix (2.2.0 vs 2.2.0-heavy). `variant` selects
         # the per-arch digest artifacts produced by build-test-push.
         include:
           - variant: socket-basics
@@ -197,7 +197,7 @@ jobs:
             ${{ secrets.DOCKERHUB_USERNAME }}/socket-basics
           # Disable the automatic :latest tag — metadata-action adds it by default
           # for semver tag pushes. Mutable tags are inappropriate for a security tool.
-          # The variant suffix yields 2.1.0 for the main image, 2.1.0-heavy for heavy.
+          # The variant suffix yields 2.2.0 for the main image, 2.2.0-heavy for heavy.
           flavor: |
             latest=false
             suffix=${{ matrix.tag_suffix }}
