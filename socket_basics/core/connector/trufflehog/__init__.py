@@ -6,8 +6,10 @@ Handles TruffleHog execution and result processing
 
 import json
 import logging
+import re
 import subprocess
 import os
+import tempfile
 from typing import Dict, List, Any
 
 from ..base import BaseConnector
@@ -31,6 +33,78 @@ class TruffleHogScanner(BaseConnector):
         """Check if secret scanning should be enabled"""
         return self.config.get('secret_scanning_enabled', False)
     
+    @staticmethod
+    def _path_regex(value: str) -> str:
+        """Escape a filesystem path for TruffleHog's Go regular-expression input."""
+        normalized = str(value).replace('\\', '/')
+        return re.escape(normalized).replace('/', r'[/\\]')
+
+    def _workspace_root(self) -> str:
+        """Return the absolute workspace path used by the scanner command."""
+        workspace = getattr(self.config, 'workspace', None)
+        if not isinstance(workspace, (str, bytes, os.PathLike)):
+            workspace = (
+                getattr(workspace, 'path', None)
+                or getattr(workspace, 'root', None)
+                or workspace
+            )
+        if not workspace:
+            return ''
+        try:
+            return os.path.abspath(os.fspath(workspace)).rstrip('/\\')
+        except (TypeError, ValueError):
+            return ''
+
+    def _build_exclude_patterns(self, exclude_dirs: Any) -> List[str]:
+        """Build workspace-relative path patterns for TruffleHog.
+
+        TruffleHog expects one --exclude-paths value containing a file of
+        newline-separated regular expressions. The configured values are
+        directory names, so anchor each one below the workspace root. This
+        prevents a directory such as tmp from matching the workspace's
+        parent path (for example /tmp/...), and prevents .git from
+        matching .github.
+        """
+        if isinstance(exclude_dirs, str):
+            entries = exclude_dirs.split(',')
+        else:
+            entries = exclude_dirs or []
+
+        workspace_root = self._workspace_root()
+        patterns = []
+        for entry in entries:
+            directory = str(entry).strip().replace('\\', '/').strip('/')
+            if not directory:
+                continue
+
+            directory_regex = self._path_regex(directory)
+            if workspace_root:
+                root_regex = self._path_regex(workspace_root)
+                patterns.append(
+                    rf'^{root_regex}[/\\](?:.*[/\\])?{directory_regex}(?:[/\\]|$)'
+                )
+            else:
+                patterns.append(rf'(?:^|[/\\]){directory_regex}(?:[/\\]|$)')
+
+        return patterns
+
+    def _write_exclude_file(self, exclude_dirs: Any) -> str | None:
+        """Write exclude regexes to a temporary file for TruffleHog."""
+        patterns = self._build_exclude_patterns(exclude_dirs)
+        if not patterns:
+            return None
+
+        with tempfile.NamedTemporaryFile(
+            mode='w',
+            encoding='utf-8',
+            prefix='socket-basics-trufflehog-',
+            suffix='.txt',
+            delete=False,
+        ) as exclude_file:
+            exclude_file.write('\n'.join(patterns))
+            exclude_file.write('\n')
+            return exclude_file.name
+
     def scan(self) -> Dict[str, Any]:
         """Run Trufflehog secret scanning"""
         if not self.is_enabled():
@@ -41,7 +115,8 @@ class TruffleHogScanner(BaseConnector):
         
         targets = self.config.get_scan_targets()
         results = {}
-        
+
+        exclude_file_path = None
         try:
             # Prefer explicit changed_files, fallback to git staged
             changed_files = self.config.get('changed_files', []) if hasattr(self.config, '_config') else []
@@ -59,11 +134,13 @@ class TruffleHogScanner(BaseConnector):
                 '--no-verification' if not self.config.get('trufflehog_show_unverified', False) else '--include-detectors=all'
             ]
 
-            # Add exclusion patterns
+            # TruffleHog accepts --exclude-paths only once and expects a file
+            # containing newline-separated regular expressions.
             exclude_dirs = self.config.get('trufflehog_exclude_dir', '')
             if exclude_dirs:
-                for exclude_dir in exclude_dirs.split(','):
-                    cmd.extend(['--exclude-paths', exclude_dir.strip()])
+                exclude_file_path = self._write_exclude_file(exclude_dirs)
+                if exclude_file_path:
+                    cmd.extend(['--exclude-paths', exclude_file_path])
 
             # If changed_files present, pass those individual files, otherwise use configured targets
             if changed_files:
@@ -138,7 +215,15 @@ class TruffleHogScanner(BaseConnector):
             logger.error("Trufflehog not found. Please install Trufflehog")
         except Exception as e:
             logger.error(f"Error running Trufflehog: {e}")
-        
+        finally:
+            if exclude_file_path:
+                try:
+                    os.unlink(exclude_file_path)
+                except FileNotFoundError:
+                    pass
+                except OSError as e:
+                    logger.warning(f"Failed to remove Trufflehog exclude file: {e}")
+
         return results
     
     def _convert_to_socket_facts(self, raw_results: Any) -> Dict[str, Any]:
