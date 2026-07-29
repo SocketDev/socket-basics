@@ -105,6 +105,11 @@ class TruffleHogScanner(BaseConnector):
             exclude_file.write('\n')
             return exclude_file.name
 
+    @staticmethod
+    def _absolute_scan_target(target: Any) -> str:
+        """Return the absolute path string TruffleHog will filter against."""
+        return os.path.abspath(os.fspath(target))
+
     def scan(self) -> Dict[str, Any]:
         """Run Trufflehog secret scanning"""
         if not self.is_enabled():
@@ -145,9 +150,9 @@ class TruffleHogScanner(BaseConnector):
             # If changed_files present, pass those individual files, otherwise use configured targets
             if changed_files:
                 for cf in changed_files:
-                    cmd.append(str(self.config.workspace / cf))
+                    cmd.append(self._absolute_scan_target(self.config.workspace / cf))
             else:
-                cmd.extend(targets)
+                cmd.extend(self._absolute_scan_target(target) for target in targets)
             
             logger.info(f"Running: {' '.join(cmd)}")
             result = subprocess.run(cmd, capture_output=True, text=True)

@@ -89,3 +89,31 @@ def test_scan_passes_one_exclude_paths_flag_and_cleans_up(tmp_path, monkeypatch)
     assert captured["exists_during_run"] is True
     assert len(captured["contents"]) == 3
     assert not Path(command[command.index("--exclude-paths") + 1]).exists()
+
+
+def test_scan_uses_absolute_targets_for_relative_workspace(tmp_path, monkeypatch):
+    monkeypatch.chdir(tmp_path)
+    scanner = _scanner(Path("."), "node_modules")
+    scanner.is_enabled = lambda: True
+    scanner.config.get = lambda key, default=None: {
+        "trufflehog_exclude_dir": scanner.config.trufflehog_exclude_dir,
+        "trufflehog_show_unverified": False,
+    }.get(key, default)
+    scanner.config.get_scan_targets = lambda: ["."]
+    scanner._process_results = lambda findings: {}
+
+    captured = {}
+
+    def fake_run(command, **kwargs):
+        captured["command"] = command
+        return SimpleNamespace(returncode=0, stdout="", stderr="")
+
+    monkeypatch.setattr(
+        "socket_basics.core.connector.trufflehog.subprocess.run",
+        fake_run,
+    )
+
+    scanner.scan()
+
+    command = captured["command"]
+    assert command[-1] == str(tmp_path)
