@@ -16,7 +16,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 ### Fixed
 - Normalize manual Docker release tag inputs before checkout.
 
-## [2.1.0] - 2026-06-02
+## [2.1.0] - 2026-07-22
 
 ### Added
 - Diff-only scan scoping now applies to SAST/OpenGrep via `changed_files` and
