@@ -106,6 +106,7 @@ jobs:
             fi
           }
           check "socket_basics/version.py" "$(sed -n 's/^__version__ = "\(.*\)"$/\1/p' socket_basics/version.py | head -1)"
+          check "socket_basics/__init__.py" "$(sed -n 's/^__version__ = "\(.*\)"$/\1/p' socket_basics/__init__.py | head -1)"
           check "pyproject.toml" "$(sed -n 's/^version = "\(.*\)"$/\1/p' pyproject.toml | head -1)"
           check "action.yml image tag" "$(sed -n 's#.*docker://ghcr.io/socketdev/socket-basics:\([^"]*\)".*#\1#p' action.yml | head -1)"
           if [ "$fail" -ne 0 ]; then

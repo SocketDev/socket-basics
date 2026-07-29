@@ -10,10 +10,11 @@ release PR's merge commit and the publish workflow's version gate passes by
 construction.
 
 Files updated:
-    socket_basics/version.py   __version__
-    pyproject.toml             [project] version
+    pyproject.toml             [project] version (canonical source)
+    socket_basics/version.py   derived via sync_release_version.py
+    socket_basics/__init__.py  derived via sync_release_version.py
+    action.yml                 derived via sync_release_version.py
     uv.lock                    project entry (via `uv lock`)
-    action.yml                 pre-built image tag
     CHANGELOG.md               [Unreleased] -> [X.Y.Z] - YYYY-MM-DD
 
 Usage:
@@ -31,21 +32,14 @@ import sys
 from pathlib import Path
 
 ROOT = Path(__file__).parent.parent
-VERSION_PY = ROOT / "socket_basics" / "version.py"
 PYPROJECT = ROOT / "pyproject.toml"
-ACTION_YML = ROOT / "action.yml"
 CHANGELOG = ROOT / "CHANGELOG.md"
 
 SEMVER_RE = re.compile(r"^\d+\.\d+\.\d+$")
 
-FILE_PATTERNS: list[tuple[Path, re.Pattern[str], str]] = [
-    (VERSION_PY, re.compile(r'^__version__ = "(\d+\.\d+\.\d+)"$', re.M),
-     '__version__ = "{v}"'),
-    (PYPROJECT, re.compile(r'^version = "(\d+\.\d+\.\d+)"$', re.M),
-     'version = "{v}"'),
-    (ACTION_YML, re.compile(r'(docker://ghcr\.io/socketdev/socket-basics:)(\d+\.\d+\.\d+)'),
-     r"\g<1>{v}"),
-]
+# pyproject.toml is the canonical version source; version.py, __init__.py, and
+# action.yml are derived from it by scripts/sync_release_version.py.
+PYPROJECT_PATTERN = re.compile(r'^version = "(\d+\.\d+\.\d+)"$', re.M)
 
 
 def _bump_file(path: Path, pattern: re.Pattern[str], replacement: str, version: str) -> tuple[str, str]:
@@ -111,16 +105,19 @@ def main() -> None:
 
     # Validate and render every change first; only write once all succeed,
     # so a failure never leaves a half-modified tree.
-    pending: list[tuple[Path, str, str]] = []
-    for path, pattern, replacement in FILE_PATTERNS:
-        old, new_content = _bump_file(path, pattern, replacement, args.version)
-        pending.append((path, old, new_content))
+    old, pyproject_content = _bump_file(PYPROJECT, PYPROJECT_PATTERN, 'version = "{v}"', args.version)
     changelog_content = _stamp_changelog(args.version, args.date)
 
-    for path, old, new_content in pending:
-        if not args.dry_run:
-            path.write_text(new_content)
-        print(f"{path.relative_to(ROOT)}: {old} -> {args.version}")
+    if not args.dry_run:
+        PYPROJECT.write_text(pyproject_content)
+    print(f"pyproject.toml: {old} -> {args.version}")
+
+    if args.dry_run:
+        print("dry-run: skipping sync_release_version.py --write")
+    else:
+        subprocess.run([sys.executable, str(ROOT / "scripts" / "sync_release_version.py"), "--write"],
+                       cwd=ROOT, check=True)
+
     if not args.dry_run:
         CHANGELOG.write_text(changelog_content)
     print(f"CHANGELOG.md: [Unreleased] -> [{args.version}] - {args.date}")
