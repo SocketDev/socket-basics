@@ -39,6 +39,38 @@ class TruffleHogScanner(BaseConnector):
         normalized = str(value).replace('\\', '/')
         return re.escape(normalized).replace('/', r'[/\\]')
 
+    @staticmethod
+    def _glob_regex(value: str) -> str:
+        """Translate a path glob into a TruffleHog-compatible regex.
+
+        TruffleHog consumes Go/RE2 regexes, not shell globs. Keep ``*`` and
+        ``?`` within a path segment, and let ``**/`` span zero or more path
+        segments. All other characters are treated literally.
+        """
+        normalized = str(value).replace('\\', '/').strip('/')
+        pieces = []
+        index = 0
+        while index < len(normalized):
+            char = normalized[index]
+            if char == '*':
+                if index + 1 < len(normalized) and normalized[index + 1] == '*':
+                    index += 2
+                    if index < len(normalized) and normalized[index] == '/':
+                        pieces.append(r'(?:.*[/\\])?')
+                        index += 1
+                    else:
+                        pieces.append(r'.*')
+                    continue
+                pieces.append(r'[^/\\]*')
+            elif char == '?':
+                pieces.append(r'[^/\\]')
+            elif char == '/':
+                pieces.append(r'[/\\]')
+            else:
+                pieces.append(re.escape(char))
+            index += 1
+        return ''.join(pieces)
+
     def _workspace_root(self) -> str:
         """Return the absolute workspace path used by the scanner command."""
         workspace = getattr(self.config, 'workspace', None)
@@ -100,7 +132,15 @@ class TruffleHogScanner(BaseConnector):
             if not directory:
                 continue
 
-            directory_regex = self._path_regex(directory)
+            has_glob = '*' in directory or '?' in directory
+            if has_glob:
+                directory_regex = self._glob_regex(directory)
+                # A pattern without a slash is a basename/segment pattern and
+                # should work at any depth below the workspace.
+                if '/' not in directory:
+                    directory_regex = rf'(?:.*[/\\])?{directory_regex}'
+            else:
+                directory_regex = self._path_regex(directory)
             if workspace_root:
                 root_regex = self._path_regex(workspace_root)
                 patterns.append(

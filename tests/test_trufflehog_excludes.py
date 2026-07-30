@@ -52,6 +52,26 @@ def test_build_exclude_patterns_skip_empty_entries(tmp_path):
     assert all("node_modules" in pattern or "dist" in pattern for pattern in patterns)
 
 
+def test_build_exclude_patterns_translate_globs_at_any_depth(tmp_path):
+    scanner = _scanner(tmp_path, "")
+
+    pattern = scanner._build_exclude_patterns("**/appsettings.*.json")[0]
+
+    assert re.search(pattern, str(tmp_path / "appsettings.Production.json"))
+    assert re.search(pattern, str(tmp_path / "config" / "appsettings.Staging.json"))
+    assert not re.search(pattern, str(tmp_path / "config" / "appsettings.json"))
+    assert not re.search(pattern, str(tmp_path / "config" / "appsettings.Staging.json.bak"))
+
+
+def test_build_exclude_patterns_keep_literal_entries_segment_anchored(tmp_path):
+    scanner = _scanner(tmp_path, "")
+
+    pattern = scanner._build_exclude_patterns("node_modules")[0]
+
+    assert re.search(pattern, str(tmp_path / "src" / "node_modules" / "package.json"))
+    assert not re.search(pattern, str(tmp_path / "src" / "node_modules_backup" / "package.json"))
+
+
 def test_write_exclude_file_contains_one_pattern_per_line(tmp_path):
     scanner = _scanner(tmp_path, "")
 
@@ -208,6 +228,36 @@ def test_scan_filters_excluded_changed_files(tmp_path, monkeypatch, caplog):
     assert str(tmp_path / "node_modules" / "staged.txt") not in command
     assert "TruffleHog exclude patterns:" in caplog.text
     assert "Skipping excluded changed file:" in caplog.text
+
+
+def test_scan_filters_changed_files_with_glob_excludes(tmp_path, monkeypatch):
+    scanner = _scanner(tmp_path, "**/appsettings.*.json")
+    scanner.is_enabled = lambda: True
+    scanner.config._config = {}
+    scanner.config.get = lambda key, default=None: {
+        "changed_files": [
+            "config/appsettings.Staging.json",
+            "config/appsettings.json",
+        ],
+        "trufflehog_exclude_dir": "**/appsettings.*.json",
+        "trufflehog_show_unverified": False,
+    }.get(key, default)
+    scanner._process_results = lambda findings: {}
+    captured = {}
+
+    def fake_run(command, **kwargs):
+        captured["command"] = command
+        return SimpleNamespace(returncode=0, stdout="", stderr="")
+
+    monkeypatch.setattr(
+        "socket_basics.core.connector.trufflehog.subprocess.run",
+        fake_run,
+    )
+
+    scanner.scan()
+
+    assert str(tmp_path / "config" / "appsettings.Staging.json") not in captured["command"]
+    assert str(tmp_path / "config" / "appsettings.json") in captured["command"]
 
 
 def test_scan_warns_for_target_outside_workspace(tmp_path, monkeypatch, caplog):

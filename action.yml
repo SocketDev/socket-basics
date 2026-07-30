@@ -428,7 +428,7 @@ inputs:
     required: false
     default: "false"
   trufflehog_exclude_dir:
-    description: "Comma-separated directory names to exclude from secret scanning; matched as literal path segments beneath the workspace root"
+    description: "Comma-separated literal directory/file names or glob patterns to exclude from secret scanning beneath the workspace root; matching is case-sensitive"
     required: false
     default: ""
   trufflehog_show_unverified:

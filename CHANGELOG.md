@@ -14,6 +14,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   all entries now pass through one filter file and are honored for changed-file
   scans. Previously, configured values could be interpreted as filter filenames
   and fail or alter scans.
+- Added glob-pattern support for exclusions such as
+  `**/appsettings.*.json`, with matching anchored beneath the workspace.
 - Normalized in-workspace TruffleHog finding paths relative to the workspace so
   host paths do not appear in facts and component identifiers remain stable
   across runs.

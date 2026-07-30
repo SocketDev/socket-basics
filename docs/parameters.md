@@ -321,9 +321,9 @@ socket-basics --disable-secrets
 ```
 
 ### `--exclude-dir EXCLUDE_DIR`
-Comma-separated directory names to exclude from secret scanning. Values are
-matched as literal path segments beneath the workspace root; glob syntax is not
-supported.
+Comma-separated literal directory/file names or glob patterns to exclude from
+secret scanning beneath the workspace root. Matching is case-sensitive. For
+example, `**/appsettings.*.json` matches files at any directory depth.
 
 **Example:**
 ```bash
