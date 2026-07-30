@@ -8,7 +8,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
-## [2.2.1] - 2026-07-29
+## [2.2.1] - 2026-07-30
 
 ### Fixed
 
@@ -19,10 +19,12 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - Added glob-pattern support for exclusions such as
   `**/appsettings.*.json`, with matching anchored beneath the workspace and
   root-relative globs kept distinct from recursive `**` globs.
+- Normalized exclusion entries before pattern generation so dot segments and
+  repeated path separators behave consistently.
 - Fixed exclusion matching when the configured workspace is the filesystem root.
 - Normalized in-workspace TruffleHog finding paths relative to the workspace so
   host paths do not appear in facts and component identifiers remain stable
-  across runs and operating systems.
+  across runs, working directories, and operating systems.
 
 ## [2.2.0] - 2026-07-29
 

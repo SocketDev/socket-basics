@@ -52,6 +52,17 @@ def test_build_exclude_patterns_skip_empty_entries(tmp_path):
     assert all("node_modules" in pattern or "dist" in pattern for pattern in patterns)
 
 
+def test_build_exclude_patterns_normalize_dot_and_repeated_separators(tmp_path):
+    scanner = _scanner(tmp_path, "")
+
+    dist_pattern, cache_pattern = scanner._build_exclude_patterns("./dist,sub//cache")
+
+    assert re.search(dist_pattern, str(tmp_path / "dist" / "bundle.js"))
+    assert re.search(dist_pattern, str(tmp_path / "src" / "dist" / "bundle.js"))
+    assert re.search(cache_pattern, str(tmp_path / "sub" / "cache" / "data"))
+    assert not re.search(cache_pattern, str(tmp_path / "src" / "sub" / "cache" / "data"))
+
+
 def test_build_exclude_patterns_translate_globs_at_any_depth(tmp_path):
     scanner = _scanner(tmp_path, "")
 
@@ -75,10 +86,18 @@ def test_build_exclude_patterns_keep_slash_globs_root_relative(tmp_path):
 def test_build_exclude_patterns_keep_literal_entries_segment_anchored(tmp_path):
     scanner = _scanner(tmp_path, "")
 
-    pattern = scanner._build_exclude_patterns("node_modules")[0]
+    node_modules_pattern, app_pattern = scanner._build_exclude_patterns("node_modules,app")
 
-    assert re.search(pattern, str(tmp_path / "src" / "node_modules" / "package.json"))
-    assert not re.search(pattern, str(tmp_path / "src" / "node_modules_backup" / "package.json"))
+    assert re.search(
+        node_modules_pattern,
+        str(tmp_path / "src" / "node_modules" / "package.json"),
+    )
+    assert not re.search(
+        node_modules_pattern,
+        str(tmp_path / "src" / "node_modules_backup" / "package.json"),
+    )
+    assert re.search(app_pattern, str(tmp_path / "src" / "app" / "main.py"))
+    assert not re.search(app_pattern, str(tmp_path / "src" / "myapp" / "main.py"))
 
 
 def test_build_exclude_patterns_keep_slash_literals_root_relative(tmp_path):
@@ -223,6 +242,44 @@ def test_process_results_strips_relative_workspace_from_output(tmp_path, monkeyp
 
     assert result["components"][0]["name"] == "app/creds.txt"
     assert result["components"][0]["alerts"][0]["props"]["filePath"] == "app/creds.txt"
+
+
+def test_process_results_relative_finding_path_is_independent_of_cwd(
+    tmp_path,
+    monkeypatch,
+):
+    workspace = tmp_path / "workspace"
+    other_cwd = tmp_path / "other"
+    workspace.mkdir()
+    other_cwd.mkdir()
+    scanner = _scanner(workspace, "")
+    scanner.generate_notifications = lambda components: {}
+    finding_path = Path(workspace.name) / "app" / "creds.txt"
+    finding = {
+        "DetectorName": "AWS",
+        "Verified": True,
+        "Raw": "AKIA1234567890EXAMPLE",
+        "SourceMetadata": {
+            "Data": {
+                "Filesystem": {
+                    "file": str(finding_path),
+                    "line": 7,
+                }
+            }
+        },
+    }
+
+    monkeypatch.chdir(tmp_path)
+    from_workspace_parent = scanner._process_results([finding])["components"][0]
+    monkeypatch.chdir(other_cwd)
+    from_other_cwd = scanner._process_results([finding])["components"][0]
+
+    expected = str(finding_path)
+    expected_id = hashlib.sha256(expected.replace("\\", "/").encode()).hexdigest()
+    assert from_workspace_parent["name"] == expected
+    assert from_other_cwd["name"] == expected
+    assert from_workspace_parent["id"] == expected_id
+    assert from_other_cwd["id"] == expected_id
 
 
 def test_process_results_hashes_windows_paths_as_posix(tmp_path):

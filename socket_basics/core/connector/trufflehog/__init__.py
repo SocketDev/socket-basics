@@ -103,7 +103,11 @@ class TruffleHogScanner(BaseConnector):
             return path
 
         try:
-            candidate = path if os.path.isabs(path) else os.path.abspath(path)
+            candidate = (
+                os.path.abspath(path)
+                if os.path.isabs(path)
+                else os.path.abspath(os.path.join(workspace_root, path))
+            )
             if os.path.commonpath([workspace_root, candidate]) == workspace_root:
                 return os.path.normpath(os.path.relpath(candidate, workspace_root))
         except (OSError, ValueError):
@@ -129,8 +133,10 @@ class TruffleHogScanner(BaseConnector):
         workspace_root = self._workspace_root()
         patterns = []
         for entry in entries:
-            directory = str(entry).strip().replace('\\', '/').strip('/')
-            if not directory:
+            directory = posixpath.normpath(
+                str(entry).strip().replace('\\', '/')
+            ).strip('/')
+            if directory in ('', '.'):
                 continue
 
             has_glob = '*' in directory or '?' in directory
@@ -143,7 +149,7 @@ class TruffleHogScanner(BaseConnector):
             # should work at any depth below the workspace. Patterns with a
             # slash stay root-relative unless they explicitly use ``**/``.
             if '/' not in directory:
-                directory_regex = rf'(?:.*[/\\])?{directory_regex}'
+                directory_regex = rf'(?:[^/\\]+[/\\])*{directory_regex}'
 
             if workspace_root:
                 root_regex = self._path_regex(workspace_root)
