@@ -1,4 +1,6 @@
 from pathlib import Path
+import hashlib
+import logging
 import re
 from types import SimpleNamespace
 
@@ -10,6 +12,12 @@ def _scanner(tmp_path, exclude_dirs):
         workspace=tmp_path,
         trufflehog_exclude_dir=exclude_dirs,
     )
+    config.get = lambda key, default=None: {
+        "trufflehog_exclude_dir": exclude_dirs,
+        "trufflehog_show_unverified": False,
+    }.get(key, default)
+    config.get_action_for_severity = lambda severity: "error"
+    config.get_scan_targets = lambda: []
     scanner = TruffleHogScanner.__new__(TruffleHogScanner)
     scanner.config = config
     return scanner
@@ -117,3 +125,126 @@ def test_scan_uses_absolute_targets_for_relative_workspace(tmp_path, monkeypatch
 
     command = captured["command"]
     assert command[-1] == str(tmp_path)
+
+
+def test_process_results_strips_absolute_workspace_from_output_and_id(tmp_path):
+    scanner = _scanner(tmp_path, "")
+    scanner.generate_notifications = lambda components: {}
+
+    file_path = tmp_path / "app" / "creds.txt"
+    finding = {
+        "DetectorName": "AWS",
+        "Verified": True,
+        "Raw": "AKIA1234567890EXAMPLE",
+        "SourceMetadata": {
+            "Data": {"Filesystem": {"file": str(file_path), "line": 7}}
+        },
+    }
+
+    result = scanner._process_results([finding])
+    component = result["components"][0]
+    alert = component["alerts"][0]
+
+    assert component["name"] == "app/creds.txt"
+    assert component["subpath"] == "app/creds.txt"
+    assert component["manifestFiles"] == [{"file": "app/creds.txt"}]
+    assert alert["props"]["filePath"] == "app/creds.txt"
+    assert component["id"] == hashlib.sha256(b"app/creds.txt").hexdigest()
+
+
+def test_process_results_strips_relative_workspace_from_output(tmp_path, monkeypatch):
+    monkeypatch.chdir(tmp_path)
+    workspace = Path("ws")
+    scanner = _scanner(workspace, "")
+    scanner.generate_notifications = lambda components: {}
+
+    finding = {
+        "DetectorName": "AWS",
+        "Verified": True,
+        "Raw": "AKIA1234567890EXAMPLE",
+        "SourceMetadata": {
+            "Data": {
+                "Filesystem": {
+                    "file": str((tmp_path / "ws" / "app" / "creds.txt").resolve()),
+                    "line": 7,
+                }
+            }
+        },
+    }
+
+    result = scanner._process_results([finding])
+
+    assert result["components"][0]["name"] == "app/creds.txt"
+    assert result["components"][0]["alerts"][0]["props"]["filePath"] == "app/creds.txt"
+
+
+def test_scan_filters_excluded_changed_files(tmp_path, monkeypatch, caplog):
+    scanner = _scanner(tmp_path, "node_modules")
+    scanner.is_enabled = lambda: True
+    scanner.config._config = {}
+    scanner.config.get = lambda key, default=None: {
+        "changed_files": ["node_modules/staged.txt", "app/staged.txt"],
+        "trufflehog_exclude_dir": "node_modules",
+        "trufflehog_show_unverified": False,
+    }.get(key, default)
+    scanner._process_results = lambda findings: {}
+
+    captured = {}
+
+    def fake_run(command, **kwargs):
+        captured["command"] = command
+        return SimpleNamespace(returncode=0, stdout="", stderr="")
+
+    monkeypatch.setattr(
+        "socket_basics.core.connector.trufflehog.subprocess.run",
+        fake_run,
+    )
+
+    with caplog.at_level(logging.DEBUG):
+        scanner.scan()
+
+    command = captured["command"]
+    assert str(tmp_path / "app" / "staged.txt") in command
+    assert str(tmp_path / "node_modules" / "staged.txt") not in command
+    assert "TruffleHog exclude patterns:" in caplog.text
+    assert "Skipping excluded changed file:" in caplog.text
+
+
+def test_scan_warns_for_target_outside_workspace(tmp_path, monkeypatch, caplog):
+    scanner = _scanner(tmp_path, "node_modules")
+    scanner.is_enabled = lambda: True
+    outside_target = tmp_path.parent / "outside-repo"
+    scanner.config.get_scan_targets = lambda: [str(outside_target)]
+    scanner._process_results = lambda findings: {}
+
+    monkeypatch.setattr(
+        "socket_basics.core.connector.trufflehog.subprocess.run",
+        lambda command, **kwargs: SimpleNamespace(returncode=0, stdout="", stderr=""),
+    )
+
+    with caplog.at_level(logging.WARNING):
+        scanner.scan()
+
+    assert "is outside workspace" in caplog.text
+
+
+def test_scan_cleans_exclude_file_when_trufflehog_fails(tmp_path, monkeypatch):
+    scanner = _scanner(tmp_path, "node_modules")
+    scanner.is_enabled = lambda: True
+    scanner.config.get_scan_targets = lambda: [str(tmp_path)]
+    scanner._process_results = lambda findings: {}
+    captured = {}
+
+    def fake_run(command, **kwargs):
+        exclude_path = Path(command[command.index("--exclude-paths") + 1])
+        captured["exclude_path"] = exclude_path
+        return SimpleNamespace(returncode=1, stdout="", stderr="failed")
+
+    monkeypatch.setattr(
+        "socket_basics.core.connector.trufflehog.subprocess.run",
+        fake_run,
+    )
+
+    scanner.scan()
+
+    assert not captured["exclude_path"].exists()

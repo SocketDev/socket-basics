@@ -321,7 +321,9 @@ socket-basics --disable-secrets
 ```
 
 ### `--exclude-dir EXCLUDE_DIR`
-Comma-separated list of directories to exclude from secret scanning.
+Comma-separated directory names to exclude from secret scanning. Values are
+matched as literal path segments beneath the workspace root; glob syntax is not
+supported.
 
 **Example:**
 ```bash
