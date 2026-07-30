@@ -17,6 +17,9 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Fixed
 - Normalize manual Docker release tag inputs before checkout.
+- core-tool-watch now opts into fail-closed Socket purl batch semantics
+  (`poll` + `alerts`), so fresh-but-unanalyzed pins surface as labeled
+  pending/not-found failures instead of silently dropped rows.
 
 ## [2.1.0] - 2026-07-22
 
