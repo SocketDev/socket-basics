@@ -63,6 +63,15 @@ def test_build_exclude_patterns_translate_globs_at_any_depth(tmp_path):
     assert not re.search(pattern, str(tmp_path / "config" / "appsettings.Staging.json.bak"))
 
 
+def test_build_exclude_patterns_keep_slash_globs_root_relative(tmp_path):
+    scanner = _scanner(tmp_path, "")
+
+    pattern = scanner._build_exclude_patterns("config/*.json")[0]
+
+    assert re.search(pattern, str(tmp_path / "config" / "secrets.json"))
+    assert not re.search(pattern, str(tmp_path / "src" / "config" / "secrets.json"))
+
+
 def test_build_exclude_patterns_keep_literal_entries_segment_anchored(tmp_path):
     scanner = _scanner(tmp_path, "")
 
@@ -70,6 +79,26 @@ def test_build_exclude_patterns_keep_literal_entries_segment_anchored(tmp_path):
 
     assert re.search(pattern, str(tmp_path / "src" / "node_modules" / "package.json"))
     assert not re.search(pattern, str(tmp_path / "src" / "node_modules_backup" / "package.json"))
+
+
+def test_build_exclude_patterns_keep_slash_literals_root_relative(tmp_path):
+    scanner = _scanner(tmp_path, "")
+
+    pattern = scanner._build_exclude_patterns("config/secrets")[0]
+
+    assert re.search(pattern, str(tmp_path / "config" / "secrets" / "token.txt"))
+    assert not re.search(pattern, str(tmp_path / "src" / "config" / "secrets" / "token.txt"))
+
+
+def test_build_exclude_patterns_handle_filesystem_root_workspace(tmp_path):
+    scanner = _scanner(tmp_path, "")
+    scanner._workspace_root = lambda: "/"
+
+    pattern = scanner._build_exclude_patterns("tmp")[0]
+
+    assert re.search(pattern, "/tmp/secret.txt")
+    assert re.search(pattern, "/var/tmp/secret.txt")
+    assert not re.search(pattern, "/template/secret.txt")
 
 
 def test_write_exclude_file_contains_one_pattern_per_line(tmp_path):
@@ -156,9 +185,7 @@ def test_process_results_strips_absolute_workspace_from_output_and_id(tmp_path):
         "DetectorName": "AWS",
         "Verified": True,
         "Raw": "AKIA1234567890EXAMPLE",
-        "SourceMetadata": {
-            "Data": {"Filesystem": {"file": str(file_path), "line": 7}}
-        },
+        "SourceMetadata": {"Data": {"Filesystem": {"file": str(file_path), "line": 7}}},
     }
 
     result = scanner._process_results([finding])
@@ -196,6 +223,22 @@ def test_process_results_strips_relative_workspace_from_output(tmp_path, monkeyp
 
     assert result["components"][0]["name"] == "app/creds.txt"
     assert result["components"][0]["alerts"][0]["props"]["filePath"] == "app/creds.txt"
+
+
+def test_process_results_hashes_windows_paths_as_posix(tmp_path):
+    scanner = _scanner(tmp_path, "")
+    scanner.generate_notifications = lambda components: {}
+
+    finding = {
+        "DetectorName": "AWS",
+        "Verified": True,
+        "Raw": "AKIA1234567890EXAMPLE",
+        "SourceMetadata": {"Data": {"Filesystem": {"file": r"app\creds.txt", "line": 7}}},
+    }
+
+    result = scanner._process_results([finding])
+
+    assert result["components"][0]["id"] == hashlib.sha256(b"app/creds.txt").hexdigest()
 
 
 def test_scan_filters_excluded_changed_files(tmp_path, monkeypatch, caplog):
@@ -258,6 +301,84 @@ def test_scan_filters_changed_files_with_glob_excludes(tmp_path, monkeypatch):
 
     assert str(tmp_path / "config" / "appsettings.Staging.json") not in captured["command"]
     assert str(tmp_path / "config" / "appsettings.json") in captured["command"]
+
+
+def test_scan_filters_excluded_explicit_scan_targets(tmp_path, monkeypatch, caplog):
+    scanner = _scanner(tmp_path, "excluded")
+    scanner.is_enabled = lambda: True
+    scanner.config.get_scan_targets = lambda: [
+        str(tmp_path / "excluded" / "secret.txt"),
+        str(tmp_path / "app" / "secret.txt"),
+    ]
+    scanner._process_results = lambda findings: {}
+    captured = {}
+
+    def fake_run(command, **kwargs):
+        captured["command"] = command
+        return SimpleNamespace(returncode=0, stdout="", stderr="")
+
+    monkeypatch.setattr(
+        "socket_basics.core.connector.trufflehog.subprocess.run",
+        fake_run,
+    )
+
+    with caplog.at_level(logging.INFO):
+        scanner.scan()
+
+    assert str(tmp_path / "excluded" / "secret.txt") not in captured["command"]
+    assert str(tmp_path / "app" / "secret.txt") in captured["command"]
+    assert "Skipping excluded scan target:" in caplog.text
+
+
+def test_scan_cleans_filter_when_all_explicit_targets_are_excluded(tmp_path, monkeypatch, caplog):
+    scanner = _scanner(tmp_path, "excluded")
+    scanner.is_enabled = lambda: True
+    scanner.config.get_scan_targets = lambda: [
+        str(tmp_path / "excluded" / "secret.txt"),
+    ]
+    captured = {}
+    write_patterns = scanner._write_exclude_patterns
+
+    def capture_filter_path(patterns):
+        filter_path = write_patterns(patterns)
+        captured["filter_path"] = Path(filter_path)
+        return filter_path
+
+    def unexpected_run(command, **kwargs):
+        raise AssertionError("TruffleHog should not run when all targets are excluded")
+
+    monkeypatch.setattr(scanner, "_write_exclude_patterns", capture_filter_path)
+    monkeypatch.setattr(
+        "socket_basics.core.connector.trufflehog.subprocess.run",
+        unexpected_run,
+    )
+
+    with caplog.at_level(logging.INFO):
+        result = scanner.scan()
+
+    assert result == {}
+    assert "All scan targets were excluded from TruffleHog scanning" in caplog.text
+    assert not captured["filter_path"].exists()
+
+
+def test_scan_skips_when_no_targets_are_available(tmp_path, monkeypatch, caplog):
+    scanner = _scanner(tmp_path, "")
+    scanner.is_enabled = lambda: True
+    scanner.config.get_scan_targets = lambda: []
+
+    def unexpected_run(command, **kwargs):
+        raise AssertionError("TruffleHog should not run without scan targets")
+
+    monkeypatch.setattr(
+        "socket_basics.core.connector.trufflehog.subprocess.run",
+        unexpected_run,
+    )
+
+    with caplog.at_level(logging.INFO):
+        result = scanner.scan()
+
+    assert result == {}
+    assert "No TruffleHog scan targets found; skipping" in caplog.text
 
 
 def test_scan_warns_for_target_outside_workspace(tmp_path, monkeypatch, caplog):

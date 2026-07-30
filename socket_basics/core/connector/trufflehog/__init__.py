@@ -6,9 +6,10 @@ Handles TruffleHog execution and result processing
 
 import json
 import logging
+import os
+import posixpath
 import re
 import subprocess
-import os
 import tempfile
 from typing import Dict, List, Any
 
@@ -135,16 +136,20 @@ class TruffleHogScanner(BaseConnector):
             has_glob = '*' in directory or '?' in directory
             if has_glob:
                 directory_regex = self._glob_regex(directory)
-                # A pattern without a slash is a basename/segment pattern and
-                # should work at any depth below the workspace.
-                if '/' not in directory:
-                    directory_regex = rf'(?:.*[/\\])?{directory_regex}'
             else:
                 directory_regex = self._path_regex(directory)
+
+            # A pattern without a slash is a basename/segment pattern and
+            # should work at any depth below the workspace. Patterns with a
+            # slash stay root-relative unless they explicitly use ``**/``.
+            if '/' not in directory:
+                directory_regex = rf'(?:.*[/\\])?{directory_regex}'
+
             if workspace_root:
                 root_regex = self._path_regex(workspace_root)
+                root_separator = '' if workspace_root in ('/', '\\') else r'[/\\]'
                 patterns.append(
-                    rf'^{root_regex}[/\\](?:.*[/\\])?{directory_regex}(?:[/\\]|$)'
+                    rf'^{root_regex}{root_separator}{directory_regex}(?:[/\\]|$)'
                 )
             else:
                 patterns.append(rf'(?:^|[/\\]){directory_regex}(?:[/\\]|$)')
@@ -238,25 +243,33 @@ class TruffleHogScanner(BaseConnector):
                 if exclude_file_path:
                     cmd.extend(['--exclude-paths', exclude_file_path])
 
-            # If changed_files present, pass those individual files, otherwise use configured targets
+            # If changed_files are present, pass those individual files;
+            # otherwise use the configured targets (including scan_files).
             if changed_files:
-                scan_targets = []
-                for cf in changed_files:
-                    target = self._absolute_scan_target(self.config.workspace / cf)
-                    self._warn_if_target_outside_workspace(target)
-                    if exclude_patterns and self._path_matches_patterns(target, exclude_patterns):
-                        logger.info("Skipping excluded changed file: %s", target)
-                        continue
-                    scan_targets.append(target)
-                if not scan_targets:
-                    logger.info("All changed files were excluded from TruffleHog scanning")
-                    return results
-                cmd.extend(scan_targets)
+                target_candidates = [self.config.workspace / cf for cf in changed_files]
+                excluded_target_message = "Skipping excluded changed file: %s"
+                all_excluded_message = "All changed files were excluded from TruffleHog scanning"
             else:
-                scan_targets = [self._absolute_scan_target(target) for target in targets]
-                for target in scan_targets:
-                    self._warn_if_target_outside_workspace(target)
-                cmd.extend(scan_targets)
+                target_candidates = list(targets or [])
+                excluded_target_message = "Skipping excluded scan target: %s"
+                all_excluded_message = "All scan targets were excluded from TruffleHog scanning"
+
+            scan_targets = []
+            for candidate in target_candidates:
+                target = self._absolute_scan_target(candidate)
+                self._warn_if_target_outside_workspace(target)
+                if exclude_patterns and self._path_matches_patterns(target, exclude_patterns):
+                    logger.info(excluded_target_message, target)
+                    continue
+                scan_targets.append(target)
+
+            if not scan_targets:
+                if target_candidates:
+                    logger.info(all_excluded_message)
+                else:
+                    logger.info("No TruffleHog scan targets found; skipping")
+                return results
+            cmd.extend(scan_targets)
             
             logger.info(f"Running: {' '.join(cmd)}")
             result = subprocess.run(cmd, capture_output=True, text=True)
@@ -357,7 +370,11 @@ class TruffleHogScanner(BaseConnector):
                 # Use normalized posix path rather than file contents to avoid
                 # reading files; this keeps IDs stable across runs and aligns
                 # with the requested rule (sha256 of path+filename).
-                norm = os.path.normpath(file_path) if file_path else 'unknown'
+                norm = (
+                    posixpath.normpath(str(file_path).replace('\\', '/'))
+                    if file_path
+                    else 'unknown'
+                )
                 return hashlib.sha256(norm.encode('utf-8')).hexdigest()
             except Exception:
                 return hashlib.sha256((file_path or 'unknown').encode('utf-8')).hexdigest()
