@@ -32,10 +32,9 @@ with a notice (graceful degradation, mirroring the free/enterprise split in
 dependency-review.yml).
 
 Exit code is 0 unless --fail-on-malware is set AND a PINNED version trips the
-(deliberately strict) thresholds: any alert type in MALWARE_ALERT_TYPES -- a
-curated list that goes beyond outright malware to include strong risk signals
-like install scripts, obfuscation, and telemetry -- OR any alert of high or
-critical severity. With a token present, a Socket scoring error also fails, as
+thresholds: any alert type in MALWARE_ALERT_TYPES -- a curated list of
+compromise and compromise-adjacent signals -- OR any alert of critical
+severity. With a token present, a Socket scoring error also fails, as
 does a covered pinned coordinate that comes back still pending analysis
 (synthetic pendingScan row), unresolvable (synthetic notFound row), or missing
 from the returned batch entirely (fail-closed: unverified pins must not ship;
@@ -66,21 +65,19 @@ REPO_ROOT = Path(__file__).resolve().parent.parent
 DOCKERFILES = [REPO_ROOT / "Dockerfile", REPO_ROOT / "app_tests" / "Dockerfile"]
 UV_LOCK = REPO_ROOT / "uv.lock"
 
-# Alert types treated as fail-worthy on a pinned version. Deliberately broader
-# than literal malware: alongside outright compromise (malware, trojan,
-# backdoor) it includes strong risk signals (obfuscation, install scripts,
-# shell access, telemetry, typosquat hints) -- for the four core tools we bake
-# into the image, any of these deserves a hard stop and a human look, at the
-# cost of occasional false positives. Trim this set rather than disabling
-# --fail-on-malware if it proves too noisy.
+# Alert types treated as fail-worthy on a pinned version: outright compromise
+# signals plus typosquat/fake-popularity hints and compromise-adjacent
+# behaviors (install scripts, telemetry). Calibrated against real batch data
+# once alerts=true started returning the full alert set (run 30504424787):
+# capability signals (shellAccess -- present on ALL four tools; they spawn
+# subprocesses by design) and heuristic/static signals (gptMalware,
+# gptSecurity, obfuscatedFile -- a SAST engine ships malicious-looking test
+# fixtures on purpose) are informational there, not compromise evidence, and
+# were removed. Trim further rather than disabling --fail-on-malware if new
+# noise appears.
 MALWARE_ALERT_TYPES = {
     "malware",
-    "gptMalware",
-    "gptSecurity",
     "didYouMean",
-    "obfuscatedFile",
-    "obfuscatedRequire",
-    "shellAccess",
     "suspiciousStarActivity",
     "cryptoMiner",
     "installScript",
@@ -88,8 +85,13 @@ MALWARE_ALERT_TYPES = {
     "trojan",
     "backdoor",
 }
-# Severities that count as fail-worthy: includes "high", not just "critical".
-CRITICAL_SEVERITIES = {"critical", "high"}
+# Severities that count as fail-worthy. "high" was included while the batch
+# response carried no alert data (the pre-alerts=true fail-open default made
+# this gate dead code); the full alert set carries high-severity heuristic and
+# cve rows on perfectly healthy tools (gptMalware/obfuscatedFile on the
+# OpenGrep repo artifact, cve on Trivy), so the hard gate is critical-only.
+# High-severity findings still land in the report for human review.
+CRITICAL_SEVERITIES = {"critical"}
 
 # Synthetic batch-status alert types the purl endpoints emit when called with
 # alerts=true (added upstream ~2026-04, depscan #18990). They mark inputs whose
