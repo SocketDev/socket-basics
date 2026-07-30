@@ -10,8 +10,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Fixed
 
-- Fixed TruffleHog exclude-directory handling so all configured entries are
-  passed through one filter file and are also honored for changed-file scans.
+- Fixed TruffleHog secret scanning when `trufflehog_exclude_dir` is configured:
+  all entries now pass through one filter file and are honored for changed-file
+  scans. Previously, configured values could be interpreted as filter filenames
+  and fail or alter scans.
 - Normalized in-workspace TruffleHog finding paths relative to the workspace so
   host paths do not appear in facts and component identifiers remain stable
   across runs.
