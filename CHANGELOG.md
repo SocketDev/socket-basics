@@ -8,7 +8,20 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
-## [2.1.0] - 2026-06-02
+## [2.2.0] - 2026-07-29
+
+### Added
+- Publish multi-arch Docker images for `linux/amd64` and `linux/arm64`.
+- Add a heavy image variant (`socket-basics:<version>-heavy` tag suffix) bundling
+  Socket Basics with the pinned Python Socket CLI.
+
+### Fixed
+- Normalize manual Docker release tag inputs before checkout.
+- core-tool-watch now opts into fail-closed Socket purl batch semantics
+  (`poll` + `alerts`), so fresh-but-unanalyzed pins surface as labeled
+  pending/not-found failures instead of silently dropped rows.
+
+## [2.1.0] - 2026-07-22
 
 ### Added
 - Diff-only scan scoping now applies to SAST/OpenGrep via `changed_files` and
