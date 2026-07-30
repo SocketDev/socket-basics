@@ -406,7 +406,7 @@ connectors:
           - trufflehog_show_unverified
       - name: trufflehog_exclude_dir
         option: --exclude-dir
-        description: "Comma-separated list of directories to exclude from secret scanning"
+        description: "Comma-separated literal directory/file names or glob patterns to exclude from secret scanning beneath the workspace root; matching is case-sensitive"
         env_variable: INPUT_TRUFFLEHOG_EXCLUDE_DIR
         type: str
         default: ""

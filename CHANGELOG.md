@@ -8,6 +8,24 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [2.2.1] - 2026-07-30
+
+### Fixed
+
+- Fixed TruffleHog secret scanning when `trufflehog_exclude_dir` is configured:
+  all entries now pass through one filter file and are honored for changed-file
+  and explicit-file scans. Previously, configured values could be interpreted
+  as filter filenames and fail or alter scans.
+- Added glob-pattern support for exclusions such as
+  `**/appsettings.*.json`, with matching anchored beneath the workspace and
+  root-relative globs kept distinct from recursive `**` globs.
+- Normalized exclusion entries before pattern generation so dot segments and
+  repeated path separators behave consistently.
+- Fixed exclusion matching when the configured workspace is the filesystem root.
+- Normalized in-workspace TruffleHog finding paths relative to the workspace so
+  host paths do not appear in facts and component identifiers remain stable
+  across runs, working directories, and operating systems.
+
 ## [2.2.0] - 2026-07-29
 
 ### Added

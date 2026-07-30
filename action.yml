@@ -4,7 +4,7 @@ author: "Socket"
 
 runs:
   using: "docker"
-  image: "docker://ghcr.io/socketdev/socket-basics:2.2.0"
+  image: "docker://ghcr.io/socketdev/socket-basics:2.2.1"
   env:
     # Core GitHub variables (these are automatically available, but we explicitly pass GITHUB_TOKEN)
     GITHUB_TOKEN: ${{ inputs.github_token }}
@@ -428,7 +428,7 @@ inputs:
     required: false
     default: "false"
   trufflehog_exclude_dir:
-    description: "Comma-separated list of directories to exclude from secret scanning"
+    description: "Comma-separated literal directory/file names or glob patterns to exclude from secret scanning beneath the workspace root; matching is case-sensitive"
     required: false
     default: ""
   trufflehog_show_unverified:

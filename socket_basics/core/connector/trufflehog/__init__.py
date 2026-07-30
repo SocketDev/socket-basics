@@ -6,8 +6,11 @@ Handles TruffleHog execution and result processing
 
 import json
 import logging
-import subprocess
 import os
+import posixpath
+import re
+import subprocess
+import tempfile
 from typing import Dict, List, Any
 
 from ..base import BaseConnector
@@ -31,6 +34,181 @@ class TruffleHogScanner(BaseConnector):
         """Check if secret scanning should be enabled"""
         return self.config.get('secret_scanning_enabled', False)
     
+    @staticmethod
+    def _path_regex(value: str) -> str:
+        """Escape a filesystem path for TruffleHog's Go regular-expression input."""
+        normalized = str(value).replace('\\', '/')
+        return re.escape(normalized).replace('/', r'[/\\]')
+
+    @staticmethod
+    def _glob_regex(value: str) -> str:
+        """Translate a path glob into a TruffleHog-compatible regex.
+
+        TruffleHog consumes Go/RE2 regexes, not shell globs. Keep ``*`` and
+        ``?`` within a path segment, and let ``**/`` span zero or more path
+        segments. All other characters are treated literally.
+        """
+        normalized = str(value).replace('\\', '/').strip('/')
+        pieces = []
+        index = 0
+        while index < len(normalized):
+            char = normalized[index]
+            if char == '*':
+                if index + 1 < len(normalized) and normalized[index + 1] == '*':
+                    index += 2
+                    if index < len(normalized) and normalized[index] == '/':
+                        pieces.append(r'(?:.*[/\\])?')
+                        index += 1
+                    else:
+                        pieces.append(r'.*')
+                    continue
+                pieces.append(r'[^/\\]*')
+            elif char == '?':
+                pieces.append(r'[^/\\]')
+            elif char == '/':
+                pieces.append(r'[/\\]')
+            else:
+                pieces.append(re.escape(char))
+            index += 1
+        return ''.join(pieces)
+
+    def _workspace_root(self) -> str:
+        """Return the absolute workspace path used by the scanner command."""
+        workspace = getattr(self.config, 'workspace', None)
+        if not isinstance(workspace, (str, bytes, os.PathLike)):
+            workspace = (
+                getattr(workspace, 'path', None)
+                or getattr(workspace, 'root', None)
+                or workspace
+            )
+        if not workspace:
+            return ''
+        try:
+            root = os.path.abspath(os.fspath(workspace))
+            return root if root in ('/', '\\') else root.rstrip('/\\')
+        except (TypeError, ValueError):
+            return ''
+
+    def _workspace_relative_path(self, file_path: Any) -> str:
+        """Return a finding path relative to the configured workspace."""
+        if not file_path:
+            return ''
+        try:
+            path = os.path.normpath(os.fspath(file_path))
+        except (TypeError, ValueError):
+            path = os.path.normpath(str(file_path))
+
+        workspace_root = self._workspace_root()
+        if not workspace_root or not path:
+            return path
+
+        try:
+            candidate = (
+                os.path.abspath(path)
+                if os.path.isabs(path)
+                else os.path.abspath(os.path.join(workspace_root, path))
+            )
+            if os.path.commonpath([workspace_root, candidate]) == workspace_root:
+                return os.path.normpath(os.path.relpath(candidate, workspace_root))
+        except (OSError, ValueError):
+            pass
+
+        return path
+
+    def _build_exclude_patterns(self, exclude_dirs: Any) -> List[str]:
+        """Build workspace-relative path patterns for TruffleHog.
+
+        TruffleHog expects one --exclude-paths value containing a file of
+        newline-separated regular expressions. The configured values are
+        directory names, so anchor each one below the workspace root. This
+        prevents a directory such as tmp from matching the workspace's
+        parent path (for example /tmp/...), and prevents .git from
+        matching .github.
+        """
+        if isinstance(exclude_dirs, str):
+            entries = exclude_dirs.split(',')
+        else:
+            entries = exclude_dirs or []
+
+        workspace_root = self._workspace_root()
+        patterns = []
+        for entry in entries:
+            directory = posixpath.normpath(
+                str(entry).strip().replace('\\', '/')
+            ).strip('/')
+            if directory in ('', '.'):
+                continue
+
+            has_glob = '*' in directory or '?' in directory
+            if has_glob:
+                directory_regex = self._glob_regex(directory)
+            else:
+                directory_regex = self._path_regex(directory)
+
+            # A pattern without a slash is a basename/segment pattern and
+            # should work at any depth below the workspace. Patterns with a
+            # slash stay root-relative unless they explicitly use ``**/``.
+            if '/' not in directory:
+                directory_regex = rf'(?:[^/\\]+[/\\])*{directory_regex}'
+
+            if workspace_root:
+                root_regex = self._path_regex(workspace_root)
+                root_separator = '' if workspace_root in ('/', '\\') else r'[/\\]'
+                patterns.append(
+                    rf'^{root_regex}{root_separator}{directory_regex}(?:[/\\]|$)'
+                )
+            else:
+                patterns.append(rf'(?:^|[/\\]){directory_regex}(?:[/\\]|$)')
+
+        return patterns
+
+    def _write_exclude_file(self, exclude_dirs: Any) -> str | None:
+        """Write exclude regexes to a temporary file for TruffleHog."""
+        patterns = self._build_exclude_patterns(exclude_dirs)
+        return self._write_exclude_patterns(patterns)
+
+    def _write_exclude_patterns(self, patterns: List[str]) -> str | None:
+        """Write resolved exclude regexes to a temporary file."""
+        if not patterns:
+            return None
+
+        with tempfile.NamedTemporaryFile(
+            mode='w',
+            encoding='utf-8',
+            prefix='socket-basics-trufflehog-',
+            suffix='.txt',
+            delete=False,
+        ) as exclude_file:
+            exclude_file.write('\n'.join(patterns))
+            exclude_file.write('\n')
+            return exclude_file.name
+
+    @staticmethod
+    def _absolute_scan_target(target: Any) -> str:
+        """Return the absolute path string TruffleHog will filter against."""
+        return os.path.abspath(os.fspath(target))
+
+    @staticmethod
+    def _path_matches_patterns(path: str, patterns: List[str]) -> bool:
+        """Return whether a path matches one of the generated exclude patterns."""
+        return any(re.search(pattern, path) for pattern in patterns)
+
+    def _warn_if_target_outside_workspace(self, target: str) -> None:
+        """Warn when workspace-anchored excludes cannot apply to a target."""
+        workspace_root = self._workspace_root()
+        if not workspace_root:
+            return
+        try:
+            inside_workspace = os.path.commonpath([workspace_root, target]) == workspace_root
+        except (OSError, ValueError):
+            inside_workspace = False
+        if not inside_workspace:
+            logger.warning(
+                "TruffleHog scan target %s is outside workspace %s; configured excludes may not apply",
+                target,
+                workspace_root,
+            )
+
     def scan(self) -> Dict[str, Any]:
         """Run Trufflehog secret scanning"""
         if not self.is_enabled():
@@ -41,7 +219,9 @@ class TruffleHogScanner(BaseConnector):
         
         targets = self.config.get_scan_targets()
         results = {}
-        
+
+        exclude_file_path = None
+        exclude_patterns: List[str] = []
         try:
             # Prefer explicit changed_files, fallback to git staged
             changed_files = self.config.get('changed_files', []) if hasattr(self.config, '_config') else []
@@ -59,18 +239,43 @@ class TruffleHogScanner(BaseConnector):
                 '--no-verification' if not self.config.get('trufflehog_show_unverified', False) else '--include-detectors=all'
             ]
 
-            # Add exclusion patterns
+            # TruffleHog accepts --exclude-paths only once and expects a file
+            # containing newline-separated regular expressions.
             exclude_dirs = self.config.get('trufflehog_exclude_dir', '')
             if exclude_dirs:
-                for exclude_dir in exclude_dirs.split(','):
-                    cmd.extend(['--exclude-paths', exclude_dir.strip()])
+                exclude_patterns = self._build_exclude_patterns(exclude_dirs)
+                logger.debug("TruffleHog exclude patterns: %s", exclude_patterns)
+                exclude_file_path = self._write_exclude_patterns(exclude_patterns)
+                if exclude_file_path:
+                    cmd.extend(['--exclude-paths', exclude_file_path])
 
-            # If changed_files present, pass those individual files, otherwise use configured targets
+            # If changed_files are present, pass those individual files;
+            # otherwise use the configured targets (including scan_files).
             if changed_files:
-                for cf in changed_files:
-                    cmd.append(str(self.config.workspace / cf))
+                target_candidates = [self.config.workspace / cf for cf in changed_files]
+                excluded_target_message = "Skipping excluded changed file: %s"
+                all_excluded_message = "All changed files were excluded from TruffleHog scanning"
             else:
-                cmd.extend(targets)
+                target_candidates = list(targets or [])
+                excluded_target_message = "Skipping excluded scan target: %s"
+                all_excluded_message = "All scan targets were excluded from TruffleHog scanning"
+
+            scan_targets = []
+            for candidate in target_candidates:
+                target = self._absolute_scan_target(candidate)
+                self._warn_if_target_outside_workspace(target)
+                if exclude_patterns and self._path_matches_patterns(target, exclude_patterns):
+                    logger.info(excluded_target_message, target)
+                    continue
+                scan_targets.append(target)
+
+            if not scan_targets:
+                if target_candidates:
+                    logger.info(all_excluded_message)
+                else:
+                    logger.info("No TruffleHog scan targets found; skipping")
+                return results
+            cmd.extend(scan_targets)
             
             logger.info(f"Running: {' '.join(cmd)}")
             result = subprocess.run(cmd, capture_output=True, text=True)
@@ -138,7 +343,15 @@ class TruffleHogScanner(BaseConnector):
             logger.error("Trufflehog not found. Please install Trufflehog")
         except Exception as e:
             logger.error(f"Error running Trufflehog: {e}")
-        
+        finally:
+            if exclude_file_path:
+                try:
+                    os.unlink(exclude_file_path)
+                except FileNotFoundError:
+                    pass
+                except OSError as e:
+                    logger.warning(f"Failed to remove Trufflehog exclude file: {e}")
+
         return results
     
     def _convert_to_socket_facts(self, raw_results: Any) -> Dict[str, Any]:
@@ -154,79 +367,27 @@ class TruffleHogScanner(BaseConnector):
             return {}
         
         import hashlib
-        from pathlib import Path
 
         # Group findings by file path so each file gets its own component.
         comps: Dict[str, Dict[str, Any]] = {}
 
         def _hash_file_or_path(file_path: str) -> str:
             try:
-                p = Path(file_path)
-                # resolve relative to workspace when available
-                try:
-                    ws = getattr(self.config, 'workspace', None)
-                    if ws and not p.is_absolute():
-                        p = Path(ws) / file_path
-                    # If path is absolute and inside the workspace, make it relative
-                    elif ws and p.is_absolute():
-                        try:
-                            ws_path = Path(getattr(ws, 'path', None) or getattr(ws, 'root', None) or str(ws))
-                            if str(p).startswith(str(ws_path)):
-                                p = Path(os.path.relpath(str(p), str(ws_path)))
-                        except Exception:
-                            pass
-                except Exception:
-                    pass
                 # Use normalized posix path rather than file contents to avoid
                 # reading files; this keeps IDs stable across runs and aligns
                 # with the requested rule (sha256 of path+filename).
-                norm = str(p.as_posix())
+                norm = (
+                    posixpath.normpath(str(file_path).replace('\\', '/'))
+                    if file_path
+                    else 'unknown'
+                )
                 return hashlib.sha256(norm.encode('utf-8')).hexdigest()
             except Exception:
                 return hashlib.sha256((file_path or 'unknown').encode('utf-8')).hexdigest()
 
         for f in findings:
             fp = f.get('SourceMetadata', {}).get('Data', {}).get('Filesystem', {}).get('file') or ''
-            # normalize path
-            try:
-                # Normalize path first
-                try:
-                    fp = os.path.normpath(fp)
-                except Exception:
-                    pass
-
-                # Attempt to strip workspace prefix whether the path is absolute
-                # or a relative path that includes the workspace folder like
-                # "../NodeGoat/...". This makes component names and alerts
-                # consistent across environments.
-                try:
-                    workspace_root = getattr(self.config, 'workspace', None)
-                    workspace_root = getattr(workspace_root, 'path', None) or getattr(workspace_root, 'root', None) or workspace_root
-                    workspace_name = os.path.basename(workspace_root) if workspace_root else None
-                    # If absolute and inside workspace, make relative
-                    if workspace_root and os.path.isabs(fp):
-                        try:
-                            if str(fp).startswith(str(workspace_root)):
-                                fp = os.path.normpath(os.path.relpath(fp, workspace_root))
-                        except Exception:
-                            pass
-                    else:
-                        # For relative paths like "../NodeGoat/..." or "NodeGoat/...",
-                        # remove leading '../<workspace>' or './<workspace>' or '<workspace>'.
-                        if workspace_name:
-                            parts = fp.split(os.sep)
-                            if parts and parts[0] == workspace_name:
-                                parts = parts[1:]
-                            elif len(parts) >= 2 and parts[0] in ('.', '..') and parts[1] == workspace_name:
-                                parts = parts[2:]
-                            if parts:
-                                fp = os.path.join(*parts)
-                            else:
-                                fp = ''
-                except Exception:
-                    pass
-            except Exception:
-                pass
+            fp = self._workspace_relative_path(fp)
 
             comp_id = _hash_file_or_path(fp)
 
@@ -285,37 +446,7 @@ class TruffleHogScanner(BaseConnector):
         # Verified secrets are critical; unverified findings are low severity
         severity = 'critical' if verified else 'low'
 
-        # Make file paths relative to workspace root when possible
-        # Normalize and strip workspace prefix similar to above so alerts
-        # display paths without the workspace folder.
-        try:
-            file_path = os.path.normpath(file_path)
-        except Exception:
-            pass
-
-        try:
-            workspace_root = getattr(self.config.workspace, 'path', None) or getattr(self.config.workspace, 'root', None)
-        except Exception:
-            workspace_root = None
-
-        try:
-            if workspace_root and file_path and os.path.isabs(file_path):
-                file_path = os.path.normpath(os.path.relpath(file_path, workspace_root))
-            else:
-                # remove leading workspace folder for relative paths like
-                # "../NodeGoat/..." or "NodeGoat/..."
-                workspace_name = os.path.basename(workspace_root) if workspace_root else None
-                if workspace_name:
-                    parts = file_path.split(os.sep)
-                    if parts and parts[0] == workspace_name:
-                        parts = parts[1:]
-                    elif len(parts) >= 2 and parts[0] in ('.', '..') and parts[1] == workspace_name:
-                        parts = parts[2:]
-                    file_path = os.path.join(*parts) if parts else file_path
-                else:
-                    file_path = os.path.normpath(file_path)
-        except Exception:
-            pass
+        file_path = self._workspace_relative_path(file_path)
 
         # Redact the actual secret
         raw_secret = finding.get('Raw', '')
