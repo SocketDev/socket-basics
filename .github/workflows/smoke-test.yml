@@ -1,6 +1,6 @@
 name: smoke-test
 
-# Builds the main socket-basics image and verifies all baked-in tools respond.
+# Builds socket-basics image variants and verifies all baked-in tools respond.
 # Calls _docker-pipeline.yml in smoke-only mode (no push to registries).
 
 on:
@@ -8,12 +8,16 @@ on:
     branches: [main]
     paths:
       - 'Dockerfile'
+      - 'Dockerfile.heavy'
+      - 'scripts/docker-heavy-entrypoint.sh'
       - 'scripts/smoke-test-docker.sh'
       - '.github/workflows/smoke-test.yml'
       - '.github/workflows/_docker-pipeline.yml'
   pull_request:
     paths:
       - 'Dockerfile'
+      - 'Dockerfile.heavy'
+      - 'scripts/docker-heavy-entrypoint.sh'
       - 'scripts/smoke-test-docker.sh'
       - '.github/workflows/smoke-test.yml'
       - '.github/workflows/_docker-pipeline.yml'
@@ -29,12 +33,41 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  # Native build + smoke per arch. amd64 covers the standard runner; arm64
+  # covers ubuntu-24.04-arm and Apple Silicon self-hosted runners (issue #69).
+  # Native runners build ~5x faster than QEMU and exercise the real binaries.
   smoke:
-    name: smoke (socket-basics)
+    name: smoke (${{ matrix.image }}, ${{ matrix.arch }})
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - image: socket-basics
+            dockerfile: Dockerfile
+            check_set: main
+            arch: amd64
+            runs_on: ubuntu-latest
+          - image: socket-basics
+            dockerfile: Dockerfile
+            check_set: main
+            arch: arm64
+            runs_on: ubuntu-24.04-arm
+          - image: socket-basics-heavy
+            dockerfile: Dockerfile.heavy
+            check_set: heavy
+            arch: amd64
+            runs_on: ubuntu-latest
+          - image: socket-basics-heavy
+            dockerfile: Dockerfile.heavy
+            check_set: heavy
+            arch: arm64
+            runs_on: ubuntu-24.04-arm
     uses: ./.github/workflows/_docker-pipeline.yml
     with:
-      name: socket-basics
-      dockerfile: Dockerfile
+      name: ${{ matrix.image }}
+      dockerfile: ${{ matrix.dockerfile }}
       context: .
-      check_set: main
+      check_set: ${{ matrix.check_set }}
+      runs_on: ${{ matrix.runs_on }}
+      arch_label: ${{ matrix.arch }}
       push: false

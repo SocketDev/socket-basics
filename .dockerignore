@@ -10,9 +10,10 @@
 tests/
 app_tests/
 
-# Docs and scripts (not needed in image)
+# Docs and scripts (not needed in image, except the heavy image entrypoint)
 docs/
-scripts/
+scripts/*
+!scripts/docker-heavy-entrypoint.sh
 
 # Markdown (keep README.md — it's copied explicitly in the Dockerfile)
 *.md

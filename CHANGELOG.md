@@ -8,19 +8,36 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [2.2.1] - 2026-07-29
+
 ### Fixed
 
 - Fixed TruffleHog secret scanning when `trufflehog_exclude_dir` is configured:
   all entries now pass through one filter file and are honored for changed-file
-  scans. Previously, configured values could be interpreted as filter filenames
-  and fail or alter scans.
+  and explicit-file scans. Previously, configured values could be interpreted
+  as filter filenames and fail or alter scans.
 - Added glob-pattern support for exclusions such as
-  `**/appsettings.*.json`, with matching anchored beneath the workspace.
+  `**/appsettings.*.json`, with matching anchored beneath the workspace and
+  root-relative globs kept distinct from recursive `**` globs.
+- Fixed exclusion matching when the configured workspace is the filesystem root.
 - Normalized in-workspace TruffleHog finding paths relative to the workspace so
   host paths do not appear in facts and component identifiers remain stable
-  across runs.
+  across runs and operating systems.
 
-## [2.1.0] - 2026-06-02
+## [2.2.0] - 2026-07-29
+
+### Added
+- Publish multi-arch Docker images for `linux/amd64` and `linux/arm64`.
+- Add a heavy image variant (`socket-basics:<version>-heavy` tag suffix) bundling
+  Socket Basics with the pinned Python Socket CLI.
+
+### Fixed
+- Normalize manual Docker release tag inputs before checkout.
+- core-tool-watch now opts into fail-closed Socket purl batch semantics
+  (`poll` + `alerts`), so fresh-but-unanalyzed pins surface as labeled
+  pending/not-found failures instead of silently dropped rows.
+
+## [2.1.0] - 2026-07-22
 
 ### Added
 - Diff-only scan scoping now applies to SAST/OpenGrep via `changed_files` and

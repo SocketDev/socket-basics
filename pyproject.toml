@@ -1,6 +1,6 @@
 [project]
 name = "socket_basics"
-version = "2.0.3"
+version = "2.2.0"
 description = "Socket Basics with integrated SAST, secret scanning, and container analysis"
 readme = "README.md"
 requires-python = ">=3.10"
@@ -36,7 +36,7 @@ dependencies = [
 dev = [
     "pytest>=9.1.1",
     "pytest-cov>=7.1.0",
-    "black>=22.0.0",
+    "black>=26.5.1",
     "flake8>=5.0.0",
 ]
 

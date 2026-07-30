@@ -32,13 +32,16 @@ with a notice (graceful degradation, mirroring the free/enterprise split in
 dependency-review.yml).
 
 Exit code is 0 unless --fail-on-malware is set AND a PINNED version trips the
-(deliberately strict) thresholds: any alert type in MALWARE_ALERT_TYPES -- a
-curated list that goes beyond outright malware to include strong risk signals
-like install scripts, obfuscation, and telemetry -- OR any alert of high or
-critical severity. With a token present, a Socket scoring error -- or a
-covered pinned coordinate missing from the returned batch -- also fails
-(fail-closed: unverified pins must not ship; OpenGrep's documented pkg:github
-coverage gap is the one exemption). Drift alone never fails the run,
+thresholds: any alert type in MALWARE_ALERT_TYPES -- a curated list of
+compromise and compromise-adjacent signals -- OR any alert of critical
+severity. With a token present, a Socket scoring error also fails, as
+does a covered pinned coordinate that comes back still pending analysis
+(synthetic pendingScan row), unresolvable (synthetic notFound row), or missing
+from the returned batch entirely (fail-closed: unverified pins must not ship;
+OpenGrep's documented pkg:github coverage gap is the one exemption). The batch
+call opts into poll=true + alerts=true so fresh-but-unanalyzed versions
+surface as labeled pendingScan rows instead of being silently omitted by the
+endpoint's fail-open default. Drift alone never fails the run,
 and the discovered *latest* version is scored for reporting only; both are
 surfaced via the JSON report and the `drift`/`malware`/`critical` GitHub
 outputs so the workflow decides what to do.
@@ -62,21 +65,19 @@ REPO_ROOT = Path(__file__).resolve().parent.parent
 DOCKERFILES = [REPO_ROOT / "Dockerfile", REPO_ROOT / "app_tests" / "Dockerfile"]
 UV_LOCK = REPO_ROOT / "uv.lock"
 
-# Alert types treated as fail-worthy on a pinned version. Deliberately broader
-# than literal malware: alongside outright compromise (malware, trojan,
-# backdoor) it includes strong risk signals (obfuscation, install scripts,
-# shell access, telemetry, typosquat hints) -- for the four core tools we bake
-# into the image, any of these deserves a hard stop and a human look, at the
-# cost of occasional false positives. Trim this set rather than disabling
-# --fail-on-malware if it proves too noisy.
+# Alert types treated as fail-worthy on a pinned version: outright compromise
+# signals plus typosquat/fake-popularity hints and compromise-adjacent
+# behaviors (install scripts, telemetry). Calibrated against real batch data
+# once alerts=true started returning the full alert set (run 30504424787):
+# capability signals (shellAccess -- present on ALL four tools; they spawn
+# subprocesses by design) and heuristic/static signals (gptMalware,
+# gptSecurity, obfuscatedFile -- a SAST engine ships malicious-looking test
+# fixtures on purpose) are informational there, not compromise evidence, and
+# were removed. Trim further rather than disabling --fail-on-malware if new
+# noise appears.
 MALWARE_ALERT_TYPES = {
     "malware",
-    "gptMalware",
-    "gptSecurity",
     "didYouMean",
-    "obfuscatedFile",
-    "obfuscatedRequire",
-    "shellAccess",
     "suspiciousStarActivity",
     "cryptoMiner",
     "installScript",
@@ -84,8 +85,28 @@ MALWARE_ALERT_TYPES = {
     "trojan",
     "backdoor",
 }
-# Severities that count as fail-worthy: includes "high", not just "critical".
-CRITICAL_SEVERITIES = {"critical", "high"}
+# Severities that count as fail-worthy. "high" was included while the batch
+# response carried no alert data (the pre-alerts=true fail-open default made
+# this gate dead code); the full alert set carries high-severity heuristic and
+# cve rows on perfectly healthy tools (gptMalware/obfuscatedFile on the
+# OpenGrep repo artifact, cve on Trivy), so the hard gate is critical-only.
+# High-severity findings still land in the report for human review.
+CRITICAL_SEVERITIES = {"critical"}
+
+# Synthetic batch-status alert types the purl endpoints emit when called with
+# alerts=true (added upstream ~2026-04, depscan #18990). They mark inputs whose
+# analysis is incomplete (pendingScan) or whose coordinate could not be
+# resolved (notFound) -- without alerts=true such inputs are SILENTLY OMITTED
+# from the response (the endpoint's documented fail-open default), which is
+# what made fresh pins like pkg:pypi/socketdev@3.3.0 trip the unverified-pin
+# guard with a misleading "batch dropped rows" message. These are batch-status
+# markers, not package risk signals: they must never be classified through
+# MALWARE_ALERT_TYPES / CRITICAL_SEVERITIES regardless of the severity label
+# they carry.
+SYNTHETIC_STATUS_ALERTS = {
+    "pendingScan": "pending",
+    "notFound": "not_found",
+}
 
 
 @dataclass
@@ -265,7 +286,9 @@ def analyze_purls(purls: list[str], token: str) -> dict[str, dict[str, Any]]:
 
     from socketdev import socketdev  # imported lazily; only needed with a token
 
-    client = socketdev(token=token, timeout=60)
+    # Client timeout must exceed the server-side poll bound (timeoutSec=120
+    # below), or the HTTP call would abort before the server finishes waiting.
+    client = socketdev(token=token, timeout=180)
 
     # Prefer the org-scoped purl endpoint. socketdev >= 3.1 deprecates the
     # legacy POST /v0/purl (used when org_slug is absent) in favor of
@@ -282,6 +305,7 @@ def analyze_purls(purls: list[str], token: str) -> dict[str, dict[str, Any]]:
         slug = next(iter(orgs.values())).get("slug") if len(orgs) == 1 else None
         if slug:
             kwargs["org_slug"] = slug
+            print(f"  using org-scoped purl endpoint (org={slug})")
         else:
             print(
                 f"  ! org slug not resolvable ({len(orgs)} orgs on token); using legacy purl endpoint",
@@ -289,7 +313,21 @@ def analyze_purls(purls: list[str], token: str) -> dict[str, dict[str, Any]]:
             )
 
     components = [{"purl": p} for p in purls]
-    results = client.purl.post(license="false", components=components, **kwargs) or []
+    # The batch purl endpoints default to fail-open: inputs whose analysis is
+    # pending or unresolvable are silently omitted from the response unless the
+    # caller opts in. Opt in to fail-closed semantics: poll=true waits (bounded
+    # by timeoutSec; the server may cap it) for pending analysis, and
+    # alerts=true materializes still-unresolved inputs as synthetic
+    # pendingScan/notFound rows instead of dropping them. The SDK passes these
+    # extra kwargs through as query params (verified on 3.0.29 and 3.3.0).
+    results = client.purl.post(
+        license="false",
+        components=components,
+        poll="true",
+        timeoutSec="120",
+        alerts="true",
+        **kwargs,
+    ) or []
     if not results:
         raise RuntimeError(
             f"Socket purl API returned no results for {len(purls)} PURLs "
@@ -304,9 +342,17 @@ def analyze_purls(purls: list[str], token: str) -> dict[str, dict[str, Any]]:
         norm_alerts = []
         malware = []
         critical = []
+        status = None
         for a in alerts:
             a_type = a.get("type", "")
             a_sev = (a.get("severity") or "").lower()
+            # Synthetic batch-status markers (from alerts=true) are handled
+            # before severity classification: whatever severity/action labels
+            # they carry after org-policy application, they describe the batch
+            # row, not the package.
+            if a_type in SYNTHETIC_STATUS_ALERTS:
+                status = status or SYNTHETIC_STATUS_ALERTS[a_type]
+                continue
             norm_alerts.append({"type": a_type, "severity": a_sev})
             if a_type in MALWARE_ALERT_TYPES:
                 malware.append(a_type)
@@ -317,6 +363,7 @@ def analyze_purls(purls: list[str], token: str) -> dict[str, dict[str, Any]]:
             "version": item.get("version"),
             "type": item.get("type"),
             "score": item.get("score"),
+            "status": status,
             "alerts": norm_alerts,
             "malware": sorted(set(malware)),
             "critical": sorted(set(critical)),
@@ -376,6 +423,10 @@ def render_markdown(tools: list[Tool], token_present: bool) -> str:
                     suffix = f" _(via {t.proxy_label})_"
             if not a:
                 return "no data"
+            if a.get("status") == "pending":
+                return "⏳ analysis pending upstream" + suffix
+            if a.get("status") == "not_found":
+                return "❓ coordinate not resolvable" + suffix
             if a.get("malware"):
                 return "🚨 MALWARE: " + ", ".join(a["malware"]) + suffix
             if a.get("critical"):
@@ -469,6 +520,8 @@ def main() -> int:
     any_malware = False
     any_critical = False
     unverified: list[str] = []
+    pending: list[str] = []
+    not_found: list[str] = []
     findings: list[dict[str, Any]] = []
     for t in tools:
         drift = bool(t.latest and any(_strip_v(p) != _strip_v(t.latest) for p in t.pinned))
@@ -490,6 +543,16 @@ def main() -> int:
                     any_malware = True
                 if a.get("critical"):
                     any_critical = True
+                # Synthetic status on a covered pin: the batch answered, but
+                # not with analysis. Same fail-closed posture as unverified,
+                # tracked separately so the error names the actual condition.
+                # Coverage-gap tools (OpenGrep's pkg:github) are exempt: with
+                # alerts=true their known-uncovered pin now returns a notFound
+                # row instead of being silently omitted.
+                if t.socket_coverage and a.get("status") == "pending":
+                    pending.append(f"{t.key} {t.purl(v)}")
+                elif t.socket_coverage and a.get("status") == "not_found":
+                    not_found.append(f"{t.key} {t.purl(v)}")
             elif token_present and not scoring_error and t.socket_coverage:
                 # Scoring "succeeded" but this pinned coordinate has no row --
                 # a partial batch or a purl/echo mismatch. The guard's job is
@@ -527,6 +590,8 @@ def main() -> int:
                     "token_present": token_present,
                     "scoring_error": scoring_error,
                     "unverified": unverified,
+                    "pending": pending,
+                    "not_found": not_found,
                     "findings": findings,
                 },
                 indent=2,
@@ -556,8 +621,32 @@ def main() -> int:
                 file=sys.stderr,
             )
             return 1
+        # Fail closed: Socket knows the coordinate but analysis was still
+        # running when the bounded poll expired. Distinct from a dropped row:
+        # this is upstream latency, not an API anomaly.
+        if pending:
+            print(
+                "::error::Socket analysis still pending after the bounded poll for pinned "
+                "coordinate(s): " + "; ".join(pending)
+                + ". Failing closed -- re-run later, or investigate Socket ingestion if it persists.",
+                file=sys.stderr,
+            )
+            return 1
+        # Fail closed: Socket could not resolve the coordinate at all. For a
+        # published package version this is a registry/ingestion bug with a
+        # one-line repro -- hand it to the API team.
+        if not_found:
+            print(
+                "::error::Socket cannot resolve pinned coordinate(s): "
+                + "; ".join(not_found)
+                + ". Failing closed -- likely a Socket registry/ingestion gap; report it upstream.",
+                file=sys.stderr,
+            )
+            return 1
         # Fail closed: scoring returned rows, but some covered pinned
-        # coordinate has none -- a partial batch is not a clean bill.
+        # coordinate has none -- with poll+alerts requested this should no
+        # longer happen for merely-fresh versions, so a missing row is a
+        # genuine anomaly (purl/echo mismatch or batch drop).
         if unverified:
             print(
                 "::error::Socket scoring returned no analysis for pinned coordinate(s): "

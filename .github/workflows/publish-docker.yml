@@ -1,11 +1,18 @@
 name: publish-docker
 
-# Builds, tests, and publishes the socket-basics image to GHCR and Docker Hub.
+# Builds, tests, and publishes multi-arch socket-basics image variants
+# (linux/amd64 + linux/arm64) to GHCR and Docker Hub.
 #
-# Flow: resolve-version → build-test-push → create-release
+# Flow:
+#   resolve-version
+#     → build-test-push  (matrix: image variant + native arch, pushes by digest)
+#     → merge-manifests  (assembles per-image per-arch digests into manifest lists)
+#     → create-release   (tag pushes only)
 #
 # Tag convention:
 #   v2.0.0  — immutable exact release (floating major tags intentionally not published)
+#   All image variants publish to the single socket-basics repository per
+#   registry, distinguished by tag suffix: 2.0.0 (main), 2.0.0-heavy (heavy).
 #   See docs/github-action.md → "Pinning strategies" for the full rationale.
 #
 # Required repository secrets:
@@ -19,7 +26,7 @@ on:
   workflow_dispatch:
     inputs:
       tag:
-        description: "Full git tag to publish (e.g. v2.0.0 for new releases, 1.1.3 for old). Must exist in the repo."
+        description: "Full git tag to publish (e.g. v2.0.3 or 2.0.3). Must exist in the repo."
         required: true
 
 # Default: deny everything. Each job below grants only what it needs.
@@ -38,56 +45,260 @@ jobs:
     runs-on: ubuntu-latest
     outputs:
       version: ${{ steps.version.outputs.clean }}
+      ref: ${{ steps.version.outputs.ref }}
     steps:
-      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
-        with:
-          ref: ${{ github.event_name == 'workflow_dispatch' && inputs.tag || github.ref }}
-          persist-credentials: false
-
       - name: 🏷️ Resolve version
         id: version
         env:
           EVENT_NAME: ${{ github.event_name }}
           INPUT_TAG: ${{ inputs.tag }}
           REF_NAME: ${{ github.ref_name }}
+          REPO_URL: https://x-access-token:${{ github.token }}@github.com/${{ github.repository }}.git
         run: |
           if [ "$EVENT_NAME" = "workflow_dispatch" ]; then
-            CLEAN="$INPUT_TAG"      # full tag as provided (e.g. 1.1.3 or v2.0.0)
+            RAW="${INPUT_TAG#refs/tags/}"  # full tag as provided (e.g. 2.0.3 or v2.0.3)
           else
-            CLEAN="$REF_NAME"      # e.g. v2.0.0
+            RAW="$REF_NAME"         # e.g. v2.0.3
           fi
-          CLEAN="${CLEAN#v}"               # strip leading v if present → 2.0.0 or 1.1.3
-          echo "clean=$CLEAN" >> "$GITHUB_OUTPUT"
+          CLEAN="${RAW#v}"          # strip leading v if present → 2.0.3
+          if [[ ! "$CLEAN" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            echo "Invalid release tag: $CLEAN" >&2
+            exit 1
+          fi
 
-  # ── Job 2: Build → test → push ─────────────────────────────────────────────
-  # Delegates all Docker steps to the reusable _docker-pipeline workflow.
+          REF_TAG="$RAW"
+          if [ "$EVENT_NAME" = "workflow_dispatch" ]; then
+            REF_TAG=""
+            for candidate in "$RAW" "v$CLEAN" "$CLEAN"; do
+              if git ls-remote --exit-code --tags "$REPO_URL" "refs/tags/$candidate" >/dev/null 2>&1; then
+                REF_TAG="$candidate"
+                break
+              fi
+            done
+            if [ -z "$REF_TAG" ]; then
+              echo "No matching release tag found for input: $INPUT_TAG" >&2
+              exit 1
+            fi
+          fi
+
+          echo "clean=$CLEAN" >> "$GITHUB_OUTPUT"
+          echo "ref=refs/tags/$REF_TAG" >> "$GITHUB_OUTPUT"
+
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+        with:
+          ref: ${{ steps.version.outputs.ref }}
+          persist-credentials: false
+
+      # Guard: the release source must agree with the tag. The pre-commit
+      # version-check hook was removed in #46 with no automated replacement,
+      # which let v2.1.0 ship with version files still at 2.0.3. This is the
+      # release-time gate: mismatches fail here, before anything is built.
+      - name: 🔎 Verify source versions match release tag
+        env:
+          VERSION: ${{ steps.version.outputs.clean }}
+        run: |
+          set -euo pipefail
+          fail=0
+          check() {
+            if [ "$2" != "$VERSION" ]; then
+              echo "::error::$1 declares version '$2' but the release tag resolves to '$VERSION'"
+              fail=1
+            fi
+          }
+          check "socket_basics/version.py" "$(sed -n 's/^__version__ = "\(.*\)"$/\1/p' socket_basics/version.py | head -1)"
+          check "socket_basics/__init__.py" "$(sed -n 's/^__version__ = "\(.*\)"$/\1/p' socket_basics/__init__.py | head -1)"
+          check "pyproject.toml" "$(sed -n 's/^version = "\(.*\)"$/\1/p' pyproject.toml | head -1)"
+          check "action.yml image tag" "$(sed -n 's#.*docker://ghcr.io/socketdev/socket-basics:\([^"]*\)".*#\1#p' action.yml | head -1)"
+          if [ "$fail" -ne 0 ]; then
+            echo "::error::Bump the version files in the release PR, merge, then re-tag."
+            exit 1
+          fi
+          echo "✅ version.py, pyproject.toml, and action.yml all agree on $VERSION"
+
+  # ── Job 2: Build → test → push by digest (per image + arch) ────────────────
+  # Each matrix entry runs the full build/smoke/integration pipeline on a
+  # native runner for its target arch and pushes the resulting image by digest
+  # to both registries. The digest is exported as an artifact for the merge job.
   build-test-push:
-    name: publish (socket-basics)
+    name: publish (${{ matrix.image }}, ${{ matrix.arch }})
     needs: resolve-version
     permissions:
       contents: read
       packages: write   # push images to GHCR
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - image: socket-basics
+            dockerfile: Dockerfile
+            check_set: main
+            arch: amd64
+            runs_on: ubuntu-latest
+          - image: socket-basics
+            dockerfile: Dockerfile
+            check_set: main
+            arch: arm64
+            runs_on: ubuntu-24.04-arm
+          - image: socket-basics-heavy
+            dockerfile: Dockerfile.heavy
+            check_set: heavy
+            arch: amd64
+            runs_on: ubuntu-latest
+          - image: socket-basics-heavy
+            dockerfile: Dockerfile.heavy
+            check_set: heavy
+            arch: arm64
+            runs_on: ubuntu-24.04-arm
     uses: ./.github/workflows/_docker-pipeline.yml
     with:
-      name: socket-basics
-      dockerfile: Dockerfile
+      name: ${{ matrix.image }}
+      dockerfile: ${{ matrix.dockerfile }}
       context: .
-      check_set: main
+      check_set: ${{ matrix.check_set }}
+      runs_on: ${{ matrix.runs_on }}
+      arch_label: ${{ matrix.arch }}
+      # All variants publish to the single socket-basics repository on each
+      # registry; variants are distinguished by tag suffix (e.g. -heavy), never
+      # by a separate repository.
+      push_name: socket-basics
       push: true
-      tag_push: ${{ github.ref_type == 'tag' }}
       version: ${{ needs.resolve-version.outputs.version }}
+      ref: ${{ needs.resolve-version.outputs.ref }}
     secrets:
       DOCKERHUB_USERNAME: ${{ secrets.DOCKERHUB_USERNAME }}
       DOCKERHUB_TOKEN: ${{ secrets.DOCKERHUB_TOKEN }}
 
-  # ── Job 3: Create GitHub release ───────────────────────────────────────────
-  # Runs once after the image is successfully pushed (not for workflow_dispatch
+  # ── Job 3: Merge per-arch digests into a multi-arch manifest list ──────────
+  # Floating major version tags (v2 → latest v2.x.y) are intentionally omitted.
+  # Mutable tags are structurally equivalent to :latest and inappropriate for a
+  # security tool. Users should pin to an exact version and use Dependabot.
+  merge-manifests:
+    name: merge-manifests (${{ matrix.variant }})
+    needs: [resolve-version, build-test-push]
+    permissions:
+      contents: read
+      packages: write
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        # Both variants live in the single socket-basics repository per registry,
+        # distinguished by tag suffix (2.2.0 vs 2.2.0-heavy). `variant` selects
+        # the per-arch digest artifacts produced by build-test-push.
+        include:
+          - variant: socket-basics
+            tag_suffix: ""
+          - variant: socket-basics-heavy
+            tag_suffix: "-heavy"
+    steps:
+      - name: ⬇️ Download per-arch digest artifacts
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          path: /tmp/digests
+          pattern: digests-${{ matrix.variant }}__*
+          merge-multiple: true
+
+      - name: 🔨 Set up Docker Buildx
+        uses: docker/setup-buildx-action@bb05f3f5519dd87d3ba754cc423b652a5edd6d2c # v4.2.0
+
+      - name: Login to GHCR
+        uses: docker/login-action@af1e73f918a031802d376d3c8bbc3fe56130a9b0 # v4.4.0
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ github.token }}
+
+      - name: Login to Docker Hub
+        uses: docker/login-action@af1e73f918a031802d376d3c8bbc3fe56130a9b0 # v4.4.0
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+
+      - name: Extract image metadata
+        id: meta
+        uses: docker/metadata-action@dc802804100637a589fabce1cb79ff13a1411302 # v6.2.0
+        with:
+          images: |
+            ghcr.io/socketdev/socket-basics
+            ${{ secrets.DOCKERHUB_USERNAME }}/socket-basics
+          # Disable the automatic :latest tag — metadata-action adds it by default
+          # for semver tag pushes. Mutable tags are inappropriate for a security tool.
+          # The variant suffix yields 2.2.0 for the main image, 2.2.0-heavy for heavy.
+          flavor: |
+            latest=false
+            suffix=${{ matrix.tag_suffix }}
+          tags: |
+            # Tag push (v2.0.0) → exact immutable version tag only.
+            type=semver,pattern={{version}}
+            # workflow_dispatch re-publish → use the version input directly
+            type=raw,value=${{ needs.resolve-version.outputs.version }},enable=${{ github.event_name == 'workflow_dispatch' }}
+
+      - name: 🧬 Create multi-arch manifest list
+        working-directory: /tmp/digests
+        env:
+          GHCR_IMAGE: ghcr.io/socketdev/socket-basics
+          DH_IMAGE: ${{ secrets.DOCKERHUB_USERNAME }}/socket-basics
+          META_TAGS: ${{ steps.meta.outputs.tags }}
+          EXPECTED_ARCHES: "2"
+        run: |
+          set -euo pipefail
+          shopt -s nullglob
+          digests=(*)
+          if [ "${#digests[@]}" -ne "$EXPECTED_ARCHES" ]; then
+            echo "::error::expected $EXPECTED_ARCHES per-arch digests for ${{ matrix.variant }}, found ${#digests[@]}"
+            ls -la
+            exit 1
+          fi
+          # Each by-digest push from the matrix step landed blobs in BOTH
+          # registries, so per-registry imagetools-create only writes manifests.
+          for image in "$GHCR_IMAGE" "$DH_IMAGE"; do
+            tag_args=()
+            while IFS= read -r tag; do
+              [ -z "$tag" ] && continue
+              case "$tag" in
+                "$image:"*) tag_args+=(-t "$tag") ;;
+              esac
+            done <<< "$META_TAGS"
+            if [ ${#tag_args[@]} -eq 0 ]; then
+              echo "::error::no tags resolved for $image"
+              exit 1
+            fi
+            sources=()
+            for digest in "${digests[@]}"; do
+              sources+=("${image}@sha256:${digest}")
+            done
+            echo "→ creating manifest list for $image with ${#sources[@]} arch sources"
+            docker buildx imagetools create "${tag_args[@]}" "${sources[@]}"
+          done
+
+      - name: 🔍 Inspect published manifest
+        env:
+          GHCR_IMAGE: ghcr.io/socketdev/socket-basics
+          DH_IMAGE: ${{ secrets.DOCKERHUB_USERNAME }}/socket-basics
+          VERSION: ${{ needs.resolve-version.outputs.version }}
+          TAG_SUFFIX: ${{ matrix.tag_suffix }}
+        run: |
+          set -euo pipefail
+          for image in "$GHCR_IMAGE" "$DH_IMAGE"; do
+            ref="${image}:${VERSION}${TAG_SUFFIX}"
+            inspect="$(docker buildx imagetools inspect "$ref")"
+            echo "$inspect"
+            for platform in linux/amd64 linux/arm64; do
+              if ! grep -q "Platform:[[:space:]]*$platform" <<< "$inspect"; then
+                echo "::error::$ref is missing $platform"
+                exit 1
+              fi
+            done
+          done
+
+  # ── Job 4: Create GitHub release ───────────────────────────────────────────
+  # Runs once after the manifest is published (not for workflow_dispatch
   # re-publishes — those don't create new releases).
   # Generates categorised release notes from merged PR labels (.github/release.yml).
   # CHANGELOG updates are intentionally human-authored in the release PR so this
   # workflow never needs to push commits to the protected default branch.
   create-release:
-    needs: [resolve-version, build-test-push]
+    needs: [resolve-version, merge-manifests]
     if: github.ref_type == 'tag'
     permissions:
       contents: write   # create GitHub release
