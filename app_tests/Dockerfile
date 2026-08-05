@@ -73,11 +73,14 @@ COPY --from=opengrep-installer /root/.opengrep         /root/.opengrep
 COPY --from=golang          /usr/local/go              /usr/local/go
 COPY --from=gosec-installer /usr/local/bin/gosec       /usr/local/bin/gosec
 
-# Node binary + npm from the versioned node stage (Dependabot-trackable)
+# Node binary + npm from the versioned node stage (Dependabot-trackable).
+# npm/npx in the node image are symlinks into node_modules/npm/bin — COPY
+# dereferences symlinks into flat files, which breaks npm's relative requires,
+# so recreate them as proper symlinks instead of copying.
 COPY --from=node /usr/local/bin/node          /usr/local/bin/node
-COPY --from=node /usr/local/bin/npm           /usr/local/bin/npm
-COPY --from=node /usr/local/bin/npx           /usr/local/bin/npx
 COPY --from=node /usr/local/lib/node_modules  /usr/local/lib/node_modules
+RUN ln -sf /usr/local/lib/node_modules/npm/bin/npm-cli.js /usr/local/bin/npm \
+ && ln -sf /usr/local/lib/node_modules/npm/bin/npx-cli.js /usr/local/bin/npx
 
 # System deps + ESLint + Socket CLI (npm now available from node stage above)
 RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
