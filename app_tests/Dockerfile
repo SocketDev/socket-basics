@@ -61,7 +61,7 @@ RUN curl -fsSL https://raw.githubusercontent.com/opengrep/opengrep/main/install.
 # ─── Stage: runtime ───────────────────────────────────────────────────────────
 FROM python:${PYTHON_VERSION}-slim AS runtime
 
-WORKDIR /socket-security-tools
+WORKDIR /app-tests
 ENV PATH=$PATH:/usr/local/go/bin
 
 COPY --from=uv /uv /uvx /bin/
@@ -105,11 +105,6 @@ ENV PATH="/root/.local/bin:$PATH"
 # Build with app_tests/ as the context:
 #   docker build -f app_tests/Dockerfile app_tests
 
-COPY pyproject.toml uv.lock /scripts/
-WORKDIR /scripts
-RUN --mount=type=cache,target=/root/.cache/uv \
-    uv sync --frozen && uv pip install light-s3-client
-
-ENV PATH="/scripts/.venv/bin:/root/.opengrep/cli/latest:$PATH"
+ENV PATH="/root/.opengrep/cli/latest:$PATH"
 
 CMD ["/bin/sh"]
