@@ -237,7 +237,10 @@ jobs:
           # The variant suffix yields X.Y.Z for the main image, X.Y.Z-heavy for heavy.
           flavor: |
             latest=true
-            suffix=${{ matrix.tag_suffix }}
+            # onlatest applies the variant suffix to the latest alias too —
+            # without it both variants would publish a bare, racing `latest`
+            # and `latest-heavy` would never exist.
+            suffix=${{ matrix.tag_suffix }},onlatest=true
           tags: |
             # Tag push (vX.Y.Z) → exact immutable version tag + latest alias.
             type=semver,pattern={{version}}
