@@ -152,7 +152,10 @@ jobs:
             check_set: heavy
             arch: arm64
             runs_on: ubuntu-24.04-arm
-    uses: ./.github/workflows/_docker-pipeline.yml
+    # zizmor: ignore[secrets-inherit] — required: environment-scoped secrets
+    # cannot be passed via an explicit workflow-call mapping (they only resolve
+    # on the environment-bound job inside the called same-repo workflow).
+    uses: ./.github/workflows/_docker-pipeline.yml # zizmor: ignore[secrets-inherit]
     with:
       name: ${{ matrix.image }}
       dockerfile: ${{ matrix.dockerfile }}
