@@ -94,13 +94,13 @@ RUN --mount=type=cache,target=/root/.cache/uv \
     uv tool install bandit && uv tool install socketsecurity
 ENV PATH="/root/.local/bin:$PATH"
 
-# App source
-COPY src/socket_external_tools_runner.py /socket-security-tools/
-COPY src/version.py                       /socket-security-tools/
-COPY src/core                             /socket-security-tools/core
-COPY entrypoint.sh                        /socket-security-tools/
-
-RUN chmod +x /socket-security-tools/entrypoint.sh
+# NOTE: the legacy socket-security-tools runner (src/, entrypoint.sh) predates
+# the socket_basics layout migration and no longer exists in this repo — the
+# stale COPY/ENTRYPOINT lines had made this image unbuildable. Until the
+# app-tests harness is modernized, this is a tools image (scanners + language
+# runtimes) exercised by CI smoke checks against the fixture apps here.
+# Build with app_tests/ as the context:
+#   docker build -f app_tests/Dockerfile app_tests
 
 COPY pyproject.toml uv.lock /scripts/
 WORKDIR /scripts
@@ -109,4 +109,4 @@ RUN --mount=type=cache,target=/root/.cache/uv \
 
 ENV PATH="/scripts/.venv/bin:/root/.opengrep/cli/latest:$PATH"
 
-ENTRYPOINT ["/socket-security-tools/entrypoint.sh"]
+CMD ["/bin/sh"]

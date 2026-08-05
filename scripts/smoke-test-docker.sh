@@ -203,7 +203,7 @@ else
     echo "Image: $APP_TESTS_IMAGE_TAG"
     build_args_for_tag "$APP_TESTS_IMAGE_TAG"
     app_build_start="$(date +%s)"
-    docker build -f app_tests/Dockerfile "${BUILD_ARGS[@]}" .
+    docker build -f app_tests/Dockerfile "${BUILD_ARGS[@]}" app_tests
     app_build_end="$(date +%s)"
     echo "app_tests image build completed in $((app_build_end - app_build_start))s"
 

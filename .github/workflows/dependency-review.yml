@@ -285,7 +285,8 @@ jobs:
     with:
       name: socket-basics-app-tests
       dockerfile: app_tests/Dockerfile
-      context: .
+      # app_tests/ is its own build context (its pyproject/uv.lock, fixture apps).
+      context: app_tests
       check_set: app-tests
       push: false
 
