@@ -8,6 +8,57 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [3.0.0] - 2026-08-06
+
+Major release: Trivy-backed scanning returns, now built and published through
+Socket's own supply chain.
+
+### Added
+- Container image and Dockerfile scanning (Trivy) restored in the pre-built
+  GitHub Action and Docker images. Trivy now comes from a **Socket-built
+  distribution** — rebuilt from unmodified upstream source (v0.73.0) by
+  Socket's own release pipeline and pinned by digest in the Dockerfiles
+  (`TRIVY_IMAGE` build arg; overridable for builds without registry access).
+- `latest` and `latest-heavy` floating Docker tag aliases. Exact version tags
+  remain immutable registry-side; pin an exact version or digest for
+  reproducible pipelines.
+- End-to-end integration test for the Trivy connector (fixture Dockerfile scan
+  through `--dockerfiles`), plus smoke-test assertions that the bundled trivy
+  matches the pinned version and can execute the connector's scan path.
+
+### Changed
+- **Behavioral (the reason this is a major):** Trivy-backed scanning was
+  intentionally disabled in the 2.x pre-built images following the March 2026
+  upstream Trivy supply-chain incident, and documented as such throughout the
+  project. With this release it is deliberately re-enabled: configurations
+  that set Trivy parameters (`--images`, `--dockerfiles`,
+  `trivy_vuln_enabled`, …) will begin producing container/Dockerfile findings
+  again, so pipelines that gate on findings should expect new results on the
+  first run after upgrading.
+- OSS toolchain refresh: TruffleHog 3.96.0, OpenGrep v1.26.0 (SAST rule
+  updates may shift findings), uv 0.12.1, gosec v2.28.0, Go 1.26.5
+  (app-tests), Socket CLI 2.5.8 (heavy image). Runtime bases (`python:3.12`,
+  `node:22`) are unchanged.
+- Docker Hub publish credentials are now scoped to the `publish` GitHub
+  environment (deployment restricted to `main` and `v*` tags) instead of
+  repo-level secrets.
+- Manual re-publish (`workflow_dispatch`) is recovery-only: re-pushing an
+  already-published version tag is rejected by the registry's immutable-tag
+  rule.
+- Dependabot no longer tracks the trivy base image; Trivy updates flow through
+  Socket's release process, never independent bumps.
+- CI: GitHub Actions dependency updates (#95, #96).
+
+### Fixed
+- The app-tests image had been unbuildable since the repository layout
+  migration (stale source references, wrong build context, dereferenced npm
+  symlinks, corrupt `uv.lock`) — repaired and building in CI again.
+- Documentation: removed the now-outdated "temporarily ships without Trivy"
+  notices repo-wide (they described the intentional 2.x posture); APT install
+  instructions now use upstream's `generic` distribution (required since
+  Trivy v0.72.0); warnings against Trivy 0.69.4–0.69.6 retained for native
+  installs.
+
 ## [2.2.1] - 2026-07-30
 
 ### Fixed
