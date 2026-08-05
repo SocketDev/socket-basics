@@ -80,7 +80,7 @@ jobs:
       contents: read
       issues: write # upsert the drift tracking issue on scheduled runs
     steps:
-      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           fetch-depth: 1
           persist-credentials: false
@@ -91,7 +91,7 @@ jobs:
       # already-merged, already-scored lockfile versions -- never from the PR
       # under review, whose freshly-bumped packages are the very thing being
       # judged. On push/schedule runs both checkouts are identical.
-      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           ref: main
           path: .scan-env
