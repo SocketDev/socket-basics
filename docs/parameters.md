@@ -349,16 +349,10 @@ socket-basics --secrets --show-unverified
 ## Container Scanning
 
 > [!NOTE]
-> These parameters remain part of the Socket Basics interface for container
-> scanning. In the current pre-built GitHub Action and Docker image paths,
-> Socket Basics currently ships _without_ Trivy while we evaluate the safest way
-> to bundle it with Basics again. The parameters still apply for the
-> [native installation path](local-installation.md) as a temporary workaround,
-> and for future container scanner support in the pre-built paths.
-> Review the upstream install path and artifacts carefully before adopting that
-> workaround in production CI. See
-> [Trivy (Container Scanning)](local-installation.md#trivy-container-scanning)
-> for the current version guidance and installation options.
+> Container scanning is backed by Trivy, which is bundled in the pre-built
+> GitHub Action and Docker images (a Socket-built distribution, digest-pinned).
+> These parameters work out of the box on those paths, and equally with a
+> [native installation](local-installation.md#trivy-container-scanning).
 
 ### `--images IMAGES`
 Comma-separated list of container images to scan (auto-enables image scanning).

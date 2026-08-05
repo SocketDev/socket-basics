@@ -27,6 +27,7 @@ on:
 
 permissions:
   contents: read
+  packages: read # pull the private Socket-built trivy base image
 
 concurrency:
   group: smoke-test-${{ github.ref }}

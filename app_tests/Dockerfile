@@ -1,21 +1,24 @@
 # ─── Global version pins (single source of truth) ────────────────────────────
 # Dependabot tracks all ARGs below via the FROM lines that reference them.
-# To override at build time: docker build --build-arg TRIVY_VERSION=0.70.0 .
+# To override at build time: docker build --build-arg TRUFFLEHOG_VERSION=3.93.8 .
 #
 # Dependabot-trackable (each has a corresponding FROM <image>:<ARG> stage):
 ARG GOLANG_VERSION=1.24.1
 ARG NODE_VERSION=22
 ARG PYTHON_VERSION=3.12
 ARG TRUFFLEHOG_VERSION=3.93.8
-ARG TRIVY_VERSION=0.69.3
 ARG UV_VERSION=0.10.11
 #
 # NOT Dependabot-trackable (no official Docker image with a stable binary path):
 ARG GOSEC_VERSION=v2.24.7
 ARG OPENGREP_VERSION=v1.16.5
+#
+# NOT Dependabot-trackable — Socket-built Trivy, pinned by digest; updated by
+# Socket's trivy-dist release process. See the note in the root ./Dockerfile.
+ARG TRIVY_IMAGE=ghcr.io/socketdev/trivy:0.73.0@sha256:e3d9d5f10250cb73b0ea9446ae1191c0f2da2f5e6173eac08a840b1812f02e0b
 
-# ─── Stage: trivy (Dependabot-trackable) ──────────────────────────────────────
-FROM aquasec/trivy:${TRIVY_VERSION} AS trivy
+# ─── Stage: trivy (Socket-built redistribution) ───────────────────────────────
+FROM ${TRIVY_IMAGE} AS trivy
 
 # ─── Stage: trufflehog (Dependabot-trackable) ─────────────────────────────────
 FROM trufflesecurity/trufflehog:${TRUFFLEHOG_VERSION} AS trufflehog

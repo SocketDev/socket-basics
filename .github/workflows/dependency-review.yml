@@ -281,6 +281,7 @@ jobs:
     uses: ./.github/workflows/_docker-pipeline.yml
     permissions:
       contents: read
+      packages: read # pull the private Socket-built trivy base image
     with:
       name: socket-basics-app-tests
       dockerfile: app_tests/Dockerfile

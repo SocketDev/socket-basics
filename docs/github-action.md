@@ -536,16 +536,13 @@ jobs:
 
 ### Container Security Pipeline
 
-> [!IMPORTANT]
-> The supported pre-built GitHub Action path currently ships _without_ Trivy
-> while we evaluate the safest way to bundle it with Basics again.
-> If you need Trivy in the meantime, install and run it independently in the
-> workflow, pin to `v0.69.3` or Docker tag `0.69.3`, and review the upstream
-> install path and artifacts carefully.
-> Do not use `v0.69.4`, and audit any Docker Hub use of `0.69.5` and `0.69.6`.
-> See [Local Installation](local-installation.md#trivy-container-scanning) for
-> the detailed version guidance, corresponding Aqua action versions, and install
-> options.
+> [!NOTE]
+> The pre-built GitHub Action bundles Trivy (a Socket-built distribution,
+> rebuilt from unmodified upstream source and pinned by digest), so the
+> container-scanning inputs below work out of the box. The standalone-install
+> example that follows is only for running Trivy independently of Socket
+> Basics; if you do that, never use versions `0.69.4`–`0.69.6` — see
+> [Local Installation](local-installation.md#trivy-container-scanning).
 
 ```yaml
 name: Container Security
@@ -573,7 +570,10 @@ jobs:
       
       - name: Install pinned Trivy
         run: |
-          TRIVY_VERSION=0.69.3
+          # Pin explicitly; never use 0.69.4–0.69.6 (see the Trivy section in
+          # docs/local-installation.md). Keep in step with the version bundled
+          # in the Socket Basics image (TRIVY_VERSION in the Dockerfile).
+          TRIVY_VERSION=0.73.0
           curl -fsSL https://raw.githubusercontent.com/aquasecurity/trivy/main/contrib/install.sh \
             | sh -s -- -b /usr/local/bin "v${TRIVY_VERSION}"
 
@@ -637,10 +637,8 @@ jobs:
           GITHUB_PR_NUMBER: ${{ github.event.pull_request.number || github.event.issue.number }}
         with:
           github_token: ${{ secrets.GITHUB_TOKEN }}
-          # Dockerfile discovery remains useful context for future container
-          # scanning support, but the current pre-built action path currently
-          # ships _without_ Trivy while we evaluate the safest way to bundle it
-          # with Basics again.
+          # Discovered Dockerfiles feed Trivy-backed misconfiguration scanning,
+          # which is bundled in the pre-built action image.
           verbose: 'true'
 ```
 
@@ -783,13 +781,9 @@ See [`action.yml`](../action.yml) for the complete list of inputs.
 - `trivy_vuln_enabled` — Enable vulnerability scanning
 
 > [!NOTE]
-> These inputs remain part of the action interface, but the current pre-built
-> GitHub Action path currently ships _without_ Trivy while we evaluate the
-> safest way to bundle it with Basics again.
-> Use the [native installation path](local-installation.md) if container
-> scanning is a near-term requirement. See
-> [Trivy (Container Scanning)](local-installation.md#trivy-container-scanning)
-> for the current version guidance and install options.
+> Container scanning is backed by Trivy, bundled in the pre-built GitHub
+> Action image (a Socket-built distribution, pinned by digest) — these inputs
+> work without any extra setup.
 
 **Notifications (Enterprise Required):**
 - `slack_webhook_url` — Slack webhook
@@ -845,13 +839,6 @@ permissions:
 **Problem:** Container image scanning fails.
 
 **Solutions:**
-> [!NOTE]
-> The current pre-built GitHub Action path ships _without_ Trivy while we
-> evaluate the safest way to bundle it with Basics again. If container scanning
-> is a near-term requirement, switch to a native Trivy install in the workflow.
-> See
-> [Trivy (Container Scanning)](local-installation.md#trivy-container-scanning)
-> for the current version guidance and install options.
 
 1. For private images, add authentication:
 ```yaml
