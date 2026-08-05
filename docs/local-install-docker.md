@@ -55,15 +55,12 @@ docker inspect ghcr.io/socketdev/socket-basics:2.0.3 \
 # }
 ```
 
-> [!IMPORTANT]
-> The supported pre-built Docker image currently ships _without_ Trivy while we
-> evaluate the safest way to bundle it with Basics again.
-> If you need Trivy in the meantime, run it separately from Socket Basics and
-> pin to `v0.69.3` or Docker tag `0.69.3`.
-> Do not use `v0.69.4`, and audit any Docker Hub pulls or caches for `0.69.5`
-> and `0.69.6`.
+> [!NOTE]
+> The pre-built Docker image bundles Trivy — a Socket-built distribution,
+> rebuilt from unmodified upstream source and pinned by digest — so container
+> and Dockerfile scanning work out of the box.
 > See [Local Installation](local-installation.md#trivy-container-scanning) for
-> the detailed version guidance and install options.
+> native-install guidance (including versions to avoid).
 
 ### Registries
 
@@ -180,9 +177,11 @@ docker build \
   -t socket-basics:2.0.3 .
 ```
 
-`TRIVY_VERSION` still exists in the Dockerfile for maintainers, but the current
-published image intentionally omits the Trivy binary. For the app tests image, build
-from the `app_tests` directory and use the same build args.
+Trivy comes from a Socket-built image pinned by digest via the `TRIVY_IMAGE`
+build arg (`TRIVY_VERSION` feeds the image label and must match its tag).
+Building locally requires pull access to that registry; contributors without it
+can override with `--build-arg TRIVY_IMAGE=aquasec/trivy:<version>`. For the app
+tests image, build from the `app_tests` directory and use the same build args.
 
 ### Verify Installation
 
@@ -367,15 +366,11 @@ docker run --rm \
 
 ### Container Scanning Status
 
-> [!IMPORTANT]
-> The supported pre-built Docker image currently ships _without_ Trivy while we
-> evaluate the safest way to bundle it with Basics again.
-> If you need Trivy before it returns to the image, run a separate
-> `aquasec/trivy:0.69.3` step or a host-native `trivy` install pinned to
-> `v0.69.3`, rather than rebuilding the Socket Basics image and re-enabling
-> Trivy ad hoc.
-> See [Local Installation](local-installation.md#trivy-container-scanning) for
-> the detailed version guidance.
+> [!NOTE]
+> Trivy-backed container and Dockerfile scanning is included in the pre-built
+> image (Socket-built Trivy distribution, digest-pinned). No separate Trivy
+> setup is required. For native installs, see
+> [Local Installation](local-installation.md#trivy-container-scanning).
 
 ### Save Results to File
 

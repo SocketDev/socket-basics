@@ -204,8 +204,8 @@ See [Local Installation Guide](local-installation.md) for detailed instructions 
 - OpenGrep
 - TruffleHog
 
-The Trivy section in that guide also covers the current Basics status and the
-recommended self-service version pins:
+The Trivy section in that guide covers version guidance for native installs
+(including versions to avoid):
 [Trivy (Container Scanning)](local-installation.md#trivy-container-scanning).
 
 ### Setup Steps

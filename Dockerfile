@@ -1,18 +1,26 @@
 # ─── Global version pins (single source of truth) ────────────────────────────
 # Dependabot tracks all ARGs below via the FROM lines that reference them.
-# To override at build time: docker build --build-arg TRIVY_VERSION=0.70.0 .
+# To override at build time: docker build --build-arg TRUFFLEHOG_VERSION=3.93.8 .
 #
 # Dependabot-trackable (each has a corresponding FROM <image>:<ARG> stage):
 ARG PYTHON_VERSION=3.12
-ARG TRUFFLEHOG_VERSION=3.93.8
-ARG TRIVY_VERSION=0.69.3
-ARG UV_VERSION=0.10.11
+ARG TRUFFLEHOG_VERSION=3.96.0
+ARG UV_VERSION=0.12.1
 #
 # NOT Dependabot-trackable (no official Docker image with a stable binary path):
-ARG OPENGREP_VERSION=v1.16.5
+ARG OPENGREP_VERSION=v1.26.0
+#
+# NOT Dependabot-trackable — Socket-built Trivy, rebuilt from unmodified upstream
+# source and published by Socket's own release pipeline. Pinned by digest; both
+# ARGs are updated together by that release process, never bumped independently.
+# Building requires pull access to the registry; contributors without it can
+# override, e.g.: docker build --build-arg TRIVY_IMAGE=aquasec/trivy:0.73.0 .
+# TRIVY_VERSION feeds the image label — keep it in sync with the TRIVY_IMAGE tag.
+ARG TRIVY_VERSION=0.73.0
+ARG TRIVY_IMAGE=ghcr.io/socketdev/trivy:0.73.0@sha256:e3d9d5f10250cb73b0ea9446ae1191c0f2da2f5e6173eac08a840b1812f02e0b
 
-# ─── Stage: trivy (Dependabot-trackable) ──────────────────────────────────────
-# FROM aquasec/trivy:${TRIVY_VERSION} AS trivy
+# ─── Stage: trivy (Socket-built redistribution) ───────────────────────────────
+FROM ${TRIVY_IMAGE} AS trivy
 
 # ─── Stage: trufflehog (Dependabot-trackable) ─────────────────────────────────
 FROM trufflesecurity/trufflehog:${TRUFFLEHOG_VERSION} AS trufflehog
@@ -42,7 +50,7 @@ WORKDIR /socket-basics
 COPY --from=uv /uv /uvx /bin/
 
 # Binary tools from immutable build stages
-# COPY --from=trivy      /usr/local/bin/trivy      /usr/local/bin/trivy
+COPY --from=trivy      /usr/local/bin/trivy       /usr/local/bin/trivy
 COPY --from=trufflehog /usr/bin/trufflehog        /usr/local/bin/trufflehog
 COPY --from=opengrep-installer /root/.opengrep    /root/.opengrep
 

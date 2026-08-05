@@ -46,6 +46,6 @@ jobs:
             echo "  feat(docker): Add versioned Node stage"
             echo "  fix: Correct TruffleHog tag format"
             echo "  docs: Update pinning strategy guidance"
-            echo "  chore(deps): Bump Trivy to 0.69.3"
+            echo "  chore(deps): Bump TruffleHog to 3.93.8"
             exit 1
           fi

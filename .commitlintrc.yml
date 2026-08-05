@@ -10,7 +10,7 @@ extends:
 #   feat(docker): add versioned Node stage
 #   fix: correct TruffleHog tag format
 #   docs: update pinning strategy guidance
-#   chore(deps): bump Trivy to 0.69.3
+#   chore(deps): bump TruffleHog to 3.93.8
 #   ci: add commit-lint workflow
 
 rules:

@@ -43,10 +43,13 @@ updates:
     cooldown:
       default-days: 7
 
-  # Main Dockerfile — tracks aquasec/trivy, trufflesecurity/trufflehog,
-  # ghcr.io/astral-sh/uv, and the python base image.
+  # Main Dockerfile — tracks trufflesecurity/trufflehog, ghcr.io/astral-sh/uv,
+  # and the python base image.
   # NOTE: OPENGREP_VERSION is not trackable via Dependabot (no Docker image);
   #       update it manually in the Dockerfile ARG.
+  # NOTE: trivy is deliberately NOT tracked here — it comes from Socket's own
+  #       build (ghcr.io/socketdev/trivy, digest-pinned) and is updated by that
+  #       release process, never bumped independently.
   - package-ecosystem: "docker"
     directory: "/"
     schedule:
@@ -56,7 +59,6 @@ updates:
       - dependency-name: "python"
       - dependency-name: "ghcr.io/astral-sh/uv"
       - dependency-name: "trufflesecurity/trufflehog"
-      - dependency-name: "aquasec/trivy"
     groups:
       docker-main-minor-patch:
         patterns:
@@ -74,7 +76,7 @@ updates:
       - "docker"
     commit-message:
       prefix: "chore"
-      include: "scope"   # → chore(deps): bump trivy from 0.69.2 to 0.69.3
+      include: "scope"   # → chore(deps): bump trufflehog from 3.93.7 to 3.93.8
     cooldown:
       default-days: 7
 
@@ -89,7 +91,6 @@ updates:
       - dependency-name: "golang"
       - dependency-name: "securego/gosec"
       - dependency-name: "trufflesecurity/trufflehog"
-      - dependency-name: "aquasec/trivy"
     groups:
       docker-app-tests-minor-patch:
         patterns:

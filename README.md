@@ -65,20 +65,17 @@ jobs:
 
 Socket Basics can also run locally or in other CI/CD environments:
 
-> [!IMPORTANT]
-> The supported pre-built GitHub Action and Docker image paths currently ship
-> _without_ Trivy while we evaluate the safest way to bundle it with Basics
-> again.
-> If you need Trivy in the meantime, use the native/manual path and pin to
-> `v0.69.3` or Docker tag `0.69.3`.
-> [Aqua's official incident summary](https://www.aquasec.com/blog/trivy-supply-chain-attack-what-you-need-to-know/)
-> lists the known-safe Trivy binary range as `v0.69.2` to `v0.69.3`; we
-> standardize on the latest known-safe version.
-> Do not use `v0.69.4`, and audit any cached Docker Hub images for `0.69.5` and
-> `0.69.6`.
+> [!NOTE]
+> Trivy-backed scanning is bundled in the pre-built GitHub Action and Docker
+> images again. Socket Basics ships a **Socket-built distribution of Trivy** —
+> rebuilt from unmodified upstream source by Socket's own release pipeline and
+> pinned by digest in the [Dockerfile](Dockerfile) — rather than pulling
+> upstream-published binaries or images.
+> If you install Trivy natively instead, never use versions `0.69.4`, `0.69.5`,
+> or `0.69.6` ([Aqua's incident summary](https://www.aquasec.com/blog/trivy-supply-chain-attack-what-you-need-to-know/)),
+> and audit any cached Docker Hub images for those tags.
 > See [Local Installation](docs/local-installation.md#trivy-container-scanning)
-> for the detailed version guidance, installation options, and the
-> corresponding Aqua action versions.
+> for installation options.
 
 - **[Pre-Commit Hook](docs/pre-commit-hook.md)** — Catch issues before they're committed
 - **[Local Docker Installation](docs/local-install-docker.md)** — Run in Docker with no tool installation required
@@ -89,7 +86,7 @@ Socket Basics can also run locally or in other CI/CD environments:
 **Built-in Security Scanners:**
 - 🔍 **SAST** — Static analysis for 15+ languages (Python, JavaScript, Go, Java, Ruby, C#, and more)
 - 🔐 **Secret Scanning** — Detect leaked credentials and API keys with TruffleHog
-- 🐳 **Container Scanning** — Trivy-backed image and Dockerfile scanning for native installs
+- 🐳 **Container Scanning** — Trivy-backed image and Dockerfile scanning
 - 📦 **Dependency Analysis** — Socket Tier 1 reachability analysis for supply chain security
 
 **Enterprise Features** (requires [Socket Enterprise](https://socket.dev/enterprise)):

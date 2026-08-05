@@ -79,6 +79,11 @@ on:
 jobs:
   pipeline:
     runs-on: ${{ inputs.runs_on }}
+    # Push mode binds the `publish` environment so the environment-scoped
+    # Docker Hub secrets resolve (callers use `secrets: inherit`). Test mode
+    # (push: false) binds no environment — PR branches would violate the
+    # environment's deployment policy.
+    environment: ${{ inputs.push && 'publish' || '' }}
     timeout-minutes: 60
 
     steps:
@@ -95,9 +100,11 @@ jobs:
       - name: 🔨 Set up Docker Buildx
         uses: docker/setup-buildx-action@bb05f3f5519dd87d3ba754cc423b652a5edd6d2c # v4.2.0
 
-      # GHCR login runs before the build — needed to pull ghcr.io/astral-sh/uv.
+      # GHCR login runs before the build in EVERY mode (not just push): the
+      # trivy build stage pulls the private ghcr.io/socketdev/trivy image, so
+      # unauthenticated PR builds would fail at FROM. Callers must grant
+      # `packages: read`.
       - name: Login to GHCR
-        if: inputs.push
         uses: docker/login-action@abd2ef45e78c5afb21d64d4ca52ee8550d9572c7 # v4.5.1
         with:
           registry: ghcr.io

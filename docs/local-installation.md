@@ -38,13 +38,11 @@ trufflehog --version
 ```
 
 > [!NOTE]
-> The supported pre-built GitHub Action and Docker image paths currently ship
-> _without_ Trivy while we evaluate the safest way to bundle it with Basics
-> again.
-> If you need container or Dockerfile scanning today, use
-> [Trivy (Container Scanning)](#trivy-container-scanning) and review the
-> upstream install path and artifacts carefully before adopting it in production
-> CI.
+> The pre-built GitHub Action and Docker images bundle Trivy (a Socket-built
+> distribution, rebuilt from unmodified upstream source and pinned by digest) —
+> no separate install is needed on those paths. The instructions below are for
+> **native** installs only; see
+> [Trivy (Container Scanning)](#trivy-container-scanning) for version guidance.
 
 For detailed installation instructions, continue reading below.
 
@@ -190,25 +188,20 @@ export SOCKET_SECURITY_API_KEY="your-api-key"
 
 **Required for:** Container image and Dockerfile vulnerability scanning
 
-> [!IMPORTANT]
-> The supported pre-built GitHub Action and Docker image paths currently ship
-> _without_ Trivy while we evaluate the safest way to bundle it with Basics
-> again.
+> [!NOTE]
+> The pre-built Socket Basics images already include Trivy — a Socket-built
+> distribution rebuilt from unmodified upstream source and pinned by digest in
+> the [Dockerfile](../Dockerfile). Install natively only if you run Socket
+> Basics outside those images.
 >
-> If you need Trivy before it formally returns to Socket Basics:
-> - Pin the binary to `v0.69.3` or the Docker image to
->   `aquasec/trivy:0.69.3`.
-> - Do not use `v0.69.4` of the binary.
-> - Audit any cached Docker Hub images for `0.69.5` and `0.69.6`.
->
-> [Aqua's official incident summary](https://www.aquasec.com/blog/trivy-supply-chain-attack-what-you-need-to-know/)
-> lists the known-safe Trivy binary range as `v0.69.2` to `v0.69.3`; the
-> corresponding Docker image tags are `0.69.2` to `0.69.3` without the `v`
-> prefix. We standardize on `v0.69.3` / Docker tag `0.69.3`.
->
-> If you use Aqua's own GitHub Actions independently of Socket Basics, pin
-> `aquasecurity/trivy-action@v0.35.0` and `aquasecurity/setup-trivy@v0.2.6` by
-> full commit SHA rather than by tag.
+> For native installs:
+> - Pin an explicit recent version; prefer verifying upstream release signatures.
+> - **Never use `v0.69.4`, `0.69.5`, or `0.69.6`** — see
+>   [Aqua's incident summary](https://www.aquasec.com/blog/trivy-supply-chain-attack-what-you-need-to-know/) —
+>   and audit any cached Docker Hub images for those tags.
+> - If you use Aqua's own GitHub Actions independently of Socket Basics, pin
+>   `aquasecurity/trivy-action` (≥ v0.35.0) and `aquasecurity/setup-trivy`
+>   (≥ v0.2.6) by full commit SHA rather than by tag.
 
 **Installation:**
 
@@ -217,9 +210,11 @@ export SOCKET_SECURITY_API_KEY="your-api-key"
 brew install trivy
 
 # Ubuntu/Debian:
-sudo apt-get install wget apt-transport-https gnupg lsb-release
+# NOTE: upstream publishes to the `generic` distribution as of Trivy v0.72.0 —
+# codename-based entries (jammy, noble, ...) are frozen and no longer updated.
+sudo apt-get install wget apt-transport-https gnupg
 wget -qO - https://aquasecurity.github.io/trivy-repo/deb/public.key | sudo apt-key add -
-echo "deb https://aquasecurity.github.io/trivy-repo/deb $(lsb_release -sc) main" | sudo tee -a /etc/apt/sources.list.d/trivy.list
+echo "deb https://aquasecurity.github.io/trivy-repo/deb generic main" | sudo tee -a /etc/apt/sources.list.d/trivy.list
 sudo apt-get update
 sudo apt-get install trivy
 
@@ -233,18 +228,16 @@ enabled=1
 EOF
 sudo yum -y install trivy
 
-# Using Docker (alternative; pin explicitly):
-docker pull aquasec/trivy:0.69.3
+# Using Docker (alternative; always pin an explicit version, ideally by digest):
+docker pull aquasec/trivy:0.73.0
 
 # Verify installation
 trivy --version
 ```
 
-For this interim path, `trivy --version` should report `Version: 0.69.3`, and a
-container-based install should use image tag `aquasec/trivy:0.69.3`. If your
-package manager or container reference resolves to some other version, treat
-that as a separate review decision rather than assuming it matches the current
-Socket Basics guidance.
+Match the version bundled in the Socket Basics image where possible (see the
+`TRIVY_VERSION` pin in the [Dockerfile](../Dockerfile)) so native and
+containerized scans produce comparable results.
 
 **Documentation:** https://github.com/aquasecurity/trivy
 

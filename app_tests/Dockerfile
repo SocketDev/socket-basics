@@ -1,21 +1,24 @@
 # ─── Global version pins (single source of truth) ────────────────────────────
 # Dependabot tracks all ARGs below via the FROM lines that reference them.
-# To override at build time: docker build --build-arg TRIVY_VERSION=0.70.0 .
+# To override at build time: docker build --build-arg TRUFFLEHOG_VERSION=3.93.8 .
 #
 # Dependabot-trackable (each has a corresponding FROM <image>:<ARG> stage):
-ARG GOLANG_VERSION=1.24.1
+ARG GOLANG_VERSION=1.26.5
 ARG NODE_VERSION=22
 ARG PYTHON_VERSION=3.12
-ARG TRUFFLEHOG_VERSION=3.93.8
-ARG TRIVY_VERSION=0.69.3
-ARG UV_VERSION=0.10.11
+ARG TRUFFLEHOG_VERSION=3.96.0
+ARG UV_VERSION=0.12.1
 #
 # NOT Dependabot-trackable (no official Docker image with a stable binary path):
-ARG GOSEC_VERSION=v2.24.7
-ARG OPENGREP_VERSION=v1.16.5
+ARG GOSEC_VERSION=v2.28.0
+ARG OPENGREP_VERSION=v1.26.0
+#
+# NOT Dependabot-trackable — Socket-built Trivy, pinned by digest; updated by
+# Socket's trivy-dist release process. See the note in the root ./Dockerfile.
+ARG TRIVY_IMAGE=ghcr.io/socketdev/trivy:0.73.0@sha256:e3d9d5f10250cb73b0ea9446ae1191c0f2da2f5e6173eac08a840b1812f02e0b
 
-# ─── Stage: trivy (Dependabot-trackable) ──────────────────────────────────────
-FROM aquasec/trivy:${TRIVY_VERSION} AS trivy
+# ─── Stage: trivy (Socket-built redistribution) ───────────────────────────────
+FROM ${TRIVY_IMAGE} AS trivy
 
 # ─── Stage: trufflehog (Dependabot-trackable) ─────────────────────────────────
 FROM trufflesecurity/trufflehog:${TRUFFLEHOG_VERSION} AS trufflehog
@@ -58,7 +61,7 @@ RUN curl -fsSL https://raw.githubusercontent.com/opengrep/opengrep/main/install.
 # ─── Stage: runtime ───────────────────────────────────────────────────────────
 FROM python:${PYTHON_VERSION}-slim AS runtime
 
-WORKDIR /socket-security-tools
+WORKDIR /app-tests
 ENV PATH=$PATH:/usr/local/go/bin
 
 COPY --from=uv /uv /uvx /bin/
@@ -70,11 +73,14 @@ COPY --from=opengrep-installer /root/.opengrep         /root/.opengrep
 COPY --from=golang          /usr/local/go              /usr/local/go
 COPY --from=gosec-installer /usr/local/bin/gosec       /usr/local/bin/gosec
 
-# Node binary + npm from the versioned node stage (Dependabot-trackable)
+# Node binary + npm from the versioned node stage (Dependabot-trackable).
+# npm/npx in the node image are symlinks into node_modules/npm/bin — COPY
+# dereferences symlinks into flat files, which breaks npm's relative requires,
+# so recreate them as proper symlinks instead of copying.
 COPY --from=node /usr/local/bin/node          /usr/local/bin/node
-COPY --from=node /usr/local/bin/npm           /usr/local/bin/npm
-COPY --from=node /usr/local/bin/npx           /usr/local/bin/npx
 COPY --from=node /usr/local/lib/node_modules  /usr/local/lib/node_modules
+RUN ln -sf /usr/local/lib/node_modules/npm/bin/npm-cli.js /usr/local/bin/npm \
+ && ln -sf /usr/local/lib/node_modules/npm/bin/npx-cli.js /usr/local/bin/npx
 
 # System deps + ESLint + Socket CLI (npm now available from node stage above)
 RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
@@ -91,19 +97,14 @@ RUN --mount=type=cache,target=/root/.cache/uv \
     uv tool install bandit && uv tool install socketsecurity
 ENV PATH="/root/.local/bin:$PATH"
 
-# App source
-COPY src/socket_external_tools_runner.py /socket-security-tools/
-COPY src/version.py                       /socket-security-tools/
-COPY src/core                             /socket-security-tools/core
-COPY entrypoint.sh                        /socket-security-tools/
+# NOTE: the legacy socket-security-tools runner (src/, entrypoint.sh) predates
+# the socket_basics layout migration and no longer exists in this repo — the
+# stale COPY/ENTRYPOINT lines had made this image unbuildable. Until the
+# app-tests harness is modernized, this is a tools image (scanners + language
+# runtimes) exercised by CI smoke checks against the fixture apps here.
+# Build with app_tests/ as the context:
+#   docker build -f app_tests/Dockerfile app_tests
 
-RUN chmod +x /socket-security-tools/entrypoint.sh
+ENV PATH="/root/.opengrep/cli/latest:$PATH"
 
-COPY pyproject.toml uv.lock /scripts/
-WORKDIR /scripts
-RUN --mount=type=cache,target=/root/.cache/uv \
-    uv sync --frozen && uv pip install light-s3-client
-
-ENV PATH="/scripts/.venv/bin:/root/.opengrep/cli/latest:$PATH"
-
-ENTRYPOINT ["/socket-security-tools/entrypoint.sh"]
+CMD ["/bin/sh"]

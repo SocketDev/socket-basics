@@ -15,11 +15,13 @@ BUILD_PROGRESS="${SMOKE_TEST_BUILD_PROGRESS:-}"
 MAIN_TOOLS=(
   "socket-basics -h"
   "command -v socket"
+  "trivy --version"
   "trufflehog --version"
   "opengrep --version"
 )
 
 APP_TESTS_TOOLS=(
+  "trivy --version"
   "trufflehog --version"
   "opengrep --version"
   "command -v socket"
@@ -29,14 +31,9 @@ HEAVY_TOOLS=(
   "socket-basics -h"
   "socketcli --help"
   "command -v socket"
+  "trivy --version"
   "trufflehog --version"
   "opengrep --version"
-)
-
-# TEMPORARY: trivy is being removed to assess impact. These checks FAIL if the
-# tool is still present in the image — ensures removal is complete.
-MUST_NOT_EXIST_TOOLS=(
-  "trivy"
 )
 
 usage() {
@@ -106,6 +103,7 @@ fi
 build_args_for_tag() {
   local tag="$1"
   BUILD_ARGS=(--progress "$BUILD_PROGRESS" -t "$tag")
+  [[ -n "${TRIVY_IMAGE:-}" ]] && BUILD_ARGS+=(--build-arg "TRIVY_IMAGE=$TRIVY_IMAGE")
   [[ -n "${TRIVY_VERSION:-}" ]] && BUILD_ARGS+=(--build-arg "TRIVY_VERSION=$TRIVY_VERSION")
   [[ -n "${TRUFFLEHOG_VERSION:-}" ]] && BUILD_ARGS+=(--build-arg "TRUFFLEHOG_VERSION=$TRUFFLEHOG_VERSION")
   [[ -n "${OPENGREP_VERSION:-}" ]] && BUILD_ARGS+=(--build-arg "OPENGREP_VERSION=$OPENGREP_VERSION")
@@ -127,20 +125,42 @@ run_checks() {
   done
 }
 
-# TEMPORARY: verify tools have been fully removed from the image.
-# Fails if any tool in the list is still present.
-run_must_not_exist_checks() {
+# Socket-built trivy assertions, beyond presence:
+#   1. the binary's reported version must agree with the version tag pinned in
+#      the Dockerfile's TRIVY_IMAGE ARG (catches pin/binary drift), and
+#   2. `trivy config` — the exact subcommand the trivy connector invokes — must
+#      succeed against a trivial fixture, with the connector's flags.
+run_trivy_checks() {
   local tag="$1"
-  shift
-  local tools=("$@")
-  for tool in "${tools[@]}"; do
-    if docker run --rm --entrypoint /bin/sh "$tag" -c "command -v $tool" > /dev/null 2>&1; then
-      echo "  FAIL: $tool is still present in the image (expected removal)"
-      return 1
-    else
-      echo "  OK: $tool not found (removal confirmed)"
-    fi
-  done
+  local dockerfile="$2"
+  local expected
+  expected="$(sed -n 's/^ARG TRIVY_IMAGE=[^:]*:\([^@]*\)@.*/\1/p' "$dockerfile")"
+  if [[ -z "$expected" ]]; then
+    echo "  FAIL: could not parse the TRIVY_IMAGE version tag from $dockerfile"
+    return 1
+  fi
+  if docker run --rm --entrypoint /bin/sh "$tag" -c "trivy --version | grep -q 'Version: $expected'"; then
+    echo "  OK: trivy version matches the Dockerfile pin ($expected)"
+  else
+    echo "  FAIL: trivy version does not match the Dockerfile pin ($expected)"
+    docker run --rm --entrypoint /bin/sh "$tag" -c "trivy --version" 2>&1 || true
+    return 1
+  fi
+  if docker run --rm --entrypoint /bin/sh "$tag" \
+      -c "printf 'FROM alpine:3.20\n' > /tmp/smoke.Dockerfile && trivy config --format json --output /tmp/smoke-result.json /tmp/smoke.Dockerfile"; then
+    echo "  OK: trivy config scan succeeds (connector code path)"
+  else
+    echo "  FAIL: trivy config scan failed"
+    return 1
+  fi
+}
+
+trivy_ref_dockerfile() {
+  case "$CHECK_SET" in
+    app-tests) echo "app_tests/Dockerfile" ;;
+    heavy)     echo "Dockerfile.heavy" ;;
+    *)         echo "Dockerfile" ;;
+  esac
 }
 
 cd "$REPO_ROOT"
@@ -157,7 +177,7 @@ if $SKIP_BUILD; then
   else
     run_checks "$IMAGE_TAG" "${MAIN_TOOLS[@]}"
   fi
-  run_must_not_exist_checks "$IMAGE_TAG" "${MUST_NOT_EXIST_TOOLS[@]}"
+  run_trivy_checks "$IMAGE_TAG" "$(trivy_ref_dockerfile)"
 else
   # ── Normal mode: build then verify ────────────────────────────────────────
   echo "==> Build main image"
@@ -176,20 +196,20 @@ else
   else
     run_checks "$IMAGE_TAG" "${MAIN_TOOLS[@]}"
   fi
-  run_must_not_exist_checks "$IMAGE_TAG" "${MUST_NOT_EXIST_TOOLS[@]}"
+  run_trivy_checks "$IMAGE_TAG" "$DOCKERFILE"
 
   if $RUN_APP_TESTS; then
     echo "==> Build app_tests image"
     echo "Image: $APP_TESTS_IMAGE_TAG"
     build_args_for_tag "$APP_TESTS_IMAGE_TAG"
     app_build_start="$(date +%s)"
-    docker build -f app_tests/Dockerfile "${BUILD_ARGS[@]}" .
+    docker build -f app_tests/Dockerfile "${BUILD_ARGS[@]}" app_tests
     app_build_end="$(date +%s)"
     echo "app_tests image build completed in $((app_build_end - app_build_start))s"
 
     echo "==> Verify tools in app_tests image"
     run_checks "$APP_TESTS_IMAGE_TAG" "${APP_TESTS_TOOLS[@]}"
-    run_must_not_exist_checks "$APP_TESTS_IMAGE_TAG" "${MUST_NOT_EXIST_TOOLS[@]}"
+    run_trivy_checks "$APP_TESTS_IMAGE_TAG" "app_tests/Dockerfile"
   fi
 fi
 

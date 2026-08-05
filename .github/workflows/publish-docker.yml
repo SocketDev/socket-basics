@@ -15,9 +15,12 @@ name: publish-docker
 #   registry, distinguished by tag suffix: 2.0.0 (main), 2.0.0-heavy (heavy).
 #   See docs/github-action.md → "Pinning strategies" for the full rationale.
 #
-# Required repository secrets:
-#   DOCKERHUB_USERNAME  — Docker Hub account name
+# Required secrets — scoped to the `publish` environment (deployment policy:
+# branch `main` + tags `v*`), not repo-level:
+#   DOCKERHUB_USERNAME  — Docker Hub account name (also the registry namespace)
 #   DOCKERHUB_TOKEN     — Docker Hub access token (read/write)
+# Publishing jobs bind `environment: publish` to resolve them; the reusable
+# pipeline binds it only in push mode (see _docker-pipeline.yml).
 
 on:
   push:
@@ -149,7 +152,10 @@ jobs:
             check_set: heavy
             arch: arm64
             runs_on: ubuntu-24.04-arm
-    uses: ./.github/workflows/_docker-pipeline.yml
+    # zizmor: ignore[secrets-inherit] — required: environment-scoped secrets
+    # cannot be passed via an explicit workflow-call mapping (they only resolve
+    # on the environment-bound job inside the called same-repo workflow).
+    uses: ./.github/workflows/_docker-pipeline.yml # zizmor: ignore[secrets-inherit]
     with:
       name: ${{ matrix.image }}
       dockerfile: ${{ matrix.dockerfile }}
@@ -164,20 +170,25 @@ jobs:
       push: true
       version: ${{ needs.resolve-version.outputs.version }}
       ref: ${{ needs.resolve-version.outputs.ref }}
-    secrets:
-      DOCKERHUB_USERNAME: ${{ secrets.DOCKERHUB_USERNAME }}
-      DOCKERHUB_TOKEN: ${{ secrets.DOCKERHUB_TOKEN }}
+    # Environment secrets can't be passed from a workflow-call job (no
+    # `environment:` allowed here); inherit lets the reusable workflow's
+    # environment-bound job resolve them itself.
+    secrets: inherit
 
   # ── Job 3: Merge per-arch digests into a multi-arch manifest list ──────────
-  # Floating major version tags (v2 → latest v2.x.y) are intentionally omitted.
-  # Mutable tags are structurally equivalent to :latest and inappropriate for a
-  # security tool. Users should pin to an exact version and use Dependabot.
+  # Tags: exact immutable version (X.Y.Z / X.Y.Z-heavy) plus the floating
+  # `latest` / `latest-heavy` convenience aliases. Version tags are immutable
+  # registry-side (Docker Hub immutable-tag rule: ^\d+\.\d+\.\d+(-heavy)?$);
+  # `latest` deliberately floats. Consumers needing reproducibility should pin
+  # the exact version or digest (docs/github-action.md → "Pinning strategies").
+  # Floating MAJOR tags (v2 → latest v2.x.y) remain intentionally omitted.
   merge-manifests:
     name: merge-manifests (${{ matrix.variant }})
     needs: [resolve-version, build-test-push]
     permissions:
       contents: read
       packages: write
+    environment: publish # Docker Hub secrets are environment-scoped
     runs-on: ubuntu-latest
     strategy:
       fail-fast: false
@@ -221,16 +232,22 @@ jobs:
           images: |
             ghcr.io/socketdev/socket-basics
             ${{ secrets.DOCKERHUB_USERNAME }}/socket-basics
-          # Disable the automatic :latest tag — metadata-action adds it by default
-          # for semver tag pushes. Mutable tags are inappropriate for a security tool.
-          # The variant suffix yields 2.2.0 for the main image, 2.2.0-heavy for heavy.
+          # `latest` (and `latest-heavy` via the variant suffix) float to the
+          # newest release; exact version tags stay immutable registry-side.
+          # The variant suffix yields X.Y.Z for the main image, X.Y.Z-heavy for heavy.
           flavor: |
-            latest=false
-            suffix=${{ matrix.tag_suffix }}
+            latest=true
+            # onlatest applies the variant suffix to the latest alias too —
+            # without it both variants would publish a bare, racing `latest`
+            # and `latest-heavy` would never exist.
+            suffix=${{ matrix.tag_suffix }},onlatest=true
           tags: |
-            # Tag push (v2.0.0) → exact immutable version tag only.
+            # Tag push (vX.Y.Z) → exact immutable version tag + latest alias.
             type=semver,pattern={{version}}
-            # workflow_dispatch re-publish → use the version input directly
+            # workflow_dispatch re-publish → use the version input directly.
+            # NOTE: re-pushing an already-published version tag is rejected by
+            # the registry's immutable-tag rule — dispatch mode is for recovery
+            # when tags never landed (it also repoints `latest`).
             type=raw,value=${{ needs.resolve-version.outputs.version }},enable=${{ github.event_name == 'workflow_dispatch' }}
 
       - name: 🧬 Create multi-arch manifest list

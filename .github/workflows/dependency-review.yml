@@ -281,10 +281,12 @@ jobs:
     uses: ./.github/workflows/_docker-pipeline.yml
     permissions:
       contents: read
+      packages: read # pull the private Socket-built trivy base image
     with:
       name: socket-basics-app-tests
       dockerfile: app_tests/Dockerfile
-      context: .
+      # app_tests/ is its own build context (its pyproject/uv.lock, fixture apps).
+      context: app_tests
       check_set: app-tests
       push: false
 
