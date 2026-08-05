@@ -1,9 +1,9 @@
 # Heavy POC image: socket-basics plus a pinned stable Python Socket CLI.
 ARG PYTHON_VERSION=3.12
-ARG TRUFFLEHOG_VERSION=3.93.8
-ARG UV_VERSION=0.10.11
-ARG OPENGREP_VERSION=v1.16.5
-ARG SOCKET_CLI_VERSION=2.5.0
+ARG TRUFFLEHOG_VERSION=3.96.0
+ARG UV_VERSION=0.12.1
+ARG OPENGREP_VERSION=v1.26.0
+ARG SOCKET_CLI_VERSION=2.5.8
 # Socket-built Trivy, pinned by digest — see the note in ./Dockerfile.
 ARG TRIVY_IMAGE=ghcr.io/socketdev/trivy:0.73.0@sha256:e3d9d5f10250cb73b0ea9446ae1191c0f2da2f5e6173eac08a840b1812f02e0b
 
