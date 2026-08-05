@@ -97,9 +97,10 @@ the action itself is compromised or ships a bad release, every repo running it
 is immediately affected. We've seen this happen across the ecosystem:
 
 - **Floating tags** (`@v2`, `:latest`) auto-update on every new release.
-  A single bad push silently reaches all users with no review gate. This is
-  structurally identical to `docker pull :latest` — the anti-pattern we
-  explicitly warn against in our Docker docs.
+  A single bad push silently reaches all users with no review gate. (We do
+  publish `:latest`/`:latest-heavy` Docker aliases as an onboarding
+  convenience, but treat them as exactly that — production pipelines should
+  pin an exact version or digest.)
 - **Version tags** (`@v2.0.3`) are better, but tags are mutable by default.
   A tag can be deleted and recreated pointing at a different commit. There are
   documented cases of this happening — maliciously and accidentally.
@@ -107,9 +108,10 @@ is immediately affected. We've seen this happen across the ecosystem:
   reassigned. Combined with Dependabot, you get automated upgrades with a
   human review gate at zero ongoing maintenance cost.
 
-We don't publish a floating major tag (`v2`). We do publish immutable version
-tags (`v2.0.3`) protected by tag protection rules in GitHub — but SHA pinning
-is still the recommendation for defence in depth.
+We don't publish a floating major tag (`v2`) for the action. Docker image
+version tags are immutable registry-side (enforced by an immutable-tag rule),
+with `latest`/`latest-heavy` as the only floating aliases — but SHA/digest
+pinning is still the recommendation for defence in depth.
 
 ### Pinning strategies
 

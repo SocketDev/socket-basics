@@ -176,9 +176,12 @@ jobs:
     secrets: inherit
 
   # ── Job 3: Merge per-arch digests into a multi-arch manifest list ──────────
-  # Floating major version tags (v2 → latest v2.x.y) are intentionally omitted.
-  # Mutable tags are structurally equivalent to :latest and inappropriate for a
-  # security tool. Users should pin to an exact version and use Dependabot.
+  # Tags: exact immutable version (X.Y.Z / X.Y.Z-heavy) plus the floating
+  # `latest` / `latest-heavy` convenience aliases. Version tags are immutable
+  # registry-side (Docker Hub immutable-tag rule: ^\d+\.\d+\.\d+(-heavy)?$);
+  # `latest` deliberately floats. Consumers needing reproducibility should pin
+  # the exact version or digest (docs/github-action.md → "Pinning strategies").
+  # Floating MAJOR tags (v2 → latest v2.x.y) remain intentionally omitted.
   merge-manifests:
     name: merge-manifests (${{ matrix.variant }})
     needs: [resolve-version, build-test-push]
@@ -229,16 +232,19 @@ jobs:
           images: |
             ghcr.io/socketdev/socket-basics
             ${{ secrets.DOCKERHUB_USERNAME }}/socket-basics
-          # Disable the automatic :latest tag — metadata-action adds it by default
-          # for semver tag pushes. Mutable tags are inappropriate for a security tool.
-          # The variant suffix yields 2.2.0 for the main image, 2.2.0-heavy for heavy.
+          # `latest` (and `latest-heavy` via the variant suffix) float to the
+          # newest release; exact version tags stay immutable registry-side.
+          # The variant suffix yields X.Y.Z for the main image, X.Y.Z-heavy for heavy.
           flavor: |
-            latest=false
+            latest=true
             suffix=${{ matrix.tag_suffix }}
           tags: |
-            # Tag push (v2.0.0) → exact immutable version tag only.
+            # Tag push (vX.Y.Z) → exact immutable version tag + latest alias.
             type=semver,pattern={{version}}
-            # workflow_dispatch re-publish → use the version input directly
+            # workflow_dispatch re-publish → use the version input directly.
+            # NOTE: re-pushing an already-published version tag is rejected by
+            # the registry's immutable-tag rule — dispatch mode is for recovery
+            # when tags never landed (it also repoints `latest`).
             type=raw,value=${{ needs.resolve-version.outputs.version }},enable=${{ github.event_name == 'workflow_dispatch' }}
 
       - name: 🧬 Create multi-arch manifest list
