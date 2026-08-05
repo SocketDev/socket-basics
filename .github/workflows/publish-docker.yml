@@ -15,9 +15,12 @@ name: publish-docker
 #   registry, distinguished by tag suffix: 2.0.0 (main), 2.0.0-heavy (heavy).
 #   See docs/github-action.md → "Pinning strategies" for the full rationale.
 #
-# Required repository secrets:
-#   DOCKERHUB_USERNAME  — Docker Hub account name
+# Required secrets — scoped to the `publish` environment (deployment policy:
+# branch `main` + tags `v*`), not repo-level:
+#   DOCKERHUB_USERNAME  — Docker Hub account name (also the registry namespace)
 #   DOCKERHUB_TOKEN     — Docker Hub access token (read/write)
+# Publishing jobs bind `environment: publish` to resolve them; the reusable
+# pipeline binds it only in push mode (see _docker-pipeline.yml).
 
 on:
   push:
@@ -164,9 +167,10 @@ jobs:
       push: true
       version: ${{ needs.resolve-version.outputs.version }}
       ref: ${{ needs.resolve-version.outputs.ref }}
-    secrets:
-      DOCKERHUB_USERNAME: ${{ secrets.DOCKERHUB_USERNAME }}
-      DOCKERHUB_TOKEN: ${{ secrets.DOCKERHUB_TOKEN }}
+    # Environment secrets can't be passed from a workflow-call job (no
+    # `environment:` allowed here); inherit lets the reusable workflow's
+    # environment-bound job resolve them itself.
+    secrets: inherit
 
   # ── Job 3: Merge per-arch digests into a multi-arch manifest list ──────────
   # Floating major version tags (v2 → latest v2.x.y) are intentionally omitted.
@@ -178,6 +182,7 @@ jobs:
     permissions:
       contents: read
       packages: write
+    environment: publish # Docker Hub secrets are environment-scoped
     runs-on: ubuntu-latest
     strategy:
       fail-fast: false

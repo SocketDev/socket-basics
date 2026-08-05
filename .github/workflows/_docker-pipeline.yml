@@ -79,6 +79,11 @@ on:
 jobs:
   pipeline:
     runs-on: ${{ inputs.runs_on }}
+    # Push mode binds the `publish` environment so the environment-scoped
+    # Docker Hub secrets resolve (callers use `secrets: inherit`). Test mode
+    # (push: false) binds no environment — PR branches would violate the
+    # environment's deployment policy.
+    environment: ${{ inputs.push && 'publish' || '' }}
     timeout-minutes: 60
 
     steps:
