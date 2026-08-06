@@ -37,7 +37,7 @@ Socket's own supply chain.
   first run after upgrading.
 - OSS toolchain refresh: TruffleHog 3.96.0, OpenGrep v1.26.0 (SAST rule
   updates may shift findings), uv 0.12.1, gosec v2.28.0, Go 1.26.5
-  (app-tests), Socket CLI 2.5.8 (heavy image). Runtime bases (`python:3.12`,
+  (app-tests), Socket CLI 2.6.0 (heavy image). Runtime bases (`python:3.12`,
   `node:22`) are unchanged.
 - Docker Hub publish credentials are now scoped to the `publish` GitHub
   environment (deployment restricted to `main` and `v*` tags) instead of
