@@ -315,17 +315,18 @@ def analyze_purls(purls: list[str], token: str) -> dict[str, dict[str, Any]]:
     components = [{"purl": p} for p in purls]
     # The batch purl endpoints default to fail-open: inputs whose analysis is
     # pending or unresolvable are silently omitted from the response unless the
-    # caller opts in. Opt in to fail-closed semantics: poll=true waits (bounded
-    # by timeoutSec; the server may cap it) for pending analysis, and
-    # alerts=true materializes still-unresolved inputs as synthetic
-    # pendingScan/notFound rows instead of dropping them. The SDK passes these
-    # extra kwargs through as query params (verified on 3.0.29 and 3.3.0).
+    # caller opts in. Opt in to fail-closed semantics: poll=True waits (bounded
+    # by timeout_sec; the server may cap it) for pending analysis, and
+    # alerts=True materializes still-unresolved inputs as synthetic
+    # pendingScan/notFound rows instead of dropping them. These are first-class
+    # typed params as of socketdev 3.4.2 (previously passed as stringly-typed
+    # query-string kwargs); see CE-360.
     results = client.purl.post(
         license="false",
         components=components,
-        poll="true",
-        timeoutSec="120",
-        alerts="true",
+        poll=True,
+        timeout_sec=120,
+        alerts=True,
         **kwargs,
     ) or []
     if not results:
