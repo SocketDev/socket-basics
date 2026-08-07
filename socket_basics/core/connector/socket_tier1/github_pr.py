@@ -34,6 +34,7 @@ def format_notifications(components_list: List[Dict[str, Any]], config=None) -> 
     enable_links = flags['enable_links']
     enable_collapse = flags['enable_collapse']
     collapse_non_critical = flags['collapse_non_critical']
+    collapse_all = flags['collapse_all']
     enable_code_fencing = flags['enable_code_fencing']
     show_rule_names = flags['show_rule_names']
     repository = flags['repository']
@@ -154,7 +155,10 @@ def format_notifications(components_list: List[Dict[str, Any]], config=None) -> 
 
                 severity_summary = " | ".join(severity_parts) if severity_parts else "No issues"
 
-                open_attr = ' open' if (not collapse_non_critical or has_critical) else ''
+                # collapse_all wins over both so the comment can stay small even
+                # when a critical finding is present.
+                auto_expand = (not collapse_non_critical or has_critical) and not collapse_all
+                open_attr = ' open' if auto_expand else ''
                 content_lines.append(f"<details{open_attr}>")
                 content_lines.append(f"<summary><strong>{purl}</strong> ({severity_summary})</summary>")
                 content_lines.append("")

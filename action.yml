@@ -91,9 +91,11 @@ runs:
     INPUT_WEBHOOK_URL: ${{ inputs.webhook_url }}
     SOCKET_ADDITIONAL_PARAMS: ${{ inputs.socket_additional_params }}
     SOCKET_TIER_1_ENABLED: ${{ inputs.socket_tier_1_enabled }}
+    INPUT_PR_COMMENT_ENABLED: ${{ inputs.pr_comment_enabled }}
     INPUT_PR_COMMENT_LINKS_ENABLED: ${{ inputs.pr_comment_links_enabled }}
     INPUT_PR_COMMENT_COLLAPSE_ENABLED: ${{ inputs.pr_comment_collapse_enabled }}
     INPUT_PR_COMMENT_COLLAPSE_NON_CRITICAL: ${{ inputs.pr_comment_collapse_non_critical }}
+    INPUT_PR_COMMENT_COLLAPSE_ALL: ${{ inputs.pr_comment_collapse_all }}
     INPUT_PR_COMMENT_CODE_FENCING_ENABLED: ${{ inputs.pr_comment_code_fencing_enabled }}
     INPUT_PR_COMMENT_SHOW_RULE_NAMES: ${{ inputs.pr_comment_show_rule_names }}
     INPUT_PR_LABELS_ENABLED: ${{ inputs.pr_labels_enabled }}
@@ -442,6 +444,15 @@ inputs:
     description: "Generic webhook URL for WebhookNotifier"
     required: false
     default: ""
+  pr_comment_enabled:
+    description: >-
+      Post the findings comment on the pull request. Set to 'false' to run the
+      scan silently: findings are still uploaded to the Socket dashboard and the
+      action still fails the job on high/critical findings, but no comment is
+      posted or updated. Severity labels are controlled separately by
+      pr_labels_enabled.
+    required: false
+    default: "true"
   pr_comment_links_enabled:
     description: "Enable clickable file/line links in PR comments"
     required: false
@@ -454,6 +465,15 @@ inputs:
     description: "Auto-collapse non-critical findings (critical stays expanded)"
     required: false
     default: "true"
+  pr_comment_collapse_all:
+    description: >-
+      Collapse the SAST and Socket Tier 1 sections, critical findings included.
+      Those are the sections built from collapsible panels, so they are the
+      ones this can close. Secret findings and Dockerfile findings render as
+      plain tables and stay fully visible, and each collapsed section still
+      shows its summary row. Overrides pr_comment_collapse_non_critical.
+    required: false
+    default: "false"
   pr_comment_code_fencing_enabled:
     description: "Enable language-aware code fencing for trace output"
     required: false

@@ -347,3 +347,140 @@ def test_notify_zero_alert_enabled_sast_config_rewrites_matching_section(monkeyp
     assert len(updated_bodies) == 1
     assert 'Socket Basics found no active findings in the latest run.' in updated_bodies[0]
     assert '<!-- sast-javascript start -->' in updated_bodies[0]
+
+
+# ---------------------------------------------------------------------------
+# pr_comment_enabled: suppress the PR comment without suppressing the scan
+# ---------------------------------------------------------------------------
+
+def _suppression_notifier(monkeypatch, **params):
+    """A notifier whose every GitHub write is recorded instead of performed."""
+    notifier = GithubPRNotifier({'repository': 'SocketDev/socket-basics', **params})
+    calls = {'posted': [], 'updated': [], 'labels': []}
+
+    monkeypatch.setattr(notifier, '_get_pr_number', lambda: 123)
+    monkeypatch.setattr(notifier, '_get_pr_comments', lambda pr_number: [])
+    monkeypatch.setattr(
+        notifier, '_post_comment', lambda pr_number, body: calls['posted'].append(body) or True
+    )
+    monkeypatch.setattr(
+        notifier,
+        '_update_comment',
+        lambda pr_number, comment_id, body: calls['updated'].append(body) or True,
+    )
+    monkeypatch.setattr(
+        notifier,
+        '_reconcile_pr_labels',
+        lambda pr_number, labels: calls['labels'].append(labels) or True,
+    )
+    return notifier, calls
+
+
+_FINDING = {
+    'title': 'Socket SAST JavaScript',
+    'content': '<!-- sast-javascript start -->\n🔴 Critical: 1\n<!-- sast-javascript end -->',
+}
+
+
+def test_notify_posts_comment_by_default(monkeypatch):
+    notifier, calls = _suppression_notifier(monkeypatch)
+
+    notifier.notify({'notifications': [_FINDING], 'components': []})
+
+    assert len(calls['posted']) == 1
+
+
+def test_notify_posts_no_comment_when_pr_comment_disabled(monkeypatch):
+    notifier, calls = _suppression_notifier(monkeypatch, pr_comment_enabled=False)
+
+    notifier.notify({'notifications': [_FINDING], 'components': []})
+
+    assert calls['posted'] == []
+    assert calls['updated'] == []
+
+
+def test_notify_posts_no_all_clear_comment_when_pr_comment_disabled(monkeypatch):
+    """An empty run must not rewrite an existing comment into "no findings"."""
+    existing = """<!-- sast-javascript start -->
+## Socket SAST JavaScript
+
+### Summary
+🟠 High: 1
+<!-- sast-javascript end -->"""
+
+    notifier, calls = _suppression_notifier(monkeypatch, pr_comment_enabled=False)
+    notifier.app_config = {'javascript_sast_enabled': True}
+    monkeypatch.setattr(notifier, '_get_pr_comments', lambda pr_number: [{'id': 99, 'body': existing}])
+
+    notifier.notify({'notifications': [], 'components': []})
+
+    assert calls['posted'] == []
+    assert calls['updated'] == []
+
+
+def test_notify_still_applies_labels_when_pr_comment_disabled(monkeypatch):
+    """Comments and labels are independent switches."""
+    notifier, calls = _suppression_notifier(
+        monkeypatch, pr_comment_enabled=False, pr_labels_enabled=True
+    )
+
+    notifier.notify({'notifications': [_FINDING], 'components': []})
+
+    assert calls['labels'] == [['security: critical']]
+
+
+def test_notify_skips_labels_when_both_switches_are_off(monkeypatch):
+    notifier, calls = _suppression_notifier(
+        monkeypatch, pr_comment_enabled=False, pr_labels_enabled=False
+    )
+
+    notifier.notify({'notifications': [_FINDING], 'components': []})
+
+    assert calls['posted'] == []
+    assert calls['labels'] == []
+
+
+def test_notify_honors_string_false_from_dashboard_config(monkeypatch):
+    """A Socket dashboard config supplies flags as strings, not booleans."""
+    notifier, calls = _suppression_notifier(monkeypatch, pr_comment_enabled='false')
+
+    notifier.notify({'notifications': [_FINDING], 'components': []})
+
+    assert calls['posted'] == []
+
+
+def test_notify_honors_string_false_for_labels(monkeypatch):
+    """pr_labels_enabled needs the same string handling as pr_comment_enabled."""
+    notifier, calls = _suppression_notifier(
+        monkeypatch, pr_comment_enabled='false', pr_labels_enabled='false'
+    )
+
+    notifier.notify({'notifications': [_FINDING], 'components': []})
+
+    assert calls['posted'] == []
+    assert calls['labels'] == []
+
+
+def test_notify_string_false_labels_are_skipped_on_the_normal_path(monkeypatch):
+    """Not just the suppression branch -- the ordinary posting path too."""
+    notifier, calls = _suppression_notifier(monkeypatch, pr_labels_enabled='false')
+
+    notifier.notify({'notifications': [_FINDING], 'components': []})
+
+    assert len(calls['posted']) == 1
+    assert calls['labels'] == []
+
+
+def test_notify_leaves_facts_untouched_when_pr_comment_disabled(monkeypatch):
+    """Suppression is comment-only: the uploaded facts payload is not altered."""
+    notifier, _calls = _suppression_notifier(monkeypatch, pr_comment_enabled=False)
+    facts = {
+        'notifications': [_FINDING],
+        'components': [{'id': 'src/index.js', 'alerts': [{'severity': 'critical'}]}],
+        'full_scan_html_url': 'https://socket.dev/dashboard/scan/12345',
+    }
+
+    notifier.notify(facts)
+
+    assert facts['components'] == [{'id': 'src/index.js', 'alerts': [{'severity': 'critical'}]}]
+    assert facts['full_scan_html_url'] == 'https://socket.dev/dashboard/scan/12345'

@@ -104,11 +104,12 @@ Socket Basics can also run locally or in other CI/CD environments:
 Socket Basics delivers **beautifully formatted, actionable PR comments** with smart defaults — all enabled by default, zero configuration needed.
 
 - 🔗 **Clickable File Links** — Jump directly to the vulnerable code in GitHub
-- 📋 **Collapsible Sections** — Critical findings auto-expand, others collapse
+- 📋 **Collapsible Sections** — SAST and Socket Tier 1 findings collapse, critical ones auto-expand; `pr_comment_collapse_all: 'true'` closes those too
 - 🎨 **Syntax Highlighting** — Language-aware code blocks
 - 🏷️ **Auto-Labels** — PRs tagged with severity-based labels (e.g., `security: critical`)
 - 🔴 **CVE Links & CVSS Scores** — One-click access to NVD with risk context
 - 🚀 **Full Scan Link** — Report link prominently displayed at the top
+- 🔇 **Fully Suppressible** — `pr_comment_enabled: 'false'` stops the comment entirely while the scan still runs, still uploads to the Socket dashboard, and still fails the job on high/critical findings
 
 Every feature is customizable via GitHub Actions inputs, CLI flags, or environment variables.
 
