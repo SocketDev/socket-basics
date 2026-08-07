@@ -14,6 +14,10 @@ import re
 from typing import Dict, Any, Optional, List, Tuple
 from pathlib import Path
 
+# coerce_bool lives in the config layer so the environment loader, a Socket
+# dashboard config and these flags all read a string the same way.
+from socket_basics.core.config import coerce_bool
+
 
 # ============================================================================
 # Severity Constants (shared across all scanners)
@@ -99,6 +103,7 @@ def get_feature_flags(config) -> Dict[str, Any]:
             'enable_links': True,
             'enable_collapse': True,
             'collapse_non_critical': True,
+            'collapse_all': False,
             'enable_code_fencing': True,
             'show_rule_names': True,
             'repository': '',
@@ -107,11 +112,12 @@ def get_feature_flags(config) -> Dict[str, Any]:
         }
 
     return {
-        'enable_links': config.get('pr_comment_links_enabled', True),
-        'enable_collapse': config.get('pr_comment_collapse_enabled', True),
-        'collapse_non_critical': config.get('pr_comment_collapse_non_critical', True),
-        'enable_code_fencing': config.get('pr_comment_code_fencing_enabled', True),
-        'show_rule_names': config.get('pr_comment_show_rule_names', True),
+        'enable_links': coerce_bool(config.get('pr_comment_links_enabled'), True),
+        'enable_collapse': coerce_bool(config.get('pr_comment_collapse_enabled'), True),
+        'collapse_non_critical': coerce_bool(config.get('pr_comment_collapse_non_critical'), True),
+        'collapse_all': coerce_bool(config.get('pr_comment_collapse_all'), False),
+        'enable_code_fencing': coerce_bool(config.get('pr_comment_code_fencing_enabled'), True),
+        'show_rule_names': coerce_bool(config.get('pr_comment_show_rule_names'), True),
         'repository': config.repo if hasattr(config, 'repo') else '',
         'commit_hash': config.commit_hash if hasattr(config, 'commit_hash') else '',
         'full_scan_url': config.get('full_scan_html_url') if config else None

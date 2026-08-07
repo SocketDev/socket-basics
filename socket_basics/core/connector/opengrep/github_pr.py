@@ -34,6 +34,7 @@ def format_notifications(groups: Dict[str, List[Dict[str, Any]]], config=None) -
     enable_links = flags['enable_links']
     enable_collapse = flags['enable_collapse']
     collapse_non_critical = flags['collapse_non_critical']
+    collapse_all = flags['collapse_all']
     enable_code_fencing = flags['enable_code_fencing']
     show_rule_names = flags['show_rule_names']
     repository = flags['repository']
@@ -202,8 +203,10 @@ def format_notifications(groups: Dict[str, List[Dict[str, Any]]], config=None) -
                 if enable_collapse:
                     # Determine if this should be auto-expanded
                     has_critical = file_severities['critical'] > 0
-                    # Auto-expand if: no collapse requested OR has critical findings
-                    auto_expand = (not collapse_non_critical) or has_critical
+                    # Auto-expand if: no collapse requested OR has critical findings.
+                    # collapse_all wins over both so the comment can stay small
+                    # even when a critical finding is present.
+                    auto_expand = ((not collapse_non_critical) or has_critical) and not collapse_all
 
                     collapsible = helpers.create_collapsible_section(
                         display_path,  # Don't use backticks in summary - they don't render in GitHub
