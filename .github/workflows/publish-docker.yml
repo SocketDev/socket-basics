@@ -7,7 +7,10 @@ name: publish-docker
 #   resolve-version
 #     → build-test-push  (matrix: image variant + native arch, pushes by digest)
 #     → merge-manifests  (assembles per-image per-arch digests into manifest lists)
-#     → create-release   (tag pushes only)
+#
+# GitHub releases are intentionally human-authored after the images publish.
+# Maintainers may use GitHub's generated release notes as a starting point, but
+# this workflow does not create or edit the release itself.
 #
 # Tag convention:
 #   v2.0.0  — immutable exact release (floating major tags intentionally not published)
@@ -307,27 +310,3 @@ jobs:
               fi
             done
           done
-
-  # ── Job 4: Create GitHub release ───────────────────────────────────────────
-  # Runs once after the manifest is published (not for workflow_dispatch
-  # re-publishes — those don't create new releases).
-  # Generates categorised release notes from merged PR labels (.github/release.yml).
-  # CHANGELOG updates are intentionally human-authored in the release PR so this
-  # workflow never needs to push commits to the protected default branch.
-  create-release:
-    needs: [resolve-version, merge-manifests]
-    if: github.ref_type == 'tag'
-    permissions:
-      contents: write   # create GitHub release
-    runs-on: ubuntu-latest
-    steps:
-      - name: 📝 Create GitHub release with auto-generated notes
-        env:
-          GH_TOKEN: ${{ github.token }}
-          REF_NAME: ${{ github.ref_name }}
-        run: |
-          gh release create "$REF_NAME" \
-            --title "$REF_NAME" \
-            --generate-notes \
-            --verify-tag \
-          || echo "Release already exists (re-run scenario) — skipping creation"
