@@ -1,19 +1,21 @@
 name: core-tool-watch
 
-# Supply-chain / malware watch for the four core OSS tools that Socket Basics
-# orchestrates. Three of them (OpenGrep, TruffleHog, Trivy) ship as
-# binaries / container images / GitHub releases that Dependabot cannot cleanly
-# track; the fourth (Socket's own SCA SDK) is a PyPI package. This workflow
+# Supply-chain / malware watch for the core tools that Socket Basics
+# orchestrates, including Socket's SDK and both of its CLI implementations.
+# Several ship as binaries / container images / GitHub releases that
+# Dependabot cannot cleanly track. This workflow
 # closes that gap by running scripts/check_core_tools.py, which discovers the
 # latest upstream version of each tool and scores the relevant package
 # coordinates through the Socket API (dogfooding the socketdev SDK that Socket
 # Basics already depends on).
 #
 # Two triggers, two intents:
-#   - schedule / workflow_dispatch  → mode=watch: discover latest versions,
-#     analyze BOTH pinned and latest, report drift, upsert a tracking issue.
-#   - pull_request / push touching the pins → mode=build: analyze the versions
-#     this change would bake into the image. Fails on a malware/critical alert.
+#   - schedule / workflow_dispatch / main push → mode=watch: discover latest
+#     versions, analyze BOTH pinned and latest, and reconcile the tracking issue.
+#     Running watch mode after a merge prevents the issue from retaining the
+#     pre-merge pins until the next weekly schedule.
+#   - pull_request touching the pins → mode=build: analyze the versions this
+#     change would bake into the image. Fails on a malware/critical alert.
 #
 # Socket scoring needs SOCKET_SFW_API_TOKEN, scoped to the `socket-firewall`
 # environment (which must carry NO approval rule -- see dependency-review.yml).
@@ -41,6 +43,7 @@ on:
   pull_request:
     paths:
       - "Dockerfile"
+      - "Dockerfile.heavy"
       - "app_tests/Dockerfile"
       - "pyproject.toml"
       - "uv.lock"
@@ -50,6 +53,7 @@ on:
     branches: [main]
     paths:
       - "Dockerfile"
+      - "Dockerfile.heavy"
       - "app_tests/Dockerfile"
       - "pyproject.toml"
       - "uv.lock"
@@ -78,7 +82,8 @@ jobs:
     environment: socket-firewall
     permissions:
       contents: read
-      issues: write # upsert the drift tracking issue on scheduled runs
+      issues: write # reconcile the drift tracking issue on default-branch runs
+      packages: read # inspect tags on the repo-authorized private GHCR Trivy package
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -117,12 +122,12 @@ jobs:
         env:
           EVENT: ${{ github.event_name }}
         run: |
-          # Scheduled/manual runs watch for upstream drift; PR/push runs guard
-          # the versions a build would actually pull in.
-          if [ "$EVENT" = "schedule" ] || [ "$EVENT" = "workflow_dispatch" ]; then
-            echo "mode=watch" >> "$GITHUB_OUTPUT"
-          else
+          # PRs guard proposed pins without mutating issues. Every default-branch
+          # event reconciles upstream state and the canonical tracking issue.
+          if [ "$EVENT" = "pull_request" ]; then
             echo "mode=build" >> "$GITHUB_OUTPUT"
+          else
+            echo "mode=watch" >> "$GITHUB_OUTPUT"
           fi
 
       - name: Run core-tool supply-chain analysis
@@ -159,28 +164,56 @@ jobs:
           if-no-files-found: warn
           retention-days: 30
 
-      - name: Open/update drift tracking issue
-        if: ${{ always() && steps.mode.outputs.mode == 'watch' && steps.scan.outputs.drift == 'true' }}
+      - name: Reconcile drift tracking issue
+        if: ${{ always() && steps.mode.outputs.mode == 'watch' }}
         env:
           GH_TOKEN: ${{ github.token }}
+          DRIFT: ${{ steps.scan.outputs.drift }}
+          DISCOVERY_COMPLETE: ${{ steps.scan.outputs.discovery_complete }}
         run: |
+          if [ ! -s core-tools-report.md ] \
+            || { [ "$DRIFT" != "true" ] && [ "$DRIFT" != "false" ]; } \
+            || { [ "$DISCOVERY_COMPLETE" != "true" ] && [ "$DISCOVERY_COMPLETE" != "false" ]; }; then
+            echo "::warning::Skipping issue reconciliation because the scan did not produce a complete report."
+            exit 0
+          fi
+
           gh label create core-tool-drift \
             --color FBCA04 \
             --description "A core OSS tool has a newer upstream release" 2>/dev/null || true
 
           title="Core tool version drift detected"
-          # `// empty` so an absent issue yields "" (not the literal "null",
-          # which is non-empty in bash and would send us to `gh issue edit null`).
-          existing="$(gh issue list --label core-tool-drift --state open \
-            --json number --jq '.[0].number // empty' 2>/dev/null || true)"
+          run_url="${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}"
+          # Reuse the newest labeled issue even after it has been closed. This
+          # keeps one canonical history instead of creating a duplicate every
+          # time drift disappears and later returns.
+          existing="$(gh issue list --label core-tool-drift --state all --limit 100 \
+            --json number --jq 'sort_by(.number) | last | .number // empty' 2>/dev/null || true)"
 
-          if [ -n "$existing" ]; then
+          if [ "$DRIFT" = "true" ] && [ -n "$existing" ]; then
+            state="$(gh issue view "$existing" --json state --jq '.state')"
             gh issue edit "$existing" --body-file core-tools-report.md
-            gh issue comment "$existing" \
-              --body "Drift re-detected by [run #${GITHUB_RUN_ID}](${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}); body updated."
-          else
+            if [ "$state" = "CLOSED" ]; then
+              gh issue reopen "$existing" \
+                --comment "Drift re-detected by [run #${GITHUB_RUN_ID}](${run_url}); body updated."
+            else
+              gh issue comment "$existing" \
+                --body "Drift re-detected by [run #${GITHUB_RUN_ID}](${run_url}); body updated."
+            fi
+          elif [ "$DRIFT" = "true" ]; then
             gh issue create \
               --title "$title" \
               --label core-tool-drift \
               --body-file core-tools-report.md
+          elif [ "$DISCOVERY_COMPLETE" = "true" ] && [ -n "$existing" ]; then
+            state="$(gh issue view "$existing" --json state --jq '.state')"
+            gh issue edit "$existing" --body-file core-tools-report.md
+            if [ "$state" = "OPEN" ]; then
+              gh issue close "$existing" \
+                --comment "No core tool version drift remains as of [run #${GITHUB_RUN_ID}](${run_url}); body updated with the reconciled pins."
+            fi
+          elif [ -n "$existing" ]; then
+            gh issue edit "$existing" --body-file core-tools-report.md
+            gh issue comment "$existing" \
+              --body "[Run #${GITHUB_RUN_ID}](${run_url}) refreshed the report, but latest-version discovery was incomplete; issue state was left unchanged."
           fi

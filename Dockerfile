@@ -9,6 +9,7 @@ ARG UV_VERSION=0.12.1
 #
 # NOT Dependabot-trackable (no official Docker image with a stable binary path):
 ARG OPENGREP_VERSION=v1.26.0
+ARG SOCKET_NPM_CLI_VERSION=1.1.154
 #
 # NOT Dependabot-trackable — Socket-built Trivy, rebuilt from unmodified upstream
 # source and published by Socket's own release pipeline. Pinned by digest; both
@@ -61,8 +62,9 @@ RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
       curl git wget ca-certificates
 RUN curl -fsSL https://deb.nodesource.com/setup_22.x | bash - \
     && apt-get install -y nodejs
+ARG SOCKET_NPM_CLI_VERSION
 RUN --mount=type=cache,target=/root/.npm \
-    npm install -g socket
+    npm install -g "socket@${SOCKET_NPM_CLI_VERSION}"
 
 # Python project files
 COPY socket_basics  /socket-basics/socket_basics
@@ -81,6 +83,7 @@ ARG BUILD_DATE=unknown
 ARG TRIVY_VERSION
 ARG TRUFFLEHOG_VERSION
 ARG OPENGREP_VERSION
+ARG SOCKET_NPM_CLI_VERSION
 LABEL org.opencontainers.image.title="Socket Basics" \
       org.opencontainers.image.source="https://github.com/SocketDev/socket-basics" \
       org.opencontainers.image.version="${SOCKET_BASICS_VERSION}" \
@@ -88,7 +91,8 @@ LABEL org.opencontainers.image.title="Socket Basics" \
       org.opencontainers.image.revision="${VCS_REF}" \
       com.socket.trivy-version="${TRIVY_VERSION}" \
       com.socket.trufflehog-version="${TRUFFLEHOG_VERSION}" \
-      com.socket.opengrep-version="${OPENGREP_VERSION}"
+      com.socket.opengrep-version="${OPENGREP_VERSION}" \
+      com.socket.npm-cli-version="${SOCKET_NPM_CLI_VERSION}"
 
 ENV PATH="/socket-basics/.venv/bin:/root/.opengrep/cli/latest:/usr/local/bin:$PATH"
 
