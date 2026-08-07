@@ -200,12 +200,26 @@ class BaseConnector(abc.ABC):
     
     def get_scan_targets(self) -> List[str]:
         """Get list of targets to scan
-        
+
         Returns:
             List of file paths or directories to scan
         """
         return self.config.get_scan_targets() if hasattr(self.config, 'get_scan_targets') else []
-    
+
+    def _changed_files_scope_requested(self) -> bool:
+        """Did the user explicitly ask for a changed-files scope?
+
+        Connectors that derive their own changed-file list must not substitute
+        a different scope when an explicit request resolved to nothing -- that
+        turns "scan only what the PR touched" into "scan whatever happens to be
+        staged", which is a different set of files and is never what was asked
+        for.
+        """
+        try:
+            return bool(self.config.get('changed_files_scope_requested', False))
+        except Exception:
+            return False
+
     def get_name(self) -> str:
         """Get the connector name
         
