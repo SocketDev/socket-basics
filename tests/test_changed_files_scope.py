@@ -280,3 +280,65 @@ class TestGitEnv:
         monkeypatch.setenv("GITHUB_WORKSPACE", "/github/workspace")
         env = _git_env()
         assert env["GIT_CONFIG_VALUE_0"] == "/github/workspace"
+
+
+class TestScopeResolutionFailure:
+    """Failed diff resolution must be distinguishable from an empty diff.
+
+    A git failure (unreadable repo, unresolvable base ref) returns None and the
+    config layer falls back to a full-repo scan with a warning — never a green
+    run that silently scanned nothing. A genuinely empty diff still returns []
+    and keeps the skip behavior (see the delete-only test above).
+    """
+
+    def test_unreadable_repo_returns_none(self, pr_repo):
+        # Corrupt HEAD so every git command fails hard (not a ref miss).
+        (pr_repo / ".git" / "HEAD").write_text("garbage")
+        result = _detect_git_changed_files(str(pr_repo), mode="pr", base_ref="main")
+        assert result is None
+
+    def test_unresolvable_base_ref_returns_none(self, pr_repo):
+        result = _detect_git_changed_files(str(pr_repo), mode="pr", base_ref="no-such-branch")
+        assert result is None
+
+    def test_auto_with_unresolvable_base_ref_returns_none(self, pr_repo, monkeypatch):
+        # In a PR context (base ref set) an unresolvable base must NOT quietly
+        # fall back to the (usually empty) staged diff.
+        monkeypatch.setenv("GITHUB_BASE_REF", "no-such-branch")
+        result = _detect_git_changed_files(str(pr_repo), mode="auto")
+        assert result is None
+
+    def test_pr_mode_without_base_ref_returns_none(self, pr_repo, monkeypatch):
+        monkeypatch.delenv("GITHUB_BASE_REF", raising=False)
+        result = _detect_git_changed_files(str(pr_repo), mode="pr")
+        assert result is None
+
+    def test_failure_logs_git_stderr(self, pr_repo, caplog):
+        (pr_repo / ".git" / "HEAD").write_text("garbage")
+        with caplog.at_level("WARNING"):
+            _detect_git_changed_files(str(pr_repo), mode="pr", base_ref="main")
+        assert any("changed_files scope" in r.getMessage() for r in caplog.records)
+
+    def test_config_creation_falls_back_to_full_scan_on_failure(self, pr_repo, monkeypatch, caplog):
+        monkeypatch.delenv("GITHUB_WORKSPACE", raising=False)
+        monkeypatch.setenv("GITHUB_BASE_REF", "main")
+        (pr_repo / ".git" / "HEAD").write_text("garbage")
+
+        with caplog.at_level("WARNING"):
+            cfg = create_config_from_args(_config_args(pr_repo, "auto"))
+
+        # Scope resolution failed -> full-repo scan, not a silent skip.
+        assert cfg.get("changed_files") == []
+        assert cfg.get("changed_files_scope_requested") is False
+        assert cfg.get_scan_targets() == [str(pr_repo)]
+        assert any("falling back to a full-repo scan" in r.getMessage() for r in caplog.records)
+
+    def test_config_creation_logs_resolved_count(self, pr_repo, monkeypatch, caplog):
+        monkeypatch.delenv("GITHUB_WORKSPACE", raising=False)
+        monkeypatch.setenv("GITHUB_BASE_REF", "main")
+
+        with caplog.at_level("INFO"):
+            cfg = create_config_from_args(_config_args(pr_repo, "auto"))
+
+        assert sorted(cfg.get("changed_files")) == ["base.py", "feat.py"]
+        assert any("resolved to 2 file(s)" in r.getMessage() for r in caplog.records)

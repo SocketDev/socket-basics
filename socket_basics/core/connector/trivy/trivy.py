@@ -144,7 +144,7 @@ class TrivyScanner(BaseConnector):
         if not changed_files:
             try:
                 from socket_basics.core.config import _detect_git_changed_files
-                changed_files = _detect_git_changed_files(str(self.config.workspace), mode='staged')
+                changed_files = _detect_git_changed_files(str(self.config.workspace), mode='staged') or []
             except Exception:
                 changed_files = []
 
@@ -174,7 +174,7 @@ class TrivyScanner(BaseConnector):
             try:
                 # import helper from config module
                 from socket_basics.core.config import _detect_git_changed_files
-                changed_files = _detect_git_changed_files(str(self.config.workspace), mode='staged')
+                changed_files = _detect_git_changed_files(str(self.config.workspace), mode='staged') or []
             except Exception:
                 changed_files = []
         if changed_files:
@@ -325,7 +325,7 @@ class TrivyScanner(BaseConnector):
         if not changed_files:
             try:
                 from socket_basics.core.config import _detect_git_changed_files
-                changed_files = _detect_git_changed_files(str(self.config.workspace), mode='staged')
+                changed_files = _detect_git_changed_files(str(self.config.workspace), mode='staged') or []
             except Exception:
                 changed_files = []
         

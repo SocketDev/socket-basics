@@ -19,6 +19,19 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   documented workaround) are preserved. The same mismatch broke git-based
   repository/branch/commit and default-branch discovery in local Docker runs;
   those lookups are covered by the same change.
+- A failed `changed_files` diff resolution is no longer indistinguishable from
+  an empty diff. Git errors are captured and logged (instead of discarded), and
+  when the scope cannot be resolved — unreadable repository, unresolvable base
+  ref (e.g. a shallow fetch without the base), or `pr` mode with no base ref —
+  Socket Basics now **falls back to a full-repo scan with a prominent warning**
+  rather than skipping every scanner and reporting a green run that scanned
+  nothing. A genuinely empty diff (e.g. a delete-only PR) still keeps the empty
+  scope and skips as before.
+
+### Added
+- The resolved `changed_files` scope is now logged on every scoped run: file
+  count at INFO, the full file list at DEBUG — so an empty diff and a failed
+  lookup are visible and distinguishable in run logs.
 
 ## [3.0.0] - 2026-08-06
 
