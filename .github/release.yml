@@ -1,6 +1,4 @@
-# Configures GitHub's auto-generated release notes categories.
-# Used by `gh release create --generate-notes` in publish-docker.yml,
-# and visible in the GitHub "Generate release notes" UI when drafting releases.
+# Configures categories for GitHub's manual "Generate release notes" UI.
 # https://docs.github.com/en/repositories/releasing-projects-on-github/automatically-generated-release-notes
 
 changelog:
