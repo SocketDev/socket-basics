@@ -1,29 +1,6 @@
 name: publish-docker
 
-# Builds, tests, and publishes multi-arch socket-basics image variants
-# (linux/amd64 + linux/arm64) to GHCR and Docker Hub.
-#
-# Flow:
-#   resolve-version
-#     → build-test-push  (matrix: image variant + native arch, pushes by digest)
-#     → merge-manifests  (assembles per-image per-arch digests into manifest lists)
-#
-# GitHub releases are intentionally human-authored after the images publish.
-# Maintainers may use GitHub's generated release notes as a starting point, but
-# this workflow does not create or edit the release itself.
-#
-# Tag convention:
-#   v2.0.0  — immutable exact release (floating major tags intentionally not published)
-#   All image variants publish to the single socket-basics repository per
-#   registry, distinguished by tag suffix: 2.0.0 (main), 2.0.0-heavy (heavy).
-#   See docs/github-action.md → "Pinning strategies" for the full rationale.
-#
-# Required secrets — scoped to the `publish` environment (deployment policy:
-# branch `main` + tags `v*`), not repo-level:
-#   DOCKERHUB_USERNAME  — Docker Hub account name (also the registry namespace)
-#   DOCKERHUB_TOKEN     — Docker Hub access token (read/write)
-# Publishing jobs bind `environment: publish` to resolve them; the reusable
-# pipeline binds it only in push mode (see _docker-pipeline.yml).
+# Publishes multi-architecture images to GHCR and Docker Hub.
 
 on:
   push:
@@ -32,21 +9,18 @@ on:
   workflow_dispatch:
     inputs:
       tag:
-        description: "Full git tag to publish (e.g. v2.0.3 or 2.0.3). Must exist in the repo."
+        description: "Existing release tag to publish."
         required: true
 
-# Default: deny everything. Each job below grants only what it needs.
 permissions:
   contents: read
 
 concurrency:
   group: publish-docker-${{ github.ref }}
-  cancel-in-progress: false  # never cancel an in-flight publish
+  cancel-in-progress: false
 
 jobs:
 
-  # ── Job 1: Resolve version ─────────────────────────────────────────────────
-  # Computes a clean semver string (no v prefix) consumed by downstream jobs.
   resolve-version:
     runs-on: ubuntu-latest
     outputs:
@@ -62,11 +36,11 @@ jobs:
           REPO_URL: https://x-access-token:${{ github.token }}@github.com/${{ github.repository }}.git
         run: |
           if [ "$EVENT_NAME" = "workflow_dispatch" ]; then
-            RAW="${INPUT_TAG#refs/tags/}"  # full tag as provided (e.g. 2.0.3 or v2.0.3)
+            RAW="${INPUT_TAG#refs/tags/}"
           else
-            RAW="$REF_NAME"         # e.g. v2.0.3
+            RAW="$REF_NAME"
           fi
-          CLEAN="${RAW#v}"          # strip leading v if present → 2.0.3
+          CLEAN="${RAW#v}"
           if [[ ! "$CLEAN" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
             echo "Invalid release tag: $CLEAN" >&2
             exit 1
@@ -95,10 +69,6 @@ jobs:
           ref: ${{ steps.version.outputs.ref }}
           persist-credentials: false
 
-      # Guard: the release source must agree with the tag. The pre-commit
-      # version-check hook was removed in #46 with no automated replacement,
-      # which let v2.1.0 ship with version files still at 2.0.3. This is the
-      # release-time gate: mismatches fail here, before anything is built.
       - name: 🔎 Verify source versions match release tag
         env:
           VERSION: ${{ steps.version.outputs.clean }}
@@ -121,16 +91,12 @@ jobs:
           fi
           echo "✅ version.py, pyproject.toml, and action.yml all agree on $VERSION"
 
-  # ── Job 2: Build → test → push by digest (per image + arch) ────────────────
-  # Each matrix entry runs the full build/smoke/integration pipeline on a
-  # native runner for its target arch and pushes the resulting image by digest
-  # to both registries. The digest is exported as an artifact for the merge job.
   build-test-push:
     name: publish (${{ matrix.image }}, ${{ matrix.arch }})
     needs: resolve-version
     permissions:
       contents: read
-      packages: write   # push images to GHCR
+      packages: write
     strategy:
       fail-fast: false
       matrix:
@@ -155,9 +121,6 @@ jobs:
             check_set: heavy
             arch: arm64
             runs_on: ubuntu-24.04-arm
-    # zizmor: ignore[secrets-inherit] — required: environment-scoped secrets
-    # cannot be passed via an explicit workflow-call mapping (they only resolve
-    # on the environment-bound job inside the called same-repo workflow).
     uses: ./.github/workflows/_docker-pipeline.yml # zizmor: ignore[secrets-inherit]
     with:
       name: ${{ matrix.image }}
@@ -166,39 +129,23 @@ jobs:
       check_set: ${{ matrix.check_set }}
       runs_on: ${{ matrix.runs_on }}
       arch_label: ${{ matrix.arch }}
-      # All variants publish to the single socket-basics repository on each
-      # registry; variants are distinguished by tag suffix (e.g. -heavy), never
-      # by a separate repository.
       push_name: socket-basics
       push: true
       version: ${{ needs.resolve-version.outputs.version }}
       ref: ${{ needs.resolve-version.outputs.ref }}
-    # Environment secrets can't be passed from a workflow-call job (no
-    # `environment:` allowed here); inherit lets the reusable workflow's
-    # environment-bound job resolve them itself.
     secrets: inherit
 
-  # ── Job 3: Merge per-arch digests into a multi-arch manifest list ──────────
-  # Tags: exact immutable version (X.Y.Z / X.Y.Z-heavy) plus the floating
-  # `latest` / `latest-heavy` convenience aliases. Version tags are immutable
-  # registry-side (Docker Hub immutable-tag rule: ^\d+\.\d+\.\d+(-heavy)?$);
-  # `latest` deliberately floats. Consumers needing reproducibility should pin
-  # the exact version or digest (docs/github-action.md → "Pinning strategies").
-  # Floating MAJOR tags (v2 → latest v2.x.y) remain intentionally omitted.
   merge-manifests:
     name: merge-manifests (${{ matrix.variant }})
     needs: [resolve-version, build-test-push]
     permissions:
       contents: read
       packages: write
-    environment: publish # Docker Hub secrets are environment-scoped
+    environment: publish
     runs-on: ubuntu-latest
     strategy:
       fail-fast: false
       matrix:
-        # Both variants live in the single socket-basics repository per registry,
-        # distinguished by tag suffix (2.2.0 vs 2.2.0-heavy). `variant` selects
-        # the per-arch digest artifacts produced by build-test-push.
         include:
           - variant: socket-basics
             tag_suffix: ""
@@ -235,22 +182,11 @@ jobs:
           images: |
             ghcr.io/socketdev/socket-basics
             ${{ secrets.DOCKERHUB_USERNAME }}/socket-basics
-          # `latest` (and `latest-heavy` via the variant suffix) float to the
-          # newest release; exact version tags stay immutable registry-side.
-          # The variant suffix yields X.Y.Z for the main image, X.Y.Z-heavy for heavy.
           flavor: |
             latest=true
-            # onlatest applies the variant suffix to the latest alias too —
-            # without it both variants would publish a bare, racing `latest`
-            # and `latest-heavy` would never exist.
             suffix=${{ matrix.tag_suffix }},onlatest=true
           tags: |
-            # Tag push (vX.Y.Z) → exact immutable version tag + latest alias.
             type=semver,pattern={{version}}
-            # workflow_dispatch re-publish → use the version input directly.
-            # NOTE: re-pushing an already-published version tag is rejected by
-            # the registry's immutable-tag rule — dispatch mode is for recovery
-            # when tags never landed (it also repoints `latest`).
             type=raw,value=${{ needs.resolve-version.outputs.version }},enable=${{ github.event_name == 'workflow_dispatch' }}
 
       - name: 🧬 Create multi-arch manifest list
@@ -269,8 +205,6 @@ jobs:
             ls -la
             exit 1
           fi
-          # Each by-digest push from the matrix step landed blobs in BOTH
-          # registries, so per-registry imagetools-create only writes manifests.
           for image in "$GHCR_IMAGE" "$DH_IMAGE"; do
             tag_args=()
             while IFS= read -r tag; do

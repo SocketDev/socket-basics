@@ -1,43 +1,9 @@
 name: core-tool-watch
 
-# Supply-chain / malware watch for the core tools that Socket Basics
-# orchestrates, including Socket's SDK and both of its CLI implementations.
-# Several ship as binaries / container images / GitHub releases that
-# Dependabot cannot cleanly track. This workflow
-# closes that gap by running scripts/check_core_tools.py, which discovers the
-# latest upstream version of each tool and scores the relevant package
-# coordinates through the Socket API (dogfooding the socketdev SDK that Socket
-# Basics already depends on).
-#
-# Two triggers, two intents:
-#   - schedule / workflow_dispatch / main push → mode=watch: discover latest
-#     versions, analyze BOTH pinned and latest, and reconcile the tracking issue.
-#     Running watch mode after a merge prevents the issue from retaining the
-#     pre-merge pins until the next weekly schedule.
-#   - pull_request touching the pins → mode=build: analyze the versions this
-#     change would bake into the image. Fails on a malware/critical alert.
-#
-# Socket scoring needs SOCKET_SFW_API_TOKEN, scoped to the `socket-firewall`
-# environment (which must carry NO approval rule -- see dependency-review.yml).
-# Dependabot-triggered runs only receive *Dependabot* secrets, never
-# Actions/environment secrets, so the token must ALSO be mirrored into the
-# Dependabot store (one-time admin step, same as dependency-review.yml):
-#
-#   gh secret set SOCKET_SFW_API_TOKEN --app dependabot
-#
-# That mirror is the EXPECTED setup: Dependabot's pin bumps are precisely what
-# build mode exists to score pre-merge. It is safe to hand this job the token
-# on Dependabot PRs because the scan's Python environment is synced from the
-# DEFAULT BRANCH lockfile (see the .scan-env checkout below) -- the
-# token-holding step never imports packages bumped by the PR under review; it
-# only READS the PR's pins. When the token is absent anyway (fork PRs, or
-# before the mirror exists), version-drift detection still runs and scoring is
-# skipped with a notice; the push-to-main run re-scores after merge as a
-# backstop.
+# Watches pinned core tools for version drift and supply-chain findings.
 
 on:
   schedule:
-    # Mondays 07:00 UTC, after the weekly Dependabot run.
     - cron: "0 7 * * 1"
   workflow_dispatch:
   pull_request:
@@ -64,9 +30,6 @@ permissions:
   contents: read
 
 concurrency:
-  # Include the event name: schedule, workflow_dispatch, and push all run on
-  # refs/heads/main, and a shared group would let a merge to main cancel the
-  # in-flight weekly watch (or the cron cancel a push-triggered build guard).
   group: core-tool-watch-${{ github.event_name }}-${{ github.ref }}
   cancel-in-progress: true
 
@@ -74,29 +37,19 @@ jobs:
   analyze:
     runs-on: ubuntu-latest
     timeout-minutes: 15
-    # `environment:` scopes SOCKET_SFW_API_TOKEN to this job. The environment
-    # MUST have no required-reviewers rule -- an approval gate would hang the
-    # scheduled cron run forever (and is the bypass footgun called out in
-    # dependency-review.yml). Configure it with `reviewers: null` (see that
-    # file's header for the gh api command).
     environment: socket-firewall
     permissions:
       contents: read
-      issues: write # reconcile the drift tracking issue on default-branch runs
-      packages: read # inspect tags on the repo-authorized private GHCR Trivy package
+      issues: write
+      packages: read
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           fetch-depth: 1
           persist-credentials: false
 
-      # Second checkout: the DEFAULT BRANCH, used only to build the scan's
-      # Python environment. The socketdev SDK (and its dependency chain) is
-      # imported by the token-holding scan step, so it must come from
-      # already-merged, already-scored lockfile versions -- never from the PR
-      # under review, whose freshly-bumped packages are the very thing being
-      # judged. On push/schedule runs both checkouts are identical.
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Checkout scan environment
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           ref: main
           path: .scan-env
@@ -108,11 +61,7 @@ jobs:
         with:
           python-version: "3.12"
 
-      - name: 🛠️ Install uv + sync scan env from main's lockfile (provides the socketdev SDK)
-        # --no-install-project: the scan only imports the DEPENDENCIES
-        # (socketdev SDK), never socket_basics itself, so skip building the
-        # local package -- faster, and immune to packaging breakage on main
-        # (e.g. a bad license-file rename) taking this guard down with it.
+      - name: 🛠️ Sync scan environment
         run: |
           python -m pip install --upgrade pip uv
           uv sync --locked --project .scan-env --no-install-project
@@ -122,8 +71,6 @@ jobs:
         env:
           EVENT: ${{ github.event_name }}
         run: |
-          # PRs guard proposed pins without mutating issues. Every default-branch
-          # event reconciles upstream state and the canonical tracking issue.
           if [ "$EVENT" = "pull_request" ]; then
             echo "mode=build" >> "$GITHUB_OUTPUT"
           else
@@ -132,15 +79,13 @@ jobs:
 
       - name: Run core-tool supply-chain analysis
         id: scan
-        # --project .scan-env --no-sync: execute with main's already-vetted
-        # dependency versions (never the PR's bumps) while the script itself
-        # reads the pins from this checkout's working tree.
         env:
           SOCKET_API_TOKEN: ${{ secrets.SOCKET_SFW_API_TOKEN }}
           GITHUB_TOKEN: ${{ github.token }}
+          MODE: ${{ steps.mode.outputs.mode }}
         run: |
           uv run --project .scan-env --no-sync python scripts/check_core_tools.py \
-            --mode "${{ steps.mode.outputs.mode }}" \
+            --mode "$MODE" \
             --summary-file core-tools-report.md \
             --json-out core-tools-report.json \
             --github-output "$GITHUB_OUTPUT" \
@@ -184,9 +129,6 @@ jobs:
 
           title="Core tool version drift detected"
           run_url="${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}"
-          # Reuse the newest labeled issue even after it has been closed. This
-          # keeps one canonical history instead of creating a duplicate every
-          # time drift disappears and later returns.
           existing="$(gh issue list --label core-tool-drift --state all --limit 100 \
             --json number --jq 'sort_by(.number) | last | .number // empty' 2>/dev/null || true)"
 
