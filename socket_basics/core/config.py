@@ -1639,6 +1639,36 @@ def create_config_from_args(args) -> Config:
     return Config(config_dict)
 
 
+def _git_env(workspace_path: str | Path | None = None) -> Dict[str, str]:
+    """Environment for git subprocesses that marks the scan workspace safe to read.
+
+    The pre-built GitHub Action runs as root inside a Docker container while the
+    checkout at ``GITHUB_WORKSPACE`` is owned by the runner user, so git's
+    ownership check (git 2.35.2+) refuses the repository and every git lookup
+    here fails. ``changed_files`` diff-only mode then resolves to zero files and
+    the scanners silently skip. ``actions/checkout`` cannot help: its
+    ``safe.directory`` entry is written to the runner's global config, which is
+    not mounted into container actions.
+
+    The workspace is an explicit scan target, not an incidentally discovered
+    repository, so mark it safe for these subprocesses only. Injecting via
+    ``GIT_CONFIG_*`` (command-scope config, honored for ``safe.directory`` since
+    git 2.38; the bundled image ships newer) touches no config files, and
+    appending after any caller-provided ``GIT_CONFIG_*`` entries preserves
+    workarounds users already deployed.
+    """
+    env = dict(os.environ)
+    try:
+        count = max(0, int(env.get('GIT_CONFIG_COUNT', '0') or '0'))
+    except ValueError:
+        count = 0
+    ws = workspace_path or os.environ.get('GITHUB_WORKSPACE') or os.getcwd()
+    env[f'GIT_CONFIG_KEY_{count}'] = 'safe.directory'
+    env[f'GIT_CONFIG_VALUE_{count}'] = str(ws)
+    env['GIT_CONFIG_COUNT'] = str(count + 1)
+    return env
+
+
 def _detect_git_changed_files(workspace_path: str, mode: str = 'staged', commit: str | None = None, base_ref: str | None = None) -> List[str]:
     """Detect changed files in a git repository.
 
@@ -1675,6 +1705,11 @@ def _detect_git_changed_files(workspace_path: str, mode: str = 'staged', commit:
         if not git_dir.exists():
             return []
 
+        # Mark the workspace safe for the git subprocesses below; without this
+        # every command fails under the container-action ownership mismatch and
+        # the diff silently resolves to nothing.
+        git_env = _git_env(ws)
+
         # Change to workspace directory before running git commands
         # This ensures git runs in the correct repository context
         original_cwd = os.getcwd()
@@ -1699,7 +1734,7 @@ def _detect_git_changed_files(workspace_path: str, mode: str = 'staged', commit:
                     try:
                         out = check_output(
                             ['git', 'diff', '--name-only', '--diff-filter=ACMR', f'{candidate}...HEAD'],
-                            text=True, stderr=subprocess.DEVNULL,
+                            text=True, stderr=subprocess.DEVNULL, env=git_env,
                         )
                         return _split(out)
                     except CalledProcessError:
@@ -1713,21 +1748,21 @@ def _detect_git_changed_files(workspace_path: str, mode: str = 'staged', commit:
                 pr_files = _diff_against_base(base)
                 if pr_files is not None:
                     return pr_files
-                out = check_output(['git', 'diff', '--name-only', '--cached'], text=True, stderr=subprocess.DEVNULL)
+                out = check_output(['git', 'diff', '--name-only', '--cached'], text=True, stderr=subprocess.DEVNULL, env=git_env)
                 return _split(out)
             elif mode == 'pr':
                 base = base_ref or os.environ.get('GITHUB_BASE_REF', '')
                 return _diff_against_base(base) or []
             elif mode == 'staged':
                 # staged but not yet committed
-                out = check_output(['git', 'diff', '--name-only', '--cached'], text=True, stderr=subprocess.DEVNULL)
+                out = check_output(['git', 'diff', '--name-only', '--cached'], text=True, stderr=subprocess.DEVNULL, env=git_env)
                 return _split(out)
             elif mode == 'current-commit':
                 # files that are part of HEAD commit
-                out = check_output(['git', 'diff-tree', '--no-commit-id', '--name-only', '-r', 'HEAD'], text=True, stderr=subprocess.DEVNULL)
+                out = check_output(['git', 'diff-tree', '--no-commit-id', '--name-only', '-r', 'HEAD'], text=True, stderr=subprocess.DEVNULL, env=git_env)
                 return _split(out)
             elif mode == 'commit' and commit:
-                out = check_output(['git', 'diff-tree', '--no-commit-id', '--name-only', '-r', commit], text=True, stderr=subprocess.DEVNULL)
+                out = check_output(['git', 'diff-tree', '--no-commit-id', '--name-only', '-r', commit], text=True, stderr=subprocess.DEVNULL, env=git_env)
                 return _split(out)
             else:
                 return []
@@ -1934,9 +1969,10 @@ def _discover_repository(cli_repo: str | None, github_repository: str = '', gith
     # 4. Git information
     try:
         url = subprocess.check_output(
-            ['git', 'config', '--get', 'remote.origin.url'], 
-            text=True, 
-            stderr=subprocess.DEVNULL
+            ['git', 'config', '--get', 'remote.origin.url'],
+            text=True,
+            stderr=subprocess.DEVNULL,
+            env=_git_env()
         ).strip()
         
         if url.endswith('.git'):
@@ -2003,9 +2039,10 @@ def _discover_branch(cli_branch: str | None, github_head_ref: str = '', github_r
     # 4. Git information
     try:
         branch = subprocess.check_output(
-            ['git', 'rev-parse', '--abbrev-ref', 'HEAD'], 
+            ['git', 'rev-parse', '--abbrev-ref', 'HEAD'],
             text=True,
-            stderr=subprocess.DEVNULL
+            stderr=subprocess.DEVNULL,
+            env=_git_env()
         ).strip()
         
         if branch and branch != 'HEAD':
@@ -2040,9 +2077,10 @@ def _discover_commit_hash() -> str:
     # 2. Git information
     try:
         commit = subprocess.check_output(
-            ['git', 'rev-parse', '--short', 'HEAD'], 
+            ['git', 'rev-parse', '--short', 'HEAD'],
             text=True,
-            stderr=subprocess.DEVNULL
+            stderr=subprocess.DEVNULL,
+            env=_git_env()
         ).strip()
         
         if commit:
@@ -2084,7 +2122,8 @@ def _discover_is_default_branch(current_branch: str, workspace_path: str = '') -
             ['git', 'symbolic-ref', 'refs/remotes/origin/HEAD'],
             text=True,
             stderr=subprocess.DEVNULL,
-            cwd=cwd
+            cwd=cwd,
+            env=_git_env(workspace_path)
         ).strip()
         
         # Extract branch name from refs/remotes/origin/branch-name
@@ -2105,7 +2144,8 @@ def _discover_is_default_branch(current_branch: str, workspace_path: str = '') -
             ['git', 'ls-remote', '--symref', 'origin', 'HEAD'],
             text=True,
             stderr=subprocess.DEVNULL,
-            cwd=cwd
+            cwd=cwd,
+            env=_git_env(workspace_path)
         ).strip()
         
         # Parse the output: "ref: refs/heads/main\tHEAD"

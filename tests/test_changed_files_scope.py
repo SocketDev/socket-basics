@@ -11,7 +11,13 @@ from argparse import Namespace
 
 import pytest
 
-from socket_basics.core.config import Config, _detect_git_changed_files, create_config_from_args
+from socket_basics.core.config import (
+    Config,
+    _detect_git_changed_files,
+    _discover_repository,
+    _git_env,
+    create_config_from_args,
+)
 
 
 def _make_config(workspace, **overrides):
@@ -170,3 +176,89 @@ class TestDetectGitChangedFiles:
 
         assert cfg.get("changed_files") == []
         assert cfg.get_scan_targets() == []
+
+
+def _git_refuses_repo(repo):
+    """True when git, told to assume a different owner, refuses to read `repo`.
+
+    ``GIT_TEST_ASSUME_DIFFERENT_OWNER`` is git's own test knob for the
+    ownership check behind ``safe.directory``; it makes every repository look
+    like it belongs to another user, which is exactly what a checkout looks
+    like from inside the container action. Used as a control so these tests
+    skip (instead of passing vacuously) on a git build without the knob.
+    """
+    probe = subprocess.run(
+        ["git", "-C", str(repo), "rev-parse", "--show-toplevel"],
+        capture_output=True,
+        text=True,
+        env={**os.environ, "GIT_TEST_ASSUME_DIFFERENT_OWNER": "1"},
+    )
+    return probe.returncode != 0
+
+
+class TestDubiousOwnership:
+    """Git subprocesses must survive the container-action ownership mismatch.
+
+    The pre-built Docker action runs as root while the checkout is owned by
+    the runner user; without ``safe.directory`` git refuses the repo, the diff
+    resolves to zero files, and the scanners silently skip.
+    """
+
+    def test_pr_diff_survives_dubious_ownership(self, pr_repo, monkeypatch):
+        for i in range(3):
+            monkeypatch.delenv(f"GIT_CONFIG_KEY_{i}", raising=False)
+            monkeypatch.delenv(f"GIT_CONFIG_VALUE_{i}", raising=False)
+        monkeypatch.delenv("GIT_CONFIG_COUNT", raising=False)
+
+        if not _git_refuses_repo(pr_repo):
+            pytest.skip("this git build does not honor GIT_TEST_ASSUME_DIFFERENT_OWNER")
+
+        monkeypatch.setenv("GIT_TEST_ASSUME_DIFFERENT_OWNER", "1")
+        files = _detect_git_changed_files(str(pr_repo), mode="pr", base_ref="main")
+        assert sorted(files) == ["base.py", "feat.py"]
+
+    def test_repo_discovery_survives_dubious_ownership(self, pr_repo, monkeypatch):
+        _git(pr_repo, "remote", "add", "origin", "https://github.com/acme/demo.git")
+
+        if not _git_refuses_repo(pr_repo):
+            pytest.skip("this git build does not honor GIT_TEST_ASSUME_DIFFERENT_OWNER")
+
+        monkeypatch.chdir(pr_repo)
+        monkeypatch.setenv("GIT_TEST_ASSUME_DIFFERENT_OWNER", "1")
+        assert _discover_repository(None, "", "") == "acme/demo"
+
+
+class TestGitEnv:
+    """_git_env injects safe.directory without clobbering caller config."""
+
+    def test_injects_safe_directory_for_workspace(self, monkeypatch):
+        monkeypatch.delenv("GIT_CONFIG_COUNT", raising=False)
+        env = _git_env("/scan/me")
+        assert env["GIT_CONFIG_COUNT"] == "1"
+        assert env["GIT_CONFIG_KEY_0"] == "safe.directory"
+        assert env["GIT_CONFIG_VALUE_0"] == "/scan/me"
+
+    def test_appends_after_caller_provided_entries(self, monkeypatch):
+        # A user already deploying the documented env-var workaround must not
+        # have their entry clobbered.
+        monkeypatch.setenv("GIT_CONFIG_COUNT", "1")
+        monkeypatch.setenv("GIT_CONFIG_KEY_0", "user.name")
+        monkeypatch.setenv("GIT_CONFIG_VALUE_0", "runner")
+        env = _git_env("/scan/me")
+        assert env["GIT_CONFIG_COUNT"] == "2"
+        assert env["GIT_CONFIG_KEY_0"] == "user.name"
+        assert env["GIT_CONFIG_VALUE_0"] == "runner"
+        assert env["GIT_CONFIG_KEY_1"] == "safe.directory"
+        assert env["GIT_CONFIG_VALUE_1"] == "/scan/me"
+
+    def test_garbage_count_treated_as_zero(self, monkeypatch):
+        monkeypatch.setenv("GIT_CONFIG_COUNT", "not-a-number")
+        env = _git_env("/scan/me")
+        assert env["GIT_CONFIG_COUNT"] == "1"
+        assert env["GIT_CONFIG_KEY_0"] == "safe.directory"
+
+    def test_defaults_to_github_workspace(self, monkeypatch):
+        monkeypatch.delenv("GIT_CONFIG_COUNT", raising=False)
+        monkeypatch.setenv("GITHUB_WORKSPACE", "/github/workspace")
+        env = _git_env()
+        assert env["GIT_CONFIG_VALUE_0"] == "/github/workspace"

@@ -8,6 +8,18 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Fixed
+- `changed_files` diff-only mode always resolved to zero files in the pre-built
+  Docker GitHub Action: the container runs as root while the checkout is owned
+  by the runner user, so git's ownership check refused every diff lookup, the
+  scope silently resolved to nothing, and the scanners skipped with a green
+  run. Git subprocesses now mark the scan workspace as `safe.directory` via
+  command-scope `GIT_CONFIG_*` environment entries. No config files are
+  touched, and caller-provided `GIT_CONFIG_*` entries (including the previously
+  documented workaround) are preserved. The same mismatch broke git-based
+  repository/branch/commit and default-branch discovery in local Docker runs;
+  those lookups are covered by the same change.
+
 ## [3.0.0] - 2026-08-06
 
 Major release: Trivy-backed scanning returns, now built and published through
