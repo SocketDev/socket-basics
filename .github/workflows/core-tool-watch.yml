@@ -129,8 +129,12 @@ jobs:
 
           title="Core tool version drift detected"
           run_url="${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}"
-          existing="$(gh issue list --label core-tool-drift --state all --limit 100 \
-            --json number --jq 'sort_by(.number) | last | .number // empty' 2>/dev/null || true)"
+          existing="$(gh issue list --label core-tool-drift --state open --limit 1 \
+            --json number --jq '.[0].number // empty')"
+          if [ -z "$existing" ]; then
+            existing="$(gh issue list --label core-tool-drift --state closed --limit 1 \
+              --json number --jq '.[0].number // empty')"
+          fi
 
           if [ "$DRIFT" = "true" ] && [ -n "$existing" ]; then
             state="$(gh issue view "$existing" --json state --jq '.state')"
