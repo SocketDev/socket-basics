@@ -1655,7 +1655,8 @@ def _git_env(workspace_path: str | Path | None = None) -> Dict[str, str]:
     ``GIT_CONFIG_*`` (command-scope config, honored for ``safe.directory`` since
     git 2.38; the bundled image ships newer) touches no config files, and
     appending after any caller-provided ``GIT_CONFIG_*`` entries preserves
-    workarounds users already deployed.
+    workarounds users already deployed. The path is resolved to an absolute one
+    first because git ignores relative ``safe.directory`` values.
     """
     env = dict(os.environ)
     try:
@@ -1664,7 +1665,7 @@ def _git_env(workspace_path: str | Path | None = None) -> Dict[str, str]:
         count = 0
     ws = workspace_path or os.environ.get('GITHUB_WORKSPACE') or os.getcwd()
     env[f'GIT_CONFIG_KEY_{count}'] = 'safe.directory'
-    env[f'GIT_CONFIG_VALUE_{count}'] = str(ws)
+    env[f'GIT_CONFIG_VALUE_{count}'] = str(Path(ws).resolve())
     env['GIT_CONFIG_COUNT'] = str(count + 1)
     return env
 

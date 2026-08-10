@@ -7,6 +7,7 @@ re-scanning the whole repository.
 
 import os
 import subprocess
+from pathlib import Path
 from argparse import Namespace
 
 import pytest
@@ -217,6 +218,17 @@ class TestDubiousOwnership:
         files = _detect_git_changed_files(str(pr_repo), mode="pr", base_ref="main")
         assert sorted(files) == ["base.py", "feat.py"]
 
+    def test_relative_workspace_survives_dubious_ownership(self, pr_repo, monkeypatch):
+        # git ignores relative safe.directory values, so the injected path must
+        # be absolutized even when --workspace is given as a relative path.
+        if not _git_refuses_repo(pr_repo):
+            pytest.skip("this git build does not honor GIT_TEST_ASSUME_DIFFERENT_OWNER")
+
+        monkeypatch.chdir(pr_repo.parent)
+        monkeypatch.setenv("GIT_TEST_ASSUME_DIFFERENT_OWNER", "1")
+        files = _detect_git_changed_files(pr_repo.name, mode="pr", base_ref="main")
+        assert sorted(files) == ["base.py", "feat.py"]
+
     def test_repo_discovery_survives_dubious_ownership(self, pr_repo, monkeypatch):
         _git(pr_repo, "remote", "add", "origin", "https://github.com/acme/demo.git")
 
@@ -256,6 +268,12 @@ class TestGitEnv:
         env = _git_env("/scan/me")
         assert env["GIT_CONFIG_COUNT"] == "1"
         assert env["GIT_CONFIG_KEY_0"] == "safe.directory"
+
+    def test_workspace_value_is_absolute(self, monkeypatch, tmp_path):
+        monkeypatch.delenv("GIT_CONFIG_COUNT", raising=False)
+        monkeypatch.chdir(tmp_path)
+        env = _git_env("some/relative/dir")
+        assert Path(env["GIT_CONFIG_VALUE_0"]).is_absolute()
 
     def test_defaults_to_github_workspace(self, monkeypatch):
         monkeypatch.delenv("GIT_CONFIG_COUNT", raising=False)
