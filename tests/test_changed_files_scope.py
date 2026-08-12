@@ -342,3 +342,38 @@ class TestScopeResolutionFailure:
 
         assert sorted(cfg.get("changed_files")) == ["base.py", "feat.py"]
         assert any("resolved to 2 file(s)" in r.getMessage() for r in caplog.records)
+
+
+class TestShallowCheckoutFailFast:
+    """A shallow checkout that cannot resolve the base ref is a deterministic
+    misconfiguration (missing fetch-depth: 0) — fail fast with the one-line fix
+    instead of full-scanning every PR (slow/OOM on large repos). Non-shallow
+    failures keep the full-scan fallback.
+    """
+
+    def test_shallow_missing_base_fails_fast_pr_mode(self, pr_repo):
+        (pr_repo / ".git" / "shallow").touch()
+        with pytest.raises(SystemExit, match="fetch-depth"):
+            _detect_git_changed_files(str(pr_repo), mode="pr", base_ref="no-such-branch")
+
+    def test_shallow_missing_base_fails_fast_auto_mode(self, pr_repo, monkeypatch):
+        (pr_repo / ".git" / "shallow").touch()
+        monkeypatch.setenv("GITHUB_BASE_REF", "no-such-branch")
+        with pytest.raises(SystemExit, match="fetch-depth"):
+            _detect_git_changed_files(str(pr_repo), mode="auto")
+
+    def test_shallow_with_resolvable_base_still_diffs(self, pr_repo):
+        # Shallowness alone is fine — only shallow AND unresolvable-base fails.
+        (pr_repo / ".git" / "shallow").touch()
+        files = _detect_git_changed_files(str(pr_repo), mode="pr", base_ref="main")
+        assert sorted(files) == ["base.py", "feat.py"]
+
+    def test_non_shallow_missing_base_keeps_fallback(self, pr_repo):
+        assert _detect_git_changed_files(str(pr_repo), mode="pr", base_ref="no-such-branch") is None
+
+    def test_config_creation_propagates_config_error(self, pr_repo, monkeypatch):
+        monkeypatch.delenv("GITHUB_WORKSPACE", raising=False)
+        monkeypatch.setenv("GITHUB_BASE_REF", "no-such-branch")
+        (pr_repo / ".git" / "shallow").touch()
+        with pytest.raises(SystemExit, match="fetch-depth"):
+            create_config_from_args(_config_args(pr_repo, "auto"))

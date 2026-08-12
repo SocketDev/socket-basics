@@ -1774,6 +1774,27 @@ def _detect_git_changed_files(workspace_path: str, mode: str = 'staged', commit:
         try:
             os.chdir(str(ws))
 
+            def _fail_fast_if_shallow(ref: str) -> None:
+                """Deterministic misconfiguration check for an unresolvable base.
+
+                A shallow checkout (no ``fetch-depth: 0``) can *never* resolve
+                the base ref, so every PR would take the full-scan fallback —
+                on large repos that is a slow/OOM red check instead of a clear
+                signal. Fail fast with the one-line fix instead. Follows the
+                existing SystemExit convention for unrecoverable configuration
+                errors (see repository/branch discovery below).
+                """
+                try:
+                    shallow = _run_git(['git', 'rev-parse', '--is-shallow-repository']) == ['true']
+                except Exception:
+                    return  # probe failed; fall through to the generic fallback
+                if shallow:
+                    raise SystemExit(
+                        f"changed_files: base ref '{ref}' could not be resolved and this checkout is "
+                        "shallow. Set 'fetch-depth: 0' on actions/checkout (or otherwise fetch the "
+                        "base branch) so the diff has a base to compare against."
+                    )
+
             def _diff_against_base(ref: str) -> Optional[List[str]]:
                 """Diff changed files (excluding deletions) against a base ref.
 
@@ -1806,9 +1827,11 @@ def _detect_git_changed_files(workspace_path: str, mode: str = 'staged', commit:
                     return pr_files
                 if base:
                     # A base ref was provided (we are in a PR context) but could
-                    # not be resolved (e.g. shallow fetch without the base). The
-                    # staged-diff fallback would almost always be empty in CI —
-                    # silently scanning nothing — so report failure instead.
+                    # not be resolved. A shallow checkout makes this deterministic
+                    # (config error, fail fast); otherwise report failure so the
+                    # caller falls back to a full scan rather than the staged
+                    # diff, which is almost always empty in CI.
+                    _fail_fast_if_shallow(base)
                     return None
                 return _run_git(['git', 'diff', '--name-only', '--cached'])
             elif mode == 'pr':
@@ -1816,7 +1839,10 @@ def _detect_git_changed_files(workspace_path: str, mode: str = 'staged', commit:
                 if not base:
                     log.warning("changed_files scope: mode 'pr' but no base ref available (GITHUB_BASE_REF unset)")
                     return None
-                return _diff_against_base(base)
+                pr_files = _diff_against_base(base)
+                if pr_files is None:
+                    _fail_fast_if_shallow(base)
+                return pr_files
             elif mode == 'staged':
                 # staged but not yet committed
                 return _run_git(['git', 'diff', '--name-only', '--cached'])

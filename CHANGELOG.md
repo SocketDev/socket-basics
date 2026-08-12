@@ -26,7 +26,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   Socket Basics now **falls back to a full-repo scan with a prominent warning**
   rather than skipping every scanner and reporting a green run that scanned
   nothing. A genuinely empty diff (e.g. a delete-only PR) still keeps the empty
-  scope and skips as before.
+  scope and skips as before. One deterministic case fails fast instead of
+  falling back: a **shallow checkout** that cannot resolve the base ref exits
+  with a configuration error naming the fix (`fetch-depth: 0`), since it would
+  otherwise full-scan every PR — slow or OOM-prone on large repositories.
 
 ### Added
 - The resolved `changed_files` scope is now logged on every scoped run: file

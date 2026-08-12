@@ -120,15 +120,22 @@ PR), the scanners are skipped rather than falling back to scanning the whole
 repository. For PR/`auto`/`pr` modes, check out with full history (e.g.
 `actions/checkout` with `fetch-depth: 0`) so the base branch is available.
 
-If the diff **cannot be resolved** — the base ref is missing (shallow clone),
-or git cannot read the repository — a warning with the underlying git error is
-logged and the scan **falls back to the whole workspace** instead of silently
-scanning nothing. On large repositories, prefer fixing the root cause (usually
-checkout depth) over relying on the fallback: a full scan of a multi-GB repo
-can be slow or hit CI limits, and it reports pre-existing findings rather than
-just the change. The resolved scope is logged on every run (file count at
-INFO, full file list at DEBUG), so an empty diff and a failed lookup are
-distinguishable in run logs.
+If the diff **cannot be resolved**, behavior depends on why:
+
+- **Shallow checkout with a missing base ref** (the classic missing
+  `fetch-depth: 0`): deterministic misconfiguration — the run **fails fast
+  with a configuration error** naming the fix, instead of full-scanning every
+  PR.
+- **Any other resolution failure** (unreadable repository, non-shallow missing
+  ref): a warning with the underlying git error is logged and the scan **falls
+  back to the whole workspace** instead of silently scanning nothing. On large
+  repositories a surprise full scan can be slow or hit CI limits and reports
+  pre-existing findings, so treat the warning as the signal and fix the root
+  cause.
+
+The resolved scope is logged on every run (file count at INFO, full file list
+at DEBUG), so an empty diff and a failed lookup are distinguishable in run
+logs.
 
 **Example:**
 ```bash
