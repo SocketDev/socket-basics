@@ -9,6 +9,11 @@ on:
       - "pyproject.toml"
       - "uv.lock"
       - "action.yml"
+      - "README.md"
+      - "docs/**/*.md"
+      - "scripts/check_release_docs.py"
+      - "scripts/prep_release.py"
+      - "scripts/sync_release_version.py"
       - ".github/workflows/python-tests.yml"
   pull_request:
     paths:
@@ -17,6 +22,11 @@ on:
       - "pyproject.toml"
       - "uv.lock"
       - "action.yml"
+      - "README.md"
+      - "docs/**/*.md"
+      - "scripts/check_release_docs.py"
+      - "scripts/prep_release.py"
+      - "scripts/sync_release_version.py"
       - ".github/workflows/python-tests.yml"
   workflow_dispatch:
 
@@ -53,5 +63,7 @@ jobs:
         run: uv lock --locked
       - name: 🔒 Assert release version metadata is in sync
         run: python3 scripts/sync_release_version.py --check
+      - name: 📚 Assert current-release docs are in sync
+        run: python3 scripts/check_release_docs.py --check
       - name: 🧪 Run tests
         run: uv run --no-sync pytest -q tests/
