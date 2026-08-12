@@ -324,6 +324,28 @@ jobs:
 > nothing rather than falling back to the whole repo. To scan an explicit file
 > list regardless of git state, use the `scan_files` input instead.
 
+> [!NOTE]
+> **When the diff cannot be resolved** — the checkout is unreadable, or the
+> base branch is missing (most commonly a shallow clone without
+> `fetch-depth: 0`) — Socket Basics logs a warning naming the underlying git
+> error and **falls back to a full-repository scan** rather than silently
+> scanning nothing. This is deliberate fail-toward-scanning behavior for a
+> security gate, and it comes with two tradeoffs worth planning for:
+>
+> - On very large repositories an unexpected full scan can be slow or exhaust
+>   CI memory. If the fallback warning appears on **every** PR, the cause is
+>   almost always the missing `fetch-depth: 0` — fix the checkout rather than
+>   sizing up the runner.
+> - The full scan reports **pre-existing** findings, not just the PR's change,
+>   so a repo-wide checkout misconfiguration shows up as large PR comments or
+>   failing checks on every PR until corrected. The run log's warning names
+>   the actual git error — read it before triaging the findings.
+>
+> A genuinely *empty* diff (e.g. a delete-only PR) still skips the scanners;
+> the fallback triggers only when resolution **fails**. The resolved file
+> count is logged on every scoped run, so an empty diff and a failed lookup
+> are always distinguishable in the logs.
+
 ## PR Comment Customization
 
 Socket Basics automatically posts enhanced PR comments with **smart defaults that work out of the box** — clickable file links, collapsible sections, syntax highlighting, CVE links, CVSS scores, and auto-labels are all enabled by default.
