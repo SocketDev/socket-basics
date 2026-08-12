@@ -315,7 +315,7 @@ PR. This is for teams who want to review finding quality in the Socket dashboard
 first, without every PR growing a comment that developers have to scroll past.
 
 ```yaml
-- uses: SocketDev/socket-basics@v2
+- uses: SocketDev/socket-basics@v3.0.0
   with:
     socket_security_api_key: ${{ secrets.SOCKET_SECURITY_API_KEY }}
     github_token: ${{ secrets.GITHUB_TOKEN }}
