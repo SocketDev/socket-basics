@@ -19,11 +19,10 @@
 
 ### Release checklist (skip for non-release PRs)
 
-<!-- Only fill this out if this PR is cutting a new release (e.g. v2.1.0). -->
+<!-- Only fill this out if this PR is cutting a new release (e.g. v3.1.0). -->
 
-- [ ] `pyproject.toml` `version:` field updated to new version
-- [ ] `python3 scripts/sync_release_version.py --write` run after updating `pyproject.toml`
-- [ ] `socket_basics/version.py` updated to new version
-- [ ] `socket_basics/__init__.py` updated to the same version
-- [ ] `action.yml` `image:` ref updated to `docker://ghcr.io/socketdev/socket-basics:<new-version>`
-- [ ] `CHANGELOG.md` updated with human-authored release notes for this version
+- [ ] `python3 scripts/prep_release.py --version <new-version>` completed successfully
+- [ ] Release metadata and `uv.lock` are synchronized
+- [ ] Current-release references in README and docs are synchronized
+- [ ] `CHANGELOG.md` contains reviewed, human-authored notes for this version
+- [ ] Release PR will be merged before its merge commit is tagged
