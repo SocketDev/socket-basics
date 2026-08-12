@@ -12,6 +12,8 @@ ARG UV_VERSION=0.12.1
 # NOT Dependabot-trackable (no official Docker image with a stable binary path):
 ARG GOSEC_VERSION=v2.28.0
 ARG OPENGREP_VERSION=v1.26.0
+ARG SOCKET_NPM_CLI_VERSION=1.1.154
+ARG SOCKET_PYTHON_CLI_VERSION=2.6.3
 #
 # NOT Dependabot-trackable — Socket-built Trivy, pinned by digest; updated by
 # Socket's trivy-dist release process. See the note in the root ./Dockerfile.
@@ -83,18 +85,22 @@ RUN ln -sf /usr/local/lib/node_modules/npm/bin/npm-cli.js /usr/local/bin/npm \
  && ln -sf /usr/local/lib/node_modules/npm/bin/npx-cli.js /usr/local/bin/npx
 
 # System deps + ESLint + Socket CLI (npm now available from node stage above)
+ARG SOCKET_NPM_CLI_VERSION
 RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
     --mount=type=cache,target=/var/lib/apt,sharing=locked \
     apt-get update && apt-get install -y --no-install-recommends \
       curl git wget ca-certificates libatomic1
 RUN --mount=type=cache,target=/root/.npm \
     npm install -g eslint eslint-plugin-security \
-      @typescript-eslint/parser @typescript-eslint/eslint-plugin socket
+      @typescript-eslint/parser @typescript-eslint/eslint-plugin \
+      "socket@${SOCKET_NPM_CLI_VERSION}"
 
 # Bandit + socketsecurity via uv
 ENV UV_LINK_MODE=copy
+ARG SOCKET_PYTHON_CLI_VERSION
 RUN --mount=type=cache,target=/root/.cache/uv \
-    uv tool install bandit && uv tool install socketsecurity
+    uv tool install bandit \
+    && uv tool install "socketsecurity==${SOCKET_PYTHON_CLI_VERSION}"
 ENV PATH="/root/.local/bin:$PATH"
 
 # NOTE: the legacy socket-security-tools runner (src/, entrypoint.sh) predates

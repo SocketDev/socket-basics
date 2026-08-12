@@ -1,10 +1,9 @@
 #!/usr/bin/env python3
-"""Supply-chain watch for the four core OSS tools bundled by Socket Basics.
+"""Supply-chain watch for the core OSS tools bundled by Socket Basics.
 
-Socket Basics is a thin orchestration layer over four upstream security tools.
-Three of them ship as binaries / container images / GitHub releases that
-Dependabot cannot cleanly track, and one (Socket's own SCA SDK) is a PyPI
-package. This script closes that gap: it discovers the latest upstream version
+Socket Basics is a thin orchestration layer over several security tools.
+Several ship as binaries / container images / GitHub releases that Dependabot
+cannot cleanly track. This script closes that gap: it discovers the latest version
 of each tool, compares it against the version currently pinned in the repo, and
 runs Socket supply-chain / malware analysis against the relevant package
 coordinates -- dogfooding the `socketdev` SDK that Socket Basics already
@@ -13,8 +12,10 @@ depends on.
 Tools tracked:
   - opengrep   (SAST engine)        pin: Dockerfile ARG OPENGREP_VERSION
   - trufflehog (secret scanner)     pin: Dockerfile ARG TRUFFLEHOG_VERSION
-  - trivy      (container scanner)  pin: Dockerfile ARG TRIVY_VERSION
-  - socketdev  (Socket SCA SDK)     pin: uv.lock / pyproject.toml
+  - trivy      (container scanner)  pin: Dockerfile ARG TRIVY_IMAGE
+  - socket_sdk (Socket Python SDK)  pin: uv.lock / pyproject.toml
+  - socket_python_cli               pin: Dockerfile ARG SOCKET_PYTHON_CLI_VERSION
+  - socket_npm_cli                  pin: Dockerfile ARG SOCKET_NPM_CLI_VERSION
 
 Two modes (the caller picks via flags):
 
@@ -60,9 +61,13 @@ from pathlib import Path
 from typing import Any, Callable, Optional
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
-# Both Dockerfiles pin the core tools and can drift independently, so scoring
-# must cover every version pinned across all of them.
-DOCKERFILES = [REPO_ROOT / "Dockerfile", REPO_ROOT / "app_tests" / "Dockerfile"]
+# The three published/test images pin core tools independently, so scoring must
+# cover every version pinned across all of them.
+DOCKERFILES = [
+    REPO_ROOT / "Dockerfile",
+    REPO_ROOT / "Dockerfile.heavy",
+    REPO_ROOT / "app_tests" / "Dockerfile",
+]
 UV_LOCK = REPO_ROOT / "uv.lock"
 
 # Alert types treated as fail-worthy on a pinned version: outright compromise
@@ -169,6 +174,46 @@ def _pypi_latest(package: str) -> Optional[str]:
         return None
 
 
+def _npm_latest(package: str) -> Optional[str]:
+    try:
+        data = _get_json(f"https://registry.npmjs.org/{package}/latest")
+        return data.get("version")
+    except Exception as exc:  # noqa: BLE001
+        print(f"  ! npm latest lookup failed for {package}: {exc}", file=sys.stderr)
+        return None
+
+
+def _ghcr_latest(org: str, package: str) -> Optional[str]:
+    """Newest stable semver tag on an organization-owned GHCR package."""
+    token = os.environ.get("GITHUB_TOKEN") or os.environ.get("GH_TOKEN")
+    if not token:
+        print(
+            f"  ! GHCR latest-version lookup skipped for {org}/{package}: no GitHub token",
+            file=sys.stderr,
+        )
+        return None
+    try:
+        versions = _get_json(
+            f"https://api.github.com/orgs/{org}/packages/container/{package}/versions"
+            "?per_page=100",
+            token,
+        )
+        tags = [
+            tag
+            for version in versions
+            for tag in version.get("metadata", {}).get("container", {}).get("tags", [])
+        ]
+        stable_versions = []
+        for tag in tags:
+            match = re.fullmatch(r"v?(\d+)\.(\d+)\.(\d+)", tag)
+            if match:
+                stable_versions.append((tuple(map(int, match.groups())), tag))
+        return max(stable_versions)[1] if stable_versions else None
+    except Exception as exc:  # noqa: BLE001
+        print(f"  ! GHCR latest-version lookup failed for {org}/{package}: {exc}", file=sys.stderr)
+        return None
+
+
 def _pypi_purl(package: str) -> Optional[str]:
     """Latest-version PyPI PURL for a package, or None if discovery fails."""
     v = _pypi_latest(package)
@@ -194,6 +239,28 @@ def _read_dockerfile_args(name: str) -> list[str]:
             v = m.group(1).strip()
             if v and v not in versions:
                 versions.append(v)
+    return versions
+
+
+def _read_docker_image_versions(name: str) -> list[str]:
+    """Read image tag versions from a digest-pinned Dockerfile ARG.
+
+    Trivy's actual build input is TRIVY_IMAGE. Reading its tag instead of the
+    informational TRIVY_VERSION label pin prevents the watcher from blessing a
+    stale or mismatched Socket-built image.
+    """
+    versions: list[str] = []
+    for dockerfile in DOCKERFILES:
+        if not dockerfile.exists():
+            continue
+        match = re.search(rf"^ARG\s+{re.escape(name)}=(.+)$", dockerfile.read_text(), re.MULTILINE)
+        if not match:
+            continue
+        image = match.group(1).strip()
+        without_digest = image.split("@", 1)[0]
+        tag = without_digest.rsplit(":", 1)[1] if ":" in without_digest else ""
+        if tag and tag not in versions:
+            versions.append(tag)
     return versions
 
 
@@ -254,17 +321,38 @@ def build_tools() -> list[Tool]:
         ),
         Tool(
             key="trivy",
-            label="Trivy (container scanner)",
-            read_pinned=lambda: _read_dockerfile_args("TRIVY_VERSION"),
-            discover_latest=lambda: _github_latest_release("aquasecurity/trivy"),
+            label="Trivy (Socket trivy-dist)",
+            read_pinned=lambda: _read_docker_image_versions("TRIVY_IMAGE"),
+            discover_latest=lambda: _ghcr_latest("SocketDev", "trivy"),
+            # The Socket distribution is rebuilt from unmodified upstream
+            # source. Score that Go module while release discovery follows the
+            # Socket-controlled artifact that Basics actually consumes.
             purl=lambda v: f"pkg:golang/github.com/aquasecurity/trivy@{_ensure_v(v)}",
+            note="Release drift follows the Socket-built ghcr.io/socketdev/trivy package "
+            "(produced by SocketDev/trivy-dist and mirrored privately to Docker Hub), not "
+            "Aqua's release feed. Socket scoring uses the corresponding upstream Go module "
+            "because trivy-dist rebuilds that source without modification.",
         ),
         Tool(
-            key="socketdev",
-            label="Socket SCA (socketdev SDK)",
+            key="socket_sdk",
+            label="Socket SDK (socket-sdk-python)",
             read_pinned=lambda: _read_locked_versions("socketdev"),
             discover_latest=lambda: _pypi_latest("socketdev"),
             purl=lambda v: f"pkg:pypi/socketdev@{_strip_v(v)}",
+        ),
+        Tool(
+            key="socket_python_cli",
+            label="Socket Python CLI (socket-python-cli)",
+            read_pinned=lambda: _read_dockerfile_args("SOCKET_PYTHON_CLI_VERSION"),
+            discover_latest=lambda: _pypi_latest("socketsecurity"),
+            purl=lambda v: f"pkg:pypi/socketsecurity@{_strip_v(v)}",
+        ),
+        Tool(
+            key="socket_npm_cli",
+            label="Socket npm CLI (socket-cli)",
+            read_pinned=lambda: _read_dockerfile_args("SOCKET_NPM_CLI_VERSION"),
+            discover_latest=lambda: _npm_latest("socket"),
+            purl=lambda v: f"pkg:npm/socket@{_strip_v(v)}",
         ),
     ]
 
@@ -321,14 +409,17 @@ def analyze_purls(purls: list[str], token: str) -> dict[str, dict[str, Any]]:
     # pendingScan/notFound rows instead of dropping them. These are first-class
     # typed params as of socketdev 3.4.2 (previously passed as stringly-typed
     # query-string kwargs); see CE-360.
-    results = client.purl.post(
-        license="false",
-        components=components,
-        poll=True,
-        timeout_sec=120,
-        alerts=True,
-        **kwargs,
-    ) or []
+    results = (
+        client.purl.post(
+            license="false",
+            components=components,
+            poll=True,
+            timeout_sec=120,
+            alerts=True,
+            **kwargs,
+        )
+        or []
+    )
     if not results:
         raise RuntimeError(
             f"Socket purl API returned no results for {len(purls)} PURLs "
@@ -394,9 +485,14 @@ def _match_analysis(analyses: dict[str, dict[str, Any]], purl: str) -> dict[str,
 # ── report rendering ────────────────────────────────────────────────────────
 
 
-def render_markdown(tools: list[Tool], token_present: bool) -> str:
+def render_markdown(tools: list[Tool], token_present: bool, discovery_complete: bool = True) -> str:
     lines: list[str] = []
     lines.append("## Core tool supply-chain watch\n")
+    if not discovery_complete:
+        lines.append(
+            "> **Latest-version discovery incomplete** — at least one release feed "
+            "could not be read. This report must not be used to resolve the drift issue.\n"
+        )
     if not token_present:
         lines.append(
             "> **Socket analysis skipped** — no `SOCKET_API_TOKEN` present. "
@@ -459,9 +555,13 @@ def render_markdown(tools: list[Tool], token_present: bool) -> str:
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--mode", choices=["build", "watch"], default="watch")
-    parser.add_argument("--summary-file", help="Append a markdown report here (e.g. GITHUB_STEP_SUMMARY)")
+    parser.add_argument(
+        "--summary-file", help="Append a markdown report here (e.g. GITHUB_STEP_SUMMARY)"
+    )
     parser.add_argument("--json-out", help="Write the full structured report to this path")
-    parser.add_argument("--github-output", help="Write drift/malware outputs here (e.g. GITHUB_OUTPUT)")
+    parser.add_argument(
+        "--github-output", help="Write drift/malware outputs here (e.g. GITHUB_OUTPUT)"
+    )
     parser.add_argument(
         "--fail-on-malware",
         action="store_true",
@@ -576,7 +676,8 @@ def main() -> int:
                 }
         findings.append(tool_finding)
 
-    markdown = render_markdown(tools, token_present)
+    discovery_complete = args.mode != "watch" or all(t.latest is not None for t in tools)
+    markdown = render_markdown(tools, token_present, discovery_complete)
     print("\n" + markdown)
 
     if args.summary_file:
@@ -588,6 +689,7 @@ def main() -> int:
             json.dumps(
                 {
                     "mode": args.mode,
+                    "discovery_complete": discovery_complete,
                     "token_present": token_present,
                     "scoring_error": scoring_error,
                     "unverified": unverified,
@@ -605,6 +707,7 @@ def main() -> int:
             fh.write(f"drift={'true' if any_drift else 'false'}\n")
             fh.write(f"malware={'true' if any_malware else 'false'}\n")
             fh.write(f"critical={'true' if any_critical else 'false'}\n")
+            fh.write(f"discovery_complete={'true' if discovery_complete else 'false'}\n")
 
     if args.fail_on_malware:
         if any_malware or any_critical:
@@ -628,7 +731,8 @@ def main() -> int:
         if pending:
             print(
                 "::error::Socket analysis still pending after the bounded poll for pinned "
-                "coordinate(s): " + "; ".join(pending)
+                "coordinate(s): "
+                + "; ".join(pending)
                 + ". Failing closed -- re-run later, or investigate Socket ingestion if it persists.",
                 file=sys.stderr,
             )
