@@ -328,6 +328,8 @@ jobs:
 
 Socket Basics automatically posts enhanced PR comments with **smart defaults that work out of the box** — clickable file links, collapsible sections, syntax highlighting, CVE links, CVSS scores, and auto-labels are all enabled by default.
 
+To run the scan without commenting on the PR at all, set `pr_comment_enabled: 'false'`. The scan still runs, findings are still uploaded to the Socket dashboard, and the job still fails on high/critical findings — only the comment is suppressed. If you want a quieter comment rather than no comment, `pr_comment_collapse_all: 'true'` closes the SAST and Socket Tier 1 sections, critical findings included.
+
 📖 **[PR Comment Guide →](github-pr-comment-guide.md)** — Complete customization options, configuration examples, and reference table
 
 ## Enterprise Features

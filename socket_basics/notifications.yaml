@@ -90,6 +90,12 @@ notifiers:
         option: --github-api-url
         env_variable: GITHUB_API_URL
         type: str
+      - name: pr_comment_enabled
+        option: --pr-comment
+        env_variable: INPUT_PR_COMMENT_ENABLED
+        type: bool
+        default: true
+        description: "Post/update the findings comment on the PR (scanning and dashboard upload are unaffected)"
       - name: pr_comment_links_enabled
         option: --pr-comment-links
         env_variable: INPUT_PR_COMMENT_LINKS_ENABLED
@@ -108,6 +114,12 @@ notifiers:
         type: bool
         default: true
         description: "Auto-collapse non-critical findings (critical stays expanded)"
+      - name: pr_comment_collapse_all
+        option: --pr-comment-collapse-all
+        env_variable: INPUT_PR_COMMENT_COLLAPSE_ALL
+        type: bool
+        default: false
+        description: "Collapse the SAST and Socket Tier 1 sections, critical findings included"
       - name: pr_comment_code_fencing_enabled
         option: --pr-comment-code-fencing
         env_variable: INPUT_PR_COMMENT_CODE_FENCING_ENABLED

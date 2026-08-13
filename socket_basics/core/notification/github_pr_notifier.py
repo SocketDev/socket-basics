@@ -3,6 +3,7 @@ import logging
 from urllib.parse import quote
 
 from socket_basics.core.notification.base import BaseNotifier
+from socket_basics.core.notification.github_pr_helpers import coerce_bool
 from socket_basics.core.config import get_github_token, get_github_repository, get_github_pr_number
 
 logger = logging.getLogger(__name__)
@@ -36,8 +37,9 @@ class GithubPRNotifier(BaseNotifier):
 
     def notify(self, facts: Dict[str, Any]) -> None:
         notifications = facts.get('notifications', []) or []
-        labels_enabled = self.config.get('pr_labels_enabled', True)
-        
+        labels_enabled = coerce_bool(self.config.get('pr_labels_enabled'), True)
+        comment_enabled = coerce_bool(self.config.get('pr_comment_enabled'), True)
+
         if not isinstance(notifications, list):
             logger.error('GithubPRNotifier: only supports new format - list of dicts with title/content')
             return
@@ -56,6 +58,24 @@ class GithubPRNotifier(BaseNotifier):
 
         notification_section_types = self._extract_section_types_from_notifications(valid_notifications)
         facts_section_types = self._infer_section_types_from_facts(facts)
+
+        # Comment suppression: the scan has already run and the findings have
+        # already been uploaded to the Socket dashboard by the time notifiers
+        # execute, so this only silences the PR comment. Severity labels stay
+        # under pr_labels_enabled so the two can be turned off independently.
+        if not comment_enabled:
+            logger.info(
+                'GithubPRNotifier: PR comments disabled (pr_comment_enabled=false); '
+                '%d finding section(s) were scanned and uploaded to the Socket dashboard '
+                'but no comment will be posted or updated',
+                len(valid_notifications),
+            )
+            if labels_enabled:
+                pr_number = self._get_pr_number()
+                if pr_number:
+                    labels = self._determine_pr_labels(valid_notifications)
+                    self._reconcile_pr_labels(pr_number, labels)
+            return
 
         if not valid_notifications:
             pr_number = self._get_pr_number()
