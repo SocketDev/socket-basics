@@ -4,10 +4,9 @@ prep_release.py — Prepare the final release-prep PR for a new version.
 
 Feature PRs never touch version files; they only add CHANGELOG entries under
 [Unreleased]. When a release batch is complete, run this once on a fresh
-branch: it bumps every version-bearing file and stamps the [Unreleased]
-changelog section, so the release PR is a mechanical five-file diff. Tag the
-release PR's merge commit and the publish workflow's version gate passes by
-construction.
+branch: it bumps every version-bearing file, synchronizes current-release docs,
+and stamps the [Unreleased] changelog section. Tag the release PR's merge commit
+and the publish workflow's version gate passes by construction.
 
 Files updated:
     pyproject.toml             [project] version (canonical source)
@@ -16,6 +15,8 @@ Files updated:
     action.yml                 derived via sync_release_version.py
     uv.lock                    project entry (via `uv lock`)
     CHANGELOG.md               [Unreleased] -> [X.Y.Z] - YYYY-MM-DD
+    README.md                  current-release examples
+    docs/**/*.md                matching current-release examples
 
 Usage:
     python scripts/prep_release.py --version 2.2.0
@@ -87,6 +88,19 @@ def _refresh_lock(dry_run: bool) -> None:
         sys.exit(f"error: `uv lock` failed:\n{exc.stderr}")
 
 
+def _sync_release_docs(version: str, dry_run: bool) -> None:
+    command = [
+        sys.executable,
+        str(ROOT / "scripts" / "check_release_docs.py"),
+        "--write",
+        "--version",
+        version,
+    ]
+    if dry_run:
+        command.append("--dry-run")
+    subprocess.run(command, cwd=ROOT, check=True)
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(description="Prepare version bumps and changelog for a release PR.")
     parser.add_argument("--version", required=True, help="Release version without v prefix, e.g. 2.2.0")
@@ -118,6 +132,8 @@ def main() -> None:
         subprocess.run([sys.executable, str(ROOT / "scripts" / "sync_release_version.py"), "--write"],
                        cwd=ROOT, check=True)
 
+    _sync_release_docs(args.version, args.dry_run)
+
     if not args.dry_run:
         CHANGELOG.write_text(changelog_content)
     print(f"CHANGELOG.md: [Unreleased] -> [{args.version}] - {args.date}")
@@ -126,7 +142,10 @@ def main() -> None:
     if not args.dry_run:
         print("uv.lock: refreshed")
 
-    print("\nNext steps: commit these changes on a release branch, open the release PR,")
+    print(
+        "\nNext steps: review the synchronized docs, commit these changes on a release "
+        "branch, and open the release PR,"
+    )
     print(f"merge it last, then tag the merge commit as v{args.version} to trigger publish.")
 
 

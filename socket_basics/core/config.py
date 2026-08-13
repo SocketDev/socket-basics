@@ -14,6 +14,38 @@ from typing import Dict, Any, List, Optional
 
 logger = logging.getLogger(__name__)
 
+TRUE_STRINGS = ('true', '1', 'yes', 'on')
+FALSE_STRINGS = ('false', '0', 'no', 'off')
+
+
+def coerce_bool(value: Any, default: bool) -> bool:
+    """Coerce a config value to a bool, tolerating the string forms.
+
+    Every layer that carries a flag delivers it differently: the environment
+    loader sees strings because GitHub Action inputs are always strings, a
+    Socket dashboard config can send either, and a JSON config sends real
+    booleans. ``bool("false")`` is ``True``, so a plain cast turns a disabled
+    flag back on.
+
+    A value that says nothing -- ``None``, an empty string, or a word that is
+    neither true nor false -- resolves to ``default`` rather than to ``False``.
+    An action input forwarded from an unset workflow variable arrives as an
+    empty string, and reading that as "off" silently disables a flag that
+    nobody asked to disable.
+    """
+    if value is None:
+        return default
+    if isinstance(value, bool):
+        return value
+    if isinstance(value, str):
+        normalized = value.strip().lower()
+        if normalized in TRUE_STRINGS:
+            return True
+        if normalized in FALSE_STRINGS:
+            return False
+        return default
+    return bool(value)
+
 
 def _normalize_path_parts(path_value: str | None) -> List[str] | None:
     """Normalize a path-like string into comparable POSIX-style path segments."""
@@ -796,36 +828,32 @@ def load_config_from_env() -> Dict[str, Any]:
     
     # Also load notification parameters from notifications.yaml so CLI/env can enable them
     try:
-        base_dir = Path(__file__).parent.parent
-        notif_path = base_dir / 'notifications.yaml'
-        if notif_path.exists():
-            with open(notif_path, 'r') as f:
-                notif_cfg = yaml.safe_load(f) or {}
-            for n_name, n_cfg in (notif_cfg.get('notifiers') or {}).items():
-                for param in n_cfg.get('parameters', []) or []:
-                    p_name = param.get('name')
-                    env_var = param.get('env_variable')
-                    p_type = param.get('type', 'str')
-                    default_value = param.get('default', '' if p_type != 'bool' else False)
+        notif_cfg = load_notifications_config()
+        for n_name, n_cfg in (notif_cfg.get('notifiers') or {}).items():
+            for param in n_cfg.get('parameters', []) or []:
+                p_name = param.get('name')
+                env_var = param.get('env_variable')
+                p_type = param.get('type', 'str')
+                default_value = param.get('default', '' if p_type != 'bool' else False)
 
-                    if p_name and env_var:
-                        env_value = os.getenv(env_var)
-                        if env_value is not None:
-                            if p_type == 'bool':
-                                config[p_name] = env_value.lower() == 'true'
-                            elif p_type == 'int':
-                                try:
-                                    config[p_name] = int(env_value)
-                                except ValueError:
-                                    logging.getLogger(__name__).warning(
-                                        "Invalid integer for %s (env %s): %s; using default %s",
-                                        p_name, env_var, env_value, default_value
-                                    )
-                                    config[p_name] = default_value
-                            else:
-                                config[p_name] = env_value
+                if p_name and env_var:
+                    env_value = os.getenv(env_var)
+                    if env_value is not None:
+                        if p_type == 'bool':
+                            config[p_name] = coerce_bool(env_value, bool(default_value))
+                        elif p_type == 'int':
+                            try:
+                                config[p_name] = int(env_value)
+                            except ValueError:
+                                logging.getLogger(__name__).warning(
+                                    "Invalid integer for %s (env %s): %s; using default %s",
+                                    p_name, env_var, env_value, default_value
+                                )
+                                config[p_name] = default_value
                         else:
-                            config[p_name] = default_value
+                            config[p_name] = env_value
+                    else:
+                        config[p_name] = default_value
     except Exception:
         # Best-effort; do not fail on notification parsing
         pass
@@ -1322,6 +1350,84 @@ def load_connectors_config() -> Dict[str, Any]:
         return {}
 
 
+def load_notifications_config() -> Dict[str, Any]:
+    """Load notifier configuration from notifications.yaml"""
+    try:
+        base_dir = Path(__file__).parent.parent  # Go up from core to socket_basics
+        config_path = base_dir / "notifications.yaml"
+
+        if not config_path.exists():
+            return {}
+
+        with open(config_path, 'r') as f:
+            return yaml.safe_load(f) or {}
+    except Exception as e:
+        logging.getLogger(__name__).warning("Warning: Could not load notifications config: %s", e)
+        return {}
+
+
+def _add_bool_cli_arg(parser: argparse.ArgumentParser, option: str, default: Any, description: str):
+    """Register a boolean CLI flag declared in connectors.yaml or notifications.yaml.
+
+    A flag that is already on cannot be turned off by a plain ``store_true``
+    option, so a parameter declaring ``default: true`` gets argparse's paired
+    ``--flag`` / ``--no-flag`` form instead.
+
+    Either form parses to ``None`` when the option is absent. That is what lets
+    the config layer tell "the user said nothing" apart from "the user said
+    false", so an unused flag never overwrites a value that came from the
+    environment, a JSON config or the Socket dashboard.
+    """
+    if coerce_bool(default, False):
+        parser.add_argument(option, action=argparse.BooleanOptionalAction,
+                            default=None, help=description)
+    else:
+        parser.add_argument(option, action='store_true', default=None, help=description)
+
+
+def _apply_param_cli_overrides(config_dict: Dict[str, Any], args, params: List[Dict[str, Any]]):
+    """Copy CLI values for YAML-declared parameters into the effective config.
+
+    ``params`` is the ``parameters`` list of one connector (connectors.yaml) or
+    one notifier (notifications.yaml). Both files describe their options the
+    same way, so both are copied by this one function and a notifier flag
+    reaches the config exactly like a connector flag does.
+    """
+    for param in params or []:
+        param_name = param.get('name')
+        option = param.get('option')
+
+        if not param_name or not option:
+            continue
+
+        # Convert option like "--python" to attribute name "python"
+        arg_name = option.lstrip('-').replace('-', '_')
+
+        if not hasattr(args, arg_name):
+            continue
+
+        arg_value = getattr(args, arg_name)
+        if arg_value is None:
+            # The option was not passed, so leave the existing config alone.
+            continue
+
+        if param.get('type') == 'bool':
+            config_dict[param_name] = bool(arg_value)
+
+            if arg_value:
+                # Handle enables/disables attributes
+                for enabled_param in param.get('enables', []):
+                    config_dict[enabled_param] = True
+
+                for disabled_param in param.get('disables', []):
+                    config_dict[disabled_param] = False
+
+        elif arg_value:
+            # Only override config for non-bool types if CLI arg has a value.
+            # This prevents empty string defaults from wiping out env/API config.
+            config_dict[param_name] = arg_value
+
+
 def add_dynamic_cli_args(parser: argparse.ArgumentParser):
     """Add CLI arguments based on connectors configuration"""
     try:
@@ -1335,10 +1441,9 @@ def add_dynamic_cli_args(parser: argparse.ArgumentParser):
                     
                 param_type = param.get('type', 'str')
                 description = param.get('description', f"Enable {connector_name}")
-                default = param.get('default')
-                
+
                 if param_type == 'bool':
-                    parser.add_argument(option, action='store_true', help=description)
+                    _add_bool_cli_arg(parser, option, param.get('default'), description)
                 elif param_type == 'str':
                     parser.add_argument(option, type=str, default=None, help=description)
                 elif param_type == 'int':
@@ -1356,25 +1461,20 @@ def add_dynamic_cli_args(parser: argparse.ArgumentParser):
 
     # Also add CLI args for notification plugins declared in notifications.yaml
     try:
-        base_dir = Path(__file__).parent.parent
-        notif_path = base_dir / 'notifications.yaml'
-        if notif_path.exists():
-            with open(notif_path, 'r') as f:
-                notif_cfg = yaml.safe_load(f) or {}
-            for n_name, n_cfg in (notif_cfg.get('notifiers') or {}).items():
-                for param in n_cfg.get('parameters', []) or []:
-                    option = param.get('option')
-                    p_type = param.get('type', 'str')
-                    desc = param.get('description', f"Notification parameter for {n_name}")
-                    default = param.get('default')
-                    if not option:
-                        continue
-                    if p_type == 'bool':
-                        parser.add_argument(option, action='store_true', help=desc)
-                    elif p_type == 'int':
-                        parser.add_argument(option, type=int, default=None, help=desc)
-                    else:
-                        parser.add_argument(option, type=str, default=None, help=desc)
+        notif_cfg = load_notifications_config()
+        for n_name, n_cfg in (notif_cfg.get('notifiers') or {}).items():
+            for param in n_cfg.get('parameters', []) or []:
+                option = param.get('option')
+                p_type = param.get('type', 'str')
+                desc = param.get('description', f"Notification parameter for {n_name}")
+                if not option:
+                    continue
+                if p_type == 'bool':
+                    _add_bool_cli_arg(parser, option, param.get('default'), desc)
+                elif p_type == 'int':
+                    parser.add_argument(option, type=int, default=None, help=desc)
+                else:
+                    parser.add_argument(option, type=str, default=None, help=desc)
     except Exception:
         pass
 
@@ -1503,38 +1603,20 @@ def create_config_from_args(args) -> Config:
         if os.getenv('SOCKET_S3_ENABLED', '').lower() in ('true', '1', 'yes'):
             config_dict['enable_s3_upload'] = True
     
-    # Dynamically apply connector parameters from CLI args
+    # Dynamically apply connector and notifier parameters from CLI args.
+    # Notifiers register their own CLI options in add_dynamic_cli_args, so they
+    # have to be copied here too or a parsed notifier flag never reaches the
+    # effective config.
     try:
         connectors_config = load_connectors_config()
-        
-        for connector_name, connector_config in connectors_config.get('connectors', {}).items():
-            for param in connector_config.get('parameters', []):
-                param_name = param.get('name')
-                option = param.get('option')
-                
-                if param_name and option:
-                    # Convert option like "--python" to attribute name "python"
-                    arg_name = option.lstrip('-').replace('-', '_')
-                    
-                    if hasattr(args, arg_name):
-                        arg_value = getattr(args, arg_name)
-                        if arg_value is not None:
-                            if param.get('type') == 'bool' and arg_value:
-                                config_dict[param_name] = True
-                                
-                                # Handle enables/disables attributes
-                                if 'enables' in param:
-                                    for enabled_param in param['enables']:
-                                        config_dict[enabled_param] = True
-                                        
-                                if 'disables' in param:
-                                    for disabled_param in param['disables']:
-                                        config_dict[disabled_param] = False
-                                        
-                            elif param.get('type') != 'bool' and arg_value:
-                                # Only override config for non-bool types if CLI arg has a value
-                                # This prevents empty string defaults from wiping out env/API config
-                                config_dict[param_name] = arg_value
+
+        for connector_config in connectors_config.get('connectors', {}).values():
+            _apply_param_cli_overrides(config_dict, args, connector_config.get('parameters', []))
+
+        notifications_config = load_notifications_config()
+
+        for notifier_config in (notifications_config.get('notifiers') or {}).values():
+            _apply_param_cli_overrides(config_dict, args, notifier_config.get('parameters', []))
     except Exception as e:
         logging.getLogger(__name__).warning("Warning: Error processing dynamic CLI args: %s", e)
     

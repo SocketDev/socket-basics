@@ -1,46 +1,15 @@
 name: core-tool-watch
 
-# Supply-chain / malware watch for the four core OSS tools that Socket Basics
-# orchestrates. Three of them (OpenGrep, TruffleHog, Trivy) ship as
-# binaries / container images / GitHub releases that Dependabot cannot cleanly
-# track; the fourth (Socket's own SCA SDK) is a PyPI package. This workflow
-# closes that gap by running scripts/check_core_tools.py, which discovers the
-# latest upstream version of each tool and scores the relevant package
-# coordinates through the Socket API (dogfooding the socketdev SDK that Socket
-# Basics already depends on).
-#
-# Two triggers, two intents:
-#   - schedule / workflow_dispatch  → mode=watch: discover latest versions,
-#     analyze BOTH pinned and latest, report drift, upsert a tracking issue.
-#   - pull_request / push touching the pins → mode=build: analyze the versions
-#     this change would bake into the image. Fails on a malware/critical alert.
-#
-# Socket scoring needs SOCKET_SFW_API_TOKEN, scoped to the `socket-firewall`
-# environment (which must carry NO approval rule -- see dependency-review.yml).
-# Dependabot-triggered runs only receive *Dependabot* secrets, never
-# Actions/environment secrets, so the token must ALSO be mirrored into the
-# Dependabot store (one-time admin step, same as dependency-review.yml):
-#
-#   gh secret set SOCKET_SFW_API_TOKEN --app dependabot
-#
-# That mirror is the EXPECTED setup: Dependabot's pin bumps are precisely what
-# build mode exists to score pre-merge. It is safe to hand this job the token
-# on Dependabot PRs because the scan's Python environment is synced from the
-# DEFAULT BRANCH lockfile (see the .scan-env checkout below) -- the
-# token-holding step never imports packages bumped by the PR under review; it
-# only READS the PR's pins. When the token is absent anyway (fork PRs, or
-# before the mirror exists), version-drift detection still runs and scoring is
-# skipped with a notice; the push-to-main run re-scores after merge as a
-# backstop.
+# Watches pinned core tools for version drift and supply-chain findings.
 
 on:
   schedule:
-    # Mondays 07:00 UTC, after the weekly Dependabot run.
     - cron: "0 7 * * 1"
   workflow_dispatch:
   pull_request:
     paths:
       - "Dockerfile"
+      - "Dockerfile.heavy"
       - "app_tests/Dockerfile"
       - "pyproject.toml"
       - "uv.lock"
@@ -50,6 +19,7 @@ on:
     branches: [main]
     paths:
       - "Dockerfile"
+      - "Dockerfile.heavy"
       - "app_tests/Dockerfile"
       - "pyproject.toml"
       - "uv.lock"
@@ -60,9 +30,6 @@ permissions:
   contents: read
 
 concurrency:
-  # Include the event name: schedule, workflow_dispatch, and push all run on
-  # refs/heads/main, and a shared group would let a merge to main cancel the
-  # in-flight weekly watch (or the cron cancel a push-triggered build guard).
   group: core-tool-watch-${{ github.event_name }}-${{ github.ref }}
   cancel-in-progress: true
 
@@ -70,28 +37,19 @@ jobs:
   analyze:
     runs-on: ubuntu-latest
     timeout-minutes: 15
-    # `environment:` scopes SOCKET_SFW_API_TOKEN to this job. The environment
-    # MUST have no required-reviewers rule -- an approval gate would hang the
-    # scheduled cron run forever (and is the bypass footgun called out in
-    # dependency-review.yml). Configure it with `reviewers: null` (see that
-    # file's header for the gh api command).
     environment: socket-firewall
     permissions:
       contents: read
-      issues: write # upsert the drift tracking issue on scheduled runs
+      issues: write
+      packages: read
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           fetch-depth: 1
           persist-credentials: false
 
-      # Second checkout: the DEFAULT BRANCH, used only to build the scan's
-      # Python environment. The socketdev SDK (and its dependency chain) is
-      # imported by the token-holding scan step, so it must come from
-      # already-merged, already-scored lockfile versions -- never from the PR
-      # under review, whose freshly-bumped packages are the very thing being
-      # judged. On push/schedule runs both checkouts are identical.
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Checkout scan environment
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           ref: main
           path: .scan-env
@@ -103,11 +61,7 @@ jobs:
         with:
           python-version: "3.12"
 
-      - name: 🛠️ Install uv + sync scan env from main's lockfile (provides the socketdev SDK)
-        # --no-install-project: the scan only imports the DEPENDENCIES
-        # (socketdev SDK), never socket_basics itself, so skip building the
-        # local package -- faster, and immune to packaging breakage on main
-        # (e.g. a bad license-file rename) taking this guard down with it.
+      - name: 🛠️ Sync scan environment
         run: |
           python -m pip install --upgrade pip uv
           uv sync --locked --project .scan-env --no-install-project
@@ -117,25 +71,21 @@ jobs:
         env:
           EVENT: ${{ github.event_name }}
         run: |
-          # Scheduled/manual runs watch for upstream drift; PR/push runs guard
-          # the versions a build would actually pull in.
-          if [ "$EVENT" = "schedule" ] || [ "$EVENT" = "workflow_dispatch" ]; then
-            echo "mode=watch" >> "$GITHUB_OUTPUT"
-          else
+          if [ "$EVENT" = "pull_request" ]; then
             echo "mode=build" >> "$GITHUB_OUTPUT"
+          else
+            echo "mode=watch" >> "$GITHUB_OUTPUT"
           fi
 
       - name: Run core-tool supply-chain analysis
         id: scan
-        # --project .scan-env --no-sync: execute with main's already-vetted
-        # dependency versions (never the PR's bumps) while the script itself
-        # reads the pins from this checkout's working tree.
         env:
           SOCKET_API_TOKEN: ${{ secrets.SOCKET_SFW_API_TOKEN }}
           GITHUB_TOKEN: ${{ github.token }}
+          MODE: ${{ steps.mode.outputs.mode }}
         run: |
           uv run --project .scan-env --no-sync python scripts/check_core_tools.py \
-            --mode "${{ steps.mode.outputs.mode }}" \
+            --mode "$MODE" \
             --summary-file core-tools-report.md \
             --json-out core-tools-report.json \
             --github-output "$GITHUB_OUTPUT" \
@@ -159,28 +109,57 @@ jobs:
           if-no-files-found: warn
           retention-days: 30
 
-      - name: Open/update drift tracking issue
-        if: ${{ always() && steps.mode.outputs.mode == 'watch' && steps.scan.outputs.drift == 'true' }}
+      - name: Reconcile drift tracking issue
+        if: ${{ always() && steps.mode.outputs.mode == 'watch' }}
         env:
           GH_TOKEN: ${{ github.token }}
+          DRIFT: ${{ steps.scan.outputs.drift }}
+          DISCOVERY_COMPLETE: ${{ steps.scan.outputs.discovery_complete }}
         run: |
+          if [ ! -s core-tools-report.md ] \
+            || { [ "$DRIFT" != "true" ] && [ "$DRIFT" != "false" ]; } \
+            || { [ "$DISCOVERY_COMPLETE" != "true" ] && [ "$DISCOVERY_COMPLETE" != "false" ]; }; then
+            echo "::warning::Skipping issue reconciliation because the scan did not produce a complete report."
+            exit 0
+          fi
+
           gh label create core-tool-drift \
             --color FBCA04 \
             --description "A core OSS tool has a newer upstream release" 2>/dev/null || true
 
           title="Core tool version drift detected"
-          # `// empty` so an absent issue yields "" (not the literal "null",
-          # which is non-empty in bash and would send us to `gh issue edit null`).
-          existing="$(gh issue list --label core-tool-drift --state open \
-            --json number --jq '.[0].number // empty' 2>/dev/null || true)"
+          run_url="${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}"
+          existing="$(gh issue list --label core-tool-drift --state open --limit 1 \
+            --json number --jq '.[0].number // empty')"
+          if [ -z "$existing" ]; then
+            existing="$(gh issue list --label core-tool-drift --state closed --limit 1 \
+              --json number --jq '.[0].number // empty')"
+          fi
 
-          if [ -n "$existing" ]; then
+          if [ "$DRIFT" = "true" ] && [ -n "$existing" ]; then
+            state="$(gh issue view "$existing" --json state --jq '.state')"
             gh issue edit "$existing" --body-file core-tools-report.md
-            gh issue comment "$existing" \
-              --body "Drift re-detected by [run #${GITHUB_RUN_ID}](${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}); body updated."
-          else
+            if [ "$state" = "CLOSED" ]; then
+              gh issue reopen "$existing" \
+                --comment "Drift re-detected by [run #${GITHUB_RUN_ID}](${run_url}); body updated."
+            else
+              gh issue comment "$existing" \
+                --body "Drift re-detected by [run #${GITHUB_RUN_ID}](${run_url}); body updated."
+            fi
+          elif [ "$DRIFT" = "true" ]; then
             gh issue create \
               --title "$title" \
               --label core-tool-drift \
               --body-file core-tools-report.md
+          elif [ "$DISCOVERY_COMPLETE" = "true" ] && [ -n "$existing" ]; then
+            state="$(gh issue view "$existing" --json state --jq '.state')"
+            gh issue edit "$existing" --body-file core-tools-report.md
+            if [ "$state" = "OPEN" ]; then
+              gh issue close "$existing" \
+                --comment "No core tool version drift remains as of [run #${GITHUB_RUN_ID}](${run_url}); body updated with the reconciled pins."
+            fi
+          elif [ -n "$existing" ]; then
+            gh issue edit "$existing" --body-file core-tools-report.md
+            gh issue comment "$existing" \
+              --body "[Run #${GITHUB_RUN_ID}](${run_url}) refreshed the report, but latest-version discovery was incomplete; issue state was left unchanged."
           fi

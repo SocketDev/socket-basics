@@ -35,7 +35,7 @@ jobs:
       - name: Run Socket Basics
         # Pin to a commit SHA for supply-chain safety.
         # Dependabot will keep this up to date automatically — see docs/github-action.md.
-        uses: SocketDev/socket-basics@<sha>  # v2.0.3
+        uses: SocketDev/socket-basics@<sha>  # v3.0.0
         env:
           GITHUB_PR_NUMBER: ${{ github.event.pull_request.number || github.event.issue.number }}
         with:
@@ -104,11 +104,12 @@ Socket Basics can also run locally or in other CI/CD environments:
 Socket Basics delivers **beautifully formatted, actionable PR comments** with smart defaults — all enabled by default, zero configuration needed.
 
 - 🔗 **Clickable File Links** — Jump directly to the vulnerable code in GitHub
-- 📋 **Collapsible Sections** — Critical findings auto-expand, others collapse
+- 📋 **Collapsible Sections** — SAST and Socket Tier 1 findings collapse, critical ones auto-expand; `pr_comment_collapse_all: 'true'` closes those too
 - 🎨 **Syntax Highlighting** — Language-aware code blocks
 - 🏷️ **Auto-Labels** — PRs tagged with severity-based labels (e.g., `security: critical`)
 - 🔴 **CVE Links & CVSS Scores** — One-click access to NVD with risk context
 - 🚀 **Full Scan Link** — Report link prominently displayed at the top
+- 🔇 **Fully Suppressible** — `pr_comment_enabled: 'false'` stops the comment entirely while the scan still runs, still uploads to the Socket dashboard, and still fails the job on high/critical findings
 
 Every feature is customizable via GitHub Actions inputs, CLI flags, or environment variables.
 
@@ -178,10 +179,10 @@ For GitHub Actions, see the [Quick Start](#-quick-start---github-actions) above 
 
 ```bash
 # Pull the pre-built image (recommended — no build step required)
-docker pull ghcr.io/socketdev/socket-basics:2.0.3
+docker pull ghcr.io/socketdev/socket-basics:3.0.0
 
 # Run scan
-docker run --rm -v "$PWD:/workspace" ghcr.io/socketdev/socket-basics:2.0.3 \
+docker run --rm -v "$PWD:/workspace" ghcr.io/socketdev/socket-basics:3.0.0 \
   --workspace /workspace \
   --python-sast-enabled \
   --secret-scanning-enabled \

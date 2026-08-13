@@ -36,6 +36,7 @@ def make_mock_config(
     repo="SocketDev/example-app",
     commit="a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2",
     full_scan_url="https://socket.dev/dashboard/scan/12345",
+    collapse_all=False,
 ):
     """Build a mock config object matching the real pipeline shape."""
     return MockConfig(
@@ -44,6 +45,7 @@ def make_mock_config(
         pr_comment_links_enabled=True,
         pr_comment_collapse_enabled=True,
         pr_comment_collapse_non_critical=True,
+        pr_comment_collapse_all=collapse_all,
         pr_comment_code_fencing_enabled=True,
         pr_comment_show_rule_names=True,
         full_scan_html_url=full_scan_url,
