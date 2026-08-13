@@ -377,3 +377,19 @@ class TestShallowCheckoutFailFast:
         (pr_repo / ".git" / "shallow").touch()
         with pytest.raises(SystemExit, match="fetch-depth"):
             create_config_from_args(_config_args(pr_repo, "auto"))
+
+    def test_shallow_no_merge_base_fails_fast(self, pr_repo, monkeypatch):
+        # Base tip exists but shares no history with HEAD (partial fetch shape):
+        # `A...HEAD: no merge base`. Shallow -> config error, same as missing ref.
+        _git(pr_repo, "checkout", "--orphan", "disconnected")
+        _git(pr_repo, "add", "-A")
+        _git(pr_repo, "commit", "-m", "orphan")
+        (pr_repo / ".git" / "shallow").touch()
+        with pytest.raises(SystemExit, match="fetch-depth"):
+            _detect_git_changed_files(str(pr_repo), mode="pr", base_ref="main")
+
+    def test_non_shallow_no_merge_base_keeps_fallback(self, pr_repo):
+        _git(pr_repo, "checkout", "--orphan", "disconnected")
+        _git(pr_repo, "add", "-A")
+        _git(pr_repo, "commit", "-m", "orphan")
+        assert _detect_git_changed_files(str(pr_repo), mode="pr", base_ref="main") is None

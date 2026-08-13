@@ -341,11 +341,12 @@ jobs:
 >   failing checks on every PR until corrected. The run log's warning names
 >   the actual git error — read it before triaging the findings.
 >
-> **Exception — shallow checkouts fail fast instead.** If the base branch is
-> missing *because the checkout is shallow* (the classic missing
-> `fetch-depth: 0`), the failure is deterministic — every PR would full-scan —
-> so Socket Basics exits with a configuration error naming that one-line fix
-> rather than falling back.
+> **Exception — shallow checkouts fail fast instead.** If the diff cannot be
+> computed *because the checkout is shallow* — the base branch is missing, or
+> its tip was fetched without connecting history (`no merge base`), both
+> classically a missing `fetch-depth: 0` — the failure is deterministic:
+> every PR would full-scan. Socket Basics exits with a configuration error
+> naming that one-line fix rather than falling back.
 >
 > A genuinely *empty* diff (e.g. a delete-only PR) still skips the scanners;
 > the fallback triggers only when resolution **fails**. The resolved file

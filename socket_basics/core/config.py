@@ -1692,11 +1692,15 @@ class _GitScopeError(Exception):
     Carries git's first stderr line as the message. ``ref_miss`` is True when
     the failure only means "this ref does not exist" (safe to try another
     candidate) rather than "git could not read the repository at all."
+    ``merge_base_miss`` is True when the ref exists but shares no history with
+    HEAD (``A...HEAD: no merge base``) — the signature of a partial/shallow
+    fetch where the base tip was fetched without connecting history.
     """
 
-    def __init__(self, message: str, ref_miss: bool = False):
+    def __init__(self, message: str, ref_miss: bool = False, merge_base_miss: bool = False):
         super().__init__(message)
         self.ref_miss = ref_miss
+        self.merge_base_miss = merge_base_miss
 
 
 def _detect_git_changed_files(workspace_path: str, mode: str = 'staged', commit: str | None = None, base_ref: str | None = None) -> Optional[List[str]]:
@@ -1765,7 +1769,8 @@ def _detect_git_changed_files(workspace_path: str, mode: str = 'staged', commit:
                 stderr = (res.stderr or '').strip()
                 first = stderr.splitlines()[0] if stderr else f'exit code {res.returncode}'
                 miss = any(m in stderr.lower() for m in ref_miss_markers)
-                raise _GitScopeError(first, ref_miss=miss)
+                mb_miss = 'no merge base' in stderr.lower()
+                raise _GitScopeError(first, ref_miss=miss, merge_base_miss=mb_miss)
             return _split(res.stdout)
 
         # Change to workspace directory before running git commands
@@ -1790,10 +1795,33 @@ def _detect_git_changed_files(workspace_path: str, mode: str = 'staged', commit:
                     return  # probe failed; fall through to the generic fallback
                 if shallow:
                     raise SystemExit(
-                        f"changed_files: base ref '{ref}' could not be resolved and this checkout is "
-                        "shallow. Set 'fetch-depth: 0' on actions/checkout (or otherwise fetch the "
-                        "base branch) so the diff has a base to compare against."
+                        f"changed_files: cannot diff against base ref '{ref}' (missing ref or no "
+                        "shared history) and this checkout is shallow. Set 'fetch-depth: 0' on "
+                        "actions/checkout (or otherwise fetch the base branch with full history) "
+                        "so the diff has a base to compare against."
                     )
+
+            def _resolve_base_diff(ref: str) -> Optional[List[str]]:
+                """Base diff with the shallow fail-fast applied to both failure shapes.
+
+                A shallow misconfiguration shows up either as a missing base ref
+                (nothing fetched) or as ``no merge base`` (base tip fetched but
+                history disconnected). Both are deterministic — fail fast when
+                shallow; otherwise preserve the original failure semantics.
+                """
+                if not ref:
+                    return None
+                try:
+                    files = _diff_against_base(ref)
+                except _GitScopeError as e:
+                    if e.merge_base_miss:
+                        _fail_fast_if_shallow(ref)
+                        log.warning("changed_files scope: base ref %r shares no merge base with HEAD (%s)", ref, e)
+                        return None
+                    raise
+                if files is None:
+                    _fail_fast_if_shallow(ref)
+                return files
 
             def _diff_against_base(ref: str) -> Optional[List[str]]:
                 """Diff changed files (excluding deletions) against a base ref.
@@ -1822,16 +1850,15 @@ def _detect_git_changed_files(workspace_path: str, mode: str = 'staged', commit:
                 # Prefer the PR base-ref diff in CI; fall back to staged changes
                 # for local/pre-commit use.
                 base = base_ref or os.environ.get('GITHUB_BASE_REF', '')
-                pr_files = _diff_against_base(base)
+                pr_files = _resolve_base_diff(base)
                 if pr_files is not None:
                     return pr_files
                 if base:
                     # A base ref was provided (we are in a PR context) but could
-                    # not be resolved. A shallow checkout makes this deterministic
-                    # (config error, fail fast); otherwise report failure so the
-                    # caller falls back to a full scan rather than the staged
-                    # diff, which is almost always empty in CI.
-                    _fail_fast_if_shallow(base)
+                    # not be diffed against, and the shallow fail-fast did not
+                    # apply (non-shallow checkout). Report failure so the caller
+                    # falls back to a full scan rather than the staged diff,
+                    # which is almost always empty in CI.
                     return None
                 return _run_git(['git', 'diff', '--name-only', '--cached'])
             elif mode == 'pr':
@@ -1839,10 +1866,7 @@ def _detect_git_changed_files(workspace_path: str, mode: str = 'staged', commit:
                 if not base:
                     log.warning("changed_files scope: mode 'pr' but no base ref available (GITHUB_BASE_REF unset)")
                     return None
-                pr_files = _diff_against_base(base)
-                if pr_files is None:
-                    _fail_fast_if_shallow(base)
-                return pr_files
+                return _resolve_base_diff(base)
             elif mode == 'staged':
                 # staged but not yet committed
                 return _run_git(['git', 'diff', '--name-only', '--cached'])

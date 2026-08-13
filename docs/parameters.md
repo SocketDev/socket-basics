@@ -122,8 +122,9 @@ repository. For PR/`auto`/`pr` modes, check out with full history (e.g.
 
 If the diff **cannot be resolved**, behavior depends on why:
 
-- **Shallow checkout with a missing base ref** (the classic missing
-  `fetch-depth: 0`): deterministic misconfiguration — the run **fails fast
+- **Shallow checkout that cannot diff the base** — missing base ref or
+  disconnected history (`no merge base`), classically a missing
+  `fetch-depth: 0`: deterministic misconfiguration — the run **fails fast
   with a configuration error** naming the fix, instead of full-scanning every
   PR.
 - **Any other resolution failure** (unreadable repository, non-shallow missing
