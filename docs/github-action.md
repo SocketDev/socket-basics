@@ -325,32 +325,37 @@ jobs:
 > list regardless of git state, use the `scan_files` input instead.
 
 > [!NOTE]
-> **When the diff cannot be resolved** — the checkout is unreadable, or the
-> base branch is missing (most commonly a shallow clone without
-> `fetch-depth: 0`) — Socket Basics logs a warning naming the underlying git
-> error and **falls back to a full-repository scan** rather than silently
-> scanning nothing. This is deliberate fail-toward-scanning behavior for a
-> security gate, and it comes with two tradeoffs worth planning for:
+> **When the diff cannot be resolved** — the checkout is unreadable, or the base
+> branch is missing (most commonly a shallow clone without `fetch-depth: 0`) —
+> Socket Basics **fails with a configuration error** naming the underlying git
+> error. It does not scan.
 >
-> - On very large repositories an unexpected full scan can be slow or exhaust
->   CI memory. If the fallback warning appears on **every** PR, the cause is
->   almost always the missing `fetch-depth: 0` — fix the checkout rather than
->   sizing up the runner.
-> - The full scan reports **pre-existing** findings, not just the PR's change,
->   so a repo-wide checkout misconfiguration shows up as large PR comments or
->   failing checks on every PR until corrected. The run log's warning names
->   the actual git error — read it before triaging the findings.
+> This is deliberate. Diff-only scoping is an explicit instruction, and if it
+> cannot be honored there is no honest result to report:
 >
-> **Exception — shallow checkouts fail fast instead.** If the diff cannot be
-> computed *because the checkout is shallow* — the base branch is missing, or
-> its tip was fetched without connecting history (`no merge base`), both
-> classically a missing `fetch-depth: 0` — the failure is deterministic:
-> every PR would full-scan. Socket Basics exits with a configuration error
-> naming that one-line fix rather than falling back.
+> - **Skipping the scanners** would exit green having scanned zero files. A
+>   passing check that inspected nothing is worse than a failing one, and a
+>   warning buried in a run log is not something anyone acts on.
+> - **Silently scanning everything** would do the expensive thing on every PR —
+>   precisely what asking for a diff scope was avoiding. On a large repository
+>   that is a slow or OOM-prone check, and it reports **pre-existing** findings
+>   rather than the PR's own, so a checkout misconfiguration surfaces as large PR
+>   comments on every PR until corrected.
 >
-> A genuinely *empty* diff (e.g. a delete-only PR) still skips the scanners;
-> the fallback triggers only when resolution **fails**. The resolved file
-> count is logged on every scoped run, so an empty diff and a failed lookup
+> If the error appears on **every** PR, the cause is almost always a missing
+> `fetch-depth: 0` — fix the checkout rather than sizing up the runner. Shallow
+> checkouts get a more specific error naming that fix directly, including the
+> `no merge base` shape where the base tip was fetched without connecting
+> history.
+>
+> **To scan anyway, set `scan_all: true`.** That widens an unresolvable scope to
+> a full-repository scan with a warning instead of failing. Note the widening is
+> partial: only scanners that read scan targets widen, while secret and container
+> scanners stay scoped.
+>
+> A genuinely *empty* diff (e.g. a delete-only PR) is a successful resolution and
+> still skips the scanners — only a **failed** resolution errors. The resolved
+> file count is logged on every scoped run, so an empty diff and a failed lookup
 > are always distinguishable in the logs.
 
 ## PR Comment Customization

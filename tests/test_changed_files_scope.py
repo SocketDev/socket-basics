@@ -285,10 +285,12 @@ class TestGitEnv:
 class TestScopeResolutionFailure:
     """Failed diff resolution must be distinguishable from an empty diff.
 
-    A git failure (unreadable repo, unresolvable base ref) returns None and the
-    config layer falls back to a full-repo scan with a warning — never a green
-    run that silently scanned nothing. A genuinely empty diff still returns []
-    and keeps the skip behavior (see the delete-only test above).
+    A git failure (unreadable repo, unresolvable base ref) returns None from the
+    detection helper, and the config layer turns that into a configuration error
+    — never a green run that silently scanned nothing, and never a silent widen
+    to the whole repository. ``scan_all`` opts into the widen instead. A
+    genuinely empty diff still returns [] and keeps the skip behavior (see the
+    delete-only test above).
     """
 
     def test_unreadable_repo_returns_none(self, pr_repo):
@@ -319,15 +321,36 @@ class TestScopeResolutionFailure:
             _detect_git_changed_files(str(pr_repo), mode="pr", base_ref="main")
         assert any("changed_files scope" in r.getMessage() for r in caplog.records)
 
-    def test_config_creation_falls_back_to_full_scan_on_failure(self, pr_repo, monkeypatch, caplog):
+    def test_config_creation_fails_closed_on_failure(self, pr_repo, monkeypatch):
+        monkeypatch.delenv("GITHUB_WORKSPACE", raising=False)
+        monkeypatch.delenv("INPUT_SCAN_ALL", raising=False)
+        monkeypatch.setenv("GITHUB_BASE_REF", "main")
+        (pr_repo / ".git" / "HEAD").write_text("garbage")
+
+        # Scope resolution failed -> configuration error. Neither a green run
+        # that scanned nothing nor a silent full-repo scan.
+        with pytest.raises(SystemExit, match="could not be resolved"):
+            create_config_from_args(_config_args(pr_repo, "auto"))
+
+    def test_config_error_names_scan_all_escape_hatch(self, pr_repo, monkeypatch):
+        monkeypatch.delenv("GITHUB_WORKSPACE", raising=False)
+        monkeypatch.delenv("INPUT_SCAN_ALL", raising=False)
+        monkeypatch.setenv("GITHUB_BASE_REF", "main")
+        (pr_repo / ".git" / "HEAD").write_text("garbage")
+
+        with pytest.raises(SystemExit, match="scan_all"):
+            create_config_from_args(_config_args(pr_repo, "auto"))
+
+    def test_scan_all_opts_into_full_scan_fallback(self, pr_repo, monkeypatch, caplog):
         monkeypatch.delenv("GITHUB_WORKSPACE", raising=False)
         monkeypatch.setenv("GITHUB_BASE_REF", "main")
+        monkeypatch.setenv("INPUT_SCAN_ALL", "true")
         (pr_repo / ".git" / "HEAD").write_text("garbage")
 
         with caplog.at_level("WARNING"):
             cfg = create_config_from_args(_config_args(pr_repo, "auto"))
 
-        # Scope resolution failed -> full-repo scan, not a silent skip.
+        # scan_all is the documented fail-open opt-in: widen, do not fail.
         assert cfg.get("changed_files") == []
         assert cfg.get("changed_files_scope_requested") is False
         assert cfg.get_scan_targets() == [str(pr_repo)]
@@ -346,9 +369,11 @@ class TestScopeResolutionFailure:
 
 class TestShallowCheckoutFailFast:
     """A shallow checkout that cannot resolve the base ref is a deterministic
-    misconfiguration (missing fetch-depth: 0) — fail fast with the one-line fix
-    instead of full-scanning every PR (slow/OOM on large repos). Non-shallow
-    failures keep the full-scan fallback.
+    misconfiguration (missing fetch-depth: 0), so the detection helper raises
+    with that one-line fix rather than returning a generic failure. Other
+    failures return None and let the config layer report the generic
+    unresolvable-scope error. Under ``fail_open`` (the caller set ``scan_all``)
+    the check is skipped so the widen can happen instead.
     """
 
     def test_shallow_missing_base_fails_fast_pr_mode(self, pr_repo):
@@ -368,8 +393,34 @@ class TestShallowCheckoutFailFast:
         files = _detect_git_changed_files(str(pr_repo), mode="pr", base_ref="main")
         assert sorted(files) == ["base.py", "feat.py"]
 
-    def test_non_shallow_missing_base_keeps_fallback(self, pr_repo):
+    def test_non_shallow_missing_base_returns_none(self, pr_repo):
         assert _detect_git_changed_files(str(pr_repo), mode="pr", base_ref="no-such-branch") is None
+
+    def test_fail_open_skips_shallow_fail_fast(self, pr_repo):
+        # scan_all was set, so the caller wants to widen rather than fail: the
+        # shallow check must not pre-empt that with a SystemExit.
+        (pr_repo / ".git" / "shallow").touch()
+        result = _detect_git_changed_files(
+            str(pr_repo), mode="pr", base_ref="no-such-branch", fail_open=True
+        )
+        assert result is None
+
+    def test_fail_open_skips_no_merge_base_fail_fast(self, pr_repo):
+        _git(pr_repo, "checkout", "--orphan", "disconnected")
+        _git(pr_repo, "add", "-A")
+        _git(pr_repo, "commit", "-m", "orphan")
+        (pr_repo / ".git" / "shallow").touch()
+        result = _detect_git_changed_files(
+            str(pr_repo), mode="pr", base_ref="main", fail_open=True
+        )
+        assert result is None
+
+    def test_fail_open_still_resolves_a_good_diff(self, pr_repo):
+        # fail_open only affects failure handling, never a successful diff.
+        files = _detect_git_changed_files(
+            str(pr_repo), mode="pr", base_ref="main", fail_open=True
+        )
+        assert sorted(files) == ["base.py", "feat.py"]
 
     def test_config_creation_propagates_config_error(self, pr_repo, monkeypatch):
         monkeypatch.delenv("GITHUB_WORKSPACE", raising=False)
@@ -388,7 +439,7 @@ class TestShallowCheckoutFailFast:
         with pytest.raises(SystemExit, match="fetch-depth"):
             _detect_git_changed_files(str(pr_repo), mode="pr", base_ref="main")
 
-    def test_non_shallow_no_merge_base_keeps_fallback(self, pr_repo):
+    def test_non_shallow_no_merge_base_returns_none(self, pr_repo):
         _git(pr_repo, "checkout", "--orphan", "disconnected")
         _git(pr_repo, "add", "-A")
         _git(pr_repo, "commit", "-m", "orphan")

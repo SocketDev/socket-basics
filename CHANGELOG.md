@@ -20,21 +20,23 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   repository/branch/commit and default-branch discovery in local Docker runs;
   those lookups are covered by the same change.
 - A failed `changed_files` diff resolution is no longer indistinguishable from
-  an empty diff. Git errors are captured and logged (instead of discarded), and
+  an empty diff. Git errors are captured and logged instead of discarded, and
   when the scope cannot be resolved — unreadable repository, unresolvable base
-  ref (e.g. a shallow fetch without the base), or `pr` mode with no base ref —
-  Socket Basics now **falls back to a full-repo scan with a prominent warning**
-  rather than skipping every scanner and reporting a green run that scanned
-  nothing. A genuinely empty diff (e.g. a delete-only PR) still keeps the empty
-  scope and skips as before. One deterministic case fails fast instead of
-  falling back: a **shallow checkout** that cannot resolve the base ref exits
-  with a configuration error naming the fix (`fetch-depth: 0`), since it would
-  otherwise full-scan every PR — slow or OOM-prone on large repositories.
+  ref, or `pr` mode with no base ref — Socket Basics now **fails with a
+  configuration error** rather than reporting a green run that scanned nothing.
+  Shallow checkouts get a more specific error naming `fetch-depth: 0`. A
+  genuinely empty diff (e.g. a delete-only PR) is a successful resolution and
+  still skips the scanners as before.
 
 ### Added
 - The resolved `changed_files` scope is now logged on every scoped run: file
   count at INFO, the full file list at DEBUG — so an empty diff and a failed
   lookup are visible and distinguishable in run logs.
+- `scan_all` is now a declared action input and doubles as the fail-open escape
+  hatch for `changed_files`: when the scope cannot be resolved, widen to a
+  full-repo scan with a warning instead of failing. The widening is partial —
+  only scanners that read scan targets widen, while secret and container
+  scanners stay scoped.
 
 ## [3.0.0] - 2026-08-06
 

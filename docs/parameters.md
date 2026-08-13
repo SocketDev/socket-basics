@@ -120,19 +120,19 @@ PR), the scanners are skipped rather than falling back to scanning the whole
 repository. For PR/`auto`/`pr` modes, check out with full history (e.g.
 `actions/checkout` with `fetch-depth: 0`) so the base branch is available.
 
-If the diff **cannot be resolved**, behavior depends on why:
+If the diff **cannot be resolved** — unreadable repository, missing base ref, or
+a shallow checkout with no base to diff against — the run **fails with a
+configuration error** naming the underlying git error, and nothing is scanned.
+Neither alternative is honest: skipping the scanners exits green having scanned
+zero files, and widening to the whole repository does the expensive thing on
+every PR, which is what requesting a diff scope was avoiding. Shallow checkouts
+get a more specific error naming `fetch-depth: 0`, covering both the missing-ref
+and disconnected-history (`no merge base`) shapes.
 
-- **Shallow checkout that cannot diff the base** — missing base ref or
-  disconnected history (`no merge base`), classically a missing
-  `fetch-depth: 0`: deterministic misconfiguration — the run **fails fast
-  with a configuration error** naming the fix, instead of full-scanning every
-  PR.
-- **Any other resolution failure** (unreadable repository, non-shallow missing
-  ref): a warning with the underlying git error is logged and the scan **falls
-  back to the whole workspace** instead of silently scanning nothing. On large
-  repositories a surprise full scan can be slow or hit CI limits and reports
-  pre-existing findings, so treat the warning as the signal and fix the root
-  cause.
+Set **`scan_all`** to widen instead of failing: an unresolvable scope then falls
+back to a full-workspace scan with a warning. The widening is partial — only
+scanners that read scan targets widen, while secret and container scanners stay
+scoped to `changed_files`.
 
 The resolved scope is logged on every run (file count at INFO, full file list
 at DEBUG), so an empty diff and a failed lookup are distinguishable in run

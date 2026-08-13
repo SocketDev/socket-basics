@@ -1573,27 +1573,49 @@ def create_config_from_args(args) -> Config:
         def _apply_scoped_changed_files(mode_label: str, **detect_kwargs) -> None:
             """Resolve the diff scope, distinguishing failure from an empty diff.
 
-            A failed resolution (None) falls back to a full-repo scan with a
-            prominent warning: a scoped scan that silently resolves to nothing
-            reports a green run while scanning zero files, which is the
-            fail-open failure mode this guards against. A genuinely empty diff
-            (e.g. a delete-only PR) keeps the empty scope and skips, as before.
+            A failed resolution (None) is a configuration error and stops the
+            run. Diff-only scoping is an explicit instruction; if it cannot be
+            honored, Socket Basics cannot make any statement about the code, and
+            both alternatives are worse than stopping. Skipping the scanners
+            reports a green check having scanned nothing — false assurance, and a
+            warning in a run log is not a signal anyone acts on. Silently
+            widening to the whole repository does the expensive thing on every
+            PR, which is precisely what a caller asking for a diff scope was
+            avoiding.
+
+            ``scan_all`` is the opt-in for that widening: it already means "when
+            the scope resolves to nothing, scan everything rather than nothing",
+            so it doubles as the documented fail-open escape hatch.
+
+            A genuinely empty diff (e.g. a delete-only PR) is a successful
+            resolution — it keeps the empty scope and skips, as before.
             """
+            fail_open = bool(config_dict.get('scan_all', False))
             try:
-                resolved = _detect_git_changed_files(config_dict.get('workspace', os.getcwd()), **detect_kwargs)
+                resolved = _detect_git_changed_files(
+                    config_dict.get('workspace', os.getcwd()), fail_open=fail_open, **detect_kwargs
+                )
             except Exception as e:
                 _scope_log.warning("Warning: failed to detect git changed files (%s): %s", mode_label, e)
                 resolved = None
             if resolved is None:
-                _scope_log.warning(
-                    "changed_files scope could not be resolved (%s); falling back to a "
-                    "full-repo scan so nothing is silently skipped. See the warnings "
-                    "above for the underlying git error.",
-                    mode_label,
+                if fail_open:
+                    _scope_log.warning(
+                        "changed_files scope could not be resolved (%s); scan_all is set, so "
+                        "falling back to a full-repo scan. See the warnings above for the "
+                        "underlying git error.",
+                        mode_label,
+                    )
+                    config_dict['changed_files'] = []
+                    config_dict['changed_files_scope_requested'] = False
+                    return
+                raise SystemExit(
+                    f"changed_files: the requested scope ({mode_label}) could not be resolved, so "
+                    "the scan would either report a green run having scanned nothing or silently "
+                    "widen to the whole repository. See the warnings above for the underlying git "
+                    "error. Fix the git problem, or set scan_all to widen to a full-repo scan when "
+                    "the scope cannot be resolved."
                 )
-                config_dict['changed_files'] = []
-                config_dict['changed_files_scope_requested'] = False
-                return
             _scope_log.info("changed_files scope resolved to %d file(s) (%s)", len(resolved), mode_label)
             if resolved:
                 _scope_log.debug("changed_files scope: %s", ", ".join(resolved))
@@ -1703,7 +1725,7 @@ class _GitScopeError(Exception):
         self.merge_base_miss = merge_base_miss
 
 
-def _detect_git_changed_files(workspace_path: str, mode: str = 'staged', commit: str | None = None, base_ref: str | None = None) -> Optional[List[str]]:
+def _detect_git_changed_files(workspace_path: str, mode: str = 'staged', commit: str | None = None, base_ref: str | None = None, fail_open: bool = False) -> Optional[List[str]]:
     """Detect changed files in a git repository.
 
     mode:
@@ -1724,6 +1746,13 @@ def _detect_git_changed_files(workspace_path: str, mode: str = 'staged', commit:
     requested base ref could not be resolved — so callers can distinguish "no
     changed files" from "the lookup broke" instead of silently scanning
     nothing. The specific git error is logged here at WARNING level.
+
+    ``fail_open`` mirrors the caller's ``scan_all`` setting. When False (the
+    default) a deterministic misconfiguration raises SystemExit here with the
+    specific fix, rather than returning None for the caller to turn into a
+    generic error. When True the caller has opted into widening an unresolvable
+    scope to a full-repo scan, so those checks are skipped and the failure is
+    reported as None.
     """
     log = logging.getLogger(__name__)
     try:
@@ -1783,12 +1812,17 @@ def _detect_git_changed_files(workspace_path: str, mode: str = 'staged', commit:
                 """Deterministic misconfiguration check for an unresolvable base.
 
                 A shallow checkout (no ``fetch-depth: 0``) can *never* resolve
-                the base ref, so every PR would take the full-scan fallback —
-                on large repos that is a slow/OOM red check instead of a clear
-                signal. Fail fast with the one-line fix instead. Follows the
-                existing SystemExit convention for unrecoverable configuration
-                errors (see repository/branch discovery below).
+                the base ref, so every PR on this checkout would fail the same
+                way. Name the one-line fix here instead of letting the caller
+                report a generic unresolvable-scope error. Follows the existing
+                SystemExit convention for unrecoverable configuration errors
+                (see repository/branch discovery below).
+
+                Skipped under ``fail_open``: the caller set ``scan_all`` and has
+                opted into widening an unresolvable scope instead of failing.
                 """
+                if fail_open:
+                    return
                 try:
                     shallow = _run_git(['git', 'rev-parse', '--is-shallow-repository']) == ['true']
                 except Exception:
