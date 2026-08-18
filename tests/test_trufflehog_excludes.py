@@ -7,6 +7,17 @@ from types import SimpleNamespace
 from socket_basics.core.connector.trufflehog import TruffleHogScanner
 
 
+def _write_scannable_file(path):
+    """Create a file a changed-path scan target can point at.
+
+    The scan drops changed paths that are no longer on disk, so a test about
+    which paths survive the exclude filter has to put real files there.
+    """
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text("token = 'abc'\n", encoding="utf-8")
+    return path
+
+
 def _scanner(tmp_path, exclude_dirs):
     config = SimpleNamespace(
         workspace=tmp_path,
@@ -299,6 +310,8 @@ def test_process_results_hashes_windows_paths_as_posix(tmp_path):
 
 
 def test_scan_filters_excluded_changed_files(tmp_path, monkeypatch, caplog):
+    _write_scannable_file(tmp_path / "node_modules" / "staged.txt")
+    _write_scannable_file(tmp_path / "app" / "staged.txt")
     scanner = _scanner(tmp_path, "node_modules")
     scanner.is_enabled = lambda: True
     scanner.config._config = {}
@@ -331,6 +344,8 @@ def test_scan_filters_excluded_changed_files(tmp_path, monkeypatch, caplog):
 
 
 def test_scan_filters_changed_files_with_glob_excludes(tmp_path, monkeypatch):
+    _write_scannable_file(tmp_path / "config" / "appsettings.Staging.json")
+    _write_scannable_file(tmp_path / "config" / "appsettings.json")
     scanner = _scanner(tmp_path, "**/appsettings.*.json")
     scanner.is_enabled = lambda: True
     scanner.config._config = {}

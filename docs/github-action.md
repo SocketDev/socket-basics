@@ -313,8 +313,9 @@ jobs:
 
 `changed_files` accepts:
 
-- `auto` — diff against the PR base branch in CI (`GITHUB_BASE_REF`), else staged changes
-- `pr` — diff against the PR base branch (`GITHUB_BASE_REF`)
+- `auto` — the PR base diff when a pull request base can be found, else staged changes
+- `pr` — the PR base diff, and nothing else
+- `current-commit` — files in the `HEAD` commit
 - a commit hash — files changed in that commit
 - a comma-separated file list — e.g. `src/app.py,src/utils.js`
 
@@ -323,6 +324,43 @@ jobs:
 > available to diff against. Deletions are excluded, so a delete-only PR scans
 > nothing rather than falling back to the whole repo. To scan an explicit file
 > list regardless of git state, use the `scan_files` input instead.
+
+### Checking that the scope took effect
+
+Diff-only mode logs what it did. Look for these lines in the step output:
+
+```text
+INFO  Resolved PR diff base to 'origin/main'
+INFO  Diff-only scan scoping requested (changed_files=auto): resolved 12 changed file(s)
+INFO  Diff-only scan scoping active: 12 scan target(s) from 12 changed file(s)
+```
+
+If the scope could not be applied, the run says why instead of quietly scanning
+everything or nothing:
+
+| Warning you will see | What to do |
+|----------------------|------------|
+| `none of the candidate PR bases (...) could be resolved ... The checkout is shallow` | Add `fetch-depth: 0` to `actions/checkout` |
+| `no pull request base was found` | The trigger is not `pull_request`, so there is no base. Use `changed_files: 'current-commit'` or an explicit file list |
+| `is not a git repository` | Run `actions/checkout` before the scan step |
+| `git refused to read ... not the usual container ownership mismatch` | The checkout is damaged or incomplete. Re-run `actions/checkout`, or pass an explicit file list |
+| `scan_all and a changed-files scope ... are both set, and they disagree` | Unset `scan_all` — it can come from a Socket dashboard config, not just your workflow |
+| `resolved to zero files. The scanners will be SKIPPED` | The diff found nothing scannable. Combined with a warning above, it tells you the diff failed rather than the PR being empty |
+
+You do not need `git config --global --add safe.directory` for this. The scan
+runs as root inside a container over a workspace owned by the runner user, and
+git normally refuses that with `detected dubious ownership`. When git refuses,
+the scan trusts that one workspace directory so the diff can run, and logs that
+it did — so no workflow change is needed. Setting `safe.directory` in a workflow
+step would not have helped anyway, because it writes the runner's git config
+rather than the container's. When git is not refusing, nothing is relaxed.
+
+### Where the setting can come from
+
+`changed_files` is honored identically from the action input, the
+`INPUT_CHANGED_FILES` environment variable, the `--changed-files` CLI flag, a
+`--config` JSON file, and a Socket dashboard config. `scan_all` outranks all of
+them; when it does, the run logs a warning naming the scope it discarded.
 
 ## PR Comment Customization
 
