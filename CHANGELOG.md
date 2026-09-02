@@ -37,6 +37,9 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   `scan_all`, which previously overrode it. `scan_all` applies only on the
   failure path. A genuinely empty diff (e.g. a delete-only PR) still skips the
   scoped scanners. (#98)
+- Socket toolchain refresh: Socket npm CLI 1.1.154 → 1.1.165 in every image,
+  and Socket Python CLI 2.6.3 → 2.7.0 in the heavy and app-tests images. The
+  socketdev Python SDK is already current at 3.5.0.
 - Notifier parameters from `notifications.yaml` now take CLI overrides through
   the same path as connector parameters, fixing flags that parsed but never
   reached the effective config. Absent boolean flags resolve to "unset" rather

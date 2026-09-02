@@ -12,8 +12,8 @@ ARG UV_VERSION=0.12.1
 # NOT Dependabot-trackable (no official Docker image with a stable binary path):
 ARG GOSEC_VERSION=v2.28.0
 ARG OPENGREP_VERSION=v1.26.0
-ARG SOCKET_NPM_CLI_VERSION=1.1.154
-ARG SOCKET_PYTHON_CLI_VERSION=2.6.3
+ARG SOCKET_NPM_CLI_VERSION=1.1.165
+ARG SOCKET_PYTHON_CLI_VERSION=2.7.0
 #
 # NOT Dependabot-trackable — Socket-built Trivy, pinned by digest; updated by
 # Socket's trivy-dist release process. See the note in the root ./Dockerfile.
