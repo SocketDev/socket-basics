@@ -7,6 +7,7 @@ Handles CLI arguments, environment variables, and provides a unified config obje
 import argparse
 import json
 import os
+import re
 import yaml
 import logging
 from pathlib import Path
@@ -256,7 +257,70 @@ class Config:
         self.workspace = ws
         self.output_dir = Path(self._config.get('output_dir', self.workspace))
         self.scan_files = self._parse_scan_files(self._config.get('scan_files', ''))
-    
+        # Normalize this once for every config source. Dashboard and JSON
+        # values are not guaranteed to be real booleans, and connectors must
+        # not treat the string ``"false"`` as truthy.
+        self._config['scan_all'] = coerce_bool(
+            self._config.get('scan_all'),
+            False,
+        )
+        self._resolve_changed_files_scope()
+
+    def _resolve_changed_files_scope(self) -> None:
+        """Turn whatever ``changed_files`` we were handed into a resolved list.
+
+        ``changed_files`` can arrive as an already-resolved list (the CLI path
+        resolves it before building the config) or as a raw request string such
+        as ``auto``, ``pr``, a commit hash, or a comma-separated file list. The
+        raw string form reaches us from ``INPUT_CHANGED_FILES``, from a
+        ``--config`` JSON file, and from a Socket dashboard config.
+
+        Resolving here means every construction path gets the same treatment.
+        Previously only ``create_config_from_args`` resolved the value, so a
+        config built any other way either ignored the scope request entirely
+        (scanning the whole repository) or, for a raw string, iterated the
+        string character by character looking for files named ``a``, ``u``,
+        ``t``, ``o``.
+        """
+        raw = self._config.get('changed_files')
+
+        if isinstance(raw, (list, tuple)):
+            self._config['changed_files'] = list(raw)
+            if raw:
+                self._config.setdefault('changed_files_scope_requested', True)
+            return
+
+        if raw is None or not str(raw).strip():
+            # Normalize to a list so callers never see '' or None here.
+            self._config['changed_files'] = []
+            return
+
+        self._config['changed_files_scope_requested'] = True
+        fail_open = coerce_bool(self._config.get('scan_all'), False)
+        resolved = resolve_changed_files_request(
+            str(raw),
+            str(self.workspace),
+            fail_open=fail_open,
+        )
+        if resolved is None:
+            if fail_open:
+                logging.getLogger(__name__).warning(
+                    "changed_files scope could not be resolved; scan_all is set, so "
+                    "falling back to a full-repo scan. See the warnings above for the "
+                    "underlying git error."
+                )
+                self._config['changed_files'] = []
+                self._config['changed_files_scope_requested'] = False
+                return
+            raise SystemExit(
+                "changed_files: the requested scope could not be resolved, so the scan "
+                "would either report a green run having scanned nothing or silently widen "
+                "to the whole repository. See the warnings above for the underlying git "
+                "error. Fix the git problem, or set scan_all to widen to a full-repo scan "
+                "when the scope cannot be resolved."
+            )
+        self._config['changed_files'] = resolved
+
     def get(self, key: str, default=None):
         """Get configuration value"""
         return self._config.get(key, default)
@@ -284,23 +348,32 @@ class Config:
           3. ``scan_files`` -> explicit user-provided file list.
           4. default -> scan the entire workspace.
 
-        For the scoped modes (2 and 3) an empty list may be returned when none
+        For the scoped modes (1 and 3) an empty list may be returned when none
         of the requested paths exist (for example a delete-only PR). Callers
         MUST treat an empty result as "nothing to scan" and skip the scanner
         rather than falling back to scanning the whole workspace or their own
         working directory.
         """
+        scope_requested = bool(
+            self.get('changed_files') or self.get('changed_files_scope_requested', False)
+        )
+
         # Diff-only mode: scope the scan to the files changed in the PR/commit.
         # Keep honoring the scope when git resolves to zero files, e.g. a
         # delete-only PR, so callers skip instead of scanning the workspace.
         changed_files = self.get('changed_files', []) or []
-        if changed_files or self.get('changed_files_scope_requested', False):
-            return self._resolve_file_targets(changed_files)
+        if scope_requested:
+            targets = self._resolve_file_targets(changed_files)
+            logging.getLogger(__name__).info(
+                "Diff-only scan scoping active: %d scan target(s) from %d changed file(s)",
+                len(targets), len(changed_files),
+            )
+            return targets
 
         # Explicit fail-open fallback. A failed changed-files resolution clears
-        # changed_files_scope_requested before Config is constructed, so this
-        # branch is reached only when no successful changed-files scope exists.
-        if self.get('scan_all', False):
+        # changed_files_scope_requested, so this branch is reached only when no
+        # successfully resolved changed-files scope exists.
+        if coerce_bool(self.get('scan_all'), False):
             return [str(self.workspace)]
 
         # Explicit list of files to scan.
@@ -750,9 +823,12 @@ def load_config_from_env() -> Dict[str, Any]:
         'workspace': os.getenv('GITHUB_WORKSPACE', os.getcwd()),
         'output_dir': os.getenv('OUTPUT_DIR', os.getcwd()),
         
-        # Scan scope
+        # Scan scope. changed_files is kept as the raw request string here
+        # ('auto', 'pr', a commit hash, or a file list); Config resolves it
+        # against git once, so every construction path honors it identically.
         'scan_all': os.getenv('INPUT_SCAN_ALL', 'false').lower() == 'true',
         'scan_files': os.getenv('INPUT_SCAN_FILES', ''),
+        'changed_files': os.getenv('INPUT_CHANGED_FILES', ''),
         
         # Core Socket API configuration (top-level, like workspace)
         'socket_org': (
@@ -1050,6 +1126,8 @@ def load_explicit_env_config() -> Dict[str, Any]:
         config['scan_all'] = os.environ['INPUT_SCAN_ALL'].lower() == 'true'
     if 'INPUT_SCAN_FILES' in os.environ:
         config['scan_files'] = os.environ['INPUT_SCAN_FILES']
+    if 'INPUT_CHANGED_FILES' in os.environ:
+        config['changed_files'] = os.environ['INPUT_CHANGED_FILES']
     if 'INPUT_OPENGREP_RULES_DIR' in os.environ:
         config['opengrep_rules_dir'] = os.environ['INPUT_OPENGREP_RULES_DIR']
     
@@ -1646,93 +1724,13 @@ def create_config_from_args(args) -> Config:
     except Exception:
         pass
 
-    # Handle changed-files: CLI overrides env/config. Accept 'auto' to detect via git.
-    # When invoked via the GitHub Action (entrypoint passes no CLI args) the value
-    # arrives through the INPUT_CHANGED_FILES environment variable instead.
+    # Handle changed-files. Precedence is CLI -> env/JSON/dashboard config, and
+    # the raw request string ('auto', 'pr', a commit hash, or a file list) is
+    # stored as-is. Config resolves it against git exactly once, so a config
+    # built without going through here honors the scope the same way.
     changed_files_arg = getattr(args, 'changed_files', '') if args is not None else ''
-    if not changed_files_arg:
-        changed_files_arg = os.getenv('INPUT_CHANGED_FILES', '')
-    if changed_files_arg:
-        val = str(changed_files_arg).strip()
-        config_dict['changed_files_scope_requested'] = True
-        _scope_log = logging.getLogger(__name__)
-
-        def _apply_scoped_changed_files(mode_label: str, **detect_kwargs) -> None:
-            """Resolve the diff scope, distinguishing failure from an empty diff.
-
-            A failed resolution (None) is a configuration error and stops the
-            run. Diff-only scoping is an explicit instruction; if it cannot be
-            honored, Socket Basics cannot make any statement about the code, and
-            both alternatives are worse than stopping. Skipping the scanners
-            reports a green check having scanned nothing — false assurance, and a
-            warning in a run log is not a signal anyone acts on. Silently
-            widening to the whole repository does the expensive thing on every
-            PR, which is precisely what a caller asking for a diff scope was
-            avoiding.
-
-            ``scan_all`` is the opt-in for that widening: when the requested
-            scope cannot be resolved, scan everything rather than failing. A
-            successfully resolved scope remains authoritative.
-
-            A genuinely empty diff (e.g. a delete-only PR) is a successful
-            resolution — it keeps the empty scope and skips, as before.
-            """
-            fail_open = bool(config_dict.get('scan_all', False))
-            try:
-                resolved = _detect_git_changed_files(
-                    config_dict.get('workspace', os.getcwd()), fail_open=fail_open, **detect_kwargs
-                )
-            except Exception as e:
-                _scope_log.warning("Warning: failed to detect git changed files (%s): %s", mode_label, e)
-                resolved = None
-            if resolved is None:
-                if fail_open:
-                    _scope_log.warning(
-                        "changed_files scope could not be resolved (%s); scan_all is set, so "
-                        "falling back to a full-repo scan. See the warnings above for the "
-                        "underlying git error.",
-                        mode_label,
-                    )
-                    config_dict['changed_files'] = []
-                    config_dict['changed_files_scope_requested'] = False
-                    return
-                raise SystemExit(
-                    f"changed_files: the requested scope ({mode_label}) could not be resolved, so "
-                    "the scan would either report a green run having scanned nothing or silently "
-                    "widen to the whole repository. See the warnings above for the underlying git "
-                    "error. Fix the git problem, or set scan_all to widen to a full-repo scan when "
-                    "the scope cannot be resolved."
-                )
-            _scope_log.info("changed_files scope resolved to %d file(s) (%s)", len(resolved), mode_label)
-            if resolved:
-                _scope_log.debug("changed_files scope: %s", ", ".join(resolved))
-            else:
-                _scope_log.info(
-                    "changed_files diff is genuinely empty (e.g. delete-only change); "
-                    "scoped scanners will be skipped"
-                )
-            config_dict['changed_files'] = resolved
-
-        # 'auto' resolves to the PR base-ref diff in CI, else staged changes.
-        if val.lower() == 'auto':
-            _apply_scoped_changed_files('auto', mode='auto')
-        elif val.lower() == 'pr':
-            # Explicit PR diff against the base branch (GITHUB_BASE_REF).
-            _apply_scoped_changed_files('pr', mode='pr')
-        elif val.lower() in ('current-commit', 'current_commit'):
-            _apply_scoped_changed_files('current-commit', mode='current-commit')
-        else:
-            # If value looks like a commit hash, list files in that commit
-            import re
-            if re.match(r'^[0-9a-fA-F]{7,40}$', val):
-                _apply_scoped_changed_files(f'commit {val}', mode='commit', commit=val)
-            else:
-                # parse comma-separated list of files provided manually
-                config_dict['changed_files'] = [f.strip() for f in val.split(',') if f.strip()]
-    else:
-        # preserve any changed_files provided via env/config
-        if 'changed_files' not in config_dict:
-            config_dict['changed_files'] = []
+    if changed_files_arg and str(changed_files_arg).strip():
+        config_dict['changed_files'] = str(changed_files_arg).strip()
 
     # Post-processing: ensure repository/branch are set; if workspace isn't a git repo,
     # require explicit --repo and --branch to be provided.
@@ -1744,7 +1742,10 @@ def create_config_from_args(args) -> Config:
                 # Detect branch if not already set
                 if 'branch' not in config_dict or not config_dict.get('branch'):
                     import subprocess
-                    branch_name = subprocess.check_output(['git', '-C', str(ws), 'rev-parse', '--abbrev-ref', 'HEAD']).decode().strip()
+                    branch_name = subprocess.check_output(
+                        ['git', '-C', str(ws), 'rev-parse', '--abbrev-ref', 'HEAD'],
+                        env=_git_env(ws),
+                    ).decode().strip()
                     if branch_name:
                         config_dict.setdefault('branch', branch_name)
             except Exception:
@@ -1762,6 +1763,149 @@ def create_config_from_args(args) -> Config:
         pass
 
     return Config(config_dict)
+
+
+SCOPE_REQUEST_AUTO = 'auto'
+SCOPE_REQUEST_PR = 'pr'
+SCOPE_REQUEST_CURRENT_COMMIT = ('current-commit', 'current_commit')
+
+
+def resolve_changed_files_request(
+    request: str,
+    workspace_path: str,
+    fail_open: bool = False,
+) -> Optional[List[str]]:
+    """Resolve a raw ``changed_files`` request into a list of changed paths.
+
+    ``request`` is whatever the user asked for:
+
+      - ``auto``           -> the PR base diff in CI, else staged changes
+      - ``pr``             -> the PR base diff, and nothing else
+      - ``current-commit`` -> files in the HEAD commit
+      - a commit hash      -> files in that commit
+      - anything else      -> a comma-separated list of file paths
+
+    A list is a successfully resolved scope, including an empty list for a
+    genuinely empty diff. ``None`` means resolution failed. Config turns that
+    failure into a configuration error unless ``scan_all`` explicitly opts
+    into the full-repository fallback.
+    """
+    log = logging.getLogger(__name__)
+    value = (request or '').strip()
+    if not value:
+        return []
+
+    lowered = value.lower()
+
+    if lowered == SCOPE_REQUEST_AUTO:
+        files = _detect_git_changed_files(workspace_path, mode='auto', fail_open=fail_open)
+    elif lowered == SCOPE_REQUEST_PR:
+        files = _detect_git_changed_files(workspace_path, mode='pr', fail_open=fail_open)
+    elif lowered in SCOPE_REQUEST_CURRENT_COMMIT:
+        files = _detect_git_changed_files(
+            workspace_path,
+            mode='current-commit',
+            fail_open=fail_open,
+        )
+    elif re.match(r'^[0-9a-fA-F]{7,40}$', value):
+        files = _detect_git_changed_files(
+            workspace_path,
+            mode='commit',
+            commit=value,
+            fail_open=fail_open,
+        )
+    else:
+        files = [f.strip() for f in value.split(',') if f.strip()]
+        log.info(
+            "Diff-only scan scoping requested with an explicit list of %d file(s)", len(files)
+        )
+        return files
+
+    if files is None:
+        log.warning(
+            "Diff-only scan scoping requested (changed_files=%s), but the scope "
+            "could not be resolved",
+            value,
+        )
+    elif files:
+        log.info(
+            "Diff-only scan scoping requested (changed_files=%s): resolved %d changed file(s)",
+            value, len(files),
+        )
+    else:
+        log.info(
+            "Diff-only scan scoping requested (changed_files=%s): the diff is genuinely "
+            "empty, so scoped scanners will be skipped",
+            value,
+        )
+    return files
+
+
+def _read_github_event() -> Dict[str, Any]:
+    """Load the GitHub Actions event payload, or {} when unavailable."""
+    event_path = os.environ.get('GITHUB_EVENT_PATH', '')
+    if not event_path:
+        return {}
+    try:
+        with open(event_path, 'r', encoding='utf-8') as fh:
+            payload = json.load(fh)
+        return payload if isinstance(payload, dict) else {}
+    except Exception:
+        logging.getLogger(__name__).debug(
+            "Could not read GitHub event payload at %s", event_path, exc_info=True
+        )
+        return {}
+
+
+def _pr_base_candidates(base_ref: str | None = None) -> List[str]:
+    """Every ref we know of that could be the base of the current PR.
+
+    ``GITHUB_BASE_REF`` is only set for ``pull_request`` and
+    ``pull_request_target`` events, so the event payload is checked as well.
+    That covers the triggers whose payload carries a top-level ``pull_request``
+    object -- ``pull_request_review``, ``pull_request_review_comment`` and the
+    two above -- and it is worth checking even when ``GITHUB_BASE_REF`` is set
+    because ``base.sha`` is an exact commit and so does not depend on a
+    remote-tracking branch existing in the checkout.
+
+    It does **not** cover ``issue_comment``. That payload has no top-level
+    ``pull_request``; it has ``issue.pull_request``, which is a bag of URLs
+    with no ref or sha in it, and working the base out from there would take a
+    GitHub API call. ``_warn_no_base`` recognises that shape and says so rather
+    than letting the run look like an empty diff.
+    """
+    candidates: List[str] = []
+
+    def _add(value) -> None:
+        if isinstance(value, str) and value.strip() and value.strip() not in candidates:
+            candidates.append(value.strip())
+
+    _add(base_ref)
+    _add(os.environ.get('GITHUB_BASE_REF', ''))
+
+    pull_request = _read_github_event().get('pull_request')
+    if isinstance(pull_request, dict):
+        base = pull_request.get('base')
+        if isinstance(base, dict):
+            _add(base.get('sha'))
+            _add(base.get('ref'))
+
+    return candidates
+
+
+def _event_is_comment_on_pull_request() -> bool:
+    """Was this run triggered by a comment on a pull request?
+
+    ``issue_comment`` fires for both issues and pull requests, and the only
+    thing distinguishing the two is the presence of ``issue.pull_request``.
+    There is a pull request, but nothing in the payload says what it is based
+    on, so the scope cannot be resolved from the environment alone.
+    """
+    event = _read_github_event()
+    if isinstance(event.get('pull_request'), dict):
+        return False
+    issue = event.get('issue')
+    return isinstance(issue, dict) and isinstance(issue.get('pull_request'), dict)
 
 
 def _git_env(workspace_path: str | Path | None = None) -> Dict[str, str]:
@@ -1788,9 +1932,9 @@ def _git_env(workspace_path: str | Path | None = None) -> Dict[str, str]:
         count = max(0, int(env.get('GIT_CONFIG_COUNT', '0') or '0'))
     except ValueError:
         count = 0
-    ws = workspace_path or os.environ.get('GITHUB_WORKSPACE') or os.getcwd()
+    workspace = workspace_path or os.environ.get('GITHUB_WORKSPACE') or os.getcwd()
     env[f'GIT_CONFIG_KEY_{count}'] = 'safe.directory'
-    env[f'GIT_CONFIG_VALUE_{count}'] = str(Path(ws).resolve())
+    env[f'GIT_CONFIG_VALUE_{count}'] = str(Path(workspace).resolve())
     env['GIT_CONFIG_COUNT'] = str(count + 1)
     return env
 
@@ -1806,13 +1950,24 @@ class _GitScopeError(Exception):
     fetch where the base tip was fetched without connecting history.
     """
 
-    def __init__(self, message: str, ref_miss: bool = False, merge_base_miss: bool = False):
+    def __init__(
+        self,
+        message: str,
+        ref_miss: bool = False,
+        merge_base_miss: bool = False,
+    ):
         super().__init__(message)
         self.ref_miss = ref_miss
         self.merge_base_miss = merge_base_miss
 
 
-def _detect_git_changed_files(workspace_path: str, mode: str = 'staged', commit: str | None = None, base_ref: str | None = None, fail_open: bool = False) -> Optional[List[str]]:
+def _detect_git_changed_files(
+    workspace_path: str,
+    mode: str = 'staged',
+    commit: str | None = None,
+    base_ref: str | None = None,
+    fail_open: bool = False,
+) -> Optional[List[str]]:
     """Detect changed files in a git repository.
 
     mode:
@@ -1820,74 +1975,55 @@ def _detect_git_changed_files(workspace_path: str, mode: str = 'staged', commit:
       - 'current-commit' -> files included in the HEAD commit
       - 'commit'         -> files included in the given commit hash (commit param required)
       - 'pr'             -> files changed relative to a base ref (a GitHub PR).
-                            Uses ``base_ref`` or ``GITHUB_BASE_REF`` and excludes
-                            deletions so removed paths never become scan targets.
-      - 'auto'           -> the PR base-ref diff when running in a PR CI context
-                            (``GITHUB_BASE_REF`` is set), otherwise staged changes.
-                            This is what ``--changed-files auto`` resolves to.
+                            The base comes from ``base_ref``, ``GITHUB_BASE_REF``,
+                            or the GitHub event payload, and deletions are
+                            excluded so removed paths never become scan targets.
+      - 'auto'           -> the PR base diff in CI; staged changes only for a
+                            local run with no PR/event context. This is what
+                            ``--changed-files auto`` resolves to.
 
-    Returns a list of file paths relative to the workspace root. An empty list
-    means git resolved the diff and it is genuinely empty (e.g. a delete-only
-    change), or the workspace is not a git repo (nothing to diff). Returns
-    ``None`` when resolution *failed* — git could not read the repository, or a
-    requested base ref could not be resolved — so callers can distinguish "no
-    changed files" from "the lookup broke" instead of silently scanning
-    nothing. The specific git error is logged here at WARNING level.
-
-    ``fail_open`` mirrors the caller's ``scan_all`` setting. When False (the
-    default) a deterministic misconfiguration raises SystemExit here with the
-    specific fix, rather than returning None for the caller to turn into a
-    generic error. When True the caller has opted into widening an unresolvable
-    scope to a full-repo scan, so those checks are skipped and the failure is
-    reported as None.
+    Returns a list of paths relative to the workspace root. ``[]`` means the
+    diff was resolved successfully and is genuinely empty. ``None`` means the
+    requested scope could not be resolved. When ``fail_open`` is false, a
+    deterministic shallow-checkout failure raises ``SystemExit`` with the
+    ``fetch-depth: 0`` remediation; when true, the caller has opted into a
+    full-repository fallback instead.
     """
     log = logging.getLogger(__name__)
     try:
         import subprocess
 
-        # Prefer GITHUB_WORKSPACE if set (GitHub Actions environment)
-        # Otherwise use the provided workspace_path
-        if os.environ.get('GITHUB_WORKSPACE'):
+        # The explicitly configured workspace wins. GITHUB_WORKSPACE is only a
+        # fallback for direct callers that do not supply one.
+        if workspace_path:
+            ws = Path(workspace_path)
+        elif os.environ.get('GITHUB_WORKSPACE'):
             ws = Path(os.environ['GITHUB_WORKSPACE'])
         else:
-            ws = Path(workspace_path) if workspace_path else Path.cwd()
+            ws = Path.cwd()
+        # Resolve before changing directories below. Keeping a relative path
+        # would make both ``cwd=ws`` and the safe.directory entry relative to
+        # the newly changed cwd, effectively looking for ``ws/ws``.
+        ws = ws.expanduser().resolve()
 
         if not ws.exists():
-            return []
+            log.warning(
+                "Cannot scope the scan to changed files: workspace %s does not exist", str(ws)
+            )
+            return None
 
         # Ensure this is a git repo
         git_dir = ws / '.git'
         if not git_dir.exists():
-            return []
+            log.warning(
+                "Cannot scope the scan to changed files: %s is not a git repository. "
+                "Check out the repository (actions/checkout) before running the scan, or pass "
+                "an explicit file list to changed_files instead of '%s'.",
+                str(ws), mode,
+            )
+            return None
 
-        # Mark the workspace safe for the git subprocesses below; without this
-        # every command fails under the container-action ownership mismatch and
-        # the diff silently resolves to nothing.
         git_env = _git_env(ws)
-
-        # stderr markers that mean "this ref does not exist" — a soft miss the
-        # base-ref candidate loop may retry — as opposed to git being unable
-        # to read the repository at all (ownership, corruption, ...).
-        ref_miss_markers = ('unknown revision', 'bad revision', 'ambiguous argument')
-
-        def _split(out: str) -> List[str]:
-            return [line.strip() for line in out.splitlines() if line.strip()]
-
-        def _run_git(args: List[str]) -> List[str]:
-            """Run git, returning stdout lines; raise _GitScopeError on failure.
-
-            stderr is captured rather than discarded so the failure reason —
-            e.g. git's self-diagnosing ``dubious ownership`` message — survives
-            into the logs instead of being indistinguishable from an empty diff.
-            """
-            res = subprocess.run(args, text=True, capture_output=True, env=git_env)
-            if res.returncode != 0:
-                stderr = (res.stderr or '').strip()
-                first = stderr.splitlines()[0] if stderr else f'exit code {res.returncode}'
-                miss = any(m in stderr.lower() for m in ref_miss_markers)
-                mb_miss = 'no merge base' in stderr.lower()
-                raise _GitScopeError(first, ref_miss=miss, merge_base_miss=mb_miss)
-            return _split(res.stdout)
 
         # Change to workspace directory before running git commands
         # This ensures git runs in the correct repository context
@@ -1895,123 +2031,218 @@ def _detect_git_changed_files(workspace_path: str, mode: str = 'staged', commit:
         try:
             os.chdir(str(ws))
 
-            def _fail_fast_if_shallow(ref: str) -> None:
-                """Deterministic misconfiguration check for an unresolvable base.
+            git = ['git']
 
-                A shallow checkout (no ``fetch-depth: 0``) can *never* resolve
-                the base ref, so every PR on this checkout would fail the same
-                way. Name the one-line fix here instead of letting the caller
-                report a generic unresolvable-scope error. Follows the existing
-                SystemExit convention for unrecoverable configuration errors
-                (see repository/branch discovery below).
+            def _split(out: str) -> List[str]:
+                return [line.strip() for line in out.splitlines() if line.strip()]
 
-                Skipped under ``fail_open``: the caller set ``scan_all`` and has
-                opted into widening an unresolvable scope instead of failing.
-                """
-                if fail_open:
-                    return
-                try:
-                    shallow = _run_git(['git', 'rev-parse', '--is-shallow-repository']) == ['true']
-                except Exception:
-                    return  # probe failed; fall through to the generic fallback
-                if shallow:
-                    raise SystemExit(
-                        f"changed_files: cannot diff against base ref '{ref}' (missing ref or no "
-                        "shared history) and this checkout is shallow. Set 'fetch-depth: 0' on "
-                        "actions/checkout (or otherwise fetch the base branch with full history) "
-                        "so the diff has a base to compare against."
+            ref_miss_markers = (
+                'unknown revision',
+                'bad revision',
+                'ambiguous argument',
+                'invalid object name',
+                'invalid symmetric difference expression',
+            )
+
+            def _run_git(args: List[str]) -> List[str]:
+                result = subprocess.run(
+                    [*git, *args],
+                    cwd=str(ws),
+                    text=True,
+                    capture_output=True,
+                    env=git_env,
+                )
+                if result.returncode != 0:
+                    stderr = (result.stderr or '').strip()
+                    first = stderr.splitlines()[0] if stderr else f'exit code {result.returncode}'
+                    lowered = stderr.lower()
+                    raise _GitScopeError(
+                        first,
+                        ref_miss=any(marker in lowered for marker in ref_miss_markers),
+                        merge_base_miss='no merge base' in lowered,
                     )
+                return _split(result.stdout)
 
-            def _resolve_base_diff(ref: str) -> Optional[List[str]]:
-                """Base diff with the shallow fail-fast applied to both failure shapes.
-
-                A shallow misconfiguration shows up either as a missing base ref
-                (nothing fetched) or as ``no merge base`` (base tip fetched but
-                history disconnected). Both are deterministic — fail fast when
-                shallow; otherwise preserve the original failure semantics.
-                """
-                if not ref:
-                    return None
+            def _is_shallow() -> bool:
                 try:
-                    files = _diff_against_base(ref)
-                except _GitScopeError as e:
-                    if e.merge_base_miss:
-                        _fail_fast_if_shallow(ref)
-                        log.warning("changed_files scope: base ref %r shares no merge base with HEAD (%s)", ref, e)
-                        return None
-                    raise
-                if files is None:
-                    _fail_fast_if_shallow(ref)
-                return files
+                    return _run_git(['rev-parse', '--is-shallow-repository']) == ['true']
+                except Exception:
+                    return False
 
-            def _diff_against_base(ref: str) -> Optional[List[str]]:
-                """Diff changed files (excluding deletions) against a base ref.
+            def _git_is_usable() -> bool:
+                """Is git willing to talk to this checkout at all?
 
-                Tries the remote-tracking ref (``origin/<ref>``) first, then the
-                bare ref. Returns None when neither candidate resolves (the ref
-                does not exist locally); raises _GitScopeError when git itself
-                cannot read the repository. The ``--diff-filter=ACMR`` excludes
-                deleted paths so they never become scan targets.
+                A container action runs as root over a workspace owned by the
+                runner user, which git refuses with "detected dubious
+                ownership" -- an error that otherwise looks exactly like an
+                empty diff. ``_git_env`` already trusts the selected workspace
+                for this subprocess, so reaching this check means something
+                else is wrong with the checkout.
                 """
-                if not ref:
-                    return None
-                last_miss = ''
-                for candidate in (f'origin/{ref}', ref):
-                    try:
-                        return _run_git(['git', 'diff', '--name-only', '--diff-filter=ACMR', f'{candidate}...HEAD'])
-                    except _GitScopeError as e:
-                        if e.ref_miss:
-                            last_miss = str(e)
+                try:
+                    _run_git(['rev-parse', '--git-dir'])
+                    return True
+                except Exception:
+                    return False
+
+            def _diff_against_base(refs: List[str]) -> Optional[List[str]]:
+                """Diff changed files (excluding deletions) against a PR base.
+
+                Each candidate is tried as the remote-tracking ref
+                (``origin/<ref>``) and then bare. Returns None when no
+                candidate resolves, so the caller can fail closed or use the
+                explicit ``scan_all`` fallback.
+                ``--diff-filter=ACMR`` excludes deleted paths so they never
+                become scan targets.
+                """
+                tried: List[str] = []
+                failures: List[str] = []
+                for ref in refs:
+                    candidates = (
+                        (ref, ref.removeprefix('origin/'))
+                        if ref.startswith('origin/')
+                        else (f'origin/{ref}', ref)
+                    )
+                    for candidate in candidates:
+                        if candidate in tried:
                             continue
-                        raise
-                log.warning("changed_files scope: base ref %r could not be resolved (%s)", ref, last_miss or 'no candidates tried')
+                        tried.append(candidate)
+                        try:
+                            files = _run_git(
+                                [
+                                    'diff',
+                                    '--name-only',
+                                    '--diff-filter=ACMR',
+                                    f'{candidate}...HEAD',
+                                ]
+                            )
+                            log.info("Resolved PR diff base to '%s'", candidate)
+                            return files
+                        except _GitScopeError as error:
+                            if error.ref_miss or error.merge_base_miss:
+                                failures.append(f"{candidate}: {error}")
+                                continue
+                            raise
+                if tried:
+                    log.debug("No PR diff base resolved; tried: %s", ', '.join(tried))
+                if refs and _is_shallow() and not fail_open:
+                    raise SystemExit(
+                        f"changed_files: cannot diff against base ref '{refs[0]}' (missing ref "
+                        "or no shared history) and this checkout is shallow. Set "
+                        "'fetch-depth: 0' on actions/checkout (or otherwise fetch the base "
+                        "branch with full history) so the diff has a base to compare against."
+                    )
+                if failures:
+                    log.warning(
+                        "changed_files scope: no candidate PR base could be diffed (%s)",
+                        '; '.join(failures),
+                    )
                 return None
 
+            def _warn_no_base(refs: List[str]) -> None:
+                """Explain a failed base resolution instead of returning [] quietly."""
+                if not _git_is_usable():
+                    log.warning(
+                        "Cannot scope the scan to changed files: git refused to read %s even "
+                        "with that workspace supplied as a command-scoped safe.directory. The "
+                        "checkout is probably damaged or incomplete. "
+                        "Re-run actions/checkout, or pass an explicit file list to "
+                        "changed_files.",
+                        str(ws),
+                    )
+                    return
+                if not refs:
+                    if _event_is_comment_on_pull_request():
+                        log.warning(
+                            "Cannot scope the scan to changed files: no pull request base was "
+                            "found. This run was triggered by a comment on a pull request "
+                            "(issue_comment), which sets no GITHUB_BASE_REF and whose event "
+                            "payload only carries github.event.issue.pull_request -- a set of "
+                            "URLs with no base ref or sha in it. Look the base up in the "
+                            "workflow (`gh pr view <number> --json baseRefName`) and pass it to "
+                            "the scan step as GITHUB_BASE_REF, or use "
+                            "changed_files: 'current-commit'."
+                        )
+                        return
+                    log.warning(
+                        "Cannot scope the scan to changed files: no pull request base was found. "
+                        "GITHUB_BASE_REF is unset and the GitHub event payload has no "
+                        "pull_request.base, which happens on non-pull_request triggers. Use "
+                        "changed_files: 'current-commit', or pass an explicit file list."
+                    )
+                    return
+                shallow_hint = (
+                    " The checkout is shallow, so the base branch is not in it -- set "
+                    "fetch-depth: 0 on actions/checkout."
+                    if _is_shallow() else
+                    " The base branch is not present in this checkout -- set fetch-depth: 0 on "
+                    "actions/checkout so it is fetched."
+                )
+                log.warning(
+                    "Cannot scope the scan to changed files: none of the candidate PR bases (%s) "
+                    "could be resolved in %s.%s",
+                    ', '.join(refs), str(ws), shallow_hint,
+                )
+
             if mode == 'auto':
-                # Prefer the PR base-ref diff in CI; fall back to staged changes
+                # Prefer the PR base diff in CI; fall back to staged changes
                 # for local/pre-commit use.
-                base = base_ref or os.environ.get('GITHUB_BASE_REF', '')
-                pr_files = _resolve_base_diff(base)
+                refs = _pr_base_candidates(base_ref)
+                if refs:
+                    pr_files = _diff_against_base(refs)
+                    if pr_files is not None:
+                        return pr_files
+                    _warn_no_base(refs)
+                    return None
+                if (
+                    _event_is_comment_on_pull_request()
+                    or os.environ.get('GITHUB_ACTIONS', '').lower() == 'true'
+                    or bool(_read_github_event())
+                ):
+                    _warn_no_base(refs)
+                    return None
+                staged = _run_git(['diff', '--name-only', '--cached'])
+                log.info(
+                    "changed_files='auto' fell back to staged changes: %d file(s)", len(staged)
+                )
+                return staged
+            elif mode == 'pr':
+                refs = _pr_base_candidates(base_ref)
+                pr_files = _diff_against_base(refs)
                 if pr_files is not None:
                     return pr_files
-                if base:
-                    # A base ref was provided (we are in a PR context) but could
-                    # not be diffed against, and the shallow fail-fast did not
-                    # apply (non-shallow checkout). Report failure so the caller
-                    # falls back to a full scan rather than the staged diff,
-                    # which is almost always empty in CI.
-                    return None
-                return _run_git(['git', 'diff', '--name-only', '--cached'])
-            elif mode == 'pr':
-                base = base_ref or os.environ.get('GITHUB_BASE_REF', '')
-                if not base:
-                    log.warning("changed_files scope: mode 'pr' but no base ref available (GITHUB_BASE_REF unset)")
-                    return None
-                return _resolve_base_diff(base)
+                _warn_no_base(refs)
+                return None
             elif mode == 'staged':
                 # staged but not yet committed
-                return _run_git(['git', 'diff', '--name-only', '--cached'])
+                return _run_git(['diff', '--name-only', '--cached'])
             elif mode == 'current-commit':
                 # files that are part of HEAD commit
-                return _run_git(['git', 'diff-tree', '--no-commit-id', '--name-only', '-r', 'HEAD'])
+                return _run_git(
+                    ['diff-tree', '--no-commit-id', '--name-only', '-r', 'HEAD']
+                )
             elif mode == 'commit' and commit:
-                return _run_git(['git', 'diff-tree', '--no-commit-id', '--name-only', '-r', commit])
+                return _run_git(
+                    ['diff-tree', '--no-commit-id', '--name-only', '-r', commit]
+                )
             else:
-                return []
+                log.warning("Unknown changed-files detection mode '%s'", mode)
+                return None
         finally:
             # Always restore original working directory
             os.chdir(original_cwd)
 
     except _GitScopeError as e:
-        msg = str(e)
         hint = ''
-        if 'dubious ownership' in msg.lower():
-            hint = (" — the checkout is owned by a different user; the workspace should be"
-                    " marked safe.directory automatically as of this release, so please report this")
-        log.warning("changed_files scope: git failed: %s%s", msg, hint)
+        if 'dubious ownership' in str(e).lower():
+            hint = (
+                " — the workspace should already be marked safe.directory for this command; "
+                "please report this"
+            )
+        log.warning("changed_files scope: git failed: %s%s", e, hint)
         return None
     except Exception as e:
-        log.warning("changed_files scope: unexpected error during git detection: %s", e)
+        log.warning("Cannot scope the scan to changed files: %s: %s", type(e).__name__, e)
         return None
 
 
@@ -2208,10 +2439,10 @@ def _discover_repository(cli_repo: str | None, github_repository: str = '', gith
     # 4. Git information
     try:
         url = subprocess.check_output(
-            ['git', 'config', '--get', 'remote.origin.url'],
-            text=True,
+            ['git', 'config', '--get', 'remote.origin.url'], 
+            text=True, 
             stderr=subprocess.DEVNULL,
-            env=_git_env()
+            env=_git_env(),
         ).strip()
         
         if url.endswith('.git'):
@@ -2278,10 +2509,10 @@ def _discover_branch(cli_branch: str | None, github_head_ref: str = '', github_r
     # 4. Git information
     try:
         branch = subprocess.check_output(
-            ['git', 'rev-parse', '--abbrev-ref', 'HEAD'],
+            ['git', 'rev-parse', '--abbrev-ref', 'HEAD'], 
             text=True,
             stderr=subprocess.DEVNULL,
-            env=_git_env()
+            env=_git_env(),
         ).strip()
         
         if branch and branch != 'HEAD':
@@ -2316,10 +2547,10 @@ def _discover_commit_hash() -> str:
     # 2. Git information
     try:
         commit = subprocess.check_output(
-            ['git', 'rev-parse', '--short', 'HEAD'],
+            ['git', 'rev-parse', '--short', 'HEAD'], 
             text=True,
             stderr=subprocess.DEVNULL,
-            env=_git_env()
+            env=_git_env(),
         ).strip()
         
         if commit:
@@ -2362,7 +2593,7 @@ def _discover_is_default_branch(current_branch: str, workspace_path: str = '') -
             text=True,
             stderr=subprocess.DEVNULL,
             cwd=cwd,
-            env=_git_env(workspace_path)
+            env=_git_env(workspace_path),
         ).strip()
         
         # Extract branch name from refs/remotes/origin/branch-name
@@ -2384,7 +2615,7 @@ def _discover_is_default_branch(current_branch: str, workspace_path: str = '') -
             text=True,
             stderr=subprocess.DEVNULL,
             cwd=cwd,
-            env=_git_env(workspace_path)
+            env=_git_env(workspace_path),
         ).strip()
         
         # Parse the output: "ref: refs/heads/main\tHEAD"

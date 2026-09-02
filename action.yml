@@ -114,15 +114,14 @@ inputs:
     description: >-
       Diff-only mode: scope every scanner (SAST/OpenGrep, secrets, containers)
       to changed files only, instead of the whole repository. Accepts a
-      comma-separated file list, a commit hash, 'auto' (diffs against the PR
-      base branch in CI, else staged changes), 'pr' (diff against
-      GITHUB_BASE_REF), or 'current-commit'. For PR/'auto' modes, check out with
-      actions/checkout fetch-depth: 0 so the base branch is available. When the
-      diff resolves to no existing files (e.g. a delete-only PR) the scanners
-      are skipped rather than scanning the whole repo. When the diff cannot be
-      resolved at all (unreadable repo, missing base ref) the run fails with a
-      configuration error instead of reporting a green scan of nothing; set
-      scan_all to widen to a full-repo scan in that case instead.
+      comma-separated file list, a commit hash, 'auto' (the PR base diff in CI,
+      else staged changes locally), 'pr' (the PR base diff only), or
+      'current-commit'. The PR base comes from GITHUB_BASE_REF or from
+      pull_request.base in the GitHub event payload. For PR/'auto' modes, check
+      out with actions/checkout fetch-depth: 0 so the base branch is available.
+      A genuinely empty diff skips the scoped scanners. If the diff cannot be
+      resolved, the run fails with a configuration error; set scan_all to widen
+      consistently to a full-repository scan on that failure path instead.
     required: false
     default: ""
   scan_all:

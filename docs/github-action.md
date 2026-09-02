@@ -313,8 +313,9 @@ jobs:
 
 `changed_files` accepts:
 
-- `auto` — diff against the PR base branch in CI (`GITHUB_BASE_REF`), else staged changes
-- `pr` — diff against the PR base branch (`GITHUB_BASE_REF`)
+- `auto` — the PR base diff in CI; staged changes only in a local run with no PR context
+- `pr` — the PR base diff, and nothing else
+- `current-commit` — files in the `HEAD` commit
 - a commit hash — files changed in that commit
 - a comma-separated file list — e.g. `src/app.py,src/utils.js`
 
@@ -358,6 +359,45 @@ jobs:
 > still skips the scanners — only a **failed** resolution errors. The resolved
 > file count is logged on every scoped run, so an empty diff and a failed lookup
 > are always distinguishable in the logs.
+
+### Checking that the scope took effect
+
+Diff-only mode logs what it did. Look for these lines in the step output:
+
+```text
+INFO  Resolved PR diff base to 'origin/main'
+INFO  Diff-only scan scoping requested (changed_files=auto): resolved 12 changed file(s)
+INFO  Diff-only scan scoping active: 12 scan target(s) from 12 changed file(s)
+```
+
+If the scope could not be applied, the run fails and says why:
+
+| Error or warning you will see | What to do |
+|-------------------------------|------------|
+| `this checkout is shallow ... Set 'fetch-depth: 0'` | Add `fetch-depth: 0` to `actions/checkout` |
+| `no pull request base was found` | The trigger is not `pull_request`, so there is no base. Use `changed_files: 'current-commit'` or an explicit file list |
+| `is not a git repository` | Run `actions/checkout` before the scan step |
+| `git refused to read ... even with ... safe.directory` | The checkout is damaged or incomplete. Re-run `actions/checkout`, or pass an explicit file list |
+| `the scope could not be resolved` | Fix the preceding Git error, or set `scan_all: true` to opt into a full-repository fallback |
+
+A successful empty diff is logged separately as genuinely empty and skips the
+scoped scanners; it is never conflated with a resolution failure.
+
+You do not need `git config --global --add safe.directory` for this. The scan
+runs as root inside a container over a workspace owned by the runner user, and
+git normally refuses that with `detected dubious ownership`. Git subprocesses
+mark the explicitly selected workspace as a command-scoped `safe.directory`, so
+no config files are changed and no workflow change is needed. Setting
+`safe.directory` in a workflow step would not have helped anyway, because it
+writes the runner's git config rather than the container's.
+
+### Where the setting can come from
+
+`changed_files` is honored identically from the action input, the
+`INPUT_CHANGED_FILES` environment variable, the `--changed-files` CLI flag, a
+`--config` JSON file, and a Socket dashboard config. `scan_all` is only the
+fail-open fallback when one of those requests cannot be resolved; it does not
+override a successfully resolved scope.
 
 ## PR Comment Customization
 

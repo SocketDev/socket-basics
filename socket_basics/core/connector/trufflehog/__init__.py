@@ -11,6 +11,7 @@ import posixpath
 import re
 import subprocess
 import tempfile
+from pathlib import Path
 from typing import Dict, List, Any
 
 from ..base import BaseConnector
@@ -209,6 +210,30 @@ class TruffleHogScanner(BaseConnector):
                 workspace_root,
             )
 
+    def _existing_changed_file_paths(self, changed_files: List[str]) -> List[str]:
+        """Resolve changed paths against the workspace, dropping ones that are gone.
+
+        A changed-file list routinely names paths that are no longer on disk:
+        a delete-only PR, the old half of a rename, a file the branch removed
+        later on. TruffleHog exits non-zero on a path it cannot open, which
+        throws away the findings for every other path in the same run, so the
+        missing ones have to go before the command is built. This is the rule
+        ``Config._resolve_file_targets`` already applies for the scanners that
+        take their targets from ``get_scan_targets()``; the list here does not
+        pass through it, because it can also come from the staged-file fallback.
+        """
+        workspace_root = Path(self._workspace_root())
+        resolved: List[str] = []
+        for changed_file in changed_files:
+            path = Path(changed_file)
+            if not path.is_absolute():
+                path = workspace_root / changed_file
+            if path.exists():
+                resolved.append(str(path))
+            else:
+                logger.info("Skipping changed file that no longer exists: %s", path)
+        return resolved
+
     def scan(self) -> Dict[str, Any]:
         """Run Trufflehog secret scanning"""
         if not self.is_enabled():
@@ -237,7 +262,7 @@ class TruffleHogScanner(BaseConnector):
             ):
                 try:
                     from socket_basics.core.config import _detect_git_changed_files
-                    changed_files = _detect_git_changed_files(str(self.config.workspace), mode='staged') or []
+                    changed_files = _detect_git_changed_files(str(self.config.workspace), mode='staged')
                 except Exception:
                     changed_files = []
 
@@ -261,7 +286,7 @@ class TruffleHogScanner(BaseConnector):
             # If changed_files are present, pass those individual files;
             # otherwise use the configured targets (including scan_files).
             if changed_files or scope_requested:
-                target_candidates = [self.config.workspace / cf for cf in changed_files]
+                target_candidates = self._existing_changed_file_paths(changed_files)
                 excluded_target_message = "Skipping excluded changed file: %s"
                 all_excluded_message = "All changed files were excluded from TruffleHog scanning"
             else:

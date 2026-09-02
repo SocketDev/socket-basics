@@ -109,10 +109,15 @@ changed files only, the way Socket SCA Pull Request alerts behave. Accepts:
 
 - a comma-separated file list (e.g. `src/app.py,src/utils.js`)
 - a commit hash — files changed in that commit
-- `auto` — the PR base-ref diff when running in a PR CI context
-  (`GITHUB_BASE_REF` is set), otherwise staged (`--cached`) changes
-- `pr` — diff against the PR base branch (`GITHUB_BASE_REF`)
+- `auto` — the PR base diff in CI; staged (`--cached`) changes only in a local
+  run with no PR context
+- `pr` — the PR base diff, and nothing else
 - `current-commit` — files in the `HEAD` commit
+
+The same value works from the CLI (`--changed-files`), the `changed_files`
+action input, the `INPUT_CHANGED_FILES` environment variable, a `--config` JSON
+file, and a Socket dashboard config. Whichever way it arrives, it is resolved
+against git once, in the same place.
 
 Deletions are excluded from PR/`auto`/`pr` diffs so removed paths never become
 scan targets. When the diff resolves to no existing files (e.g. a delete-only
@@ -120,23 +125,53 @@ PR), the scanners are skipped rather than falling back to scanning the whole
 repository. For PR/`auto`/`pr` modes, check out with full history (e.g.
 `actions/checkout` with `fetch-depth: 0`) so the base branch is available.
 
-If the diff **cannot be resolved** — unreadable repository, missing base ref, or
-a shallow checkout with no base to diff against — the run **fails with a
-configuration error** naming the underlying git error, and nothing is scanned.
-Neither alternative is honest: skipping the scanners exits green having scanned
-zero files, and widening to the whole repository does the expensive thing on
-every PR, which is what requesting a diff scope was avoiding. Shallow checkouts
-get a more specific error naming `fetch-depth: 0`, covering both the missing-ref
-and disconnected-history (`no merge base`) shapes.
+**Finding the pull request base.** `auto` and `pr` try, in order:
 
-Set **`scan_all`** to widen instead of failing: an unresolvable scope then falls
-back to a full-workspace scan with a warning, consistently across every enabled
-scanner. A scope that resolves successfully remains authoritative even when
-`scan_all` is set; a genuinely empty diff still skips the scoped scanners.
+1. `GITHUB_BASE_REF` — set by GitHub on `pull_request` and
+   `pull_request_target` triggers only
+2. `pull_request.base.sha` from the event payload at `GITHUB_EVENT_PATH` — an
+   exact commit, so it works even when no remote-tracking branch exists
+3. `pull_request.base.ref` from the same payload
 
-The resolved scope is logged on every run (file count at INFO, full file list
-at DEBUG), so an empty diff and a failed lookup are distinguishable in run
-logs.
+Each candidate is tried as `origin/<ref>` and then bare. If none resolves, the
+run logs the underlying reason (shallow checkout, workspace is not a git
+repository, git refused to read the repository, no PR base at all) and fails
+with a configuration error. It never reports a green scan of nothing and never
+silently widens to the whole repository.
+
+Set **`scan_all`** to opt into widening on that failure path. An unresolvable
+scope then falls back to a full-workspace scan with a warning, consistently
+across every enabled scanner. A scope that resolves successfully remains
+authoritative even when `scan_all` is set; a genuinely empty diff still skips
+the scoped scanners.
+
+Steps 2 and 3 cover the triggers whose payload carries a top-level
+`pull_request`: `pull_request`, `pull_request_target`, `pull_request_review`
+and `pull_request_review_comment`. They do **not** cover `issue_comment`. That
+payload has `issue.pull_request` instead, which is a set of URLs with no base
+ref or sha in it, so there is nothing to diff against without a GitHub API
+call. If you run the scan from a comment trigger, look the base up in the
+workflow and pass it in yourself:
+
+```yaml
+- id: prbase
+  run: echo "ref=$(gh pr view ${{ github.event.issue.number }} --json baseRefName -q .baseRefName)" >> "$GITHUB_OUTPUT"
+  env:
+    GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+- uses: SocketDev/socket-basics@v2
+  env:
+    GITHUB_BASE_REF: ${{ steps.prbase.outputs.ref }}
+  with:
+    changed_files: 'auto'
+```
+
+Otherwise the run explains that it was triggered by a comment on a pull request
+and fails because it cannot work the base out on its own.
+
+**Socket Tier 1 reachability is not diff-scoped.** It runs `socket scan reach`
+over the whole workspace because reachability needs the full dependency graph,
+so a `changed_files` scope does not narrow it. That is unchanged behavior, and
+the scanners this setting does scope are SAST/OpenGrep, secrets and containers.
 
 **Example:**
 ```bash

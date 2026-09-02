@@ -200,14 +200,14 @@ class BaseConnector(abc.ABC):
     
     def get_scan_targets(self) -> List[str]:
         """Get list of targets to scan
-        
+
         Returns:
             List of file paths or directories to scan
         """
         return self.config.get_scan_targets() if hasattr(self.config, 'get_scan_targets') else []
 
     def _changed_files_scope_requested(self) -> bool:
-        """Return whether the user requested a changed-files scope.
+        """Did the user explicitly ask for a changed-files scope?
 
         Connectors that derive their own targets must not substitute staged
         files or the workspace when a successful scope resolved to nothing.

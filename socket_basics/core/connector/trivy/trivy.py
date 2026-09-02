@@ -141,11 +141,11 @@ class TrivyScanner(BaseConnector):
 
         # A configured changed-files scope is authoritative. Only use the
         # connector's staged-file convenience fallback when neither a scope nor
-        # scan_all was requested. The configuration layer clears the scope flag
-        # when a failed resolution plus scan_all opts into a full scan; scan_all
-        # must not then be narrowed again by incidental staged files.
+        # scan_all was requested. After a failed resolution, scan_all must not
+        # be narrowed again by incidental staged files.
         configured_changed_files = self.config.get('changed_files', []) if hasattr(self.config, '_config') else []
         scope_requested = bool(configured_changed_files) or self._changed_files_scope_requested()
+
         changed_files = configured_changed_files
         if (
             not changed_files
@@ -154,39 +154,26 @@ class TrivyScanner(BaseConnector):
         ):
             try:
                 from socket_basics.core.config import _detect_git_changed_files
-                changed_files = _detect_git_changed_files(str(self.config.workspace), mode='staged') or []
+                changed_files = _detect_git_changed_files(str(self.config.workspace), mode='staged')
             except Exception:
                 changed_files = []
 
-        # A successful changed-files scope always narrows this scanner. If it
-        # contains no existing Dockerfile, there is nothing for this scanner to
-        # do; configured Dockerfiles must not replace the requested scope.
-        if scope_requested:
-            changed_dockerfiles = []
-            for cf in changed_files:
-                base = Path(cf).name
-                if base == 'Dockerfile' or 'dockerfile' in base.lower() or base.lower().endswith('.dockerfile'):
-                    if (self.config.workspace / cf).exists():
-                        changed_dockerfiles.append(cf)
-            if not changed_dockerfiles:
+        if scope_requested or changed_files:
+            changed_dockerfiles = self._changed_dockerfiles(changed_files)
+            if changed_dockerfiles:
+                logger.info(f"Detected {len(changed_dockerfiles)} changed Dockerfile(s); restricting Trivy to them")
+                dockerfiles = changed_dockerfiles
+            elif scope_requested:
+                # The scope named no Dockerfile at all. Leaving the configured
+                # list in place would scan files the scope deliberately left
+                # out, which is the whole point of asking for a changed-files
+                # scan. A successful scope remains authoritative even when
+                # scan_all is configured as the failure fallback.
                 logger.info(
-                    "Trivy Dockerfile scan skipped: the changed-files scope contains no "
-                    "existing Dockerfile"
+                    "Trivy Dockerfile scan skipped: a changed-files scope was requested and "
+                    "contains no Dockerfile, so the configured Dockerfiles are not scanned"
                 )
                 return {}
-            logger.info(f"Detected {len(changed_dockerfiles)} changed Dockerfile(s); restricting Trivy to them")
-            dockerfiles = changed_dockerfiles
-        elif not dockerfiles and changed_files:
-            # Preserve the connector's existing staged-file convenience when
-            # nobody requested a changed-files scope.
-            possible = []
-            for cf in changed_files:
-                base = Path(cf).name
-                if base == 'Dockerfile' or 'dockerfile' in base.lower() or base.lower().endswith('.dockerfile'):
-                    if (self.config.workspace / cf).exists():
-                        possible.append(cf)
-            if possible:
-                dockerfiles = possible
 
         if not dockerfiles:
             logger.info("No Dockerfiles specified, skipping Trivy Dockerfile scanning")
@@ -194,26 +181,6 @@ class TrivyScanner(BaseConnector):
 
         logger.info("Running Trivy Dockerfile scanning")
         results = {}
-
-        # For an unrequested staged-file hint, retain the existing behavior of
-        # narrowing when it names Dockerfiles and otherwise leaving the
-        # configured list alone.
-        if changed_files and not scope_requested:
-            # Filter changed files down to ones that are Dockerfiles or named 'Dockerfile'
-            changed_dockerfiles = []
-            for cf in changed_files:
-                cf_path = Path(cf)
-                base = cf_path.name
-                if base == 'Dockerfile' or base.lower().endswith('dockerfile') or base.lower().endswith(
-                        '.dockerfile') or 'dockerfile' in base.lower():
-                    # Ensure the file exists in workspace
-                    full = self.config.workspace / cf
-                    if full.exists():
-                        changed_dockerfiles.append(cf)
-
-            if changed_dockerfiles:
-                logger.info(f"Detected {len(changed_dockerfiles)} changed Dockerfile(s); restricting Trivy to them")
-                dockerfiles = changed_dockerfiles
 
         for dockerfile in dockerfiles:
             # Resolve dockerfile path: prefer given path if it exists, otherwise join with workspace
@@ -264,6 +231,20 @@ class TrivyScanner(BaseConnector):
                         pass
 
         return results
+
+    def _changed_dockerfiles(self, changed_files: List[str]) -> List[str]:
+        """Pick the Dockerfiles out of a changed-file list.
+
+        A path only counts when it still exists in the workspace, so a
+        Dockerfile the change deleted never becomes a scan target.
+        """
+        dockerfiles: List[str] = []
+        for changed_file in changed_files:
+            if 'dockerfile' not in Path(changed_file).name.lower():
+                continue
+            if (self.config.workspace / changed_file).exists():
+                dockerfiles.append(changed_file)
+        return dockerfiles
 
     def scan_images(self) -> Dict[str, Any]:
         """Run Trivy image scanning"""
@@ -351,7 +332,7 @@ class TrivyScanner(BaseConnector):
         ):
             try:
                 from socket_basics.core.config import _detect_git_changed_files
-                changed_files = _detect_git_changed_files(str(self.config.workspace), mode='staged') or []
+                changed_files = _detect_git_changed_files(str(self.config.workspace), mode='staged')
             except Exception:
                 changed_files = []
         
@@ -384,8 +365,8 @@ class TrivyScanner(BaseConnector):
         if not scan_paths:
             if scope_requested:
                 logger.info(
-                    "Trivy vulnerability scan skipped: the changed-files scope resolved to "
-                    "no scannable paths"
+                    "Trivy vulnerability scan skipped: a changed-files scope was requested and "
+                    "resolved to no scannable paths, so the whole workspace is not scanned"
                 )
                 return results
             scan_paths = [workspace_path]
