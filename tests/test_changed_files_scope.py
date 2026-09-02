@@ -164,8 +164,11 @@ class TestDetectGitChangedFiles:
         files = _detect_git_changed_files(str(pr_repo), mode="auto")
         assert sorted(files) == ["base.py", "feat.py"]
 
-    def test_auto_falls_back_to_staged_without_base_ref(self, pr_repo):
-        # No GITHUB_BASE_REF and no base_ref -> staged changes (none staged here)
+    def test_auto_falls_back_to_staged_without_base_ref(self, pr_repo, monkeypatch):
+        # Model a local run explicitly. In GitHub Actions, even without a PR
+        # base, auto must fail closed rather than mistake the usually-empty
+        # staged diff for a successful scope.
+        monkeypatch.delenv("GITHUB_ACTIONS", raising=False)
         (pr_repo / "staged.py").write_text("s = 1")
         _git(pr_repo, "add", "staged.py")
         files = _detect_git_changed_files(str(pr_repo), mode="auto")
