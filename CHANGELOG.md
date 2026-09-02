@@ -8,6 +8,37 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Fixed
+- `changed_files` diff-only mode always resolved to zero files in the pre-built
+  Docker GitHub Action: the container runs as root while the checkout is owned
+  by the runner user, so git's ownership check refused every diff lookup, the
+  scope silently resolved to nothing, and the scanners skipped with a green
+  run. Git subprocesses now mark the scan workspace as `safe.directory` via
+  command-scope `GIT_CONFIG_*` environment entries. No config files are
+  touched, and caller-provided `GIT_CONFIG_*` entries (including the previously
+  documented workaround) are preserved. The same mismatch broke git-based
+  repository/branch/commit and default-branch discovery in local Docker runs;
+  those lookups are covered by the same change.
+- A failed `changed_files` diff resolution is no longer indistinguishable from
+  an empty diff. Git errors are captured and logged instead of discarded, and
+  when the scope cannot be resolved — unreadable repository, unresolvable base
+  ref, or `pr` mode with no base ref — Socket Basics now **fails with a
+  configuration error** rather than reporting a green run that scanned nothing.
+  Shallow checkouts get a more specific error naming `fetch-depth: 0`. A
+  genuinely empty diff (e.g. a delete-only PR) is a successful resolution and
+  still skips the scanners as before.
+
+### Added
+- The resolved `changed_files` scope is now logged on every scoped run: file
+  count at INFO, the full file list at DEBUG — so an empty diff and a failed
+  lookup are visible and distinguishable in run logs.
+- `scan_all` is now a declared action input and doubles as the fail-open escape
+  hatch for `changed_files`: when the scope cannot be resolved, widen to a
+  full-repo scan with a warning instead of failing. Every enabled scanner
+  widens consistently on that failure path. A successfully resolved scope
+  remains authoritative, including a genuinely empty diff, which still skips
+  scoped scanners.
+
 ## [3.0.0] - 2026-08-06
 
 Major release: Trivy-backed scanning returns, now built and published through

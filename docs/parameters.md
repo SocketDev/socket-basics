@@ -120,6 +120,24 @@ PR), the scanners are skipped rather than falling back to scanning the whole
 repository. For PR/`auto`/`pr` modes, check out with full history (e.g.
 `actions/checkout` with `fetch-depth: 0`) so the base branch is available.
 
+If the diff **cannot be resolved** — unreadable repository, missing base ref, or
+a shallow checkout with no base to diff against — the run **fails with a
+configuration error** naming the underlying git error, and nothing is scanned.
+Neither alternative is honest: skipping the scanners exits green having scanned
+zero files, and widening to the whole repository does the expensive thing on
+every PR, which is what requesting a diff scope was avoiding. Shallow checkouts
+get a more specific error naming `fetch-depth: 0`, covering both the missing-ref
+and disconnected-history (`no merge base`) shapes.
+
+Set **`scan_all`** to widen instead of failing: an unresolvable scope then falls
+back to a full-workspace scan with a warning, consistently across every enabled
+scanner. A scope that resolves successfully remains authoritative even when
+`scan_all` is set; a genuinely empty diff still skips the scoped scanners.
+
+The resolved scope is logged on every run (file count at INFO, full file list
+at DEBUG), so an empty diff and a failed lookup are distinguishable in run
+logs.
+
 **Example:**
 ```bash
 socket-basics --changed-files auto

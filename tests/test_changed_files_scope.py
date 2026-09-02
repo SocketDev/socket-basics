@@ -5,13 +5,22 @@ honor ``changed_files`` so PRs report only on what the PR changed, instead of
 re-scanning the whole repository.
 """
 
+import json
 import os
 import subprocess
 from argparse import Namespace
+from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
 
-from socket_basics.core.config import Config, _detect_git_changed_files, create_config_from_args
+from socket_basics.core.config import (
+    Config,
+    _detect_git_changed_files,
+    _discover_repository,
+    _git_env,
+    create_config_from_args,
+)
 
 
 def _make_config(workspace, **overrides):
@@ -27,11 +36,22 @@ class TestGetScanTargets:
         (tmp_path / "a.py").write_text("x = 1")
         assert _make_config(tmp_path).get_scan_targets() == [str(tmp_path)]
 
-    def test_scan_all_returns_workspace(self, tmp_path):
+    def test_resolved_changed_files_outrank_scan_all_fallback(self, tmp_path):
         (tmp_path / "a.py").write_text("x = 1")
         cfg = _make_config(tmp_path, scan_all=True, changed_files=["a.py"])
-        # scan_all is an explicit override and wins over changed_files
-        assert cfg.get_scan_targets() == [str(tmp_path)]
+        assert cfg.get_scan_targets() == [str(tmp_path / "a.py")]
+
+    def test_empty_resolved_scope_outranks_scan_all_fallback(self, tmp_path):
+        cfg = _make_config(
+            tmp_path,
+            scan_all=True,
+            changed_files=[],
+            changed_files_scope_requested=True,
+        )
+        assert cfg.get_scan_targets() == []
+
+    def test_scan_all_without_a_successful_scope_returns_workspace(self, tmp_path):
+        assert _make_config(tmp_path, scan_all=True).get_scan_targets() == [str(tmp_path)]
 
     def test_changed_files_scopes_to_existing_files(self, tmp_path):
         (tmp_path / "a.py").write_text("x = 1")
@@ -170,3 +190,452 @@ class TestDetectGitChangedFiles:
 
         assert cfg.get("changed_files") == []
         assert cfg.get_scan_targets() == []
+
+
+def _git_refuses_repo(repo):
+    """True when git, told to assume a different owner, refuses to read `repo`.
+
+    ``GIT_TEST_ASSUME_DIFFERENT_OWNER`` is git's own test knob for the
+    ownership check behind ``safe.directory``; it makes every repository look
+    like it belongs to another user, which is exactly what a checkout looks
+    like from inside the container action. Used as a control so these tests
+    skip (instead of passing vacuously) on a git build without the knob.
+    """
+    probe = subprocess.run(
+        ["git", "-C", str(repo), "rev-parse", "--show-toplevel"],
+        capture_output=True,
+        text=True,
+        env={**os.environ, "GIT_TEST_ASSUME_DIFFERENT_OWNER": "1"},
+    )
+    return probe.returncode != 0
+
+
+class TestDubiousOwnership:
+    """Git subprocesses must survive the container-action ownership mismatch.
+
+    The pre-built Docker action runs as root while the checkout is owned by
+    the runner user; without ``safe.directory`` git refuses the repo, the diff
+    resolves to zero files, and the scanners silently skip.
+    """
+
+    def test_pr_diff_survives_dubious_ownership(self, pr_repo, monkeypatch):
+        for i in range(3):
+            monkeypatch.delenv(f"GIT_CONFIG_KEY_{i}", raising=False)
+            monkeypatch.delenv(f"GIT_CONFIG_VALUE_{i}", raising=False)
+        monkeypatch.delenv("GIT_CONFIG_COUNT", raising=False)
+
+        if not _git_refuses_repo(pr_repo):
+            pytest.skip("this git build does not honor GIT_TEST_ASSUME_DIFFERENT_OWNER")
+
+        monkeypatch.setenv("GIT_TEST_ASSUME_DIFFERENT_OWNER", "1")
+        files = _detect_git_changed_files(str(pr_repo), mode="pr", base_ref="main")
+        assert sorted(files) == ["base.py", "feat.py"]
+
+    def test_relative_workspace_survives_dubious_ownership(self, pr_repo, monkeypatch):
+        # git ignores relative safe.directory values, so the injected path must
+        # be absolutized even when --workspace is given as a relative path.
+        if not _git_refuses_repo(pr_repo):
+            pytest.skip("this git build does not honor GIT_TEST_ASSUME_DIFFERENT_OWNER")
+
+        monkeypatch.chdir(pr_repo.parent)
+        monkeypatch.setenv("GIT_TEST_ASSUME_DIFFERENT_OWNER", "1")
+        files = _detect_git_changed_files(pr_repo.name, mode="pr", base_ref="main")
+        assert sorted(files) == ["base.py", "feat.py"]
+
+    def test_repo_discovery_survives_dubious_ownership(self, pr_repo, monkeypatch):
+        _git(pr_repo, "remote", "add", "origin", "https://github.com/acme/demo.git")
+
+        if not _git_refuses_repo(pr_repo):
+            pytest.skip("this git build does not honor GIT_TEST_ASSUME_DIFFERENT_OWNER")
+
+        monkeypatch.chdir(pr_repo)
+        monkeypatch.setenv("GIT_TEST_ASSUME_DIFFERENT_OWNER", "1")
+        assert _discover_repository(None, "", "") == "acme/demo"
+
+
+class TestGitEnv:
+    """_git_env injects safe.directory without clobbering caller config."""
+
+    def test_injects_safe_directory_for_workspace(self, monkeypatch):
+        monkeypatch.delenv("GIT_CONFIG_COUNT", raising=False)
+        env = _git_env("/scan/me")
+        assert env["GIT_CONFIG_COUNT"] == "1"
+        assert env["GIT_CONFIG_KEY_0"] == "safe.directory"
+        assert env["GIT_CONFIG_VALUE_0"] == "/scan/me"
+
+    def test_appends_after_caller_provided_entries(self, monkeypatch):
+        # A user already deploying the documented env-var workaround must not
+        # have their entry clobbered.
+        monkeypatch.setenv("GIT_CONFIG_COUNT", "1")
+        monkeypatch.setenv("GIT_CONFIG_KEY_0", "user.name")
+        monkeypatch.setenv("GIT_CONFIG_VALUE_0", "runner")
+        env = _git_env("/scan/me")
+        assert env["GIT_CONFIG_COUNT"] == "2"
+        assert env["GIT_CONFIG_KEY_0"] == "user.name"
+        assert env["GIT_CONFIG_VALUE_0"] == "runner"
+        assert env["GIT_CONFIG_KEY_1"] == "safe.directory"
+        assert env["GIT_CONFIG_VALUE_1"] == "/scan/me"
+
+    def test_garbage_count_treated_as_zero(self, monkeypatch):
+        monkeypatch.setenv("GIT_CONFIG_COUNT", "not-a-number")
+        env = _git_env("/scan/me")
+        assert env["GIT_CONFIG_COUNT"] == "1"
+        assert env["GIT_CONFIG_KEY_0"] == "safe.directory"
+
+    def test_workspace_value_is_absolute(self, monkeypatch, tmp_path):
+        monkeypatch.delenv("GIT_CONFIG_COUNT", raising=False)
+        monkeypatch.chdir(tmp_path)
+        env = _git_env("some/relative/dir")
+        assert Path(env["GIT_CONFIG_VALUE_0"]).is_absolute()
+
+    def test_defaults_to_github_workspace(self, monkeypatch):
+        monkeypatch.delenv("GIT_CONFIG_COUNT", raising=False)
+        monkeypatch.setenv("GITHUB_WORKSPACE", "/github/workspace")
+        env = _git_env()
+        assert env["GIT_CONFIG_VALUE_0"] == "/github/workspace"
+
+
+class TestScopeResolutionFailure:
+    """Failed diff resolution must be distinguishable from an empty diff.
+
+    A git failure (unreadable repo, unresolvable base ref) returns None from the
+    detection helper, and the config layer turns that into a configuration error
+    — never a green run that silently scanned nothing, and never a silent widen
+    to the whole repository. ``scan_all`` opts into the widen instead. A
+    genuinely empty diff still returns [] and keeps the skip behavior (see the
+    delete-only test above).
+    """
+
+    def test_unreadable_repo_returns_none(self, pr_repo):
+        # Corrupt HEAD so every git command fails hard (not a ref miss).
+        (pr_repo / ".git" / "HEAD").write_text("garbage")
+        result = _detect_git_changed_files(str(pr_repo), mode="pr", base_ref="main")
+        assert result is None
+
+    def test_unresolvable_base_ref_returns_none(self, pr_repo):
+        result = _detect_git_changed_files(str(pr_repo), mode="pr", base_ref="no-such-branch")
+        assert result is None
+
+    def test_auto_with_unresolvable_base_ref_returns_none(self, pr_repo, monkeypatch):
+        # In a PR context (base ref set) an unresolvable base must NOT quietly
+        # fall back to the (usually empty) staged diff.
+        monkeypatch.setenv("GITHUB_BASE_REF", "no-such-branch")
+        result = _detect_git_changed_files(str(pr_repo), mode="auto")
+        assert result is None
+
+    def test_pr_mode_without_base_ref_returns_none(self, pr_repo, monkeypatch):
+        monkeypatch.delenv("GITHUB_BASE_REF", raising=False)
+        result = _detect_git_changed_files(str(pr_repo), mode="pr")
+        assert result is None
+
+    def test_failure_logs_git_stderr(self, pr_repo, caplog):
+        (pr_repo / ".git" / "HEAD").write_text("garbage")
+        with caplog.at_level("WARNING"):
+            _detect_git_changed_files(str(pr_repo), mode="pr", base_ref="main")
+        assert any("changed_files scope" in r.getMessage() for r in caplog.records)
+
+    def test_config_creation_fails_closed_on_failure(self, pr_repo, monkeypatch):
+        monkeypatch.delenv("GITHUB_WORKSPACE", raising=False)
+        monkeypatch.delenv("INPUT_SCAN_ALL", raising=False)
+        monkeypatch.setenv("GITHUB_BASE_REF", "main")
+        (pr_repo / ".git" / "HEAD").write_text("garbage")
+
+        # Scope resolution failed -> configuration error. Neither a green run
+        # that scanned nothing nor a silent full-repo scan.
+        with pytest.raises(SystemExit, match="could not be resolved"):
+            create_config_from_args(_config_args(pr_repo, "auto"))
+
+    def test_config_error_names_scan_all_escape_hatch(self, pr_repo, monkeypatch):
+        monkeypatch.delenv("GITHUB_WORKSPACE", raising=False)
+        monkeypatch.delenv("INPUT_SCAN_ALL", raising=False)
+        monkeypatch.setenv("GITHUB_BASE_REF", "main")
+        (pr_repo / ".git" / "HEAD").write_text("garbage")
+
+        with pytest.raises(SystemExit, match="scan_all"):
+            create_config_from_args(_config_args(pr_repo, "auto"))
+
+    def test_scan_all_opts_into_full_scan_fallback(self, pr_repo, monkeypatch, caplog):
+        monkeypatch.delenv("GITHUB_WORKSPACE", raising=False)
+        monkeypatch.setenv("GITHUB_BASE_REF", "main")
+        monkeypatch.setenv("INPUT_SCAN_ALL", "true")
+        (pr_repo / ".git" / "HEAD").write_text("garbage")
+
+        with caplog.at_level("WARNING"):
+            cfg = create_config_from_args(_config_args(pr_repo, "auto"))
+
+        # scan_all is the documented fail-open opt-in: widen, do not fail.
+        assert cfg.get("changed_files") == []
+        assert cfg.get("changed_files_scope_requested") is False
+        assert cfg.get_scan_targets() == [str(pr_repo)]
+        assert any("falling back to a full-repo scan" in r.getMessage() for r in caplog.records)
+
+    def test_config_creation_logs_resolved_count(self, pr_repo, monkeypatch, caplog):
+        monkeypatch.delenv("GITHUB_WORKSPACE", raising=False)
+        monkeypatch.setenv("GITHUB_BASE_REF", "main")
+
+        with caplog.at_level("INFO"):
+            cfg = create_config_from_args(_config_args(pr_repo, "auto"))
+
+        assert sorted(cfg.get("changed_files")) == ["base.py", "feat.py"]
+        assert any("resolved to 2 file(s)" in r.getMessage() for r in caplog.records)
+
+
+class TestShallowCheckoutFailFast:
+    """A shallow checkout that cannot resolve the base ref is a deterministic
+    misconfiguration (missing fetch-depth: 0), so the detection helper raises
+    with that one-line fix rather than returning a generic failure. Other
+    failures return None and let the config layer report the generic
+    unresolvable-scope error. Under ``fail_open`` (the caller set ``scan_all``)
+    the check is skipped so the widen can happen instead.
+    """
+
+    def test_shallow_missing_base_fails_fast_pr_mode(self, pr_repo):
+        (pr_repo / ".git" / "shallow").touch()
+        with pytest.raises(SystemExit, match="fetch-depth"):
+            _detect_git_changed_files(str(pr_repo), mode="pr", base_ref="no-such-branch")
+
+    def test_shallow_missing_base_fails_fast_auto_mode(self, pr_repo, monkeypatch):
+        (pr_repo / ".git" / "shallow").touch()
+        monkeypatch.setenv("GITHUB_BASE_REF", "no-such-branch")
+        with pytest.raises(SystemExit, match="fetch-depth"):
+            _detect_git_changed_files(str(pr_repo), mode="auto")
+
+    def test_shallow_with_resolvable_base_still_diffs(self, pr_repo):
+        # Shallowness alone is fine — only shallow AND unresolvable-base fails.
+        (pr_repo / ".git" / "shallow").touch()
+        files = _detect_git_changed_files(str(pr_repo), mode="pr", base_ref="main")
+        assert sorted(files) == ["base.py", "feat.py"]
+
+    def test_non_shallow_missing_base_returns_none(self, pr_repo):
+        assert _detect_git_changed_files(str(pr_repo), mode="pr", base_ref="no-such-branch") is None
+
+    def test_fail_open_skips_shallow_fail_fast(self, pr_repo):
+        # scan_all was set, so the caller wants to widen rather than fail: the
+        # shallow check must not pre-empt that with a SystemExit.
+        (pr_repo / ".git" / "shallow").touch()
+        result = _detect_git_changed_files(
+            str(pr_repo), mode="pr", base_ref="no-such-branch", fail_open=True
+        )
+        assert result is None
+
+    def test_fail_open_skips_no_merge_base_fail_fast(self, pr_repo):
+        _git(pr_repo, "checkout", "--orphan", "disconnected")
+        _git(pr_repo, "add", "-A")
+        _git(pr_repo, "commit", "-m", "orphan")
+        (pr_repo / ".git" / "shallow").touch()
+        result = _detect_git_changed_files(
+            str(pr_repo), mode="pr", base_ref="main", fail_open=True
+        )
+        assert result is None
+
+    def test_fail_open_still_resolves_a_good_diff(self, pr_repo):
+        # fail_open only affects failure handling, never a successful diff.
+        files = _detect_git_changed_files(
+            str(pr_repo), mode="pr", base_ref="main", fail_open=True
+        )
+        assert sorted(files) == ["base.py", "feat.py"]
+
+    def test_config_creation_propagates_config_error(self, pr_repo, monkeypatch):
+        monkeypatch.delenv("GITHUB_WORKSPACE", raising=False)
+        monkeypatch.setenv("GITHUB_BASE_REF", "no-such-branch")
+        (pr_repo / ".git" / "shallow").touch()
+        with pytest.raises(SystemExit, match="fetch-depth"):
+            create_config_from_args(_config_args(pr_repo, "auto"))
+
+    def test_shallow_no_merge_base_fails_fast(self, pr_repo, monkeypatch):
+        # Base tip exists but shares no history with HEAD (partial fetch shape):
+        # `A...HEAD: no merge base`. Shallow -> config error, same as missing ref.
+        _git(pr_repo, "checkout", "--orphan", "disconnected")
+        _git(pr_repo, "add", "-A")
+        _git(pr_repo, "commit", "-m", "orphan")
+        (pr_repo / ".git" / "shallow").touch()
+        with pytest.raises(SystemExit, match="fetch-depth"):
+            _detect_git_changed_files(str(pr_repo), mode="pr", base_ref="main")
+
+    def test_non_shallow_no_merge_base_returns_none(self, pr_repo):
+        _git(pr_repo, "checkout", "--orphan", "disconnected")
+        _git(pr_repo, "add", "-A")
+        _git(pr_repo, "commit", "-m", "orphan")
+        assert _detect_git_changed_files(str(pr_repo), mode="pr", base_ref="main") is None
+
+
+class TestTruffleHogScopePolicy:
+    """TruffleHog must use the same successful-scope/failure distinction."""
+
+    @staticmethod
+    def _scanner(config):
+        from socket_basics.core.connector.trufflehog import TruffleHogScanner
+
+        scanner = TruffleHogScanner(config)
+        scanner._process_results = lambda findings: {}
+        scanner.generate_notifications = lambda components: {}
+        return scanner
+
+    def test_successful_empty_scope_skips_even_with_scan_all(self, tmp_path, monkeypatch):
+        cfg = _make_config(
+            tmp_path,
+            scan_all=True,
+            changed_files=[],
+            changed_files_scope_requested=True,
+            secret_scanning_enabled=True,
+            trufflehog_exclude_dir="",
+            trufflehog_show_unverified=False,
+        )
+        staged_calls = []
+        invocations = []
+        monkeypatch.setattr(
+            "socket_basics.core.config._detect_git_changed_files",
+            lambda *args, **kwargs: staged_calls.append(kwargs.get("mode")) or ["staged.py"],
+        )
+        monkeypatch.setattr(
+            "socket_basics.core.connector.trufflehog.subprocess.run",
+            lambda command, **kwargs: invocations.append(command)
+            or SimpleNamespace(returncode=0, stdout="", stderr=""),
+        )
+
+        assert self._scanner(cfg).scan() == {}
+        assert staged_calls == []
+        assert invocations == []
+
+    def test_scan_all_after_failed_resolution_scans_workspace(self, tmp_path, monkeypatch):
+        (tmp_path / "staged.py").write_text("token = 'abc'\n")
+        cfg = _make_config(
+            tmp_path,
+            scan_all=True,
+            changed_files=[],
+            changed_files_scope_requested=False,
+            secret_scanning_enabled=True,
+            trufflehog_exclude_dir="",
+            trufflehog_show_unverified=False,
+        )
+        staged_calls = []
+        invocations = []
+        monkeypatch.setattr(
+            "socket_basics.core.config._detect_git_changed_files",
+            lambda *args, **kwargs: staged_calls.append(kwargs.get("mode")) or ["staged.py"],
+        )
+        monkeypatch.setattr(
+            "socket_basics.core.connector.trufflehog.subprocess.run",
+            lambda command, **kwargs: invocations.append(command)
+            or SimpleNamespace(returncode=0, stdout="", stderr=""),
+        )
+
+        self._scanner(cfg).scan()
+        assert staged_calls == []
+        assert invocations == [
+            [
+                "trufflehog",
+                "filesystem",
+                "--json",
+                "--no-verification",
+                str(tmp_path),
+            ]
+        ]
+
+
+def _record_trivy_paths(monkeypatch):
+    scanned = []
+
+    def fake_run(command, **kwargs):
+        scanned.append(command[-1])
+        output_path = Path(command[command.index("--output") + 1])
+        output_path.write_text(json.dumps({"Results": []}))
+        return SimpleNamespace(returncode=0, stdout="", stderr="")
+
+    monkeypatch.setattr(
+        "socket_basics.core.connector.trivy.trivy.subprocess.run",
+        fake_run,
+    )
+    return scanned
+
+
+class TestTrivyScopePolicy:
+    """Trivy's custom target builders must honor the same scope matrix."""
+
+    @staticmethod
+    def _scanner(config):
+        from socket_basics.core.connector.trivy.trivy import TrivyScanner
+
+        return TrivyScanner(config)
+
+    def test_successful_empty_scope_skips_vulnerability_scan_with_scan_all(
+        self, tmp_path, monkeypatch
+    ):
+        scanned = _record_trivy_paths(monkeypatch)
+        cfg = _make_config(
+            tmp_path,
+            scan_all=True,
+            changed_files=[],
+            changed_files_scope_requested=True,
+            trivy_vuln_enabled=True,
+        )
+
+        assert self._scanner(cfg).scan_vulnerabilities() == {}
+        assert scanned == []
+
+    def test_scan_all_after_failed_resolution_scans_workspace(self, tmp_path, monkeypatch):
+        (tmp_path / "staged").mkdir()
+        (tmp_path / "staged" / "requirements.txt").write_text("requests==2.0.0\n")
+        scanned = _record_trivy_paths(monkeypatch)
+        staged_calls = []
+        monkeypatch.setattr(
+            "socket_basics.core.config._detect_git_changed_files",
+            lambda *args, **kwargs: staged_calls.append(kwargs.get("mode"))
+            or ["staged/requirements.txt"],
+        )
+        cfg = _make_config(
+            tmp_path,
+            scan_all=True,
+            changed_files=[],
+            changed_files_scope_requested=False,
+            trivy_vuln_enabled=True,
+        )
+
+        self._scanner(cfg).scan_vulnerabilities()
+        assert staged_calls == []
+        assert scanned == [str(tmp_path)]
+
+    def test_successful_non_dockerfile_scope_skips_configured_dockerfile(
+        self, tmp_path, monkeypatch
+    ):
+        monkeypatch.chdir(tmp_path)
+        (tmp_path / "Dockerfile").write_text("FROM alpine\n")
+        (tmp_path / "app.py").write_text("x = 1\n")
+        scanned = _record_trivy_paths(monkeypatch)
+        cfg = _make_config(
+            tmp_path,
+            scan_all=True,
+            changed_files=["app.py"],
+            changed_files_scope_requested=True,
+            dockerfile_scanning_enabled=True,
+            dockerfiles="Dockerfile",
+        )
+
+        assert self._scanner(cfg).scan_dockerfiles() == {}
+        assert scanned == []
+
+    def test_scan_all_after_failed_resolution_scans_configured_dockerfile(
+        self, tmp_path, monkeypatch
+    ):
+        monkeypatch.chdir(tmp_path)
+        (tmp_path / "Dockerfile").write_text("FROM alpine\n")
+        (tmp_path / "staged.Dockerfile").write_text("FROM busybox\n")
+        scanned = _record_trivy_paths(monkeypatch)
+        staged_calls = []
+        monkeypatch.setattr(
+            "socket_basics.core.config._detect_git_changed_files",
+            lambda *args, **kwargs: staged_calls.append(kwargs.get("mode"))
+            or ["staged.Dockerfile"],
+        )
+        cfg = _make_config(
+            tmp_path,
+            scan_all=True,
+            changed_files=[],
+            changed_files_scope_requested=False,
+            dockerfile_scanning_enabled=True,
+            dockerfiles="Dockerfile",
+        )
+
+        self._scanner(cfg).scan_dockerfiles()
+        assert staged_calls == []
+        assert scanned == ["Dockerfile"]

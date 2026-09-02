@@ -324,6 +324,41 @@ jobs:
 > nothing rather than falling back to the whole repo. To scan an explicit file
 > list regardless of git state, use the `scan_files` input instead.
 
+> [!NOTE]
+> **When the diff cannot be resolved** — the checkout is unreadable, or the base
+> branch is missing (most commonly a shallow clone without `fetch-depth: 0`) —
+> Socket Basics **fails with a configuration error** naming the underlying git
+> error. It does not scan.
+>
+> This is deliberate. Diff-only scoping is an explicit instruction, and if it
+> cannot be honored there is no honest result to report:
+>
+> - **Skipping the scanners** would exit green having scanned zero files. A
+>   passing check that inspected nothing is worse than a failing one, and a
+>   warning buried in a run log is not something anyone acts on.
+> - **Silently scanning everything** would do the expensive thing on every PR —
+>   precisely what asking for a diff scope was avoiding. On a large repository
+>   that is a slow or OOM-prone check, and it reports **pre-existing** findings
+>   rather than the PR's own, so a checkout misconfiguration surfaces as large PR
+>   comments on every PR until corrected.
+>
+> If the error appears on **every** PR, the cause is almost always a missing
+> `fetch-depth: 0` — fix the checkout rather than sizing up the runner. Shallow
+> checkouts get a more specific error naming that fix directly, including the
+> `no merge base` shape where the base tip was fetched without connecting
+> history.
+>
+> **To scan anyway, set `scan_all: true`.** That widens an unresolvable scope to
+> a full-repository scan with a warning instead of failing. Every enabled scanner
+> widens consistently on that failure path. `scan_all` does not override a scope
+> that resolved successfully: the changed files remain authoritative, and a
+> genuinely empty diff still skips the scoped scanners.
+>
+> A genuinely *empty* diff (e.g. a delete-only PR) is a successful resolution and
+> still skips the scanners — only a **failed** resolution errors. The resolved
+> file count is logged on every scoped run, so an empty diff and a failed lookup
+> are always distinguishable in the logs.
+
 ## PR Comment Customization
 
 Socket Basics automatically posts enhanced PR comments with **smart defaults that work out of the box** — clickable file links, collapsible sections, syntax highlighting, CVE links, CVSS scores, and auto-labels are all enabled by default.

@@ -11,6 +11,7 @@ runs:
     INPUT_WORKSPACE: ${{ inputs.workspace }}
     # Scan scope
     INPUT_CHANGED_FILES: ${{ inputs.changed_files }}
+    INPUT_SCAN_ALL: ${{ inputs.scan_all }}
     INPUT_SCAN_FILES: ${{ inputs.scan_files }}
     # Input mappings for all parameters
     INPUT_ALL_LANGUAGES_ENABLED: ${{ inputs.all_languages_enabled }}
@@ -118,9 +119,20 @@ inputs:
       GITHUB_BASE_REF), or 'current-commit'. For PR/'auto' modes, check out with
       actions/checkout fetch-depth: 0 so the base branch is available. When the
       diff resolves to no existing files (e.g. a delete-only PR) the scanners
-      are skipped rather than scanning the whole repo.
+      are skipped rather than scanning the whole repo. When the diff cannot be
+      resolved at all (unreadable repo, missing base ref) the run fails with a
+      configuration error instead of reporting a green scan of nothing; set
+      scan_all to widen to a full-repo scan in that case instead.
     required: false
     default: ""
+  scan_all:
+    description: >-
+      Fail-open escape hatch for changed_files: when a requested diff cannot be
+      resolved, scan the full workspace instead of failing. Every enabled
+      scanner widens consistently. A successfully resolved scope still wins,
+      including a genuinely empty diff, which skips scoped scanners.
+    required: false
+    default: "false"
   scan_files:
     description: >-
       Explicit comma-separated list of files to scan. Scopes SAST/OpenGrep,
