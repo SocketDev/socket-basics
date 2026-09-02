@@ -54,7 +54,13 @@ def test_socket_cli_installs_are_version_pinned():
             assert re.search(r"^ARG SOCKET_NPM_CLI_VERSION=\d+\.\d+\.\d+$", contents, re.MULTILINE)
 
     app_tests = (check_core_tools.REPO_ROOT / "app_tests" / "Dockerfile").read_text()
-    assert 'uv tool install "socketsecurity==${SOCKET_PYTHON_CLI_VERSION}"' in app_tests
+    # Collapse line continuations so the pin assertion is not sensitive to how
+    # the RUN is wrapped or to intervening flags (e.g. --refresh-package).
+    app_tests_joined = re.sub(r"\\\s*\n\s*", " ", app_tests)
+    assert re.search(
+        r'uv tool install [^\n]*"socketsecurity==\$\{SOCKET_PYTHON_CLI_VERSION\}"',
+        app_tests_joined,
+    )
     assert re.search(r"^ARG SOCKET_PYTHON_CLI_VERSION=\d+\.\d+\.\d+$", app_tests, re.MULTILINE)
 
 
