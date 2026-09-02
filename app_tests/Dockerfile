@@ -98,9 +98,15 @@ RUN --mount=type=cache,target=/root/.npm \
 # Bandit + socketsecurity via uv
 ENV UV_LINK_MODE=copy
 ARG SOCKET_PYTHON_CLI_VERSION
+# --refresh-package: this install pins an exact version, so a stale cached index
+# response makes a freshly published release look like it does not exist ("no
+# version of socketsecurity==X"). Refresh metadata for this one package rather
+# than passing --no-cache, which would discard the cache mount's benefit for
+# bandit and for already-built wheels.
 RUN --mount=type=cache,target=/root/.cache/uv \
     uv tool install bandit \
-    && uv tool install "socketsecurity==${SOCKET_PYTHON_CLI_VERSION}"
+    && uv tool install --refresh-package socketsecurity \
+        "socketsecurity==${SOCKET_PYTHON_CLI_VERSION}"
 ENV PATH="/root/.local/bin:$PATH"
 
 # NOTE: the legacy socket-security-tools runner (src/, entrypoint.sh) predates

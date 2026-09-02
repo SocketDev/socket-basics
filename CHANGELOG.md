@@ -79,6 +79,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - Release prep keeps action and image references in README and `docs/**` in sync
   with the release version; 73 stale `2.0.3` references normalized. (#106)
 - Dependency updates: pyyaml (#107), docker/setup-buildx-action (#108).
+- app-tests image refreshes `socketsecurity` index metadata on install, so a
+  stale cached index cannot make a freshly published pin look nonexistent.
 
 ## [3.0.0] - 2026-08-06
 
