@@ -139,15 +139,19 @@ class TrivyScanner(BaseConnector):
         else:
             dockerfiles = []
 
-        # A scope the user asked for arrives on the config. Anything the staged
-        # fallback below turns up is a convenience rather than a request, so it
-        # narrows the scan when it names a Dockerfile and leaves the configured
-        # list alone when it does not.
+        # A configured changed-files scope is authoritative. Only use the
+        # connector's staged-file convenience fallback when neither a scope nor
+        # scan_all was requested. After a failed resolution, scan_all must not
+        # be narrowed again by incidental staged files.
         configured_changed_files = self.config.get('changed_files', []) if hasattr(self.config, '_config') else []
         scope_requested = bool(configured_changed_files) or self._changed_files_scope_requested()
 
         changed_files = configured_changed_files
-        if not changed_files and not scope_requested:
+        if (
+            not changed_files
+            and not scope_requested
+            and not self.config.get('scan_all', False)
+        ):
             try:
                 from socket_basics.core.config import _detect_git_changed_files
                 changed_files = _detect_git_changed_files(str(self.config.workspace), mode='staged')
@@ -159,13 +163,12 @@ class TrivyScanner(BaseConnector):
             if changed_dockerfiles:
                 logger.info(f"Detected {len(changed_dockerfiles)} changed Dockerfile(s); restricting Trivy to them")
                 dockerfiles = changed_dockerfiles
-            elif scope_requested and not self.config.get('scan_all', False):
+            elif scope_requested:
                 # The scope named no Dockerfile at all. Leaving the configured
                 # list in place would scan files the scope deliberately left
                 # out, which is the whole point of asking for a changed-files
-                # scan. scan_all is the explicit "scan everything" override, so
-                # it still gets the configured list -- skipping there would turn
-                # an explicit request to scan everything into scanning nothing.
+                # scan. A successful scope remains authoritative even when
+                # scan_all is configured as the failure fallback.
                 logger.info(
                     "Trivy Dockerfile scan skipped: a changed-files scope was requested and "
                     "contains no Dockerfile, so the configured Dockerfiles are not scanned"
@@ -321,7 +324,12 @@ class TrivyScanner(BaseConnector):
         
         # Check for changed files to restrict scanning
         changed_files = self.config.get('changed_files', []) if hasattr(self.config, '_config') else []
-        if not changed_files and not self._changed_files_scope_requested():
+        scope_requested = bool(changed_files) or self._changed_files_scope_requested()
+        if (
+            not changed_files
+            and not scope_requested
+            and not self.config.get('scan_all', False)
+        ):
             try:
                 from socket_basics.core.config import _detect_git_changed_files
                 changed_files = _detect_git_changed_files(str(self.config.workspace), mode='staged')
@@ -350,16 +358,12 @@ class TrivyScanner(BaseConnector):
             if scan_paths:
                 logger.info(f"Restricting Trivy scan to {len(scan_paths)} changed directory(ies)")
         
-        # If no changed files or no valid paths, scan entire workspace -- unless
-        # the user asked for a changed-files scope. Widening an empty scope back
-        # out to the whole repository is the exact behaviour this scoping exists
-        # to prevent, and unlike the other scanners this one never goes through
-        # get_scan_targets(), so it has to make the decision itself.
-        # scan_all is the explicit "scan everything" override, so it still gets
-        # the whole workspace -- skipping there would turn an explicit request
-        # to scan everything into scanning nothing.
+        # A successful changed-files scope remains authoritative when it is
+        # empty or none of its paths survive. Only a failed resolution with the
+        # explicit scan_all fallback clears the scope flag and reaches the
+        # workspace fallback below.
         if not scan_paths:
-            if self._changed_files_scope_requested() and not self.config.get('scan_all', False):
+            if scope_requested:
                 logger.info(
                     "Trivy vulnerability scan skipped: a changed-files scope was requested and "
                     "resolved to no scannable paths, so the whole workspace is not scanned"

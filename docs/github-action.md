@@ -313,7 +313,7 @@ jobs:
 
 `changed_files` accepts:
 
-- `auto` — the PR base diff when a pull request base can be found, else staged changes
+- `auto` — the PR base diff in CI; staged changes only in a local run with no PR context
 - `pr` — the PR base diff, and nothing else
 - `current-commit` — files in the `HEAD` commit
 - a commit hash — files changed in that commit
@@ -325,6 +325,41 @@ jobs:
 > nothing rather than falling back to the whole repo. To scan an explicit file
 > list regardless of git state, use the `scan_files` input instead.
 
+> [!NOTE]
+> **When the diff cannot be resolved** — the checkout is unreadable, or the base
+> branch is missing (most commonly a shallow clone without `fetch-depth: 0`) —
+> Socket Basics **fails with a configuration error** naming the underlying git
+> error. It does not scan.
+>
+> This is deliberate. Diff-only scoping is an explicit instruction, and if it
+> cannot be honored there is no honest result to report:
+>
+> - **Skipping the scanners** would exit green having scanned zero files. A
+>   passing check that inspected nothing is worse than a failing one, and a
+>   warning buried in a run log is not something anyone acts on.
+> - **Silently scanning everything** would do the expensive thing on every PR —
+>   precisely what asking for a diff scope was avoiding. On a large repository
+>   that is a slow or OOM-prone check, and it reports **pre-existing** findings
+>   rather than the PR's own, so a checkout misconfiguration surfaces as large PR
+>   comments on every PR until corrected.
+>
+> If the error appears on **every** PR, the cause is almost always a missing
+> `fetch-depth: 0` — fix the checkout rather than sizing up the runner. Shallow
+> checkouts get a more specific error naming that fix directly, including the
+> `no merge base` shape where the base tip was fetched without connecting
+> history.
+>
+> **To scan anyway, set `scan_all: true`.** That widens an unresolvable scope to
+> a full-repository scan with a warning instead of failing. Every enabled scanner
+> widens consistently on that failure path. `scan_all` does not override a scope
+> that resolved successfully: the changed files remain authoritative, and a
+> genuinely empty diff still skips the scoped scanners.
+>
+> A genuinely *empty* diff (e.g. a delete-only PR) is a successful resolution and
+> still skips the scanners — only a **failed** resolution errors. The resolved
+> file count is logged on every scoped run, so an empty diff and a failed lookup
+> are always distinguishable in the logs.
+
 ### Checking that the scope took effect
 
 Diff-only mode logs what it did. Look for these lines in the step output:
@@ -335,32 +370,34 @@ INFO  Diff-only scan scoping requested (changed_files=auto): resolved 12 changed
 INFO  Diff-only scan scoping active: 12 scan target(s) from 12 changed file(s)
 ```
 
-If the scope could not be applied, the run says why instead of quietly scanning
-everything or nothing:
+If the scope could not be applied, the run fails and says why:
 
-| Warning you will see | What to do |
-|----------------------|------------|
-| `none of the candidate PR bases (...) could be resolved ... The checkout is shallow` | Add `fetch-depth: 0` to `actions/checkout` |
+| Error or warning you will see | What to do |
+|-------------------------------|------------|
+| `this checkout is shallow ... Set 'fetch-depth: 0'` | Add `fetch-depth: 0` to `actions/checkout` |
 | `no pull request base was found` | The trigger is not `pull_request`, so there is no base. Use `changed_files: 'current-commit'` or an explicit file list |
 | `is not a git repository` | Run `actions/checkout` before the scan step |
-| `git refused to read ... not the usual container ownership mismatch` | The checkout is damaged or incomplete. Re-run `actions/checkout`, or pass an explicit file list |
-| `scan_all and a changed-files scope ... are both set, and they disagree` | Unset `scan_all` — it can come from a Socket dashboard config, not just your workflow |
-| `resolved to zero files. The scanners will be SKIPPED` | The diff found nothing scannable. Combined with a warning above, it tells you the diff failed rather than the PR being empty |
+| `git refused to read ... even with ... safe.directory` | The checkout is damaged or incomplete. Re-run `actions/checkout`, or pass an explicit file list |
+| `the scope could not be resolved` | Fix the preceding Git error, or set `scan_all: true` to opt into a full-repository fallback |
+
+A successful empty diff is logged separately as genuinely empty and skips the
+scoped scanners; it is never conflated with a resolution failure.
 
 You do not need `git config --global --add safe.directory` for this. The scan
 runs as root inside a container over a workspace owned by the runner user, and
-git normally refuses that with `detected dubious ownership`. When git refuses,
-the scan trusts that one workspace directory so the diff can run, and logs that
-it did — so no workflow change is needed. Setting `safe.directory` in a workflow
-step would not have helped anyway, because it writes the runner's git config
-rather than the container's. When git is not refusing, nothing is relaxed.
+git normally refuses that with `detected dubious ownership`. Git subprocesses
+mark the explicitly selected workspace as a command-scoped `safe.directory`, so
+no config files are changed and no workflow change is needed. Setting
+`safe.directory` in a workflow step would not have helped anyway, because it
+writes the runner's git config rather than the container's.
 
 ### Where the setting can come from
 
 `changed_files` is honored identically from the action input, the
 `INPUT_CHANGED_FILES` environment variable, the `--changed-files` CLI flag, a
-`--config` JSON file, and a Socket dashboard config. `scan_all` outranks all of
-them; when it does, the run logs a warning naming the scope it discarded.
+`--config` JSON file, and a Socket dashboard config. `scan_all` is only the
+fail-open fallback when one of those requests cannot be resolved; it does not
+override a successfully resolved scope.
 
 ## PR Comment Customization
 
