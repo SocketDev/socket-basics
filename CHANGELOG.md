@@ -8,36 +8,79 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
-### Fixed
-- `changed_files` diff-only mode always resolved to zero files in the pre-built
-  Docker GitHub Action: the container runs as root while the checkout is owned
-  by the runner user, so git's ownership check refused every diff lookup, the
-  scope silently resolved to nothing, and the scanners skipped with a green
-  run. Git subprocesses now mark the scan workspace as `safe.directory` via
-  command-scope `GIT_CONFIG_*` environment entries. No config files are
-  touched, and caller-provided `GIT_CONFIG_*` entries (including the previously
-  documented workaround) are preserved. The same mismatch broke git-based
-  repository/branch/commit and default-branch discovery in local Docker runs;
-  those lookups are covered by the same change.
-- A failed `changed_files` diff resolution is no longer indistinguishable from
-  an empty diff. Git errors are captured and logged instead of discarded, and
-  when the scope cannot be resolved — unreadable repository, unresolvable base
-  ref, or `pr` mode with no base ref — Socket Basics now **fails with a
-  configuration error** rather than reporting a green run that scanned nothing.
-  Shallow checkouts get a more specific error naming `fetch-depth: 0`. A
-  genuinely empty diff (e.g. a delete-only PR) is a successful resolution and
-  still skips the scanners as before.
+## [3.1.0] - 2026-09-02
 
 ### Added
-- The resolved `changed_files` scope is now logged on every scoped run: file
-  count at INFO, the full file list at DEBUG — so an empty diff and a failed
-  lookup are visible and distinguishable in run logs.
-- `scan_all` is now a declared action input and doubles as the fail-open escape
+- `pr_comment_enabled` (default `true`): set to `false` to run scans without
+  posting or updating the pull request comment. Findings still reach the Socket
+  dashboard, since the facts upload runs before any notifier. (#97)
+- `pr_comment_collapse_all` (default `false`): starts the collapsible OpenGrep
+  (SAST) and Socket Tier 1 sections collapsed, including critical findings.
+  Flat-table outputs (TruffleHog, Trivy Dockerfile) are unaffected. (#97)
+- Negative `--no-*` forms for every default-true boolean CLI flag, e.g.
+  `--no-pr-comment`. (#97)
+- The resolved `changed_files` scope is logged on every scoped run — file count
+  at INFO, full list at DEBUG — so an empty diff and a failed lookup are
+  distinguishable in run logs. (#105)
+- `scan_all` is now a declared action input, and doubles as the fail-open escape
   hatch for `changed_files`: when the scope cannot be resolved, widen to a
-  full-repo scan with a warning instead of failing. Every enabled scanner
-  widens consistently on that failure path. A successfully resolved scope
-  remains authoritative, including a genuinely empty diff, which still skips
-  scoped scanners.
+  full-repo scan with a warning instead of failing. Every enabled scanner widens
+  consistently on that path. (#98, #105)
+
+### Changed
+- **Behavioral:** a `changed_files` scope that cannot be resolved (unreadable
+  repository, missing base ref, shallow checkout with no base) now **fails the
+  run** with a configuration error instead of scanning. Previously this exited
+  green having scanned nothing. Pipelines with a broken diff-only setup will
+  start failing on the first run after upgrading — read the error, which names
+  the underlying git problem. Set `scan_all` to widen instead of failing.
+  (#98, #105)
+- A successfully resolved `changed_files` scope is now authoritative over
+  `scan_all`, which previously overrode it. `scan_all` applies only on the
+  failure path. A genuinely empty diff (e.g. a delete-only PR) still skips the
+  scoped scanners. (#98)
+- Socket toolchain refresh: Socket npm CLI 1.1.154 → 1.1.165 in every image,
+  and Socket Python CLI 2.6.3 → 2.7.0 in the heavy and app-tests images. The
+  socketdev Python SDK is already current at 3.5.0.
+- Notifier parameters from `notifications.yaml` now take CLI overrides through
+  the same path as connector parameters, fixing flags that parsed but never
+  reached the effective config. Absent boolean flags resolve to "unset" rather
+  than `false`, so CLI defaults no longer clobber environment, JSON, or
+  dashboard config. (#97)
+
+### Fixed
+- `changed_files` diff-only mode resolved to zero files on every run of the
+  pre-built Docker action, so scans exited green having scanned nothing: the
+  container runs as root over a runner-owned checkout, and git refuses to read a
+  repository it does not own. Git subprocesses now mark the workspace
+  `safe.directory` via command-scope `GIT_CONFIG_*` entries, and any
+  caller-supplied `GIT_CONFIG_*` entries are preserved. The same mismatch broke
+  git-based repository, branch, and commit discovery in local Docker runs. (#105)
+- `changed_files` was only resolved for CLI-built configs, so environment, JSON,
+  and dashboard configs silently scanned the whole repository, and a literal
+  `"auto"` was iterated character by character into an empty scope. Every config
+  source now runs through one resolver. (#98)
+- Pull request base detection falls back to `pull_request.base.sha`/`.ref` from
+  the event payload when `GITHUB_BASE_REF` is unset, covering
+  `pull_request_target`, `pull_request_review` and `pull_request_review_comment`.
+  `issue_comment` carries no usable base and now warns to pass `GITHUB_BASE_REF`
+  from the workflow. (#98)
+- TruffleHog and Trivy no longer substitute their own staged-file scope when an
+  explicit `changed_files` request is in effect. Trivy's Dockerfile scan skips
+  when no Dockerfile changed, and TruffleHog drops changed paths that no longer
+  exist on disk. (#98)
+
+### Internal
+- core-tool-watch reconciles one canonical `core-tool-drift` issue on `main`
+  pushes, tracks the Socket Python and npm CLIs plus `Dockerfile.heavy`, and
+  reads Trivy releases from `ghcr.io/socketdev/trivy`. The npm `socket` CLI is
+  pinned in every image, and Docker publish no longer authors a GitHub
+  Release. (#104)
+- Release prep keeps action and image references in README and `docs/**` in sync
+  with the release version; 73 stale `2.0.3` references normalized. (#106)
+- Dependency updates: pyyaml (#107), docker/setup-buildx-action (#108).
+- app-tests image refreshes `socketsecurity` index metadata on install, so a
+  stale cached index cannot make a freshly published pin look nonexistent.
 
 ## [3.0.0] - 2026-08-06
 

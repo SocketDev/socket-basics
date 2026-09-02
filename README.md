@@ -35,7 +35,7 @@ jobs:
       - name: Run Socket Basics
         # Pin to a commit SHA for supply-chain safety.
         # Dependabot will keep this up to date automatically — see docs/github-action.md.
-        uses: SocketDev/socket-basics@<sha>  # v3.0.0
+        uses: SocketDev/socket-basics@<sha>  # v3.1.0
         env:
           GITHUB_PR_NUMBER: ${{ github.event.pull_request.number || github.event.issue.number }}
         with:
@@ -179,10 +179,10 @@ For GitHub Actions, see the [Quick Start](#-quick-start---github-actions) above 
 
 ```bash
 # Pull the pre-built image (recommended — no build step required)
-docker pull ghcr.io/socketdev/socket-basics:3.0.0
+docker pull ghcr.io/socketdev/socket-basics:3.1.0
 
 # Run scan
-docker run --rm -v "$PWD:/workspace" ghcr.io/socketdev/socket-basics:3.0.0 \
+docker run --rm -v "$PWD:/workspace" ghcr.io/socketdev/socket-basics:3.1.0 \
   --workspace /workspace \
   --python-sast-enabled \
   --secret-scanning-enabled \

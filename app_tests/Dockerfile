@@ -12,8 +12,8 @@ ARG UV_VERSION=0.12.1
 # NOT Dependabot-trackable (no official Docker image with a stable binary path):
 ARG GOSEC_VERSION=v2.28.0
 ARG OPENGREP_VERSION=v1.26.0
-ARG SOCKET_NPM_CLI_VERSION=1.1.154
-ARG SOCKET_PYTHON_CLI_VERSION=2.6.3
+ARG SOCKET_NPM_CLI_VERSION=1.1.165
+ARG SOCKET_PYTHON_CLI_VERSION=2.7.0
 #
 # NOT Dependabot-trackable — Socket-built Trivy, pinned by digest; updated by
 # Socket's trivy-dist release process. See the note in the root ./Dockerfile.
@@ -98,9 +98,15 @@ RUN --mount=type=cache,target=/root/.npm \
 # Bandit + socketsecurity via uv
 ENV UV_LINK_MODE=copy
 ARG SOCKET_PYTHON_CLI_VERSION
+# --refresh-package: this install pins an exact version, so a stale cached index
+# response makes a freshly published release look like it does not exist ("no
+# version of socketsecurity==X"). Refresh metadata for this one package rather
+# than passing --no-cache, which would discard the cache mount's benefit for
+# bandit and for already-built wheels.
 RUN --mount=type=cache,target=/root/.cache/uv \
     uv tool install bandit \
-    && uv tool install "socketsecurity==${SOCKET_PYTHON_CLI_VERSION}"
+    && uv tool install --refresh-package socketsecurity \
+        "socketsecurity==${SOCKET_PYTHON_CLI_VERSION}"
 ENV PATH="/root/.local/bin:$PATH"
 
 # NOTE: the legacy socket-security-tools runner (src/, entrypoint.sh) predates

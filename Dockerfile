@@ -9,7 +9,7 @@ ARG UV_VERSION=0.12.1
 #
 # NOT Dependabot-trackable (no official Docker image with a stable binary path):
 ARG OPENGREP_VERSION=v1.26.0
-ARG SOCKET_NPM_CLI_VERSION=1.1.154
+ARG SOCKET_NPM_CLI_VERSION=1.1.165
 #
 # NOT Dependabot-trackable — Socket-built Trivy, rebuilt from unmodified upstream
 # source and published by Socket's own release pipeline. Pinned by digest; both
