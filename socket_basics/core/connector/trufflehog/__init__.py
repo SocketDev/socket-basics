@@ -223,9 +223,18 @@ class TruffleHogScanner(BaseConnector):
         exclude_file_path = None
         exclude_patterns: List[str] = []
         try:
-            # Prefer explicit changed_files, fallback to git staged
+            # Prefer explicit changed_files, falling back to git staged only
+            # when neither a changed-files scope nor scan_all was requested. A
+            # successful scope that resolved empty must stay empty; after a
+            # failed resolution, scan_all must use the workspace target rather
+            # than an incidental staged-file scope.
             changed_files = self.config.get('changed_files', []) if hasattr(self.config, '_config') else []
-            if not changed_files:
+            scope_requested = self._changed_files_scope_requested()
+            if (
+                not changed_files
+                and not scope_requested
+                and not self.config.get('scan_all', False)
+            ):
                 try:
                     from socket_basics.core.config import _detect_git_changed_files
                     changed_files = _detect_git_changed_files(str(self.config.workspace), mode='staged') or []
@@ -251,7 +260,7 @@ class TruffleHogScanner(BaseConnector):
 
             # If changed_files are present, pass those individual files;
             # otherwise use the configured targets (including scan_files).
-            if changed_files:
+            if changed_files or scope_requested:
                 target_candidates = [self.config.workspace / cf for cf in changed_files]
                 excluded_target_message = "Skipping excluded changed file: %s"
                 all_excluded_message = "All changed files were excluded from TruffleHog scanning"

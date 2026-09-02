@@ -5,10 +5,12 @@ honor ``changed_files`` so PRs report only on what the PR changed, instead of
 re-scanning the whole repository.
 """
 
+import json
 import os
 import subprocess
-from pathlib import Path
 from argparse import Namespace
+from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
 
@@ -34,11 +36,22 @@ class TestGetScanTargets:
         (tmp_path / "a.py").write_text("x = 1")
         assert _make_config(tmp_path).get_scan_targets() == [str(tmp_path)]
 
-    def test_scan_all_returns_workspace(self, tmp_path):
+    def test_resolved_changed_files_outrank_scan_all_fallback(self, tmp_path):
         (tmp_path / "a.py").write_text("x = 1")
         cfg = _make_config(tmp_path, scan_all=True, changed_files=["a.py"])
-        # scan_all is an explicit override and wins over changed_files
-        assert cfg.get_scan_targets() == [str(tmp_path)]
+        assert cfg.get_scan_targets() == [str(tmp_path / "a.py")]
+
+    def test_empty_resolved_scope_outranks_scan_all_fallback(self, tmp_path):
+        cfg = _make_config(
+            tmp_path,
+            scan_all=True,
+            changed_files=[],
+            changed_files_scope_requested=True,
+        )
+        assert cfg.get_scan_targets() == []
+
+    def test_scan_all_without_a_successful_scope_returns_workspace(self, tmp_path):
+        assert _make_config(tmp_path, scan_all=True).get_scan_targets() == [str(tmp_path)]
 
     def test_changed_files_scopes_to_existing_files(self, tmp_path):
         (tmp_path / "a.py").write_text("x = 1")
@@ -444,3 +457,185 @@ class TestShallowCheckoutFailFast:
         _git(pr_repo, "add", "-A")
         _git(pr_repo, "commit", "-m", "orphan")
         assert _detect_git_changed_files(str(pr_repo), mode="pr", base_ref="main") is None
+
+
+class TestTruffleHogScopePolicy:
+    """TruffleHog must use the same successful-scope/failure distinction."""
+
+    @staticmethod
+    def _scanner(config):
+        from socket_basics.core.connector.trufflehog import TruffleHogScanner
+
+        scanner = TruffleHogScanner(config)
+        scanner._process_results = lambda findings: {}
+        scanner.generate_notifications = lambda components: {}
+        return scanner
+
+    def test_successful_empty_scope_skips_even_with_scan_all(self, tmp_path, monkeypatch):
+        cfg = _make_config(
+            tmp_path,
+            scan_all=True,
+            changed_files=[],
+            changed_files_scope_requested=True,
+            secret_scanning_enabled=True,
+            trufflehog_exclude_dir="",
+            trufflehog_show_unverified=False,
+        )
+        staged_calls = []
+        invocations = []
+        monkeypatch.setattr(
+            "socket_basics.core.config._detect_git_changed_files",
+            lambda *args, **kwargs: staged_calls.append(kwargs.get("mode")) or ["staged.py"],
+        )
+        monkeypatch.setattr(
+            "socket_basics.core.connector.trufflehog.subprocess.run",
+            lambda command, **kwargs: invocations.append(command)
+            or SimpleNamespace(returncode=0, stdout="", stderr=""),
+        )
+
+        assert self._scanner(cfg).scan() == {}
+        assert staged_calls == []
+        assert invocations == []
+
+    def test_scan_all_after_failed_resolution_scans_workspace(self, tmp_path, monkeypatch):
+        (tmp_path / "staged.py").write_text("token = 'abc'\n")
+        cfg = _make_config(
+            tmp_path,
+            scan_all=True,
+            changed_files=[],
+            changed_files_scope_requested=False,
+            secret_scanning_enabled=True,
+            trufflehog_exclude_dir="",
+            trufflehog_show_unverified=False,
+        )
+        staged_calls = []
+        invocations = []
+        monkeypatch.setattr(
+            "socket_basics.core.config._detect_git_changed_files",
+            lambda *args, **kwargs: staged_calls.append(kwargs.get("mode")) or ["staged.py"],
+        )
+        monkeypatch.setattr(
+            "socket_basics.core.connector.trufflehog.subprocess.run",
+            lambda command, **kwargs: invocations.append(command)
+            or SimpleNamespace(returncode=0, stdout="", stderr=""),
+        )
+
+        self._scanner(cfg).scan()
+        assert staged_calls == []
+        assert invocations == [
+            [
+                "trufflehog",
+                "filesystem",
+                "--json",
+                "--no-verification",
+                str(tmp_path),
+            ]
+        ]
+
+
+def _record_trivy_paths(monkeypatch):
+    scanned = []
+
+    def fake_run(command, **kwargs):
+        scanned.append(command[-1])
+        output_path = Path(command[command.index("--output") + 1])
+        output_path.write_text(json.dumps({"Results": []}))
+        return SimpleNamespace(returncode=0, stdout="", stderr="")
+
+    monkeypatch.setattr(
+        "socket_basics.core.connector.trivy.trivy.subprocess.run",
+        fake_run,
+    )
+    return scanned
+
+
+class TestTrivyScopePolicy:
+    """Trivy's custom target builders must honor the same scope matrix."""
+
+    @staticmethod
+    def _scanner(config):
+        from socket_basics.core.connector.trivy.trivy import TrivyScanner
+
+        return TrivyScanner(config)
+
+    def test_successful_empty_scope_skips_vulnerability_scan_with_scan_all(
+        self, tmp_path, monkeypatch
+    ):
+        scanned = _record_trivy_paths(monkeypatch)
+        cfg = _make_config(
+            tmp_path,
+            scan_all=True,
+            changed_files=[],
+            changed_files_scope_requested=True,
+            trivy_vuln_enabled=True,
+        )
+
+        assert self._scanner(cfg).scan_vulnerabilities() == {}
+        assert scanned == []
+
+    def test_scan_all_after_failed_resolution_scans_workspace(self, tmp_path, monkeypatch):
+        (tmp_path / "staged").mkdir()
+        (tmp_path / "staged" / "requirements.txt").write_text("requests==2.0.0\n")
+        scanned = _record_trivy_paths(monkeypatch)
+        staged_calls = []
+        monkeypatch.setattr(
+            "socket_basics.core.config._detect_git_changed_files",
+            lambda *args, **kwargs: staged_calls.append(kwargs.get("mode"))
+            or ["staged/requirements.txt"],
+        )
+        cfg = _make_config(
+            tmp_path,
+            scan_all=True,
+            changed_files=[],
+            changed_files_scope_requested=False,
+            trivy_vuln_enabled=True,
+        )
+
+        self._scanner(cfg).scan_vulnerabilities()
+        assert staged_calls == []
+        assert scanned == [str(tmp_path)]
+
+    def test_successful_non_dockerfile_scope_skips_configured_dockerfile(
+        self, tmp_path, monkeypatch
+    ):
+        monkeypatch.chdir(tmp_path)
+        (tmp_path / "Dockerfile").write_text("FROM alpine\n")
+        (tmp_path / "app.py").write_text("x = 1\n")
+        scanned = _record_trivy_paths(monkeypatch)
+        cfg = _make_config(
+            tmp_path,
+            scan_all=True,
+            changed_files=["app.py"],
+            changed_files_scope_requested=True,
+            dockerfile_scanning_enabled=True,
+            dockerfiles="Dockerfile",
+        )
+
+        assert self._scanner(cfg).scan_dockerfiles() == {}
+        assert scanned == []
+
+    def test_scan_all_after_failed_resolution_scans_configured_dockerfile(
+        self, tmp_path, monkeypatch
+    ):
+        monkeypatch.chdir(tmp_path)
+        (tmp_path / "Dockerfile").write_text("FROM alpine\n")
+        (tmp_path / "staged.Dockerfile").write_text("FROM busybox\n")
+        scanned = _record_trivy_paths(monkeypatch)
+        staged_calls = []
+        monkeypatch.setattr(
+            "socket_basics.core.config._detect_git_changed_files",
+            lambda *args, **kwargs: staged_calls.append(kwargs.get("mode"))
+            or ["staged.Dockerfile"],
+        )
+        cfg = _make_config(
+            tmp_path,
+            scan_all=True,
+            changed_files=[],
+            changed_files_scope_requested=False,
+            dockerfile_scanning_enabled=True,
+            dockerfiles="Dockerfile",
+        )
+
+        self._scanner(cfg).scan_dockerfiles()
+        assert staged_calls == []
+        assert scanned == ["Dockerfile"]

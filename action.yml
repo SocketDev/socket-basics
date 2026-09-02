@@ -127,11 +127,10 @@ inputs:
     default: ""
   scan_all:
     description: >-
-      Scan the entire workspace even when a narrower scope was requested but
-      could not be produced. Acts as the fail-open escape hatch for
-      changed_files: instead of failing when a diff cannot be resolved, widen to
-      a full-repo scan. Note the widening is partial — only scanners that read
-      scan targets widen, while secret and container scanners stay scoped.
+      Fail-open escape hatch for changed_files: when a requested diff cannot be
+      resolved, scan the full workspace instead of failing. Every enabled
+      scanner widens consistently. A successfully resolved scope still wins,
+      including a genuinely empty diff, which skips scoped scanners.
     required: false
     default: "false"
   scan_files:

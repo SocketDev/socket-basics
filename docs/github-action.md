@@ -349,9 +349,10 @@ jobs:
 > history.
 >
 > **To scan anyway, set `scan_all: true`.** That widens an unresolvable scope to
-> a full-repository scan with a warning instead of failing. Note the widening is
-> partial: only scanners that read scan targets widen, while secret and container
-> scanners stay scoped.
+> a full-repository scan with a warning instead of failing. Every enabled scanner
+> widens consistently on that failure path. `scan_all` does not override a scope
+> that resolved successfully: the changed files remain authoritative, and a
+> genuinely empty diff still skips the scoped scanners.
 >
 > A genuinely *empty* diff (e.g. a delete-only PR) is a successful resolution and
 > still skips the scanners — only a **failed** resolution errors. The resolved

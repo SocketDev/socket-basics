@@ -130,9 +130,9 @@ get a more specific error naming `fetch-depth: 0`, covering both the missing-ref
 and disconnected-history (`no merge base`) shapes.
 
 Set **`scan_all`** to widen instead of failing: an unresolvable scope then falls
-back to a full-workspace scan with a warning. The widening is partial — only
-scanners that read scan targets widen, while secret and container scanners stay
-scoped to `changed_files`.
+back to a full-workspace scan with a warning, consistently across every enabled
+scanner. A scope that resolves successfully remains authoritative even when
+`scan_all` is set; a genuinely empty diff still skips the scoped scanners.
 
 The resolved scope is logged on every run (file count at INFO, full file list
 at DEBUG), so an empty diff and a failed lookup are distinguishable in run

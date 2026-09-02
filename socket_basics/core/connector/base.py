@@ -205,7 +205,20 @@ class BaseConnector(abc.ABC):
             List of file paths or directories to scan
         """
         return self.config.get_scan_targets() if hasattr(self.config, 'get_scan_targets') else []
-    
+
+    def _changed_files_scope_requested(self) -> bool:
+        """Return whether the user requested a changed-files scope.
+
+        Connectors that derive their own targets must not substitute staged
+        files or the workspace when a successful scope resolved to nothing.
+        The configuration layer clears this flag only when resolution failed
+        and ``scan_all`` explicitly opted into the full-scan fallback.
+        """
+        try:
+            return bool(self.config.get('changed_files_scope_requested', False))
+        except Exception:
+            return False
+
     def get_name(self) -> str:
         """Get the connector name
         

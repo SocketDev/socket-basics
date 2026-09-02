@@ -275,9 +275,12 @@ class Config:
         """Determine files to scan based on configuration.
 
         Precedence (highest to lowest):
-          1. ``scan_all`` -> scan the entire workspace (explicit override).
-          2. ``changed_files`` -> scope the scan to the PR/diff changed files
-             (diff-only mode; mirrors how Socket SCA Pull Request alerts behave).
+          1. A successfully resolved ``changed_files`` request -> scope the
+             scan to the PR/diff changed files (diff-only mode; mirrors how
+             Socket SCA Pull Request alerts behave).
+          2. ``scan_all`` -> scan the entire workspace. When supplied with a
+             changed-files request, this is the fail-open fallback used only
+             when that request could not be resolved.
           3. ``scan_files`` -> explicit user-provided file list.
           4. default -> scan the entire workspace.
 
@@ -287,16 +290,18 @@ class Config:
         rather than falling back to scanning the whole workspace or their own
         working directory.
         """
-        # Explicit "scan everything" override.
-        if self.get('scan_all', False):
-            return [str(self.workspace)]
-
         # Diff-only mode: scope the scan to the files changed in the PR/commit.
         # Keep honoring the scope when git resolves to zero files, e.g. a
         # delete-only PR, so callers skip instead of scanning the workspace.
         changed_files = self.get('changed_files', []) or []
         if changed_files or self.get('changed_files_scope_requested', False):
             return self._resolve_file_targets(changed_files)
+
+        # Explicit fail-open fallback. A failed changed-files resolution clears
+        # changed_files_scope_requested before Config is constructed, so this
+        # branch is reached only when no successful changed-files scope exists.
+        if self.get('scan_all', False):
+            return [str(self.workspace)]
 
         # Explicit list of files to scan.
         if self.scan_files:
@@ -1665,9 +1670,9 @@ def create_config_from_args(args) -> Config:
             PR, which is precisely what a caller asking for a diff scope was
             avoiding.
 
-            ``scan_all`` is the opt-in for that widening: it already means "when
-            the scope resolves to nothing, scan everything rather than nothing",
-            so it doubles as the documented fail-open escape hatch.
+            ``scan_all`` is the opt-in for that widening: when the requested
+            scope cannot be resolved, scan everything rather than failing. A
+            successfully resolved scope remains authoritative.
 
             A genuinely empty diff (e.g. a delete-only PR) is a successful
             resolution — it keeps the empty scope and skips, as before.

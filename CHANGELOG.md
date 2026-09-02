@@ -34,9 +34,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   lookup are visible and distinguishable in run logs.
 - `scan_all` is now a declared action input and doubles as the fail-open escape
   hatch for `changed_files`: when the scope cannot be resolved, widen to a
-  full-repo scan with a warning instead of failing. The widening is partial —
-  only scanners that read scan targets widen, while secret and container
-  scanners stay scoped.
+  full-repo scan with a warning instead of failing. Every enabled scanner
+  widens consistently on that failure path. A successfully resolved scope
+  remains authoritative, including a genuinely empty diff, which still skips
+  scoped scanners.
 
 ## [3.0.0] - 2026-08-06
 
