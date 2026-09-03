@@ -887,7 +887,8 @@ class TestConnectorsHonorTheResolvedScope:
                 "trufflehog",
                 "filesystem",
                 "--json",
-                "--no-verification",
+                "--include-detectors=all",
+                "--results=verified",
                 str(pr_repo),
             ]
         ]

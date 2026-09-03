@@ -222,11 +222,18 @@ Include these in your workflow's `jobs.<job_id>.permissions` section.
   with:
     github_token: ${{ secrets.GITHUB_TOKEN }}
     secret_scanning_enabled: 'true'
-    # Optional: exclude directories
-    trufflehog_exclude_dir: 'node_modules,vendor,dist'
-    # Optional: show unverified secrets
+    # Optional: exclude paths (directory names, file names, or globs)
+    trufflehog_exclude_dir: 'node_modules,vendor,dist,**/appsettings.*.json'
+    # Optional: report unverified and unknown secrets too (default: verified only)
     trufflehog_show_unverified: 'true'
 ```
+
+> **Secret verification runs on every scan and requires network egress.** By default only
+> verified secrets are reported, and those are critical and blocking. TruffleHog confirms
+> each candidate against third-party validation endpoints; when a runner cannot reach them
+> the result is `unknown` and is dropped in the default verified-only mode. On air-gapped or
+> proxied runners, set `trufflehog_show_unverified: 'true'` so `unknown` results are still
+> reported as low-severity findings instead of silently disappearing.
 
 **Container Scanning:**
 ```yaml
@@ -849,8 +856,8 @@ See [`action.yml`](../action.yml) for the complete list of inputs.
 
 **Security Scanning:**
 - `secret_scanning_enabled` — Enable secret scanning
-- `trufflehog_exclude_dir` — Directories to exclude
-- `trufflehog_show_unverified` — Show unverified secrets
+- `trufflehog_exclude_dir` — Comma-separated paths to exclude (directory names, file names, or globs)
+- `trufflehog_show_unverified` — Include unverified and unknown secrets alongside verified ones
 - `socket_tier_1_enabled` — Socket Tier 1 reachability
 
 **Container Scanning (configuration surface):**

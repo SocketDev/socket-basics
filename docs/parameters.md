@@ -376,7 +376,9 @@ socket-basics --disable-secrets
 ### `--exclude-dir EXCLUDE_DIR`
 Comma-separated literal directory/file names or glob patterns to exclude from
 secret scanning beneath the workspace root. Matching is case-sensitive. For
-example, `**/appsettings.*.json` matches files at any directory depth.
+example, `**/appsettings.*.json` matches files at any directory depth. Excluded
+paths are removed from the scan entirely — they are not scanned for verified or
+unverified secrets.
 
 **Example:**
 ```bash
@@ -392,7 +394,20 @@ socket-basics --secrets --trufflehog-notify slack
 ```
 
 ### `--show-unverified`
-Show unverified secrets in TruffleHog results (by default only verified secrets are shown).
+Include unverified and unknown secrets in TruffleHog results. TruffleHog always performs
+verification; this flag only widens which result types are reported. By default only
+verified secrets are returned (`--results=verified`); with this flag, verified, unverified,
+and unknown results are all returned (`--results=verified,unverified,unknown`).
+
+Verified findings are reported as critical and block; unverified findings are reported as
+low and do not block.
+
+> **Verification makes live network requests.** TruffleHog validates candidate secrets
+> against third-party endpoints (AWS, GitHub, Slack, and so on). If a runner cannot reach
+> those endpoints, the result is classified as `unknown`, which is *not* returned in the
+> default verified-only mode — an air-gapped scan will report zero findings rather than
+> failing. Set `--show-unverified` on egress-restricted runners so `unknown` results are
+> still reported.
 
 **Example:**
 ```bash
@@ -660,7 +675,7 @@ You can provide configuration via a JSON file using `--config`:
   
   "secrets_enabled": true,
   "trufflehog_exclude_dir": "node_modules,vendor,dist,.git",
-  "show_unverified": false,
+  "trufflehog_show_unverified": false,
   
   "socket_tier_1_enabled": true,
   "socket_org": "your-org-slug",

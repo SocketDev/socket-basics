@@ -16,6 +16,10 @@ from typing import Dict, List, Any
 
 from ..base import BaseConnector
 
+# coerce_bool lives in the config layer because the environment loader, a
+# Socket dashboard config, and a JSON config each deliver booleans differently.
+from ...config import coerce_bool
+
 # Import individual notifier modules
 from . import github_pr, slack, ms_teams, ms_sentinel, sumologic, console, jira, webhook, json_notifier
 
@@ -266,11 +270,28 @@ class TruffleHogScanner(BaseConnector):
                 except Exception:
                     changed_files = []
 
+            # Verification always runs so that findings carry a trustworthy
+            # Verified flag; the setting only controls which result types are
+            # returned. Detector selection is deliberately independent of it.
+            #
+            # coerce_bool, not truthiness: only the environment loader coerces
+            # bool params, while a Socket dashboard config is passed through
+            # verbatim at higher priority. A dashboard-supplied string "false"
+            # is truthy, and reading it as "on" would report unverified secrets
+            # to someone who explicitly asked for verified-only.
+            show_unverified = coerce_bool(
+                self.config.get('trufflehog_show_unverified'), False
+            )
+            results_filter = (
+                'verified,unverified,unknown' if show_unverified else 'verified'
+            )
+
             cmd = [
                 'trufflehog',
                 'filesystem',
                 '--json',
-                '--no-verification' if not self.config.get('trufflehog_show_unverified', False) else '--include-detectors=all'
+                '--include-detectors=all',
+                f'--results={results_filter}',
             ]
 
             # TruffleHog accepts --exclude-paths only once and expects a file
@@ -315,8 +336,22 @@ class TruffleHogScanner(BaseConnector):
             result = subprocess.run(cmd, capture_output=True, text=True)
             
             if result.returncode != 0:
-                logger.error(f"Trufflehog failed: {result.stderr}")
-                return {}
+                # Fail closed. Returning {} here reports "no secrets found" and
+                # exits green, so a malformed exclude pattern or a broken
+                # install silently zeroes out every secret finding for the run.
+                # A scanner that cannot scan must not look like a clean scan.
+                # SystemExit is deliberate: the connector manager catches
+                # Exception, and this must not be downgraded to a skipped
+                # connector.
+                stderr = (result.stderr or '').strip()
+                detail = f": {stderr}" if stderr else ''
+                raise SystemExit(
+                    f"TruffleHog exited {result.returncode} and scanned nothing"
+                    f"{detail}\nSecret scanning results are incomplete, so the "
+                    "run is failing rather than reporting a clean scan. Check "
+                    "the exclude patterns in 'trufflehog_exclude_dir' and that "
+                    "the trufflehog binary is working."
+                )
             
             # Parse JSON output line by line
             findings = []
@@ -374,7 +409,12 @@ class TruffleHogScanner(BaseConnector):
             }
             
         except FileNotFoundError:
-            logger.error("Trufflehog not found. Please install Trufflehog")
+            # Also fail closed: secret scanning was asked for and did not run.
+            raise SystemExit(
+                "TruffleHog is enabled but the 'trufflehog' binary was not "
+                "found, so no secret scanning ran. Install TruffleHog or use "
+                "the Socket Basics container image, which bundles it."
+            )
         except Exception as e:
             logger.error(f"Error running Trufflehog: {e}")
         finally:
