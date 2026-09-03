@@ -40,6 +40,14 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
      `trufflehog_show_unverified: true`** so `unknown` results are still
      reported (as low severity). (#110)
 
+- **Behavioral:** a TruffleHog run that exits non-zero, or a missing
+  `trufflehog` binary, now **fails the run** instead of being reported as a
+  clean scan. Previously any non-zero exit was logged and turned into an empty
+  result, so a malformed exclude pattern or a broken install silently zeroed out
+  every secret finding while the run exited green — a scanner that could not
+  scan looked identical to a repository with no secrets. The error names the
+  exit code and TruffleHog's own stderr. This closes the last open item from
+  CE-347, whose other halves shipped in 2.2.1. (#110)
 - `trufflehog_show_unverified` is now read through `coerce_bool` rather than
   tested for truthiness. Only the environment loader coerces boolean params;
   a Socket dashboard config is passed through verbatim and at higher priority,

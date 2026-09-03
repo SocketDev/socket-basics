@@ -6,7 +6,10 @@ finding's ``Verified`` flag, so a run with verification turned off reports every
 secret as unverified/low and nothing ever blocks.
 """
 
+from pathlib import Path
 from types import SimpleNamespace
+
+import pytest
 
 from socket_basics.core.connector.trufflehog import TruffleHogScanner
 
@@ -127,3 +130,43 @@ def test_unverified_findings_are_low_and_nonblocking(tmp_path):
     assert alert["action"] == "ignore"
     assert alert["props"]["verified"] is False
     assert alert["props"]["riskLevel"] == "low"
+
+
+def test_a_failed_trufflehog_run_fails_the_scan(tmp_path, monkeypatch):
+    """A non-zero exit must not be reported as a clean scan.
+
+    Returning {} here exits green having scanned nothing, so a malformed
+    exclude pattern or a broken install silently zeroes out every secret
+    finding for the run (CE-347).
+    """
+    def failing_run(cmd, *args, **kwargs):
+        return SimpleNamespace(
+            returncode=1,
+            stdout="",
+            stderr="trufflehog: error: flag 'exclude-paths' cannot be repeated",
+        )
+
+    monkeypatch.setattr(
+        "socket_basics.core.connector.trufflehog.subprocess.run", failing_run
+    )
+
+    with pytest.raises(SystemExit) as excinfo:
+        _scanner(tmp_path, show_unverified=False).scan()
+
+    message = str(excinfo.value)
+    assert "exited 1" in message
+    assert "cannot be repeated" in message
+
+
+def test_a_missing_trufflehog_binary_fails_the_scan(tmp_path, monkeypatch):
+    def missing_binary(cmd, *args, **kwargs):
+        raise FileNotFoundError(2, "No such file or directory", "trufflehog")
+
+    monkeypatch.setattr(
+        "socket_basics.core.connector.trufflehog.subprocess.run", missing_binary
+    )
+
+    with pytest.raises(SystemExit) as excinfo:
+        _scanner(tmp_path, show_unverified=False).scan()
+
+    assert "not" in str(excinfo.value).lower()

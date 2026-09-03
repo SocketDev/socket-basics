@@ -336,8 +336,22 @@ class TruffleHogScanner(BaseConnector):
             result = subprocess.run(cmd, capture_output=True, text=True)
             
             if result.returncode != 0:
-                logger.error(f"Trufflehog failed: {result.stderr}")
-                return {}
+                # Fail closed. Returning {} here reports "no secrets found" and
+                # exits green, so a malformed exclude pattern or a broken
+                # install silently zeroes out every secret finding for the run.
+                # A scanner that cannot scan must not look like a clean scan.
+                # SystemExit is deliberate: the connector manager catches
+                # Exception, and this must not be downgraded to a skipped
+                # connector.
+                stderr = (result.stderr or '').strip()
+                detail = f": {stderr}" if stderr else ''
+                raise SystemExit(
+                    f"TruffleHog exited {result.returncode} and scanned nothing"
+                    f"{detail}\nSecret scanning results are incomplete, so the "
+                    "run is failing rather than reporting a clean scan. Check "
+                    "the exclude patterns in 'trufflehog_exclude_dir' and that "
+                    "the trufflehog binary is working."
+                )
             
             # Parse JSON output line by line
             findings = []
@@ -395,7 +409,12 @@ class TruffleHogScanner(BaseConnector):
             }
             
         except FileNotFoundError:
-            logger.error("Trufflehog not found. Please install Trufflehog")
+            # Also fail closed: secret scanning was asked for and did not run.
+            raise SystemExit(
+                "TruffleHog is enabled but the 'trufflehog' binary was not "
+                "found, so no secret scanning ran. Install TruffleHog or use "
+                "the Socket Basics container image, which bundles it."
+            )
         except Exception as e:
             logger.error(f"Error running Trufflehog: {e}")
         finally:
