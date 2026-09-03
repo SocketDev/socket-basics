@@ -16,6 +16,10 @@ from typing import Dict, List, Any
 
 from ..base import BaseConnector
 
+# coerce_bool lives in the config layer because the environment loader, a
+# Socket dashboard config, and a JSON config each deliver booleans differently.
+from ...config import coerce_bool
+
 # Import individual notifier modules
 from . import github_pr, slack, ms_teams, ms_sentinel, sumologic, console, jira, webhook, json_notifier
 
@@ -269,7 +273,15 @@ class TruffleHogScanner(BaseConnector):
             # Verification always runs so that findings carry a trustworthy
             # Verified flag; the setting only controls which result types are
             # returned. Detector selection is deliberately independent of it.
-            show_unverified = self.config.get('trufflehog_show_unverified', False)
+            #
+            # coerce_bool, not truthiness: only the environment loader coerces
+            # bool params, while a Socket dashboard config is passed through
+            # verbatim at higher priority. A dashboard-supplied string "false"
+            # is truthy, and reading it as "on" would report unverified secrets
+            # to someone who explicitly asked for verified-only.
+            show_unverified = coerce_bool(
+                self.config.get('trufflehog_show_unverified'), False
+            )
             results_filter = (
                 'verified,unverified,unknown' if show_unverified else 'verified'
             )

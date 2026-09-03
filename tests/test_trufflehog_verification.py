@@ -61,6 +61,35 @@ def test_show_unverified_on_requests_every_result_type(tmp_path, monkeypatch):
     assert "--no-verification" not in cmd
 
 
+def test_string_false_from_a_dashboard_config_stays_verified_only(
+    tmp_path, monkeypatch
+):
+    """A dashboard config is passed through verbatim, so "false" arrives as a string.
+
+    Only the environment loader coerces bool params, and dashboard config
+    outranks it. Reading the raw value for truthiness would report unverified
+    secrets to someone who explicitly turned them off.
+    """
+    for raw in ("false", "False", "0", "no"):
+        cmd = _captured_cmd(tmp_path, monkeypatch, show_unverified=raw)
+        assert "--results=verified" in cmd, raw
+
+
+def test_string_true_from_a_dashboard_config_widens_result_types(
+    tmp_path, monkeypatch
+):
+    for raw in ("true", "True", "1", "yes"):
+        cmd = _captured_cmd(tmp_path, monkeypatch, show_unverified=raw)
+        assert "--results=verified,unverified,unknown" in cmd, raw
+
+
+def test_unset_setting_defaults_to_verified_only(tmp_path, monkeypatch):
+    """An unset action input arrives as an empty string, not as None."""
+    for raw in (None, ""):
+        cmd = _captured_cmd(tmp_path, monkeypatch, show_unverified=raw)
+        assert "--results=verified" in cmd, repr(raw)
+
+
 def test_detector_selection_is_independent_of_the_setting(tmp_path, monkeypatch):
     """Toggling the setting must not change which detectors run."""
     off = _captured_cmd(tmp_path, monkeypatch, show_unverified=False)

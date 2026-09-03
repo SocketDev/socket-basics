@@ -40,6 +40,12 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
      `trufflehog_show_unverified: true`** so `unknown` results are still
      reported (as low severity). (#110)
 
+- `trufflehog_show_unverified` is now read through `coerce_bool` rather than
+  tested for truthiness. Only the environment loader coerces boolean params;
+  a Socket dashboard config is passed through verbatim and at higher priority,
+  so a dashboard-supplied string `"false"` was truthy and would have reported
+  unverified secrets to someone who explicitly turned them off. (#110)
+
 ### Changed
 - `--include-detectors=all` is now passed unconditionally rather than only when
   `trufflehog_show_unverified` is on, so detector selection no longer changes as a
