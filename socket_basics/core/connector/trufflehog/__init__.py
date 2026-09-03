@@ -266,11 +266,20 @@ class TruffleHogScanner(BaseConnector):
                 except Exception:
                     changed_files = []
 
+            # Verification always runs so that findings carry a trustworthy
+            # Verified flag; the setting only controls which result types are
+            # returned. Detector selection is deliberately independent of it.
+            show_unverified = self.config.get('trufflehog_show_unverified', False)
+            results_filter = (
+                'verified,unverified,unknown' if show_unverified else 'verified'
+            )
+
             cmd = [
                 'trufflehog',
                 'filesystem',
                 '--json',
-                '--no-verification' if not self.config.get('trufflehog_show_unverified', False) else '--include-detectors=all'
+                '--include-detectors=all',
+                f'--results={results_filter}',
             ]
 
             # TruffleHog accepts --exclude-paths only once and expects a file

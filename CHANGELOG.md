@@ -8,6 +8,49 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Fixed
+- **Behavioral:** TruffleHog secret scanning no longer passes `--no-verification`
+  when `trufflehog_show_unverified` is off. That flag disabled verification
+  entirely, so every finding came back with `Verified: false` and was reported as
+  low severity — meaning no secret ever blocked a run on the setting's default
+  path, the exact inverse of the intended behavior. Verification now always runs,
+  and the setting controls only which result types are returned:
+  `--results=verified` when off, `--results=verified,unverified,unknown` when on.
+  Verified findings are critical and blocking; unverified findings remain low and
+  non-blocking.
+
+  **Three consequences on upgrade — read before bumping:**
+
+  1. **Runs will start failing that previously passed.** With
+     `trufflehog_show_unverified` off, verified secrets are now reported as
+     critical and block. Previously they were downgraded to low and ignored. This
+     is the intended behavior, but it lands as newly-red pipelines on the first
+     run after upgrading. It is not a new detection — those secrets were always
+     there, they were just never surfaced as blocking.
+  2. **TruffleHog now makes outbound network requests.** Verification is a live
+     check against third-party credential-validation endpoints (AWS, GitHub,
+     Slack, etc.) for every candidate secret. Runs that previously scanned fully
+     offline no longer do.
+  3. **Air-gapped and proxied environments will under-report.** When verification
+     cannot reach a validation endpoint, TruffleHog classifies the result as
+     `unknown` rather than verified or unverified. With
+     `trufflehog_show_unverified` off, `--results=verified` drops those, so a
+     scanner with no egress reports *zero* findings rather than failing loudly.
+     **If your runners cannot reach the public internet, set
+     `trufflehog_show_unverified: true`** so `unknown` results are still
+     reported (as low severity). (#110)
+
+### Changed
+- `--include-detectors=all` is now passed unconditionally rather than only when
+  `trufflehog_show_unverified` is on, so detector selection no longer changes as a
+  side effect of that setting. TruffleHog already defaults to all detectors, so
+  this is a no-op in practice. (#110)
+- Clarified TruffleHog parameter documentation: `trufflehog_exclude_dir` accepts
+  directory names, file names, and glob patterns (not just directories), matching
+  is case-sensitive, and excluded paths are removed from the scan entirely rather
+  than filtered from results. `trufflehog_show_unverified` is documented as
+  widening result types, not as toggling verification. (#110)
+
 ## [3.1.0] - 2026-09-02
 
 ### Added

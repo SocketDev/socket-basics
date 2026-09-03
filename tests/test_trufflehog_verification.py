@@ -1,0 +1,100 @@
+"""Regression coverage for TruffleHog verification behavior.
+
+``trufflehog_show_unverified`` selects which *result types* TruffleHog returns.
+It must never disable verification itself: severity is derived from each
+finding's ``Verified`` flag, so a run with verification turned off reports every
+secret as unverified/low and nothing ever blocks.
+"""
+
+from types import SimpleNamespace
+
+from socket_basics.core.connector.trufflehog import TruffleHogScanner
+
+
+def _scanner(tmp_path, show_unverified):
+    values = {
+        "secret_scanning_enabled": True,
+        "scan_all": True,
+        "trufflehog_exclude_dir": "",
+        "trufflehog_show_unverified": show_unverified,
+    }
+    config = SimpleNamespace(workspace=tmp_path, _config=values)
+    config.get = lambda key, default=None: values.get(key, default)
+    config.get_action_for_severity = lambda severity: {
+        "critical": "error",
+        "low": "ignore",
+    }[severity]
+    config.get_scan_targets = lambda: [str(tmp_path)]
+    scanner = TruffleHogScanner.__new__(TruffleHogScanner)
+    scanner.config = config
+    scanner.is_enabled = lambda: True
+    return scanner
+
+
+def _captured_cmd(tmp_path, monkeypatch, show_unverified):
+    invocations = []
+
+    def record_run(cmd, *args, **kwargs):
+        invocations.append(cmd)
+        return SimpleNamespace(returncode=0, stdout="", stderr="")
+
+    monkeypatch.setattr(
+        "socket_basics.core.connector.trufflehog.subprocess.run", record_run
+    )
+    _scanner(tmp_path, show_unverified).scan()
+
+    assert len(invocations) == 1
+    return invocations[0]
+
+
+def test_show_unverified_off_requests_verified_results_only(tmp_path, monkeypatch):
+    cmd = _captured_cmd(tmp_path, monkeypatch, show_unverified=False)
+
+    assert "--results=verified" in cmd
+    assert "--no-verification" not in cmd
+
+
+def test_show_unverified_on_requests_every_result_type(tmp_path, monkeypatch):
+    cmd = _captured_cmd(tmp_path, monkeypatch, show_unverified=True)
+
+    assert "--results=verified,unverified,unknown" in cmd
+    assert "--no-verification" not in cmd
+
+
+def test_detector_selection_is_independent_of_the_setting(tmp_path, monkeypatch):
+    """Toggling the setting must not change which detectors run."""
+    off = _captured_cmd(tmp_path, monkeypatch, show_unverified=False)
+    on = _captured_cmd(tmp_path, monkeypatch, show_unverified=True)
+
+    detectors = [arg for arg in off if arg.startswith("--include-detectors")]
+    assert detectors == ["--include-detectors=all"]
+    assert detectors == [arg for arg in on if arg.startswith("--include-detectors")]
+
+
+def _finding(verified):
+    return {
+        "DetectorName": "AWS",
+        "Verified": verified,
+        "Raw": "AKIAIOSFODNN7EXAMPLE",
+        "SourceMetadata": {
+            "Data": {"Filesystem": {"file": "config/secrets.py", "line": 12}}
+        },
+    }
+
+
+def test_verified_findings_are_critical_and_blocking(tmp_path):
+    alert = _scanner(tmp_path, show_unverified=False)._create_alert(_finding(True))
+
+    assert alert["severity"] == "critical"
+    assert alert["action"] == "error"
+    assert alert["props"]["verified"] is True
+    assert alert["props"]["riskLevel"] == "critical"
+
+
+def test_unverified_findings_are_low_and_nonblocking(tmp_path):
+    alert = _scanner(tmp_path, show_unverified=True)._create_alert(_finding(False))
+
+    assert alert["severity"] == "low"
+    assert alert["action"] == "ignore"
+    assert alert["props"]["verified"] is False
+    assert alert["props"]["riskLevel"] == "low"

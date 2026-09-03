@@ -418,7 +418,7 @@ connectors:
         default: ""
       - name: trufflehog_show_unverified
         option: --show-unverified
-        description: "Show unverified secrets in TruffleHog results"
+        description: "Include unverified and unknown secrets in TruffleHog results; verification always runs, and by default only verified secrets are reported"
         env_variable: INPUT_TRUFFLEHOG_SHOW_UNVERIFIED
         type: bool
         default: false
