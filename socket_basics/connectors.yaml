@@ -145,7 +145,7 @@ connectors:
         env_variable: INPUT_ERLANG_SAST_ENABLED
         type: bool
         default: false
-      - name: notification_method
+      - name: opengrep_notification_method
         option: --opengrep-notify
         description: "Notification method for OpenGrep (e.g., console, slack)"
         env_variable: INPUT_OPENGREP_NOTIFICATION_METHOD
@@ -410,7 +410,7 @@ connectors:
         env_variable: INPUT_TRUFFLEHOG_EXCLUDE_DIR
         type: str
         default: ""
-      - name: notification_method
+      - name: trufflehog_notification_method
         option: --trufflehog-notify
         description: "Notification method for TruffleHog (e.g., console, slack)"
         env_variable: INPUT_TRUFFLEHOG_NOTIFICATION_METHOD
