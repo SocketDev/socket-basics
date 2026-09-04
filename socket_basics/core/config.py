@@ -829,6 +829,14 @@ def load_config_from_env() -> Dict[str, Any]:
         'scan_all': os.getenv('INPUT_SCAN_ALL', 'false').lower() == 'true',
         'scan_files': os.getenv('INPUT_SCAN_FILES', ''),
         'changed_files': os.getenv('INPUT_CHANGED_FILES', ''),
+
+        # Output and logging toggles. These mirror the --verbose,
+        # --console-tabular-enabled and --console-json-enabled CLI flags so the
+        # GitHub Action inputs of the same name (and INPUT_* entries in a .env
+        # file) behave identically to the flags.
+        'verbose': coerce_bool(os.getenv('INPUT_VERBOSE', ''), False),
+        'console_tabular_enabled': coerce_bool(os.getenv('INPUT_CONSOLE_TABULAR_ENABLED', ''), False),
+        'console_json_enabled': coerce_bool(os.getenv('INPUT_CONSOLE_JSON_ENABLED', ''), False),
         
         # Core Socket API configuration (top-level, like workspace)
         'socket_org': (
@@ -1130,6 +1138,12 @@ def load_explicit_env_config() -> Dict[str, Any]:
         config['changed_files'] = os.environ['INPUT_CHANGED_FILES']
     if 'INPUT_OPENGREP_RULES_DIR' in os.environ:
         config['opengrep_rules_dir'] = os.environ['INPUT_OPENGREP_RULES_DIR']
+    if 'INPUT_VERBOSE' in os.environ:
+        config['verbose'] = coerce_bool(os.environ['INPUT_VERBOSE'], False)
+    if 'INPUT_CONSOLE_TABULAR_ENABLED' in os.environ:
+        config['console_tabular_enabled'] = coerce_bool(os.environ['INPUT_CONSOLE_TABULAR_ENABLED'], False)
+    if 'INPUT_CONSOLE_JSON_ENABLED' in os.environ:
+        config['console_json_enabled'] = coerce_bool(os.environ['INPUT_CONSOLE_JSON_ENABLED'], False)
     
     # Dynamically load connector parameters from YAML configuration - only if explicitly set
     try:
@@ -1564,7 +1578,12 @@ def add_dynamic_cli_args(parser: argparse.ArgumentParser):
 
 def parse_cli_args():
     """Parse command line arguments and return argument parser"""
-    parser = argparse.ArgumentParser(description='Socket Security Basics - Dynamic security scanning')
+    parser = argparse.ArgumentParser(prog='socket-basics', description='Socket Security Basics - Dynamic security scanning')
+    try:
+        from ..version import __version__ as _socket_basics_version
+    except Exception:  # pragma: no cover - version module is always shipped
+        _socket_basics_version = 'unknown'
+    parser.add_argument('--version', action='version', version=f'%(prog)s {_socket_basics_version}')
     parser.add_argument('--config', type=str, 
                        help='Path to JSON configuration file. JSON config is merged with environment variables (JSON takes precedence)')
     parser.add_argument('--output', type=str, default='.socket.facts.json', 

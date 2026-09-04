@@ -9,6 +9,10 @@ runs:
     # Core GitHub variables (these are automatically available, but we explicitly pass GITHUB_TOKEN)
     GITHUB_TOKEN: ${{ inputs.github_token }}
     INPUT_WORKSPACE: ${{ inputs.workspace }}
+    # Output and logging (same behavior as the --verbose / --console-*-enabled CLI flags)
+    INPUT_VERBOSE: ${{ inputs.verbose }}
+    INPUT_CONSOLE_TABULAR_ENABLED: ${{ inputs.console_tabular_enabled }}
+    INPUT_CONSOLE_JSON_ENABLED: ${{ inputs.console_json_enabled }}
     # Scan scope
     INPUT_CHANGED_FILES: ${{ inputs.changed_files }}
     INPUT_SCAN_ALL: ${{ inputs.scan_all }}
@@ -50,13 +54,14 @@ runs:
     INPUT_JAVA_SAST_ENABLED: ${{ inputs.java_sast_enabled }}
     INPUT_JIRA_API_TOKEN: ${{ inputs.jira_api_token }}
     INPUT_JIRA_EMAIL: ${{ inputs.jira_email }}
-    INPUT_JIRA_PROJECT: ${{ inputs.project }}
-    INPUT_JIRA_URL: ${{ inputs.server }}
+    INPUT_JIRA_PROJECT: ${{ inputs.jira_project || inputs.project }}
+    INPUT_JIRA_URL: ${{ inputs.jira_url || inputs.server }}
     INPUT_KOTLIN_DISABLED_RULES: ${{ inputs.kotlin_disabled_rules }}
     INPUT_KOTLIN_ENABLED_RULES: ${{ inputs.kotlin_enabled_rules }}
     INPUT_KOTLIN_SAST_ENABLED: ${{ inputs.kotlin_sast_enabled }}
     INPUT_MSTEAMS_WEBHOOK_URL: ${{ inputs.msteams_webhook_url }}
-    INPUT_MS_SENTINEL_KEY: ${{ inputs.ms_sentinel_key }}
+    INPUT_MS_SENTINEL_KEY: ${{ inputs.ms_sentinel_key || inputs.ms_sentinel_shared_key }}
+    INPUT_MS_SENTINEL_SHARED_KEY: ${{ inputs.ms_sentinel_shared_key || inputs.ms_sentinel_key }}
     INPUT_MS_SENTINEL_WORKSPACE_ID: ${{ inputs.ms_sentinel_workspace_id }}
     INPUT_PHP_DISABLED_RULES: ${{ inputs.php_disabled_rules }}
     INPUT_PHP_ENABLED_RULES: ${{ inputs.php_enabled_rules }}
@@ -86,7 +91,8 @@ runs:
     INPUT_TRIVY_NOTIFICATION_METHOD: ${{ inputs.trivy_notification_method }}
     INPUT_TRIVY_VULN_ENABLED: ${{ inputs.trivy_vuln_enabled }}
     INPUT_TRUFFLEHOG_EXCLUDE_DIR: ${{ inputs.trufflehog_exclude_dir }}
-    INPUT_TRUFFLEHOG_NOTIFICATION_METHOD: ${{ inputs.notification_method }}
+    INPUT_TRUFFLEHOG_NOTIFICATION_METHOD: ${{ inputs.trufflehog_notification_method || inputs.notification_method }}
+    INPUT_OPENGREP_NOTIFICATION_METHOD: ${{ inputs.opengrep_notification_method }}
     INPUT_TRUFFLEHOG_SHOW_UNVERIFIED: ${{ inputs.trufflehog_show_unverified }}
     INPUT_USE_CUSTOM_SAST_RULES: ${{ inputs.use_custom_sast_rules }}
     INPUT_WEBHOOK_URL: ${{ inputs.webhook_url }}
@@ -155,6 +161,18 @@ inputs:
     description: "Github Api Url"
     required: false
     default: ""
+  verbose:
+    description: "Enable verbose (DEBUG) logging in the step log. Same as the --verbose CLI flag."
+    required: false
+    default: "false"
+  console_tabular_enabled:
+    description: "Print consolidated findings as tables in the step log. Same as the --console-tabular-enabled CLI flag."
+    required: false
+    default: "false"
+  console_json_enabled:
+    description: "Print consolidated findings as JSON in the step log. Same as the --console-json-enabled CLI flag."
+    required: false
+    default: "false"
   all_languages_enabled:
     description: "Enable SAST for all supported languages"
     required: false
@@ -288,11 +306,19 @@ inputs:
     required: false
     default: ""
   jira_api_token:
-    description: "Jira Api Token"
+    description: "Jira API token (also reads JIRA_API_TOKEN or INPUT_JIRA_API_TOKEN)"
     required: false
     default: ""
   jira_email:
-    description: "Jira Email"
+    description: "Jira account email (also reads JIRA_EMAIL or INPUT_JIRA_EMAIL)"
+    required: false
+    default: ""
+  jira_url:
+    description: "Jira base URL, e.g. https://your-org.atlassian.net (also reads JIRA_URL or INPUT_JIRA_URL)"
+    required: false
+    default: ""
+  jira_project:
+    description: "Jira project key, e.g. SEC (also reads JIRA_PROJECT or INPUT_JIRA_PROJECT)"
     required: false
     default: ""
   kotlin_disabled_rules:
@@ -308,11 +334,15 @@ inputs:
     required: false
     default: "false"
   ms_sentinel_key:
-    description: "Ms Sentinel Key"
+    description: "Microsoft Sentinel shared key (also reads MS_SENTINEL_SHARED_KEY or INPUT_MS_SENTINEL_SHARED_KEY)"
+    required: false
+    default: ""
+  ms_sentinel_shared_key:
+    description: "Alias for ms_sentinel_key, matching the MS_SENTINEL_SHARED_KEY environment variable name"
     required: false
     default: ""
   ms_sentinel_workspace_id:
-    description: "Ms Sentinel Workspace Id"
+    description: "Microsoft Sentinel workspace ID (also reads MS_SENTINEL_WORKSPACE_ID or INPUT_MS_SENTINEL_WORKSPACE_ID)"
     required: false
     default: ""
   msteams_webhook_url:
@@ -320,7 +350,15 @@ inputs:
     required: false
     default: ""
   notification_method:
-    description: "Notification method for TruffleHog (e.g., console, slack)"
+    description: "Deprecated alias for trufflehog_notification_method; kept for existing workflows"
+    required: false
+    default: ""
+  trufflehog_notification_method:
+    description: "Notification method for TruffleHog secret findings (e.g., console, slack). Same as --trufflehog-notify."
+    required: false
+    default: ""
+  opengrep_notification_method:
+    description: "Notification method for OpenGrep SAST findings (e.g., console, slack). Same as --opengrep-notify."
     required: false
     default: ""
   php_disabled_rules:
@@ -336,7 +374,7 @@ inputs:
     required: false
     default: "false"
   project:
-    description: "Project"
+    description: "Deprecated alias for jira_project; kept for existing workflows"
     required: false
     default: ""
   python_disabled_rules:
@@ -392,7 +430,7 @@ inputs:
     required: false
     default: "false"
   server:
-    description: "Server"
+    description: "Deprecated alias for jira_url; kept for existing workflows"
     required: false
     default: ""
   slack_webhook_url:

@@ -21,12 +21,18 @@ class MSSentinelNotifier(BaseNotifier):
     def __init__(self, params: Dict[str, Any] | None = None):
         super().__init__(params or {})
         # MS Sentinel configuration from params, env variables, or app config
+        # `ms_sentinel_workspace_id` / `ms_sentinel_key` are the parameter names
+        # declared in notifications.yaml, so they are what the --ms-sentinel-*
+        # CLI flags, the action inputs and dashboard config deliver.
         self.workspace_id = (
             self.config.get('workspace_id') or
+            self.config.get('ms_sentinel_workspace_id') or
             get_ms_sentinel_workspace_id()
         )
         self.shared_key = (
             self.config.get('shared_key') or
+            self.config.get('ms_sentinel_key') or
+            self.config.get('ms_sentinel_shared_key') or
             get_ms_sentinel_shared_key()
         )
         self.collector_url = (

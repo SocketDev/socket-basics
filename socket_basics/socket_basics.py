@@ -432,6 +432,13 @@ def main():
     
     # Create configuration from CLI args
     config = create_config_from_args(args)
+
+    # `verbose` can also arrive via INPUT_VERBOSE (the GitHub Action `verbose`
+    # input), a --config JSON file or the Socket dashboard, none of which
+    # argparse sees. Raise the log level once the merged config exists so those
+    # sources behave exactly like --verbose.
+    if not getattr(args, 'verbose', False) and config.get('verbose'):
+        logging.getLogger().setLevel(logging.DEBUG)
     
     # Create scanner and run
     scanner = SecurityScanner(config)
