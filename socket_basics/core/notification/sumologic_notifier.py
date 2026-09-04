@@ -2,7 +2,7 @@ from typing import Any, Dict
 import logging
 
 from socket_basics.core.notification.base import BaseNotifier
-from socket_basics.core.config import get_sumologic_http_source_url
+from socket_basics.core.config import get_sumologic_endpoint, get_sumologic_http_source_url
 
 logger = logging.getLogger(__name__)
 
@@ -17,10 +17,15 @@ class SumoLogicNotifier(BaseNotifier):
 
     def __init__(self, params: Dict[str, Any] | None = None):
         super().__init__(params or {})
-        # SumoLogic HTTP source URL from params, env variable, or app config
+        # SumoLogic HTTP source URL from params, env variable, or app config.
+        # `sumologic_endpoint` is the parameter name declared in
+        # notifications.yaml, so it is what --sumologic-endpoint, the
+        # `sumologic_endpoint` action input and dashboard config deliver.
         self.http_source_url = (
             self.config.get('http_source_url') or
-            get_sumologic_http_source_url()
+            self.config.get('sumologic_endpoint') or
+            get_sumologic_http_source_url() or
+            get_sumologic_endpoint()
         )
 
     def notify(self, facts: Dict[str, Any]) -> None:

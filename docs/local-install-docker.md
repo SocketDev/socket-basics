@@ -18,7 +18,8 @@ Run Socket Basics locally using Docker without installing security tools on your
 # 1. Pull a pinned release from GHCR (no build step required)
 docker pull ghcr.io/socketdev/socket-basics:3.1.0
 
-# 2. Create .env file with your credentials
+# 2. Create .env file with your credentials (the API key is environment-only;
+#    the organization can also be passed per run with --socket-org)
 cat > .env << 'EOF'
 SOCKET_SECURITY_API_KEY=your-api-key-here
 SOCKET_ORG=your-org-slug
@@ -48,8 +49,9 @@ inspect exactly what's inside:
 docker inspect ghcr.io/socketdev/socket-basics:3.1.0 \
   | jq '.[0].Config.Labels'
 # {
-#   "com.socket.trufflehog-version": "3.93.8",
-#   "com.socket.opengrep-version": "v1.16.5",
+#   "com.socket.trivy-version": "0.73.0",
+#   "com.socket.trufflehog-version": "3.96.0",
+#   "com.socket.opengrep-version": "v1.26.0",
 #   "org.opencontainers.image.version": "3.1.0",
 #   ...
 # }
@@ -70,20 +72,47 @@ docker inspect ghcr.io/socketdev/socket-basics:3.1.0 \
 | Docker Hub | `docker.io/socketdev/socket-basics:<version>` |
 | GHCR (app tests) | `ghcr.io/socketdev/socket-basics-app-tests:<version>` |
 
+### Image Variants
+
+| Tag | Contents | Use it when |
+|-----|----------|-------------|
+| `socket-basics:<version>` | Socket Basics with every bundled scanner (OpenGrep, TruffleHog, Socket-built Trivy) and the Socket npm CLI for Tier 1 reachability | **Always, unless Socket has told you otherwise.** This is the image the GitHub Action runs and the one every example in these docs uses. |
+| `socket-basics:<version>-heavy` | The standard image plus a pinned copy of the Socket **Python** CLI (`socketcli`) | Only when a pipeline must run the Python Socket CLI and Socket Basics from one container and cannot pull a second image. |
+
+The heavy variant was built for a single customer deployment with that
+constraint. It adds no scanners, no features and no extra findings to Socket
+Basics; it is larger, pulls more slowly and carries a second CLI to keep
+patched. The larger image does not produce a more thorough scan. If you are not
+certain you need `socketcli` inside the same container, use the standard image.
+
+The heavy image also has a different entrypoint. Its first argument selects the
+tool: `socketcli` runs the Python CLI; `socket-basics`, or any other argument,
+runs Socket Basics:
+
+```bash
+docker run --rm -v "$PWD:/workspace" ghcr.io/socketdev/socket-basics:3.1.0-heavy socketcli --help
+docker run --rm -v "$PWD:/workspace" ghcr.io/socketdev/socket-basics:3.1.0-heavy --workspace /workspace --python
+```
+
+`latest` and `latest-heavy` are floating aliases published for onboarding
+convenience. Pin an exact version (or digest) in anything automated.
+
 ### Pinning in CI/CD
 
-**GitHub Actions** — pin to the exact version and only bump when you're ready:
+**GitHub Actions** — prefer the [action itself](github-action.md), which adds PR
+comments and labels. If you must run the image directly, pin the exact version:
 
 ```yaml
 - name: Security scan
   run: |
     docker run --rm \
       -v "$GITHUB_WORKSPACE:/workspace" \
-      -e SOCKET_SECURITY_API_KEY=${{ secrets.SOCKET_API_KEY }} \
+      -e SOCKET_SECURITY_API_KEY=${{ secrets.SOCKET_SECURITY_API_KEY }} \
       -e SOCKET_ORG=${{ secrets.SOCKET_ORG }} \
       ghcr.io/socketdev/socket-basics:3.1.0 \
       --workspace /workspace \
-      --all-languages \
+      --python \
+      --javascript \
       --secrets \
       --console-tabular-enabled
 ```
@@ -92,12 +121,15 @@ docker inspect ghcr.io/socketdev/socket-basics:3.1.0 \
 
 ```yaml
 security-scan:
-  image: ghcr.io/socketdev/socket-basics:3.1.0
+  image:
+    name: ghcr.io/socketdev/socket-basics:3.1.0
+    entrypoint: [""]   # GitLab needs a shell; the image's entrypoint is socket-basics
   stage: test
   script:
     - socket-basics
-        --workspace /builds/$CI_PROJECT_PATH
-        --all-languages
+        --workspace "$CI_PROJECT_DIR"
+        --python
+        --javascript
         --secrets
         --console-tabular-enabled
   variables:
@@ -172,8 +204,8 @@ The image pins the bundled tools to specific versions. You can override them at 
 
 ```bash
 docker build \
-  --build-arg TRUFFLEHOG_VERSION=3.93.8 \
-  --build-arg OPENGREP_VERSION=v1.16.5 \
+  --build-arg TRUFFLEHOG_VERSION=3.96.0 \
+  --build-arg OPENGREP_VERSION=v1.26.0 \
   -t socket-basics:3.1.0 .
 ```
 
@@ -186,11 +218,14 @@ tests image, build from the `app_tests` directory and use the same build args.
 ### Verify Installation
 
 ```bash
-# Check that all tools are available in the container
-docker run --rm socket-basics:3.1.0 socket-basics --version
-docker run --rm socket-basics:3.1.0 socket --version
-docker run --rm socket-basics:3.1.0 opengrep --version
-docker run --rm socket-basics:3.1.0 trufflehog --version
+# The image's entrypoint is `socket-basics`, so its own flags need no prefix
+docker run --rm socket-basics:3.1.0 --version
+
+# Other bundled tools need --entrypoint
+docker run --rm --entrypoint socket     socket-basics:3.1.0 --version
+docker run --rm --entrypoint opengrep   socket-basics:3.1.0 --version
+docker run --rm --entrypoint trufflehog socket-basics:3.1.0 --version
+docker run --rm --entrypoint trivy      socket-basics:3.1.0 --version
 ```
 
 ### Smoke Test
@@ -268,12 +303,17 @@ Create a `.env` file in your project (add to `.gitignore`):
 
 ```bash
 # .env
-# Socket Configuration (Required for Enterprise features)
+# Socket Configuration (required to upload results and load dashboard config).
+# The API key is environment-only. The organization can also be passed as
+# --socket-org; --repo names the repository, not the organization.
 SOCKET_SECURITY_API_KEY=scrt_your_api_key_here
 SOCKET_ORG=your-organization-slug
 
-# GitHub Integration (for PR comments)
+# GitHub Integration (PR comments on a GitHub repository; see
+# "Posting PR Comments from a Docker Run" below)
 GITHUB_TOKEN=ghp_your_github_token
+GITHUB_REPOSITORY=owner/repo
+GITHUB_PR_NUMBER=123
 
 # Notification Integrations (Enterprise)
 SLACK_WEBHOOK_URL=https://hooks.slack.com/services/T00/B00/XXXX
@@ -290,9 +330,9 @@ MS_SENTINEL_WORKSPACE_ID=your-workspace-id
 MS_SENTINEL_SHARED_KEY=your-shared-key
 SUMOLOGIC_ENDPOINT=https://endpoint.sumologic.com/...
 
-# Scanning Options
-CONSOLE_TABULAR_ENABLED=true
-VERBOSE=false
+# Scanning Options (INPUT_* names mirror the CLI flags; see parameters.md#name-mapping)
+INPUT_CONSOLE_TABULAR_ENABLED=true
+INPUT_VERBOSE=false
 ```
 
 **Run with .env file:**
@@ -362,6 +402,45 @@ docker run --rm \
   --python
 ```
 
+### Posting PR Comments from a Docker Run
+
+The GitHub Action wires this up for you. From a plain `docker run` (Jenkins,
+CircleCI, a laptop) Socket Basics needs three things to comment on a GitHub
+pull request:
+
+| Variable | Purpose | If omitted |
+|----------|---------|------------|
+| `GITHUB_TOKEN` | Token with `pull-requests: write` (and `issues: write` for labels) | The PR notifier stays off |
+| `GITHUB_REPOSITORY` | `owner/repo` of the pull request | Discovered from the `origin` remote of the mounted checkout |
+| `GITHUB_PR_NUMBER` | The pull request number | Looked up through the GitHub API by branch name; nothing is posted if the branch has no open PR or the branch cannot be discovered |
+
+Set all three for deterministic behavior:
+
+```bash
+docker run --rm \
+  -v "$PWD:/workspace" \
+  -e SOCKET_SECURITY_API_KEY \
+  -e SOCKET_ORG \
+  -e GITHUB_TOKEN \
+  -e GITHUB_REPOSITORY=owner/repo \
+  -e GITHUB_PR_NUMBER=123 \
+  ghcr.io/socketdev/socket-basics:3.1.0 \
+  --workspace /workspace \
+  --python --javascript --secrets
+```
+
+Notes:
+- `-e NAME` with no value forwards the variable from your shell.
+- To report only the PR's own changes, add `-e GITHUB_BASE_REF=main` (with the
+  base branch fetched in the checkout) and `--changed-files pr`. Without a base
+  ref, `--changed-files auto` falls back to *staged* changes, which are empty
+  in CI, so nothing would be scanned. `--changed-files current-commit` or an
+  explicit file list are the alternatives.
+- The PR notifier reads `GITHUB_PR_NUMBER`; `--pull-request` only sets the
+  number recorded on the full scan, so use the environment variable.
+- Uploading to the dashboard still needs `SOCKET_SECURITY_API_KEY` and
+  `SOCKET_ORG`; PR comments and the dashboard are independent.
+
 ## Advanced Usage
 
 ### Container Scanning Status
@@ -374,23 +453,30 @@ docker run --rm \
 
 ### Save Results to File
 
-Mount a volume to save scan results:
+The facts file defaults to `.socket.facts.json` inside the workspace, so with
+`-v "$PWD:/workspace"` it already lands in your project directory. To use a
+different name or subdirectory, keep it **inside the workspace**:
 
 ```bash
-# Create results directory
 mkdir -p ./scan-results
 
-# Run scan and save output
 docker run --rm \
   -v "$PWD:/workspace" \
-  -v "$PWD/scan-results:/results" \
   --env-file .env \
   socket-basics:3.1.0 \
   --workspace /workspace \
   --python \
   --secrets \
-  --output /results/scan-results.json
+  --output /workspace/scan-results/scan-results.json
 ```
+
+> [!WARNING]
+> Do not write the facts file outside the workspace, for example to a second
+> `-v .../results:/results` mount with `--output /results/...`. The dashboard
+> upload uses the workspace as the base path of the upload, so a file outside
+> it is discarded and the run logs `Need at least one file to be uploaded`.
+> The scan looks green but nothing reaches the Socket dashboard. Add
+> `scan-results/` to `.gitignore` if you keep results in the repository.
 
 ### Interactive Mode
 
@@ -420,7 +506,7 @@ cat > socket-config.json << 'EOF'
 {
   "python_sast_enabled": true,
   "javascript_sast_enabled": true,
-  "secrets_enabled": true,
+  "secret_scanning_enabled": true,
   "console_tabular_enabled": true,
   "trufflehog_exclude_dir": "node_modules,vendor,dist"
 }
@@ -463,6 +549,23 @@ for PROJECT in "${PROJECTS[@]}"; do
 done
 ```
 
+### Large Repositories and Monorepos
+
+`--all-languages` over an entire monorepo is the slowest and noisiest way to run
+Socket Basics, and the facts file grows with the repository rather than with the
+findings: the SAST connector records one component for every non-gitignored file
+in the workspace, so a media-heavy or vendored tree yields a very large
+`.socket.facts.json` and upload.
+
+- Scope to what changed: `--changed-files auto` (staged changes locally),
+  `--changed-files pr` with `GITHUB_BASE_REF` set in CI, or `--changed-files <commit>`.
+- Scope to a project: mount and scan one project at a time
+  (`-v "$PWD/services/api:/workspace"`), or pass an explicit `--scan-files` list.
+- Enable only the languages the code uses; `--all-languages` runs every rule set.
+- Keep generated, vendored and media files out of git or in `.gitignore`;
+  ignored files are excluded from the inventory. `--exclude-dir` affects secret
+  scanning only.
+
 ### CI/CD Integration
 
 > **Using GitHub Actions?** Socket Basics has first-class GitHub Actions support with automatic PR comments, labels, and more — no Docker setup needed. See the [Quick Start](../README.md#-quick-start---github-actions) or the [GitHub Actions Guide](github-action.md).
@@ -479,8 +582,10 @@ pipeline {
         stage('Security Scan') {
             steps {
                 script {
+                    // --entrypoint='' is required: Jenkins runs `cat` to keep the
+                    // container alive, and the image's entrypoint is socket-basics.
                     docker.image('ghcr.io/socketdev/socket-basics:3.1.0').inside(
-                        "-v ${WORKSPACE}:/workspace --env-file .env"
+                        "--entrypoint='' -v ${WORKSPACE}:/workspace --env-file .env"
                     ) {
                         sh '''
                             socket-basics \
@@ -501,12 +606,15 @@ pipeline {
 
 ```yaml
 security-scan:
-  image: ghcr.io/socketdev/socket-basics:3.1.0
+  image:
+    name: ghcr.io/socketdev/socket-basics:3.1.0
+    entrypoint: [""]   # GitLab needs a shell; the image's entrypoint is socket-basics
   stage: test
   script:
     - socket-basics
-        --workspace /builds/$CI_PROJECT_PATH
-        --all-languages
+        --workspace "$CI_PROJECT_DIR"
+        --python
+        --javascript
         --secrets
         --console-tabular-enabled
   variables:
@@ -522,19 +630,15 @@ security-scan:
 
 **Solutions:**
 
-1. Run as current user:
+1. Fix ownership after the scan. The image runs as root (OpenGrep lives under
+   `/root`, so `--user` breaks SAST), which means files it writes into the
+   mount are root-owned:
    ```bash
-   docker run --rm \
-     -v "$PWD:/workspace" \
-     --user "$(id -u):$(id -g)" \
-     socket-basics:3.1.0 \
-     --workspace /workspace
+   sudo chown -R "$USER:$USER" .socket.facts.json scan-results
    ```
 
-2. Fix ownership after scan:
-   ```bash
-   sudo chown -R $USER:$USER ./scan-results
-   ```
+2. Or point `--output` at a workspace subdirectory you pre-create, and `chown`
+   only that directory afterwards.
 
 ### Volume Mount Not Working
 
@@ -549,12 +653,13 @@ security-scan:
      socket-basics:3.1.0
    ```
 
-2. Verify mount:
+2. Verify mount (the entrypoint is `socket-basics`, so override it to run `ls`):
    ```bash
    docker run --rm \
      -v "$PWD:/workspace" \
+     --entrypoint ls \
      socket-basics:3.1.0 \
-     ls -la /workspace
+     -la /workspace
    ```
 
 ### Environment Variables Not Loaded
@@ -640,16 +745,38 @@ security-scan:
      --output /workspace/results.json  # Save to mounted directory
    ```
 
-2. Use separate results volume:
+2. Keep the file inside the workspace. A separate `/results` volume breaks the
+   dashboard upload (see [Save Results to File](#save-results-to-file)):
    ```bash
-   mkdir -p ./results
+   mkdir -p ./scan-results
    docker run --rm \
      -v "$PWD:/workspace" \
-     -v "$PWD/results:/results" \
      socket-basics:3.1.0 \
      --workspace /workspace \
-     --output /results/scan.json
+     --output /workspace/scan-results/scan.json
    ```
+
+### Results Missing From the Dashboard
+
+**Problem:** The scan finishes but no full scan appears in the Socket dashboard.
+
+**Solutions:**
+
+1. `Need at least one file to be uploaded` in the log: the facts file was
+   written outside the workspace. Use a path under `/workspace` for `--output`.
+2. `No Socket organization configured` in the log: set `SOCKET_ORG`, or use an
+   API key with the `socket-basics` scope so the organization can be discovered.
+3. `Socket API key not detected - running in free plan mode`: the key did not
+   reach the container. Check the `.env` file or `-e` flags and the variable
+   name (`SOCKET_SECURITY_API_KEY`).
+4. `Insufficient permissions`: the key is missing the `full-scans` scope (upload)
+   or the `socket-basics` scope (dashboard configuration).
+
+### PR Comment Not Posted
+
+See [Posting PR Comments from a Docker Run](#posting-pr-comments-from-a-docker-run):
+`GITHUB_TOKEN`, `GITHUB_REPOSITORY` and `GITHUB_PR_NUMBER` must all reach the
+container, and `GithubPRNotifier` lines in the log say what was decided.
 
 ## Shell Aliases
 
@@ -682,13 +809,15 @@ sb-all
 ## Best Practices
 
 1. **Use pre-built images** — Pull `ghcr.io/socketdev/socket-basics:<version>` instead of building locally
-2. **Pin to a specific version** — Avoid `:latest` in production CI; pin to `3.1.0` and upgrade deliberately
-3. **Use Dependabot** — Reference the image in your Dockerfile/Compose to get automatic upgrade PRs
-4. **Inspect baked-in labels** — Run `docker inspect <image> | jq '.[0].Config.Labels'` to verify tool versions
-5. **Use .env files** — Keep credentials out of command history
-6. **Add .env to .gitignore** — Never commit secrets
-7. **Mount minimal volumes** — Only mount what you need to scan
-8. **Resource limits** — Set CPU/memory limits for long-running scans
+2. **Use the standard image** — `-heavy` exists for one deployment constraint (see [Image Variants](#image-variants)); it adds nothing to Socket Basics
+3. **Pin to a specific version** — Avoid `:latest` in production CI; pin to `3.1.0` and upgrade deliberately
+4. **Use Dependabot** — Reference the image in your Dockerfile/Compose to get automatic upgrade PRs
+5. **Inspect baked-in labels** — Run `docker inspect <image> | jq '.[0].Config.Labels'` to verify tool versions
+6. **Use .env files** — Keep credentials out of command history
+7. **Add .env to .gitignore** — Never commit secrets
+8. **Mount minimal volumes** — Only mount what you need to scan
+9. **Keep `--output` inside the workspace** — Anything else is not uploaded to the dashboard
+10. **Resource limits** — Set CPU/memory limits for long-running scans
 
 ## Example: Complete Workflow
 
@@ -700,12 +829,12 @@ set -e
 
 # Configuration
 PROJECT_DIR="$(pwd)"
-RESULTS_DIR="./scan-results"
-IMAGE_NAME="socket-basics:3.1.0"
+RESULTS_DIR="scan-results"   # relative to the project: it must stay inside the workspace
+IMAGE_NAME="ghcr.io/socketdev/socket-basics:3.1.0"
 ENV_FILE=".env"
 
-# Create results directory
-mkdir -p "$RESULTS_DIR"
+# Create results directory (add it to .gitignore)
+mkdir -p "$PROJECT_DIR/$RESULTS_DIR"
 
 # Verify .env exists
 if [ ! -f "$ENV_FILE" ]; then
@@ -713,7 +842,7 @@ if [ ! -f "$ENV_FILE" ]; then
     cat > "$ENV_FILE" << 'EOF'
 SOCKET_SECURITY_API_KEY=your-api-key-here
 SOCKET_ORG=your-org-slug
-CONSOLE_TABULAR_ENABLED=true
+INPUT_CONSOLE_TABULAR_ENABLED=true
 EOF
     echo "⚠️  Please edit .env with your credentials"
     exit 1
@@ -721,10 +850,10 @@ fi
 
 echo "🔍 Starting security scan..."
 
-# Run comprehensive scan
+# Run the scan. Enable the languages the project uses rather than
+# --all-languages on a large monorepo (see "Large Repositories and Monorepos").
 docker run --rm \
   -v "$PROJECT_DIR:/workspace" \
-  -v "$RESULTS_DIR:/results" \
   --env-file "$ENV_FILE" \
   "$IMAGE_NAME" \
   --workspace /workspace \
@@ -732,7 +861,7 @@ docker run --rm \
   --secrets \
   --socket-tier1 \
   --console-tabular-enabled \
-  --output /results/scan-$(date +%Y%m%d-%H%M%S).json
+  --output "/workspace/$RESULTS_DIR/scan-$(date +%Y%m%d-%H%M%S).json"
 
 echo "✅ Scan complete! Results saved to $RESULTS_DIR"
 ```
