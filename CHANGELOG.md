@@ -8,6 +8,45 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Added
+- `--version` CLI flag. (CE-445)
+- GitHub Action inputs `verbose`, `console_tabular_enabled` and
+  `console_json_enabled`, delivered as `INPUT_VERBOSE`,
+  `INPUT_CONSOLE_TABULAR_ENABLED` and `INPUT_CONSOLE_JSON_ENABLED` and honored
+  from the environment the same way as the matching CLI flags. (CE-445)
+- GitHub Action inputs `jira_url` and `jira_project`, matching the names used in
+  the documentation; `server` and `project` remain as aliases. Also added
+  `ms_sentinel_shared_key` (alias of `ms_sentinel_key`),
+  `opengrep_notification_method` and `trufflehog_notification_method`
+  (`notification_method` remains as an alias). (CE-445)
+- `docs/parameters.md` gains a **Name Mapping** section listing every setting as
+  CLI flag, GitHub Action input, environment variable and JSON key, generated
+  from `connectors.yaml`, `notifications.yaml` and `action.yml`. A new test
+  keeps `action.yml` and the parameter declarations in step. (CE-445)
+- `scripts/check_release_docs.py` now also checks that action references use an
+  exact release tag and that the bundled scanner versions quoted in the guides
+  match the Dockerfile pins; `--write` updates both. (CE-445)
+- Documentation for the `-heavy` image variant and for when the standard image
+  is the right choice. (CE-445)
+
+### Fixed
+- The Sentinel and Sumo Logic notifiers now read `ms_sentinel_workspace_id`,
+  `ms_sentinel_key` and `sumologic_endpoint` from CLI flags, action inputs and
+  dashboard configuration, in addition to the `MS_SENTINEL_*` and
+  `SUMO_LOGIC_HTTP_SOURCE_URL` environment variables. (CE-445)
+- Documentation consistency pass across the GitHub Action, Docker and local
+  installation guides (CE-445). CLI examples use the flag names that
+  `socket-basics --help` prints. Docker examples keep the facts file inside the
+  workspace so the dashboard upload succeeds, and show the environment variables
+  needed for PR comments outside GitHub Actions. The GitHub Action guide reflects
+  the bundled Trivy scanner, lists only declared inputs, and passes discovered
+  Dockerfiles through in the auto-discovery example. JSON configuration examples
+  use the keys the loader reads, the S3 variable names and `--config` precedence
+  match the code, GitLab and Jenkins examples override the image entrypoint,
+  pre-commit hook examples use the published image name, and the installation
+  guide states the Python 3.10 requirement and the npm install path for the
+  Socket CLI. New guidance covers large repositories and facts-file size.
+
 ## [3.1.0] - 2026-09-02
 
 ### Added

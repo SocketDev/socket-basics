@@ -187,18 +187,32 @@ Socket Basics requires the following permissions to post PR comments and create 
 
 ```yaml
 permissions:
-  issues: write        # Create and update issues for findings
+  issues: write        # Severity labels are managed through the issues API
   contents: read       # Read repository contents
-  pull-requests: write # Post comments on pull requests
+  pull-requests: write # Post and update the findings comment
 ```
 
 Include these in your workflow's `jobs.<job_id>.permissions` section.
 
 ### Required Inputs
 
-**`github_token`** (required)
+**`github_token`** (required for PR comments and labels)
 - GitHub token for posting PR comments and API access
 - Use `${{ secrets.GITHUB_TOKEN }}` (automatically provided)
+- Also set `GITHUB_PR_NUMBER` in the step `env:` as shown in the Quick Start. On
+  `pull_request` events the number is also read from the event payload, so the
+  env entry is a belt-and-braces default that keeps the same workflow working on
+  `issue_comment` and other triggers.
+
+**`socket_security_api_key`** (required to upload results and load dashboard configuration)
+- Without it the scan still runs and comments on the PR, but nothing reaches the Socket dashboard.
+
+**`socket_org`** (optional)
+- Discovered from the API key when the key has the `socket-basics` scope. Set it
+  explicitly when configuring the scan from `with:` inputs instead of the dashboard.
+- Note that the CLI has no `--socket-org` flag; outside the action the value
+  comes from the `SOCKET_ORG` environment variable. See the
+  [name mapping](parameters.md#name-mapping) for the equivalents of every input.
 
 ### Common Scanning Options
 
@@ -233,22 +247,20 @@ Include these in your workflow's `jobs.<job_id>.permissions` section.
 - uses: SocketDev/socket-basics@v3.1.0
   with:
     github_token: ${{ secrets.GITHUB_TOKEN }}
-    # The supported pre-built GitHub Action path currently ships without
-    # Trivy while we evaluate the safest way to bundle it with Basics again.
-    # Use a native install if you need container scanning today.
-    # See docs/local-installation.md#trivy-container-scanning.
+    # Listing images or Dockerfiles auto-enables the matching Trivy scan.
+    # Images must be reachable from the job: public, pullable after an earlier
+    # `docker login` step, or built earlier in the same job.
+    container_images: 'nginx:1.27.4,ghcr.io/your-org/api:1.4.2'
+    dockerfiles: 'Dockerfile,docker/Dockerfile.prod'
+    # Optional: Trivy vulnerability scanning for supported language ecosystems
+    trivy_vuln_enabled: 'true'
 ```
 
 > [!NOTE]
-> The supported pre-built GitHub Action and Docker image paths currently ship
-> _without_ Trivy while we evaluate the safest way to bundle it with Basics
-> again.
-> If you need container or Dockerfile scanning today, use the
-> [native installation path](local-installation.md). See
-> [Trivy (Container Scanning)](local-installation.md#trivy-container-scanning)
-> for the current version guidance and install options, and review the upstream
-> install path and artifacts carefully before adopting that path in production
-> CI.
+> Trivy is bundled in the pre-built action image (a Socket-built distribution,
+> rebuilt from unmodified upstream source and pinned by digest), so these inputs
+> need no extra setup. Only a native install needs the version guidance in
+> [Trivy (Container Scanning)](local-installation.md#trivy-container-scanning).
 
 **Socket Tier 1 Reachability:**
 ```yaml
@@ -551,10 +563,9 @@ jobs:
           socket_org: ${{ secrets.SOCKET_ORG }}
           socket_security_api_key: ${{ secrets.SOCKET_SECURITY_API_KEY }}
           
-          # Enable multiple languages
+          # Enable multiple languages (javascript_sast_enabled covers TypeScript)
           python_sast_enabled: 'true'
           javascript_sast_enabled: 'true'
-          typescript_sast_enabled: 'true'
           go_sast_enabled: 'true'
           
           # Security scans
@@ -618,10 +629,7 @@ jobs:
 > [!NOTE]
 > The pre-built GitHub Action bundles Trivy (a Socket-built distribution,
 > rebuilt from unmodified upstream source and pinned by digest), so the
-> container-scanning inputs below work out of the box. The standalone-install
-> example that follows is only for running Trivy independently of Socket
-> Basics; if you do that, never use versions `0.69.4`–`0.69.6` — see
-> [Local Installation](local-installation.md#trivy-container-scanning).
+> container-scanning inputs below work out of the box with no Trivy install step.
 
 ```yaml
 name: Container Security
@@ -646,20 +654,18 @@ jobs:
       
       - name: Build Docker Image
         run: docker build -t myapp:${{ github.sha }} .
-      
-      - name: Install pinned Trivy
-        run: |
-          # Pin explicitly; never use 0.69.4–0.69.6 (see the Trivy section in
-          # docs/local-installation.md). Keep in step with the version bundled
-          # in the Socket Basics image (TRIVY_VERSION in the Dockerfile).
-          TRIVY_VERSION=0.73.0
-          curl -fsSL https://raw.githubusercontent.com/aquasecurity/trivy/main/contrib/install.sh \
-            | sh -s -- -b /usr/local/bin "v${TRIVY_VERSION}"
 
-      - name: Scan Container
-        run: |
-          trivy image --exit-code 1 --severity HIGH,CRITICAL "myapp:${{ github.sha }}"
-          trivy config --exit-code 1 --severity HIGH,CRITICAL Dockerfile
+      - name: Run Socket Basics (image + Dockerfile scan)
+        uses: SocketDev/socket-basics@v3.1.0
+        env:
+          GITHUB_PR_NUMBER: ${{ github.event.pull_request.number }}
+        with:
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          socket_security_api_key: ${{ secrets.SOCKET_SECURITY_API_KEY }}
+          # The image built above is visible to the action through the runner's
+          # Docker daemon; registry images must be pullable from the job.
+          container_images: 'myapp:${{ github.sha }}'
+          dockerfiles: 'Dockerfile'
 ```
 
 ### Dockerfile Auto-Discovery
@@ -718,6 +724,7 @@ jobs:
           github_token: ${{ secrets.GITHUB_TOKEN }}
           # Discovered Dockerfiles feed Trivy-backed misconfiguration scanning,
           # which is bundled in the pre-built action image.
+          dockerfiles: ${{ needs.discover-dockerfiles.outputs.dockerfiles }}
           verbose: 'true'
 ```
 
@@ -735,9 +742,9 @@ jobs:
 
 3. **Scan job** receives discovered paths via job output and skips if none found
 
-**Customizing discovery patterns:**
+**Customizing discovery patterns** (edit the `find` expression in the discovery step):
 
-```yaml
+```bash
 # Only scan production Dockerfiles
 -type f -name 'Dockerfile.prod' -print
 
@@ -822,23 +829,35 @@ Notes:
 
 See [`action.yml`](../action.yml) for the complete list of inputs.
 
+Every input has a CLI flag and environment-variable equivalent; the
+[name mapping](parameters.md#name-mapping) lists them side by side.
+
 **Core Configuration:**
 - `socket_org` — Socket organization slug (Enterprise)
 - `socket_security_api_key` — Socket Security API key (Enterprise)
-- `github_token` — GitHub token (required)
-- `verbose` — Enable verbose logging
-- `console_tabular_enabled` — Tabular console output
-- `console_json_enabled` — JSON console output
+- `github_token` — GitHub token (required for PR comments and labels)
+- `verbose` — Enable verbose logging in the step log
+- `console_tabular_enabled` — Tabular console output in the step log
+- `console_json_enabled` — JSON console output in the step log
+- `workspace` — Declared but not currently honored: the action always scans
+  `GITHUB_WORKSPACE`. Narrow the scope with the inputs below instead.
+
+**Scan Scope:**
+- `changed_files` — Diff-only mode (`auto`, `pr`, `current-commit`, a commit hash, or a file list)
+- `scan_files` — Explicit comma-separated file list
+- `scan_all` — Fail-open fallback when a `changed_files` scope cannot be resolved
 
 **SAST Languages:**
 - `all_languages_enabled` — Enable all languages
-- `python_sast_enabled`, `javascript_sast_enabled`, `typescript_sast_enabled`
+- `python_sast_enabled`, `javascript_sast_enabled` (covers TypeScript)
 - `go_sast_enabled`, `golang_sast_enabled`
 - `java_sast_enabled`, `php_sast_enabled`, `ruby_sast_enabled`
 - `csharp_sast_enabled`, `dotnet_sast_enabled`
 - `c_sast_enabled`, `cpp_sast_enabled`
 - `kotlin_sast_enabled`, `scala_sast_enabled`, `swift_sast_enabled`
-- `rust_sast_enabled`, `elixir_sast_enabled`
+- `rust_sast_enabled`, `elixir_sast_enabled`, `erlang_sast_enabled`
+- `all_rules_enabled` — Run every bundled rule for the enabled languages (disables the per-language allowlists)
+- `opengrep_notification_method` — Route SAST findings to one notifier (e.g. `console`, `slack`)
 
 **Rule Configuration (per language):**
 - `<language>_enabled_rules` — Comma-separated rules to enable
@@ -849,15 +868,20 @@ See [`action.yml`](../action.yml) for the complete list of inputs.
 
 **Security Scanning:**
 - `secret_scanning_enabled` — Enable secret scanning
+- `disable_all_secrets` — Turn every secret-scanning feature off
 - `trufflehog_exclude_dir` — Directories to exclude
 - `trufflehog_show_unverified` — Show unverified secrets
+- `trufflehog_notification_method` — Route secret findings to one notifier (`notification_method` is a deprecated alias)
 - `socket_tier_1_enabled` — Socket Tier 1 reachability
+- `socket_additional_params` — Extra arguments for `socket scan reach`
 
-**Container Scanning (configuration surface):**
-- `container_images` — Comma-separated images to scan
-- `dockerfiles` — Comma-separated Dockerfiles to scan
+**Container Scanning:**
+- `container_images` — Comma-separated images to scan (auto-enables image scanning)
+- `dockerfiles` — Comma-separated Dockerfiles to scan (auto-enables Dockerfile scanning)
 - `trivy_disabled_rules` — Trivy rules to disable
-- `trivy_vuln_enabled` — Enable vulnerability scanning
+- `trivy_image_scanning_disabled` — Disable image scanning
+- `trivy_vuln_enabled` — Enable vulnerability scanning for supported language ecosystems
+- `trivy_notification_method` — Route container findings to one notifier
 
 > [!NOTE]
 > Container scanning is backed by Trivy, bundled in the pre-built GitHub
@@ -866,18 +890,27 @@ See [`action.yml`](../action.yml) for the complete list of inputs.
 
 **Notifications (Enterprise Required):**
 - `slack_webhook_url` — Slack webhook
-- `jira_url`, `jira_email`, `jira_api_token`, `jira_project` — Jira config
+- `jira_url`, `jira_email`, `jira_api_token`, `jira_project` — Jira config (`server` and `project` are deprecated aliases)
 - `msteams_webhook_url` — MS Teams webhook
 - `webhook_url` — Generic webhook
-- `ms_sentinel_workspace_id`, `ms_sentinel_shared_key` — MS Sentinel
+- `ms_sentinel_workspace_id`, `ms_sentinel_shared_key` (alias `ms_sentinel_key`) — MS Sentinel
 - `sumologic_endpoint` — Sumo Logic
 
-**Storage:**
-- `s3_enabled`, `s3_bucket`, `s3_access_key`, `s3_secret_key` — S3 upload
+**PR Comments and Labels:**
+- `pr_comment_enabled`, `pr_comment_collapse_all`, `pr_labels_enabled`, `pr_label_<severity>` and the
+  other `pr_comment_*` inputs — see the [PR Comment Guide](github-pr-comment-guide.md)
+
+**Storage (environment variables, not inputs):**
+S3 upload is configured through the step `env:` block, not `with:`:
+`SOCKET_S3_ENABLED`, `SOCKET_S3_BUCKET`, `SOCKET_S3_ACCESS_KEY`, `SOCKET_S3_SECRET_KEY`,
+and optionally `SOCKET_S3_REGION` and `SOCKET_S3_ENDPOINT`. See
+[S3 Upload Configuration](parameters.md#s3-upload-configuration).
 
 ### Environment Variables
 
-All inputs support both standard and `INPUT_` prefixed environment variables:
+Every `with:` input is delivered to the container as an `INPUT_<NAME>`
+environment variable (the input name upper-cased), so the two forms below are
+equivalent and either can be used in the step `env:` block:
 
 ```yaml
 env:
@@ -886,6 +919,12 @@ env:
   SOCKET_ORG: ${{ secrets.SOCKET_ORG }}
   SOCKET_SECURITY_API_KEY: ${{ secrets.SOCKET_SECURITY_API_KEY }}
 ```
+
+Plain (un-prefixed) names are accepted only for credentials, notifier endpoints
+and a few GitHub context values (`SOCKET_ORG`, `SOCKET_SECURITY_API_KEY`,
+`GITHUB_TOKEN`, `SLACK_WEBHOOK_URL`, `JIRA_URL`, ...). A scanner toggle such as
+`PYTHON_SAST_ENABLED` without the `INPUT_` prefix is ignored. The full list is
+in the [name mapping](parameters.md#name-mapping).
 
 ## Troubleshooting
 
@@ -911,7 +950,35 @@ steps:
 permissions:
   contents: read
   pull-requests: write
+  issues: write   # only needed for severity labels
 ```
+3. Make sure the run knows which PR it is on. Pass the number explicitly, as the
+   Quick Start does, so it works on every trigger:
+```yaml
+env:
+  GITHUB_PR_NUMBER: ${{ github.event.pull_request.number || github.event.issue.number }}
+```
+4. Check that `pr_comment_enabled` has not been set to `'false'` (in the
+   workflow or in the Socket dashboard configuration). The scan then runs and
+   uploads results but deliberately posts nothing.
+5. Nothing is posted when there are no findings above the reporting threshold.
+   Look for `GithubPRNotifier` lines in the step log to see what the notifier
+   decided and why.
+
+### Results Not Showing in the Socket Dashboard
+
+**Problem:** The action is green but no full scan appears in the dashboard.
+
+**Solutions:**
+1. Provide `socket_security_api_key`. Without it the scan runs locally only.
+2. Check the log for `No Socket organization configured`. Either set `socket_org`
+   or use an API key with the `socket-basics` scope so the organization can be
+   discovered from the key.
+3. Check the token scopes: `full-scans` is required to upload;
+   `socket-basics` is required to load dashboard configuration. `Insufficient
+   permissions` in the log means a scope is missing.
+4. `pr_comment_enabled: 'false'` does **not** affect the upload; results still
+   reach the dashboard.
 
 ### Container Scanning Fails
 
@@ -948,17 +1015,30 @@ permissions:
 
 **Additional signal:** If the configured path does not exist under the workspace, Socket Basics logs a warning and does not fall back to rule-only matching.
 
-### High Memory Usage
+### Large Repositories and Monorepos
 
-**Problem:** Action runs out of memory.
+**Problem:** The action is slow, runs out of memory, posts very large PR
+comments, or produces a huge `.socket.facts.json`.
+
+`all_languages_enabled` over a whole monorepo runs every SAST rule set against
+every file on every PR. Independently of findings, the SAST connector also
+records **one component per non-gitignored file in the workspace**, so the
+facts file grows with the file count, and repositories that commit media,
+vendored code or generated assets produce very large uploads.
 
 **Solutions:**
-1. Exclude large directories:
-```yaml
-trufflehog_exclude_dir: 'node_modules,vendor,dist,.git'
-```
-2. Scan specific languages instead of `all_languages_enabled`
-3. Use self-hosted runner with more resources
+1. Scope PR runs to the diff. `changed_files: 'auto'` (with `fetch-depth: 0`)
+   makes each PR report only its own changes and is the single biggest win.
+2. Enable only the languages the repository actually uses instead of
+   `all_languages_enabled`.
+3. Keep generated and vendored trees out of git or list them in `.gitignore`;
+   ignored files are excluded from the inventory. `trufflehog_exclude_dir`
+   affects secret scanning only.
+4. For multi-project monorepos, run one job per project. Until the `workspace`
+   input is honored, do this with `scan_files` / `changed_files`, or with the
+   Docker image and a per-project `--workspace` (see
+   [Local Docker Installation](local-install-docker.md#large-repositories-and-monorepos)).
+5. Use a self-hosted runner with more memory only after the above.
 
 ### Rate Limiting
 
@@ -979,4 +1059,4 @@ with:
 **Next Steps:**
 - [Pre-Commit Hook Setup](pre-commit-hook.md) — Catch issues before commit
 - [Local Installation](local-installation.md) — Run scans from your terminal
-- [Configuration Guide](configuration.md) — Detailed configuration options
+- [Parameters Reference](parameters.md) — Every CLI flag, action input and environment variable, with the mapping between them

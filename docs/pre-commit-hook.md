@@ -20,6 +20,12 @@ Catch security issues before they're committed to your repository using Socket B
 
 Both methods integrate with Git's pre-commit hook system to automatically scan your code before each commit.
 
+The CLI flags are the same in both: `--python`, `--javascript`, `--secrets`,
+`--all-languages`, `--socket-tier1`, `--exclude-dir`. These are the flag names
+`socket-basics --help` prints; the GitHub Action uses different names
+(`python_sast_enabled`, ...) and the CLI rejects those. See the
+[name mapping](parameters.md#name-mapping).
+
 ## Docker Installation (Recommended)
 
 Best for: Teams wanting consistent environments without installing security tools locally.
@@ -44,7 +50,6 @@ Create `.git/hooks/pre-commit` in your project:
 
 ```bash
 #!/bin/bash
-set -e
 
 echo "🔍 Running Socket Basics security scan..."
 
@@ -59,12 +64,11 @@ fi
 # Run Socket Basics in Docker
 docker run --rm \
   -v "$PWD:/workspace" \
-  -e INPUT_CONSOLE_ENABLED=true \
-  socket-basics \
+  ghcr.io/socketdev/socket-basics:3.1.0 \
   --workspace /workspace \
-  --python-sast-enabled \
-  --javascript-sast-enabled \
-  --secret-scanning-enabled \
+  --python \
+  --javascript \
+  --secrets \
   --console-tabular-enabled
 
 EXIT_CODE=$?
@@ -94,38 +98,34 @@ git commit -m "Test commit"
 
 ### Docker Pre-Commit Configuration
 
-**Scan only changed files:**
+**Scan only staged files:**
+
+`--changed-files auto` scopes every scanner to the staged changes when there is
+no pull-request context, which is exactly what a pre-commit hook wants. Git runs
+inside the container against the mounted `.git` directory, so nothing else is
+needed.
 
 ```bash
 #!/bin/bash
-set -e
 
 echo "🔍 Running Socket Basics security scan on staged files..."
 
-STAGED_FILES=$(git diff --cached --name-only --diff-filter=ACMR)
-
-if [ -z "$STAGED_FILES" ]; then
+if [ -z "$(git diff --cached --name-only --diff-filter=ACMR)" ]; then
   echo "No files to scan"
   exit 0
 fi
 
-# Create temporary file list
-TEMP_FILE=$(mktemp)
-echo "$STAGED_FILES" > "$TEMP_FILE"
-
-# Run scan only on staged files
+# Scope the scan to the staged changes
 docker run --rm \
   -v "$PWD:/workspace" \
-  -v "$TEMP_FILE:/tmp/scan-files.txt" \
-  -e INPUT_CONSOLE_ENABLED=true \
-  socket-basics \
+  ghcr.io/socketdev/socket-basics:3.1.0 \
   --workspace /workspace \
-  --python-sast-enabled \
-  --secret-scanning-enabled \
+  --changed-files auto \
+  --python \
+  --secrets \
   --console-tabular-enabled
 
 EXIT_CODE=$?
-rm "$TEMP_FILE"
 
 if [ $EXIT_CODE -ne 0 ]; then
   echo "❌ Security issues found! Please fix before committing."
@@ -140,7 +140,6 @@ exit 0
 
 ```bash
 #!/bin/bash
-set -e
 
 echo "🔍 Running Socket Basics security scan..."
 
@@ -151,16 +150,15 @@ fi
 
 docker run --rm \
   -v "$PWD:/workspace" \
-  -e INPUT_CONSOLE_ENABLED=true \
   -e SOCKET_ORG="$SOCKET_ORG" \
   -e SOCKET_SECURITY_API_KEY="$SOCKET_SECURITY_API_KEY" \
-  -e INPUT_SLACK_WEBHOOK_URL="$SLACK_WEBHOOK_URL" \
-  socket-basics \
+  -e SLACK_WEBHOOK_URL="$SLACK_WEBHOOK_URL" \
+  ghcr.io/socketdev/socket-basics:3.1.0 \
   --workspace /workspace \
-  --python-sast-enabled \
-  --javascript-sast-enabled \
-  --secret-scanning-enabled \
-  --socket-tier-1-enabled \
+  --python \
+  --javascript \
+  --secrets \
+  --socket-tier1 \
   --console-tabular-enabled
 
 EXIT_CODE=$?
@@ -216,7 +214,6 @@ Create `.git/hooks/pre-commit`:
 
 ```bash
 #!/bin/bash
-set -e
 
 echo "🔍 Running Socket Basics security scan..."
 
@@ -227,9 +224,9 @@ fi
 
 # Run Socket Basics
 socket-basics \
-  --python-sast-enabled \
-  --javascript-sast-enabled \
-  --secret-scanning-enabled \
+  --python \
+  --javascript \
+  --secrets \
   --console-tabular-enabled
 
 EXIT_CODE=$?
@@ -262,7 +259,6 @@ git commit -m "Test commit"
 
 ```bash
 #!/bin/bash
-set -e
 
 echo "🔍 Quick security check..."
 
@@ -271,7 +267,7 @@ if [ -d ".venv" ]; then
 fi
 
 socket-basics \
-  --secret-scanning-enabled \
+  --secrets \
   --console-tabular-enabled
 
 if [ $? -ne 0 ]; then
@@ -287,7 +283,6 @@ exit 0
 
 ```bash
 #!/bin/bash
-set -e
 
 echo "🔍 Running comprehensive security scan..."
 
@@ -301,9 +296,9 @@ if [ -f .env ]; then
 fi
 
 socket-basics \
-  --all-languages-enabled \
-  --secret-scanning-enabled \
-  --socket-tier-1-enabled \
+  --all-languages \
+  --secrets \
+  --socket-tier1 \
   --console-tabular-enabled \
   --verbose
 
@@ -325,7 +320,7 @@ exit 0
 
 **Fast (< 10 seconds):**
 ```bash
-socket-basics --secret-scanning-enabled
+socket-basics --secrets
 ```
 - Only scans for leaked secrets
 - Best for quick feedback during development
@@ -333,8 +328,8 @@ socket-basics --secret-scanning-enabled
 **Balanced (30-60 seconds):**
 ```bash
 socket-basics \
-  --python-sast-enabled \
-  --secret-scanning-enabled
+  --python \
+  --secrets
 ```
 - Language-specific SAST + secrets
 - Good balance of speed and coverage
@@ -342,9 +337,9 @@ socket-basics \
 **Comprehensive (2-5 minutes):**
 ```bash
 socket-basics \
-  --all-languages-enabled \
-  --secret-scanning-enabled \
-  --socket-tier-1-enabled
+  --all-languages \
+  --secrets \
+  --socket-tier1
 ```
 - All security features enabled
 - Best for final checks or CI/CD
@@ -355,7 +350,6 @@ Only scan relevant languages based on file extensions:
 
 ```bash
 #!/bin/bash
-set -e
 
 STAGED_FILES=$(git diff --cached --name-only)
 
@@ -363,21 +357,21 @@ SCAN_ARGS=""
 
 # Check for Python files
 if echo "$STAGED_FILES" | grep -q "\.py$"; then
-  SCAN_ARGS="$SCAN_ARGS --python-sast-enabled"
+  SCAN_ARGS="$SCAN_ARGS --python"
 fi
 
 # Check for JavaScript/TypeScript files
 if echo "$STAGED_FILES" | grep -qE "\.(js|ts|jsx|tsx)$"; then
-  SCAN_ARGS="$SCAN_ARGS --javascript-sast-enabled --typescript-sast-enabled"
+  SCAN_ARGS="$SCAN_ARGS --javascript"
 fi
 
 # Check for Go files
 if echo "$STAGED_FILES" | grep -q "\.go$"; then
-  SCAN_ARGS="$SCAN_ARGS --go-sast-enabled"
+  SCAN_ARGS="$SCAN_ARGS --go"
 fi
 
 # Always scan for secrets
-SCAN_ARGS="$SCAN_ARGS --secret-scanning-enabled"
+SCAN_ARGS="$SCAN_ARGS --secrets"
 
 if [ -z "$SCAN_ARGS" ]; then
   echo "No scannable files in commit"
@@ -407,8 +401,8 @@ SOCKET_SECURITY_API_KEY=your-api-key
 # Notification webhooks (optional, Enterprise)
 SLACK_WEBHOOK_URL=https://hooks.slack.com/services/...
 
-# Scanning options
-INPUT_CONSOLE_ENABLED=true
+# Scanning options (INPUT_* names mirror the CLI flags; see docs/parameters.md#name-mapping)
+INPUT_CONSOLE_TABULAR_ENABLED=true
 INPUT_VERBOSE=false
 ```
 
@@ -423,7 +417,7 @@ Create `.socket-basics.json` in your project root:
   "secret_scanning_enabled": true,
   "console_tabular_enabled": true,
   "trufflehog_exclude_dir": "node_modules,vendor,dist",
-  "python_disabled_rules": "unused-import"
+  "python_disabled_rules": "python-bare-except"
 }
 ```
 
@@ -448,13 +442,12 @@ Make the hook non-blocking but still show warnings:
 
 ```bash
 #!/bin/bash
-set -e
 
 echo "🔍 Running Socket Basics security scan..."
 
 socket-basics \
-  --python-sast-enabled \
-  --secret-scanning-enabled \
+  --python \
+  --secrets \
   --console-tabular-enabled
 
 EXIT_CODE=$?
@@ -476,11 +469,10 @@ Only fail on high/critical issues:
 
 ```bash
 #!/bin/bash
-set -e
 
 OUTPUT=$(socket-basics \
-  --python-sast-enabled \
-  --secret-scanning-enabled \
+  --python \
+  --secrets \
   --console-json-enabled 2>&1)
 
 echo "$OUTPUT"
@@ -512,7 +504,7 @@ repos:
     hooks:
       - id: socket-basics
         name: Socket Basics Security Scan
-        entry: docker run --rm -v "$PWD:/workspace" socket-basics --workspace /workspace --python-sast-enabled --secret-scanning-enabled
+        entry: docker run --rm -v "$PWD:/workspace" ghcr.io/socketdev/socket-basics:3.1.0 --workspace /workspace --changed-files auto --python --secrets
         language: system
         pass_filenames: false
 ```
@@ -550,7 +542,7 @@ pre-commit install
 1. Scan only changed files (see conditional scanning above)
 2. Reduce scan scope:
    ```bash
-   socket-basics --secret-scanning-enabled  # Fast
+   socket-basics --secrets  # Fast
    ```
 3. Use warning-only mode for local commits
 4. Run comprehensive scans only in CI/CD
@@ -568,7 +560,7 @@ pre-commit install
    ```bash
    /path/to/.venv/bin/socket-basics
    ```
-3. Install globally: `pip install --user socket-basics`
+3. Use the Docker hook instead. Socket Basics is not published to PyPI, so there is no global `pip install`.
 
 ### False Positives
 
@@ -578,14 +570,14 @@ pre-commit install
 1. Disable specific rules:
    ```bash
    socket-basics \
-     --python-sast-enabled \
+     --python \
      --python-disabled-rules "rule-id-1,rule-id-2"
    ```
 2. Exclude directories:
    ```bash
    socket-basics \
-     --secret-scanning-enabled \
-     --trufflehog-exclude-dir "test,fixtures,samples"
+     --secrets \
+     --exclude-dir "test,fixtures,samples"
    ```
 3. Use configuration file with exceptions
 
@@ -603,4 +595,4 @@ pre-commit install
 **Next Steps:**
 - [GitHub Actions Integration](github-action.md) — Automated CI/CD scanning
 - [Local Installation](local-installation.md) — Install security tools natively
-- [Configuration Guide](configuration.md) — Detailed configuration options
+- [Parameters Reference](parameters.md) — Every CLI flag, action input and environment variable, with the mapping between them
