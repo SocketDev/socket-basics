@@ -31,7 +31,7 @@ def test_merge_json_and_env_config_api_overrides_env_custom_sast(monkeypatch):
     monkeypatch.setattr(
         config_module,
         "load_socket_basics_config",
-        lambda: {"useCustomSastRules": False, "customSastRulePath": "dashboard/rules"},
+        lambda **_kwargs: {"useCustomSastRules": False, "customSastRulePath": "dashboard/rules"},
     )
 
     merged = merge_json_and_env_config()

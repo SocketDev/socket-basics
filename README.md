@@ -201,7 +201,7 @@ Use the standard image. The registries also carry a `-heavy` variant that exists
 socket-basics --python --secrets --dockerfiles Dockerfile --verbose
 ```
 
-Socket credentials are read from the environment (`SOCKET_SECURITY_API_KEY`, `SOCKET_ORG`); there are no CLI flags for them. The same flag names work inside the Docker image. The [name mapping table](docs/parameters.md#name-mapping) shows how every CLI flag corresponds to a GitHub Action input and an environment variable.
+The API key is read from the environment (`SOCKET_SECURITY_API_KEY`; there is deliberately no flag for it) and the organization from `SOCKET_ORG` or `--socket-org`. The same flag names work inside the Docker image. The [name mapping table](docs/parameters.md#name-mapping) shows how every CLI flag corresponds to a GitHub Action input and an environment variable.
 
 📖 **[View Local Installation Guide](docs/local-installation.md)**
 

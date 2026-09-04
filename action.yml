@@ -8,7 +8,6 @@ runs:
   env:
     # Core GitHub variables (these are automatically available, but we explicitly pass GITHUB_TOKEN)
     GITHUB_TOKEN: ${{ inputs.github_token }}
-    INPUT_WORKSPACE: ${{ inputs.workspace }}
     # Output and logging (same behavior as the --verbose / --console-*-enabled CLI flags)
     INPUT_VERBOSE: ${{ inputs.verbose }}
     INPUT_CONSOLE_TABULAR_ENABLED: ${{ inputs.console_tabular_enabled }}
@@ -112,10 +111,6 @@ runs:
     INPUT_PR_LABEL_LOW: ${{ inputs.pr_label_low }}
 
 inputs:
-  workspace:
-    description: "Workspace directory to scan (defaults to GITHUB_WORKSPACE)"
-    required: false
-    default: ""
   changed_files:
     description: >-
       Diff-only mode: scope every scanner (SAST/OpenGrep, secrets, containers)
@@ -155,10 +150,6 @@ inputs:
     default: ""
   github_token:
     description: "GitHub token for PR comments and API access"
-    required: false
-    default: ""
-  GITHUB_API_URL:
-    description: "Github Api Url"
     required: false
     default: ""
   verbose:

@@ -10,6 +10,9 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Added
 - `--version` CLI flag. (CE-445)
+- `--socket-org` CLI flag, the command-line equivalent of the `socket_org`
+  action input and the `SOCKET_ORG` environment variable. The API key remains
+  environment-only. (CE-445)
 - GitHub Action inputs `verbose`, `console_tabular_enabled` and
   `console_json_enabled`, delivered as `INPUT_VERBOSE`,
   `INPUT_CONSOLE_TABULAR_ENABLED` and `INPUT_CONSOLE_JSON_ENABLED` and honored
@@ -28,6 +31,14 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   match the Dockerfile pins; `--write` updates both. (CE-445)
 - Documentation for the `-heavy` image variant and for when the standard image
   is the right choice. (CE-445)
+
+### Removed
+- The `workspace` and `GITHUB_API_URL` GitHub Action inputs. Neither had an
+  effect: the action always scans `GITHUB_WORKSPACE`, and `GITHUB_API_URL` is
+  provided by the runner. Workflows that still set them receive an
+  "Unexpected input" warning and otherwise behave as before. (CE-445)
+- `docs/alert-quality-improvement-plan.md`, a draft working document from a
+  hackathon branch. The plan itself is now tracked in Linear as CE-447. (CE-445)
 
 ### Fixed
 - The Sentinel and Sumo Logic notifiers now read `ms_sentinel_workspace_id`,

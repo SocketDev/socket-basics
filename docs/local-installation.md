@@ -413,14 +413,15 @@ chmod +x check-installation.sh
 
 ### Socket Credentials
 
-The organization slug and API key are **environment variables only**; there is
-no `--socket-org` or `--socket-api-key` flag. `--repo owner/repo` names the
+The API key is an **environment variable only**; there is no flag for it, so it
+never lands in shell history. The organization comes from `SOCKET_ORG`, or from
+`--socket-org` when you want to set it per run. `--repo owner/repo` names the
 repository recorded on the scan and is not the organization.
 
-| Setting | Environment variable | Also accepted |
-|---------|----------------------|---------------|
-| Organization | `SOCKET_ORG` | `SOCKET_ORG_SLUG`, `INPUT_SOCKET_ORG` |
-| API key | `SOCKET_SECURITY_API_KEY` | `SOCKET_SECURITY_API_TOKEN`, `SOCKET_API_KEY`, `INPUT_SOCKET_SECURITY_API_KEY` |
+| Setting | CLI flag | Environment variable | Also accepted |
+|---------|----------|----------------------|---------------|
+| Organization | `--socket-org` | `SOCKET_ORG` | `SOCKET_ORG_SLUG`, `INPUT_SOCKET_ORG` |
+| API key | — | `SOCKET_SECURITY_API_KEY` | `SOCKET_SECURITY_API_TOKEN`, `SOCKET_API_KEY`, `INPUT_SOCKET_SECURITY_API_KEY` |
 
 ### Environment Variables
 
@@ -533,12 +534,13 @@ socket-basics --all-languages --secrets
 ### Advanced Scans
 
 ```bash
-# With Socket Tier 1 reachability (SOCKET_SECURITY_API_KEY and SOCKET_ORG
-# come from the environment; there is no --socket-org flag)
+# With Socket Tier 1 reachability (SOCKET_SECURITY_API_KEY comes from the
+# environment; the organization from SOCKET_ORG or --socket-org)
 socket-basics \
   --python \
   --secrets \
-  --socket-tier1
+  --socket-tier1 \
+  --socket-org your-org-slug
 
 # Container scanning
 socket-basics \

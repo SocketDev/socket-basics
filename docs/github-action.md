@@ -210,8 +210,7 @@ Include these in your workflow's `jobs.<job_id>.permissions` section.
 **`socket_org`** (optional)
 - Discovered from the API key when the key has the `socket-basics` scope. Set it
   explicitly when configuring the scan from `with:` inputs instead of the dashboard.
-- Note that the CLI has no `--socket-org` flag; outside the action the value
-  comes from the `SOCKET_ORG` environment variable. See the
+- Outside the action the same value is `SOCKET_ORG` or `--socket-org`. See the
   [name mapping](parameters.md#name-mapping) for the equivalents of every input.
 
 ### Common Scanning Options
@@ -839,8 +838,8 @@ Every input has a CLI flag and environment-variable equivalent; the
 - `verbose` — Enable verbose logging in the step log
 - `console_tabular_enabled` — Tabular console output in the step log
 - `console_json_enabled` — JSON console output in the step log
-- `workspace` — Declared but not currently honored: the action always scans
-  `GITHUB_WORKSPACE`. Narrow the scope with the inputs below instead.
+- The action always scans `GITHUB_WORKSPACE` (there is no `workspace` input);
+  narrow the scope with the inputs below.
 
 **Scan Scope:**
 - `changed_files` — Diff-only mode (`auto`, `pr`, `current-commit`, a commit hash, or a file list)
@@ -1034,9 +1033,8 @@ vendored code or generated assets produce very large uploads.
 3. Keep generated and vendored trees out of git or list them in `.gitignore`;
    ignored files are excluded from the inventory. `trufflehog_exclude_dir`
    affects secret scanning only.
-4. For multi-project monorepos, run one job per project. Until the `workspace`
-   input is honored, do this with `scan_files` / `changed_files`, or with the
-   Docker image and a per-project `--workspace` (see
+4. For multi-project monorepos, run one job per project with `scan_files` /
+   `changed_files`, or use the Docker image with a per-project `--workspace` (see
    [Local Docker Installation](local-install-docker.md#large-repositories-and-monorepos)).
 5. Use a self-hosted runner with more memory only after the above.
 

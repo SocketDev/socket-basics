@@ -18,8 +18,8 @@ Run Socket Basics locally using Docker without installing security tools on your
 # 1. Pull a pinned release from GHCR (no build step required)
 docker pull ghcr.io/socketdev/socket-basics:3.1.0
 
-# 2. Create .env file with your credentials (environment variables only;
-#    there is no --socket-org or --socket-api-key flag)
+# 2. Create .env file with your credentials (the API key is environment-only;
+#    the organization can also be passed per run with --socket-org)
 cat > .env << 'EOF'
 SOCKET_SECURITY_API_KEY=your-api-key-here
 SOCKET_ORG=your-org-slug
@@ -304,8 +304,8 @@ Create a `.env` file in your project (add to `.gitignore`):
 ```bash
 # .env
 # Socket Configuration (required to upload results and load dashboard config).
-# Environment variables only: there is no --socket-org flag, and --repo names
-# the repository, not the organization.
+# The API key is environment-only. The organization can also be passed as
+# --socket-org; --repo names the repository, not the organization.
 SOCKET_SECURITY_API_KEY=scrt_your_api_key_here
 SOCKET_ORG=your-organization-slug
 

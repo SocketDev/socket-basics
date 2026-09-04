@@ -36,7 +36,7 @@ GitHub Action input is delivered to the container as the environment variable
 | `--verbose`, `-v` | `verbose` | `INPUT_VERBOSE` | `verbose` | DEBUG logging. |
 | `--console-tabular-enabled` | `console_tabular_enabled` | `INPUT_CONSOLE_TABULAR_ENABLED` | `console_tabular_enabled` | Print consolidated findings as tables. |
 | `--console-json-enabled` | `console_json_enabled` | `INPUT_CONSOLE_JSON_ENABLED` | `console_json_enabled` | Print consolidated findings as JSON. |
-| —<sup>2</sup> | `socket_org` | `SOCKET_ORG` (also `SOCKET_ORG_SLUG`, `INPUT_SOCKET_ORG`) | `socket_org` | Socket organization slug. Not the same thing as `--repo`. |
+| `--socket-org` | `socket_org` | `SOCKET_ORG` (also `SOCKET_ORG_SLUG`, `INPUT_SOCKET_ORG`) | `socket_org` | Socket organization slug. Not the same thing as `--repo`. |
 | —<sup>2</sup> | `socket_security_api_key` | `SOCKET_SECURITY_API_KEY` (also `SOCKET_SECURITY_API_TOKEN`, `SOCKET_API_KEY`, `INPUT_SOCKET_SECURITY_API_KEY`) | `socket_api_key`<sup>3</sup> | Socket API key (`full-scans` scope to upload, `socket-basics` scope to load dashboard config). |
 | `--repo` | — | `GITHUB_REPOSITORY` | `repo` | `owner/repo` recorded on the scan and used to find the PR. Discovered from git when omitted. |
 | `--branch` | — | `GITHUB_HEAD_REF`, `GITHUB_REF_NAME` | `branch` | Branch recorded on the scan. Discovered from git when omitted. |
@@ -44,8 +44,8 @@ GitHub Action input is delivered to the container as the environment variable
 | `--default-branch` | — | `SOCKET_DEFAULT_BRANCH` | — | Mark the scan as the repository default branch. |
 | `--enable-s3-upload` | — | `SOCKET_S3_ENABLED` | — | Upload the facts file to S3 (see [S3 Upload Configuration](#s3-upload-configuration)). |
 
-<sup>1</sup> The action declares a `workspace` input but does not currently honor it; the action always scans `GITHUB_WORKSPACE`. Narrow the scope with `changed_files` / `scan_files` instead.
-<sup>2</sup> No CLI flag exists. Set the environment variable, or `socket_org` in a JSON file.
+<sup>1</sup> The action has no `workspace` input; it always scans `GITHUB_WORKSPACE`. Narrow the scope with `changed_files` / `scan_files` instead.
+<sup>2</sup> No CLI flag exists for the API key, so it never lands in shell history. Set the environment variable.
 <sup>3</sup> A JSON `socket_api_key` is used to upload results but not to load dashboard configuration; prefer the environment variable.
 
 ### SAST languages (OpenGrep)
@@ -193,8 +193,8 @@ socket-basics --workspace /path/to/project
 ### `--repo REPO`
 Repository name in `owner/repo` form (use when the workspace is not a git repo).
 This is the repository recorded on the full scan and used to look up the pull
-request. It is **not** the Socket organization: that comes from `SOCKET_ORG`,
-for which there is no CLI flag.
+request. It is **not** the Socket organization: that comes from `--socket-org`
+or `SOCKET_ORG`.
 
 **Example:**
 ```bash
@@ -614,13 +614,20 @@ socket-basics --trivy-vuln-enabled
 
 ### Socket organization and API key
 
-There are **no CLI flags** for the organization or the API key. Set them in the
-environment (or `socket_org` in a JSON file):
+The organization can be set per run with `--socket-org` or through the
+environment. The API key is **environment only**; there is deliberately no flag,
+so the key never lands in shell history or CI logs.
 
-| Setting | Environment variable | Also accepted |
-|---------|----------------------|---------------|
-| Organization slug | `SOCKET_ORG` | `SOCKET_ORG_SLUG`, `INPUT_SOCKET_ORG` |
-| API key | `SOCKET_SECURITY_API_KEY` | `SOCKET_SECURITY_API_TOKEN`, `SOCKET_API_KEY`, `INPUT_SOCKET_SECURITY_API_KEY`, `INPUT_SOCKET_API_KEY` |
+| Setting | CLI flag | Environment variable | Also accepted |
+|---------|----------|----------------------|---------------|
+| Organization slug | `--socket-org` | `SOCKET_ORG` | `SOCKET_ORG_SLUG`, `INPUT_SOCKET_ORG`, `socket_org` in a JSON file |
+| API key | — | `SOCKET_SECURITY_API_KEY` | `SOCKET_SECURITY_API_TOKEN`, `SOCKET_API_KEY`, `INPUT_SOCKET_SECURITY_API_KEY`, `INPUT_SOCKET_API_KEY` |
+
+**Example:**
+```bash
+export SOCKET_SECURITY_API_KEY="scrt_..."
+socket-basics --socket-org your-org-slug --python --secrets
+```
 
 The key needs the `full-scans` scope to upload results and the `socket-basics`
 scope to load dashboard configuration. With the latter the organization is
