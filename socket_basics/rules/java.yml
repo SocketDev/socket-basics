@@ -3,22 +3,74 @@ rules:
 
   # Code injection via reflection
   - id: java-reflection-injection
-    message: "Code injection vulnerability detected. User-controlled input is passed to a code evaluation function, allowing arbitrary code execution. Avoid eval/exec with user input; use safe alternatives."
+    message: "Code injection via reflection detected. User-controlled data flows into dynamic class loading or script evaluation, letting an attacker load arbitrary classes or run arbitrary code. Resolve the value through a fixed allowlist instead of passing request data to Class.forName or a script engine."
     severity: CRITICAL
     languages: [java]
-    pattern-either:
-      - pattern: Class.forName($USER_INPUT)
-      - pattern: $CLASS.newInstance()
-      - pattern: $METHOD.invoke($OBJ, $USER_INPUT)
-      - pattern: Runtime.getRuntime().exec($USER_INPUT)
+    mode: taint
+    pattern-sources:
+      # Servlet request sources
+      - pattern: $REQ.getParameter(...)
+      - pattern: $REQ.getParameterValues(...)
+      - pattern: $REQ.getHeader(...)
+      - pattern: $REQ.getHeaders(...)
+      - pattern: $REQ.getQueryString()
+      - pattern: $REQ.getPathInfo()
+      - pattern: $REQ.getRequestURI()
+      # Type constrained: an untyped $REQ.getInputStream() also matched
+      # Resource.getInputStream(), which is a classpath resource, not input.
+      - pattern: (HttpServletRequest $R).getInputStream()
+      - pattern: (HttpServletRequest $R).getReader()
+      - pattern: (javax.servlet.http.HttpServletRequest $R).getInputStream()
+      - pattern: (javax.servlet.http.HttpServletRequest $R).getReader()
+      - pattern: (Cookie $C).getValue()
+      # Spring MVC parameter binding
+      - patterns:
+          - pattern: $PARAM
+          - pattern-inside: |
+              $RET $METHOD(..., @RequestParam(...) $TYPE $PARAM, ...) { ... }
+      - patterns:
+          - pattern: $PARAM
+          - pattern-inside: |
+              $RET $METHOD(..., @PathVariable(...) $TYPE $PARAM, ...) { ... }
+      - patterns:
+          - pattern: $PARAM
+          - pattern-inside: |
+              $RET $METHOD(..., @RequestBody $TYPE $PARAM, ...) { ... }
+    pattern-propagators:
+      - pattern: (String $A) + (String $B)
+        from: $B
+        to: $A
+      - pattern: (String $A).concat($B)
+        from: $B
+        to: $A
+      - pattern: String.format($FMT, ..., $X, ...)
+        from: $X
+        to: String.format
+      - pattern: $B.append($X)
+        from: $X
+        to: $B
+    pattern-sinks:
+      # Dynamic class loading
+      - pattern: Class.forName(...)
+      - pattern: java.lang.Class.forName(...)
+      - pattern: $LOADER.loadClass(...)
+      # Script and expression evaluation
+      - pattern: (ScriptEngine $E).eval(...)
+      - pattern: (GroovyShell $S).evaluate(...)
+      - pattern: (GroovyShell $S).parse(...)
+      - pattern: (ExpressionParser $P).parseExpression(...)
+    pattern-sanitizers:
+      # Resolving the value through an allowlist removes attacker control
+      - pattern: $MAP.get(...)
+      - pattern: $ENUM.valueOf(...)
     metadata:
       category: security
-      cwe: CWE-94
-      confidence: medium
+      cwe: CWE-470
+      confidence: high
       subcategory: injection
       vulnerability_class: "Injection Vulnerability"
       owasp: "A03:2021"
-      fix: "Avoid ScriptEngine.eval() with user input. Use a sandboxed interpreter or template engine. Restrict class loading with a SecurityManager."
+      fix: "Map the user-supplied value to a class or handler through an explicit allowlist (for example a Map<String, Class<?>>) rather than passing it to Class.forName(). Never pass request data to ScriptEngine.eval()."
 
   # SQL injection - using taint mode for accurate detection
   - id: java-sql-injection
@@ -114,14 +166,43 @@ rules:
 
   # Deserialization vulnerabilities
   - id: java-unsafe-deserialization
-    message: "Unsafe deserialization detected. Deserializing untrusted data can lead to remote code execution or denial of service. Use safe serialization formats like JSON or validate data before deserializing."
+    message: "Unsafe deserialization detected. Java native deserialization of attacker-controlled bytes leads to remote code execution through gadget chains. Use a data-only format such as JSON or Protocol Buffers, or install an ObjectInputFilter (JEP 290) that allowlists deserializable classes."
     severity: CRITICAL
     languages: [java]
-    pattern-either:
-      - pattern: new ObjectInputStream($STREAM).readObject()
-      - pattern: $OIS.readObject()
-      - pattern: XMLDecoder.readObject()
-      - pattern: Yaml.load($INPUT)
+    paths:
+      exclude:
+        - "*/src/test/*"
+        - "*/src/testFixtures/*"
+        - "*/test/java/*"
+        - "*/testsuite/*"
+        - "*/microbench/*"
+        - "*/jmh/*"
+        - "*Test.java"
+        - "*Tests.java"
+        - "*TestCase.java"
+        - "*Benchmark.java"
+    patterns:
+      - pattern-either:
+          # Receiver must actually be an ObjectInputStream. A bare $X.readObject()
+          # also matches unrelated APIs such as BouncyCastle's PEMParser and
+          # JBoss Marshalling's Unmarshaller, which are not Java deserialization.
+          - pattern: (ObjectInputStream $OIS).readObject()
+          - pattern: new ObjectInputStream(...).readObject()
+          - pattern: (XMLDecoder $D).readObject()
+          - pattern: new XMLDecoder(...).readObject()
+          # SnakeYAML without a SafeConstructor deserializes arbitrary types
+          - pattern: new Yaml().load(...)
+          - pattern: (Yaml $Y).load(...)
+      # Implementing the java.io.Serializable contract requires calling
+      # readObject() on the stream the JVM hands you. That is not a finding.
+      - pattern-not-inside: |
+          private void readObject($T $S) { ... }
+      - pattern-not-inside: |
+          private void readObject($T $S) throws $EX { ... }
+      - pattern-not-inside: |
+          public void readExternal($T $S) { ... }
+      - pattern-not-inside: |
+          public void readExternal($T $S) throws $EX { ... }
     metadata:
       category: security
       cwe: CWE-502
@@ -129,7 +210,7 @@ rules:
       subcategory: integrity
       vulnerability_class: "Insecure Deserialization"
       owasp: "A08:2021"
-      fix: "Use ObjectInputFilter (JEP 290) to restrict deserializable classes. Prefer JSON (Jackson/Gson) or Protocol Buffers for data interchange."
+      fix: "Use ObjectInputFilter (JEP 290) to restrict deserializable classes. Prefer JSON (Jackson/Gson) or Protocol Buffers for data interchange. For SnakeYAML use new Yaml(new SafeConstructor())."
 
   # Command injection - using taint mode for accurate detection
   - id: java-command-injection
@@ -192,40 +273,214 @@ rules:
 
   # LDAP injection
   - id: java-ldap-injection
-    message: "LDAP injection vulnerability detected. User input in LDAP queries without sanitization allows attackers to modify query logic. Escape special characters in LDAP filters."
+    message: "LDAP injection vulnerability detected. User-controlled data is concatenated into an LDAP search filter or distinguished name, letting an attacker rewrite the query and retrieve or modify directory entries they should not reach. Escape the value or bind it as a filter argument."
     severity: CRITICAL
     languages: [java]
-    pattern-either:
-      - pattern: $CTX.search($FILTER + $USER_INPUT, ...)
-      - pattern: new SearchFilter($FILTER + $USER_INPUT)
-      - pattern: LdapName($DN + $USER_INPUT)
+    mode: taint
+    paths:
+      exclude:
+        - "*/src/test/*"
+        - "*/src/testFixtures/*"
+        - "*/test/java/*"
+        - "*/testsuite/*"
+        - "*/microbench/*"
+        - "*/jmh/*"
+        - "*Test.java"
+        - "*Tests.java"
+        - "*TestCase.java"
+        - "*Benchmark.java"
+    pattern-sources:
+      - pattern: $REQ.getParameter(...)
+      - pattern: $REQ.getParameterValues(...)
+      - pattern: $REQ.getParameterMap()
+      - pattern: $REQ.getHeader(...)
+      - pattern: $REQ.getHeaders(...)
+      - pattern: $REQ.getQueryString()
+      - pattern: $REQ.getPathInfo()
+      - pattern: $REQ.getRequestURI()
+      # Type constrained: an untyped $REQ.getInputStream() also matched
+      # Resource.getInputStream(), which is a classpath resource, not input.
+      - pattern: (HttpServletRequest $R).getInputStream()
+      - pattern: (HttpServletRequest $R).getReader()
+      - pattern: (javax.servlet.http.HttpServletRequest $R).getInputStream()
+      - pattern: (javax.servlet.http.HttpServletRequest $R).getReader()
+      # Cookie values are attacker controlled and are the source in a large
+      # share of real path traversal and injection findings.
+      - pattern: (Cookie $C).getValue()
+      - pattern: (javax.servlet.http.Cookie $C).getValue()
+      # Archive entry names and uploaded filenames are attacker controlled.
+      # ZipEntry.getName() is the Zip Slip source; MultipartFile carries the
+      # client-supplied filename verbatim.
+      - pattern: (ZipEntry $E).getName()
+      - pattern: (java.util.zip.ZipEntry $E).getName()
+      - pattern: (ArchiveEntry $E).getName()
+      - pattern: (MultipartFile $F).getOriginalFilename()
+      - pattern: (org.springframework.web.multipart.MultipartFile $F).getOriginalFilename()
+      - pattern: (Part $P).getSubmittedFileName()
+      - patterns:
+          - pattern: $PARAM
+          - pattern-inside: |
+              $RET $METHOD(..., @RequestParam(...) $TYPE $PARAM, ...) { ... }
+      - patterns:
+          - pattern: $PARAM
+          - pattern-inside: |
+              $RET $METHOD(..., @PathVariable(...) $TYPE $PARAM, ...) { ... }
+    pattern-propagators:
+      - pattern: (String $A) + (String $B)
+        from: $B
+        to: $A
+      - pattern: (String $A).concat($B)
+        from: $B
+        to: $A
+      - pattern: String.format($FMT, ..., $X, ...)
+        from: $X
+        to: String.format
+      - pattern: $B.append($X)
+        from: $X
+        to: $B
+      - pattern: (StringBuilder $B).toString()
+        from: $B
+        to: (StringBuilder $B).toString()
+      # URL decoding is not sanitisation; it preserves attacker control and is
+      # applied to almost every header-sourced value in real servlet code.
+      - pattern: URLDecoder.decode($X, ...)
+        from: $X
+        to: URLDecoder.decode
+      - pattern: java.net.URLDecoder.decode($X, ...)
+        from: $X
+        to: java.net.URLDecoder.decode
+      - pattern: new String($X)
+        from: $X
+        to: new String
+      - pattern: new String($X, ...)
+        from: $X
+        to: new String
+      - pattern: (String $S).substring(...)
+        from: $S
+        to: (String $S).substring(...)
+      - pattern: (String $S).trim()
+        from: $S
+        to: (String $S).trim()
+      - pattern: (String $S).toLowerCase(...)
+        from: $S
+        to: (String $S).toLowerCase(...)
+      - pattern: (String $S).replace(...)
+        from: $S
+        to: (String $S).replace(...)
+      - pattern: (String $S).getBytes(...)
+        from: $S
+        to: (String $S).getBytes(...)
+      - pattern: $E.nextElement()
+        from: $E
+        to: $E.nextElement()
+      - pattern: Base64.decodeBase64($X)
+        from: $X
+        to: Base64.decodeBase64
+      - pattern: org.apache.commons.codec.binary.Base64.decodeBase64($X)
+        from: $X
+        to: org.apache.commons.codec.binary.Base64.decodeBase64
+      - pattern: Base64.encodeBase64($X)
+        from: $X
+        to: Base64.encodeBase64
+      - pattern: org.apache.commons.codec.binary.Base64.encodeBase64($X)
+        from: $X
+        to: org.apache.commons.codec.binary.Base64.encodeBase64
+    pattern-sinks:
+      - pattern: (DirContext $CTX).search(...)
+      - pattern: (InitialDirContext $CTX).search(...)
+      - pattern: (javax.naming.directory.DirContext $CTX).search(...)
+      - pattern: $CTX.search($BASE, $FILTER, ...)
+      - pattern: new SearchFilter(...)
+      - pattern: new LdapName(...)
+      - pattern: new javax.naming.ldap.LdapName(...)
+      - pattern: (LdapTemplate $T).search(...)
+      - pattern: (LdapQueryBuilder $Q).filter(...)
+    pattern-sanitizers:
+      - pattern: LdapEncoder.filterEncode(...)
+      - pattern: org.springframework.ldap.support.LdapEncoder.filterEncode(...)
+      - pattern: LdapEncoder.nameEncode(...)
+      - pattern: ESAPI.encoder().encodeForLDAP(...)
+      - pattern: $ENC.encodeForLDAP(...)
+      - pattern: $ENC.encodeForDN(...)
+      - pattern: Integer.parseInt(...)
     metadata:
       category: security
       cwe: CWE-90
-      confidence: medium
+      confidence: high
       subcategory: injection
       vulnerability_class: "Injection Vulnerability"
       owasp: "A03:2021"
-      fix: "Use javax.naming.ldap with properly escaped filter values. Use LdapEncoder.filterEncode() from Spring LDAP for escaping."
-
-  # === High Severity Rules ===
+      fix: "Escape the value with LdapEncoder.filterEncode() from Spring LDAP, or pass it as a bound filter argument via search(base, '(uid={0})', new Object[]{ value }, controls)."
 
   # Hardcoded credentials
   - id: java-hardcoded-credentials
     message: "Hard-coded credentials detected. Embedding secrets in source code makes them easily discoverable and impossible to rotate. Use environment variables or a secrets manager instead."
     severity: HIGH
     languages: [java]
-    patterns:
-      - pattern-either:
-          - pattern: |
-              private static final String $VAR = "...";
-          - pattern: |
-              public static final String $VAR = "...";
-          - pattern: |
-              String $VAR = "...";
-      - metavariable-regex:
-          metavariable: $VAR
-          regex: (?i).*(password|passwd|pwd|secret|token|key|api_key).*
+    paths:
+      exclude:
+        - "*/src/test/*"
+        - "*/src/testFixtures/*"
+        - "*/test/java/*"
+        - "*/testsuite/*"
+        - "*/microbench/*"
+        - "*/jmh/*"
+        - "*Test.java"
+        - "*Tests.java"
+        - "*TestCase.java"
+        - "*Benchmark.java"
+    pattern-either:
+      # Pattern 1: name suggests a credential AND the value looks like a real secret
+      - patterns:
+          - pattern-either:
+              - pattern: private static final String $VAR = "$VALUE";
+              - pattern: public static final String $VAR = "$VALUE";
+              - pattern: static final String $VAR = "$VALUE";
+              - pattern: private String $VAR = "$VALUE";
+              - pattern: String $VAR = "$VALUE";
+          - metavariable-regex:
+              metavariable: $VAR
+              # A bare "key" matches constants such as KEY_ATTRIBUTE, PARENT_KEY
+              # and SEC_WEBSOCKET_KEY1, which are map keys and header names, not
+              # secrets, so "key" is only honoured in compound credential words.
+              # "token", "password" and "secret" are specific enough to stand alone.
+              regex: (?i).*(password|passwd|pwd|secret|credential|token|api_?key|apikey|secret_?key|private_?key|access_?key|encryption_?key|signing_?key|connection_?string).*
+          - metavariable-regex:
+              metavariable: $VALUE
+              # Non-empty. Default credentials such as "admin" are short and are
+              # exactly the finding that matters, so the floor stays low and the
+              # shape exclusions below carry the precision.
+              regex: ^.{4,}$
+          - metavariable-regex:
+              metavariable: $VALUE
+              # Exclude identifiers, header names, property paths, format strings
+              # and placeholder expressions, which are configuration, not secrets.
+              regex: ^(?!.*[ :;,{}<>()\[\]])(?!.*\$\{)(?!.*%[sdf])(?!(?i)(none|null|true|false|unset|example|placeholder|changeit)$).*$
+          - metavariable-regex:
+              metavariable: $VALUE
+              # A dotted identifier is a system property or a class name
+              # (java.net.socks.password, sun.misc.SharedSecrets), not a secret.
+              regex: ^(?!^[A-Za-z][A-Za-z0-9]*(\.[A-Za-z0-9]+)+$).*$
+          - metavariable-regex:
+              metavariable: $VALUE
+              # A hyphenated name containing lowercase is an HTTP header name
+              # (Access-Control-Allow-Credentials, Sec-Token-Binding). An
+              # all-caps hyphenated value such as STAGING-TOKEN-42 is still
+              # reported, because that shape really is a secret.
+              regex: ^(?!^(?=.*[a-z])[A-Za-z][A-Za-z0-9]*(-[A-Za-z0-9]+)+$).*$
+          - metavariable-regex:
+              metavariable: $VALUE
+              # A lowercase value that just restates the credential keyword is
+              # naming a field or an auth method ("password", "accesskey",
+              # "stompCredentials"), not holding one. Real default credentials
+              # such as "admin" or "webgoat" do not restate the keyword.
+              regex: ^(?!(?=[a-z])(?i:[a-z0-9]*(password|passwd|credential|secret|token|apikey|accesskey|auth)[a-z0-9]*)$).*$
+      # Pattern 2: credential APIs called with string literals
+      - pattern: new PasswordAuthentication($USER, "...".toCharArray())
+      - pattern: DriverManager.getConnection($URL, $USER, "...")
+      - pattern: java.sql.DriverManager.getConnection($URL, $USER, "...")
+      - pattern: new BasicAWSCredentials("...", "...")
+      - pattern: $CTX.addToEnvironment(Context.SECURITY_CREDENTIALS, "...")
     metadata:
       category: security
       cwe: CWE-798
@@ -237,13 +492,24 @@ rules:
 
   # Weak cryptography
   - id: java-weak-crypto-md5
-    message: "Weak cryptographic algorithm detected. Using broken or outdated algorithms may allow attackers to decrypt data or forge signatures. Use modern algorithms like AES-256, SHA-256, or Ed25519."
+    message: "Weak hash algorithm (MD5) detected. MD5 is collision-broken and must not be used for signatures, integrity checks, or password storage. Use SHA-256 or better, and a password hash such as bcrypt, scrypt or Argon2 for credentials."
     severity: HIGH
     languages: [java]
     pattern-either:
-      - pattern: MessageDigest.getInstance("MD5")
-      - pattern: MessageDigest.getInstance("md5")
+      - patterns:
+          - pattern-either:
+              # Covers the one-, two- and three-argument getInstance overloads,
+              # both imported and fully qualified. Real code frequently writes
+              # java.security.MessageDigest.getInstance("MD5", "SUN").
+              - pattern: MessageDigest.getInstance("$ALGO", ...)
+              - pattern: java.security.MessageDigest.getInstance("$ALGO", ...)
+          - metavariable-regex:
+              metavariable: $ALGO
+              regex: (?i)^(md5|md-5|md2|md4)$
       - pattern: DigestUtils.md5($DATA)
+      - pattern: DigestUtils.md5Hex($DATA)
+      - pattern: org.apache.commons.codec.digest.DigestUtils.md5($DATA)
+      - pattern: org.apache.commons.codec.digest.DigestUtils.md5Hex($DATA)
     metadata:
       category: security
       cwe: CWE-327
@@ -251,17 +517,23 @@ rules:
       subcategory: crypto
       vulnerability_class: "Cryptographic Weakness"
       owasp: "A02:2021"
-      fix: "Use MessageDigest.getInstance('SHA-256') instead of MD5/SHA1. Use AES/GCM/NoPadding for encryption. Use Cipher from javax.crypto with strong algorithms."
+      fix: "Use MessageDigest.getInstance('SHA-256'). For password storage use BCrypt, SCrypt or Argon2 rather than a raw digest."
 
   - id: java-weak-crypto-sha1
-    message: "Weak cryptographic algorithm detected. Using broken or outdated algorithms may allow attackers to decrypt data or forge signatures. Use modern algorithms like AES-256, SHA-256, or Ed25519."
+    message: "Weak hash algorithm (SHA-1) detected. SHA-1 is collision-broken and must not be used for signatures or integrity checks. Use SHA-256 or better."
     severity: HIGH
     languages: [java]
     pattern-either:
-      - pattern: MessageDigest.getInstance("SHA-1")
-      - pattern: MessageDigest.getInstance("SHA1")
-      - pattern: MessageDigest.getInstance("sha1")
+      - patterns:
+          - pattern-either:
+              - pattern: MessageDigest.getInstance("$ALGO", ...)
+              - pattern: java.security.MessageDigest.getInstance("$ALGO", ...)
+          - metavariable-regex:
+              metavariable: $ALGO
+              regex: (?i)^(sha1|sha-1)$
       - pattern: DigestUtils.sha1($DATA)
+      - pattern: DigestUtils.sha1Hex($DATA)
+      - pattern: org.apache.commons.codec.digest.DigestUtils.sha1($DATA)
     metadata:
       category: security
       cwe: CWE-327
@@ -269,29 +541,109 @@ rules:
       subcategory: crypto
       vulnerability_class: "Cryptographic Weakness"
       owasp: "A02:2021"
-      fix: "Use MessageDigest.getInstance('SHA-256') instead of MD5/SHA1. Use AES/GCM/NoPadding for encryption. Use Cipher from javax.crypto with strong algorithms."
+      fix: "Use MessageDigest.getInstance('SHA-256') or stronger."
 
   # Insecure random
   - id: java-insecure-random
-    message: "Insecure random number generator used. Non-cryptographic PRNGs produce predictable values that attackers can guess. Use a cryptographically secure random generator for security-sensitive operations."
+    message: "Insecure random number generator used for a security value. java.util.Random and Math.random() are linear congruential generators whose output is predictable from a few observed values, so tokens, session identifiers, salts and keys derived from them can be guessed. Use java.security.SecureRandom."
     severity: HIGH
     languages: [java]
-    pattern-either:
-      - pattern: new Random()
-      - pattern: new Random($SEED)
+    mode: taint
+    paths:
+      exclude:
+        - "*/src/test/*"
+        - "*/src/testFixtures/*"
+        - "*/test/java/*"
+        - "*/testsuite/*"
+        - "*/microbench/*"
+        - "*/jmh/*"
+        - "*Test.java"
+        - "*Tests.java"
+        - "*TestCase.java"
+        - "*Benchmark.java"
+    pattern-sources:
+      # Both the imported and fully qualified spellings; benchmark and real code
+      # both write new java.util.Random() in full.
+      - pattern: new Random(...).$M(...)
+      - pattern: new java.util.Random(...).$M(...)
+      - pattern: (Random $R).$M(...)
       - pattern: Math.random()
-    pattern-not-inside:
-      pattern: |
-        // This is not for cryptographic use
-        ...
+      - pattern: java.lang.Math.random()
+      - pattern: ThreadLocalRandom.current().$M(...)
+      - pattern: (RandomStringUtils $U).random(...)
+      - pattern: RandomStringUtils.random(...)
+      - pattern: RandomStringUtils.randomAlphanumeric(...)
+    pattern-propagators:
+      - pattern: Float.toString($X)
+        from: $X
+        to: Float.toString
+      - pattern: Double.toString($X)
+        from: $X
+        to: Double.toString
+      - pattern: Long.toString($X, ...)
+        from: $X
+        to: Long.toString
+      - pattern: Integer.toString($X, ...)
+        from: $X
+        to: Integer.toString
+      - pattern: String.valueOf($X)
+        from: $X
+        to: String.valueOf
+      - pattern: (String $S).substring(...)
+        from: $S
+        to: (String $S).substring(...)
+      - pattern: (String $A) + (String $B)
+        from: $B
+        to: $A
+      - pattern: $B.append($X)
+        from: $X
+        to: $B
+      - pattern: $ENC.encodeToString($X)
+        from: $X
+        to: $ENC.encodeToString($X)
+    pattern-sinks:
+      # A weak PRNG is only a vulnerability when its output becomes a security
+      # value. Shuffling a list, jittering a retry, or seeding a JMH benchmark
+      # is not. Require the value to land somewhere security relevant.
+      - patterns:
+          - pattern: $VAR = $SRC
+          - focus-metavariable: $SRC
+          - metavariable-regex:
+              metavariable: $VAR
+              regex: (?i).*(token|session|nonce|salt|secret|password|passwd|credential|apikey|api_key|privatekey|private_key|otp|pin|pincode|csrf|iv|initvector|cookie|auth|verifier|challenge|resetcode|activation|captcha|guid|uuid|seed|key)
+      - patterns:
+          - pattern: $TYPE $VAR = $SRC;
+          - focus-metavariable: $SRC
+          - metavariable-regex:
+              metavariable: $VAR
+              regex: (?i).*(token|session|nonce|salt|secret|password|passwd|credential|apikey|api_key|privatekey|private_key|otp|pin|pincode|csrf|iv|initvector|cookie|auth|verifier|challenge|resetcode|activation|captcha|guid|uuid|key)
+      # A weak PRNG inside a class whose whole purpose is a security mechanism
+      # is a finding regardless of what the local variable is called. This is
+      # what catches session-id and CSRF-token generators that assign to `id`.
+      - patterns:
+          - pattern-inside: |
+              class $CLS { ... }
+          - metavariable-regex:
+              metavariable: $CLS
+              regex: (?i).*(session|csrf|xsrf|token|password|passwd|credential|authentication|crypto|cipher|secret|nonce|otp|pincode|resetlink).*
+          - pattern: $VAR = $SRC
+          - focus-metavariable: $SRC
+      # Direct use in security APIs
+      - pattern: new Cookie($NAME, ...)
+      - pattern: new javax.servlet.http.Cookie($NAME, ...)
+      - pattern: (Cookie $C).setValue(...)
+      - pattern: new SecretKeySpec(...)
+      - pattern: new javax.crypto.spec.SecretKeySpec(...)
+      - pattern: new IvParameterSpec(...)
+      - pattern: (MessageDigest $D).update(...)
     metadata:
       category: security
       cwe: CWE-338
-      confidence: medium
+      confidence: high
       subcategory: crypto
       vulnerability_class: "Cryptographic Weakness"
       owasp: "A02:2021"
-      fix: "Use java.security.SecureRandom instead of java.util.Random for security-sensitive operations."
+      fix: "Use java.security.SecureRandom for tokens, session identifiers, salts, IVs and keys. SecureRandom.getInstanceStrong() is appropriate for long-lived secrets."
 
   # XXE vulnerabilities
   - id: java-xxe-vulnerability
@@ -320,54 +672,159 @@ rules:
 
   # Path traversal - using taint mode for accurate detection
   - id: java-path-traversal
-    message: "Path traversal vulnerability detected. User-controlled data flows into file operations without proper validation. Use Path.normalize() and validate the result is within allowed directory."
+    message: "Path traversal vulnerability detected. User-controlled data flows into a file operation without validation, letting an attacker use ../ sequences to read or write files outside the intended directory. Resolve the path and verify it stays under the intended base directory before opening it."
     severity: HIGH
     languages: [java]
     mode: taint
+    paths:
+      exclude:
+        - "*/src/test/*"
+        - "*/src/testFixtures/*"
+        - "*/test/java/*"
+        - "*/testsuite/*"
+        - "*/microbench/*"
+        - "*/jmh/*"
+        - "*Test.java"
+        - "*Tests.java"
+        - "*TestCase.java"
+        - "*Benchmark.java"
     pattern-sources:
-      # Servlet request sources
       - pattern: $REQ.getParameter(...)
       - pattern: $REQ.getParameterValues(...)
+      - pattern: $REQ.getParameterMap()
       - pattern: $REQ.getHeader(...)
+      - pattern: $REQ.getHeaders(...)
       - pattern: $REQ.getQueryString()
-      - pattern: $REQ.getRequestURI()
       - pattern: $REQ.getPathInfo()
-      # User object getters that typically return user input
-      - pattern: $OBJ.getFilename()
-      - pattern: $OBJ.getName()
-      - pattern: $OBJ.getPath()
-      - pattern: $OBJ.getValue()
-      - pattern: $OBJ.getData()
+      - pattern: $REQ.getRequestURI()
+      # Type constrained: an untyped $REQ.getInputStream() also matched
+      # Resource.getInputStream(), which is a classpath resource, not input.
+      - pattern: (HttpServletRequest $R).getInputStream()
+      - pattern: (HttpServletRequest $R).getReader()
+      - pattern: (javax.servlet.http.HttpServletRequest $R).getInputStream()
+      - pattern: (javax.servlet.http.HttpServletRequest $R).getReader()
+      # Cookie values are attacker controlled and are the source in a large
+      # share of real path traversal and injection findings.
+      - pattern: (Cookie $C).getValue()
+      - pattern: (javax.servlet.http.Cookie $C).getValue()
+      # Archive entry names and uploaded filenames are attacker controlled.
+      # ZipEntry.getName() is the Zip Slip source; MultipartFile carries the
+      # client-supplied filename verbatim.
+      - pattern: (ZipEntry $E).getName()
+      - pattern: (java.util.zip.ZipEntry $E).getName()
+      - pattern: (ArchiveEntry $E).getName()
+      - pattern: (MultipartFile $F).getOriginalFilename()
+      - pattern: (org.springframework.web.multipart.MultipartFile $F).getOriginalFilename()
+      - pattern: (Part $P).getSubmittedFileName()
+      - patterns:
+          - pattern: $PARAM
+          - pattern-inside: |
+              $RET $METHOD(..., @RequestParam(...) $TYPE $PARAM, ...) { ... }
+      - patterns:
+          - pattern: $PARAM
+          - pattern-inside: |
+              $RET $METHOD(..., @PathVariable(...) $TYPE $PARAM, ...) { ... }
     pattern-propagators:
-      # String concatenation
       - pattern: (String $A) + (String $B)
         from: $B
         to: $A
       - pattern: (String $A).concat($B)
         from: $B
         to: $A
-      # Path operations that propagate taint
+      - pattern: String.format($FMT, ..., $X, ...)
+        from: $X
+        to: String.format
+      - pattern: $B.append($X)
+        from: $X
+        to: $B
+      - pattern: (StringBuilder $B).toString()
+        from: $B
+        to: (StringBuilder $B).toString()
+      # URL decoding is not sanitisation; it preserves attacker control and is
+      # applied to almost every header-sourced value in real servlet code.
+      - pattern: URLDecoder.decode($X, ...)
+        from: $X
+        to: URLDecoder.decode
+      - pattern: java.net.URLDecoder.decode($X, ...)
+        from: $X
+        to: java.net.URLDecoder.decode
+      - pattern: new String($X)
+        from: $X
+        to: new String
+      - pattern: new String($X, ...)
+        from: $X
+        to: new String
+      - pattern: (String $S).substring(...)
+        from: $S
+        to: (String $S).substring(...)
+      - pattern: (String $S).trim()
+        from: $S
+        to: (String $S).trim()
+      - pattern: (String $S).toLowerCase(...)
+        from: $S
+        to: (String $S).toLowerCase(...)
+      - pattern: (String $S).replace(...)
+        from: $S
+        to: (String $S).replace(...)
+      - pattern: (String $S).getBytes(...)
+        from: $S
+        to: (String $S).getBytes(...)
+      - pattern: $E.nextElement()
+        from: $E
+        to: $E.nextElement()
+      - pattern: Base64.decodeBase64($X)
+        from: $X
+        to: Base64.decodeBase64
+      - pattern: org.apache.commons.codec.binary.Base64.decodeBase64($X)
+        from: $X
+        to: org.apache.commons.codec.binary.Base64.decodeBase64
+      - pattern: Base64.encodeBase64($X)
+        from: $X
+        to: Base64.encodeBase64
+      - pattern: org.apache.commons.codec.binary.Base64.encodeBase64($X)
+        from: $X
+        to: org.apache.commons.codec.binary.Base64.encodeBase64
       - pattern: Paths.get(..., $X, ...)
         from: $X
         to: Paths.get
-      - pattern: Path.resolve($X)
+      - pattern: java.nio.file.Paths.get(..., $X, ...)
         from: $X
-        to: Path.resolve
-      # File path operations
+        to: java.nio.file.Paths.get
+      - pattern: $P.resolve($X)
+        from: $X
+        to: $P.resolve($X)
       - pattern: new File($X)
         from: $X
         to: new File
       - pattern: new File($DIR, $X)
         from: $X
         to: new File
+      - pattern: new java.io.File($X)
+        from: $X
+        to: new java.io.File
+      - pattern: new java.io.File($DIR, $X)
+        from: $X
+        to: new java.io.File
     pattern-sinks:
-      # File operations
+      # Both the imported and fully qualified spellings. Servlet code and
+      # generated code routinely write java.io.* in full, and the previous
+      # short-name-only sinks missed every one of those call sites.
       - pattern: new File(...)
+      - pattern: new java.io.File(...)
       - pattern: new FileInputStream(...)
+      - pattern: new java.io.FileInputStream(...)
       - pattern: new FileOutputStream(...)
+      - pattern: new java.io.FileOutputStream(...)
       - pattern: new FileReader(...)
+      - pattern: new java.io.FileReader(...)
       - pattern: new FileWriter(...)
+      - pattern: new java.io.FileWriter(...)
       - pattern: new RandomAccessFile(...)
+      - pattern: new java.io.RandomAccessFile(...)
+      - pattern: Files.newInputStream(...)
+      - pattern: Files.newOutputStream(...)
+      - pattern: Files.newBufferedReader(...)
+      - pattern: Files.newBufferedWriter(...)
       - pattern: Files.readAllBytes(...)
       - pattern: Files.readAllLines(...)
       - pattern: Files.write(...)
@@ -375,16 +832,24 @@ rules:
       - pattern: Files.move(...)
       - pattern: Files.delete(...)
       - pattern: Files.deleteIfExists(...)
+      - pattern: java.nio.file.Files.readAllBytes(...)
+      - pattern: java.nio.file.Files.write(...)
+      - pattern: java.nio.file.Files.copy(...)
+      - pattern: java.nio.file.Files.newInputStream(...)
+      - pattern: java.nio.file.Files.newOutputStream(...)
       - pattern: Paths.get(...)
-      # Legacy IO operations
-      - pattern: $FILE.createNewFile(...)
-      - pattern: $FILE.delete()
-      - pattern: $FILE.renameTo(...)
+      - pattern: java.nio.file.Paths.get(...)
     pattern-sanitizers:
-      # Path validation
-      - pattern: $PATH.normalize()
-      - pattern: $PATH.toRealPath(...)
-      - pattern: FilenameUtils.normalize(...)
+      # normalize() alone collapses ../ but does not confine the result, so it
+      # is only a sanitiser when paired with a containment check. The
+      # containment check is what actually makes the path safe.
+      - patterns:
+          - pattern: $PATH.startsWith($BASE)
+          - focus-metavariable: $PATH
+      - pattern: FilenameUtils.getName(...)
+      - pattern: org.apache.commons.io.FilenameUtils.getName(...)
+      - pattern: Integer.parseInt(...)
+      - pattern: UUID.fromString(...)
     metadata:
       category: security
       cwe: CWE-22
@@ -392,7 +857,7 @@ rules:
       subcategory: access-control
       vulnerability_class: "Access Control Violation"
       owasp: "A01:2021"
-      fix: "Use File.getCanonicalPath() and verify the result starts with the allowed base directory. Use java.nio.file.Path.normalize() and resolve()."
+      fix: "Resolve the path with Path.normalize() and then assert the result startsWith() the intended base directory, or strip the value to a bare filename with FilenameUtils.getName()."
 
   # SSL/TLS bypass
   - id: java-ssl-bypass
@@ -427,15 +892,22 @@ rules:
 
   # Weak cipher algorithms
   - id: java-weak-cipher
-    message: "Weak cryptographic algorithm detected. Using broken or outdated algorithms may allow attackers to decrypt data or forge signatures. Use modern algorithms like AES-256, SHA-256, or Ed25519."
+    message: "Weak or unauthenticated cipher detected. DES, 3DES, RC2, RC4 and Blowfish are broken or deprecated, and ECB mode leaks plaintext structure. Use AES-256 in GCM mode (AES/GCM/NoPadding)."
     severity: MEDIUM
     languages: [java]
-    pattern-either:
-      - pattern: Cipher.getInstance("DES")
-      - pattern: Cipher.getInstance("RC4")
-      - pattern: Cipher.getInstance("RC2")
-      - pattern: Cipher.getInstance("DESede")
-      - pattern: Cipher.getInstance("Blowfish")
+    patterns:
+      - pattern-either:
+          # Cipher.getInstance takes a transformation string such as
+          # "DES/CBC/PKCS5Padding", not a bare algorithm name, and is commonly
+          # written fully qualified with an optional provider argument.
+          - pattern: Cipher.getInstance("$TRANSFORM", ...)
+          - pattern: javax.crypto.Cipher.getInstance("$TRANSFORM", ...)
+          - pattern: new SecretKeySpec($KEY, "$TRANSFORM")
+          - pattern: new javax.crypto.spec.SecretKeySpec($KEY, "$TRANSFORM")
+          - pattern: KeyGenerator.getInstance("$TRANSFORM", ...)
+      - metavariable-regex:
+          metavariable: $TRANSFORM
+          regex: (?i)^(des|desede|tripledes|3des|rc2|rc4|arcfour|blowfish)([/].*)?$|^.*/ecb/.*$
     metadata:
       category: security
       cwe: CWE-327
@@ -443,6 +915,7 @@ rules:
       subcategory: crypto
       vulnerability_class: "Cryptographic Weakness"
       owasp: "A02:2021"
+      fix: "Use Cipher.getInstance('AES/GCM/NoPadding') with a 256-bit key and a unique 12-byte IV per message."
 
   # Weak SSL/TLS versions
   - id: java-weak-ssl-version
@@ -518,83 +991,166 @@ rules:
 
   # Cookie security issues
   - id: java-insecure-cookie
-    message: "Sensitive cookie missing the Secure flag. The cookie may be transmitted over unencrypted HTTP, allowing interception. Set the Secure flag on all sensitive cookies."
+    message: "Cookie created without the Secure flag. The cookie may be transmitted over unencrypted HTTP, allowing interception. Call setSecure(true) and setHttpOnly(true) before adding the cookie to the response."
     severity: MEDIUM
     languages: [java]
-    pattern-either:
-      - pattern: |
-          Cookie $COOKIE = new Cookie($NAME, $VALUE);
-      - pattern: |
-          new Cookie($NAME, $VALUE);
-    pattern-not-inside:
-      pattern: |
-        ...
-        $COOKIE.setSecure(true);
-        ...
+    paths:
+      exclude:
+        - "*/src/test/*"
+        - "*/src/testFixtures/*"
+        - "*/test/java/*"
+        - "*/testsuite/*"
+        - "*/microbench/*"
+        - "*/jmh/*"
+        - "*Test.java"
+        - "*Tests.java"
+        - "*TestCase.java"
+        - "*Benchmark.java"
+    patterns:
+      - pattern-either:
+          # Servlet code very often writes the constructor fully qualified.
+          - pattern: new Cookie($NAME, $VALUE)
+          - pattern: new javax.servlet.http.Cookie($NAME, $VALUE)
+          - pattern: new jakarta.servlet.http.Cookie($NAME, $VALUE)
+      # The exclusion is bound to the same variable. A scope-wide
+      # "any setSecure(true) nearby" check let one hardened cookie exonerate
+      # every other cookie in the same method.
+      - pattern-not-inside: |
+          $T $COOKIE = new Cookie(...);
+          ...
+          $COOKIE.setSecure(true);
+      - pattern-not-inside: |
+          $T $COOKIE = new javax.servlet.http.Cookie(...);
+          ...
+          $COOKIE.setSecure(true);
+      - pattern-not-inside: |
+          $T $COOKIE = new jakarta.servlet.http.Cookie(...);
+          ...
+          $COOKIE.setSecure(true);
     metadata:
       category: security
       cwe: CWE-614
-      confidence: low
+      confidence: medium
       subcategory: configuration
       vulnerability_class: "Security Misconfiguration"
       owasp: "A05:2021"
-
-  # === Low Severity Rules ===
+      fix: "Call cookie.setSecure(true) and cookie.setHttpOnly(true), or set server.servlet.session.cookie.secure=true in Spring Boot."
 
   # System.out usage in production
   - id: java-system-out-usage
-    message: "Sensitive information written to log files. Passwords, tokens, or personal data in logs can be exposed to unauthorized parties. Redact sensitive values before logging."
+    message: "Sensitive information written to console output. Passwords, tokens, or personal data printed to stdout or stderr end up in container logs and CI output where they are broadly readable. Redact the value or remove the statement."
     severity: LOW
     languages: [java]
-    pattern-either:
-      - pattern: System.out.println($MSG)
-      - pattern: System.out.print($MSG)
-      - pattern: System.err.println($MSG)
-      - pattern: $THROWABLE.printStackTrace()
+    paths:
+      exclude:
+        - "*/src/test/*"
+        - "*/src/testFixtures/*"
+        - "*/test/java/*"
+        - "*/testsuite/*"
+        - "*/microbench/*"
+        - "*/jmh/*"
+        - "*Test.java"
+        - "*Tests.java"
+        - "*TestCase.java"
+        - "*Benchmark.java"
+        - "*/example/*"
+        - "*/examples/*"
+    patterns:
+      - pattern-either:
+          - pattern: System.out.println($MSG)
+          - pattern: System.out.print($MSG)
+          - pattern: System.err.println($MSG)
+          - pattern: System.err.print($MSG)
+      # The rule is about leaking secrets, not about console I/O. Printing a
+      # progress message is not a security finding, so require the printed
+      # expression to reference something credential bearing.
+      - metavariable-regex:
+          metavariable: $MSG
+          regex: (?i).*(password|passwd|pwd|secret|credential|api_?key|apikey|private_?key|access_?key|auth_?token|access_?token|refresh_?token|session_?id|sessionid|ssn|creditcard|credit_card|cvv|passphrase).*
     metadata:
       category: security
       cwe: CWE-532
-      confidence: low
+      confidence: medium
       subcategory: logging
       vulnerability_class: "Sensitive Data Exposure"
       owasp: "A09:2021"
+      fix: "Remove the statement or redact the value before printing. Route diagnostics through a logger with a redaction filter rather than System.out."
 
   # Empty catch blocks
   - id: java-empty-catch-block
-    message: "Improper error handling detected. The application does not properly handle exceptions, which may cause crashes or information leaks. Catch specific exceptions and handle them gracefully."
+    message: "Broad exception silently swallowed. Catching Exception or Throwable and discarding it without comment or logging hides failures, which can mask a security control that did not run. Log the exception, rethrow it, or document why it is safe to ignore."
     severity: LOW
     languages: [java]
-    pattern: |
-      try {
-        ...
-      } catch ($EXCEPTION $VAR) {
-      }
+    paths:
+      exclude:
+        - "*/src/test/*"
+        - "*/src/testFixtures/*"
+        - "*/test/java/*"
+        - "*/testsuite/*"
+        - "*/microbench/*"
+        - "*/jmh/*"
+        - "*Test.java"
+        - "*Tests.java"
+        - "*TestCase.java"
+        - "*Benchmark.java"
+    patterns:
+      - pattern: |
+          try {
+            ...
+          } catch ($EXCEPTION $VAR) {
+          }
+      # Catching a specific, expected exception and continuing is legitimate
+      # control flow. Only a swallowed broad exception is worth reporting.
+      - metavariable-regex:
+          metavariable: $EXCEPTION
+          regex: ^(Exception|Throwable|RuntimeException|java\.lang\.Exception|java\.lang\.Throwable|java\.lang\.RuntimeException)$
+      # The conventional Java names for a deliberately discarded exception.
+      - metavariable-regex:
+          metavariable: $VAR
+          regex: ^(?!(ignored|ignore|expected|tolerated|unused|nop|noop|swallowed|discard|discarded)$).*$
+      # A catch block carrying an explanatory comment is a reviewed decision,
+      # not an oversight. Comments are not AST nodes, so the body still looks
+      # empty to the matcher and has to be excluded textually.
+      - pattern-not-regex: 'catch\s*\([^)]*\)\s*\{\s*(//|/\*)'
     metadata:
       category: security
       cwe: CWE-703
-      confidence: high
+      confidence: medium
       subcategory: error-handling
       vulnerability_class: "Improper Error Handling"
+      fix: "Log the exception with context, rethrow it, rename the variable to 'ignored', or add a comment explaining why discarding it is safe."
 
   # Hardcoded IP addresses
   - id: java-hardcoded-ip
-    message: "Hard-coded credentials detected. Embedding secrets in source code makes them easily discoverable and impossible to rotate. Use environment variables or a secrets manager instead."
+    message: "Hard-coded private network address detected. Embedding infrastructure addresses in source ties the build to one environment and leaks internal network layout. Move the address to configuration."
     severity: LOW
     languages: [java]
-    pattern-either:
-      - pattern: '"192.168.$IP"'
-      - pattern: '"10.$IP"'
-      - pattern: '"172.16.$IP"'
-      - pattern: '"127.0.0.1"'
+    paths:
+      exclude:
+        - "*/src/test/*"
+        - "*/src/testFixtures/*"
+        - "*/test/java/*"
+        - "*/testsuite/*"
+        - "*/microbench/*"
+        - "*/jmh/*"
+        - "*Test.java"
+        - "*Tests.java"
+        - "*TestCase.java"
+        - "*Benchmark.java"
+        - "*/example/*"
+        - "*/examples/*"
+    # Requires a full dotted quad. Matching a partial address also matched
+    # version strings such as "10.0" and "10.4". Loopback (127.x) and the
+    # wildcard bind address are not infrastructure disclosure and are excluded
+    # by the leading-octet alternation.
+    pattern-regex: '"(?:10|192\.168|172\.(?:1[6-9]|2[0-9]|3[01]))\.[0-9]{1,3}\.[0-9]{1,3}(?::[0-9]{1,5})?"'
     metadata:
       category: security
-      cwe: CWE-798
+      cwe: CWE-547
       confidence: low
-      subcategory: authentication
-      vulnerability_class: "Authentication Weakness"
-      owasp: "A07:2021"
-
-  # === Framework-specific Rules ===
+      subcategory: configuration
+      vulnerability_class: "Security Misconfiguration"
+      fix: "Read the address from configuration (environment variable, application.properties, or service discovery) instead of hard-coding it."
 
   # Spring Security bypass
   - id: java-spring-security-bypass
@@ -771,3 +1327,271 @@ rules:
       vulnerability_class: "Unrestricted File Upload"
       owasp: "A04:2021"
       fix: "Validate file extension, MIME type, and content. Store uploads outside the web root. Use Apache Tika for content-type detection."
+
+  - id: java-xss
+    message: "Cross-site scripting (XSS) vulnerability detected. User-controlled data is written into the HTTP response without HTML encoding, letting an attacker inject script that runs in other users' browsers. Encode the value for the output context before writing it."
+    severity: HIGH
+    languages: [java]
+    mode: taint
+    paths:
+      exclude:
+        - "*/src/test/*"
+        - "*/src/testFixtures/*"
+        - "*/test/java/*"
+        - "*/testsuite/*"
+        - "*/microbench/*"
+        - "*/jmh/*"
+        - "*Test.java"
+        - "*Tests.java"
+        - "*TestCase.java"
+        - "*Benchmark.java"
+    pattern-sources:
+      - pattern: $REQ.getParameter(...)
+      - pattern: $REQ.getParameterValues(...)
+      - pattern: $REQ.getParameterMap()
+      - pattern: $REQ.getHeader(...)
+      - pattern: $REQ.getHeaders(...)
+      - pattern: $REQ.getQueryString()
+      - pattern: $REQ.getPathInfo()
+      - pattern: $REQ.getRequestURI()
+      - pattern: $REQ.getRequestURL()
+      # Type constrained: an untyped $REQ.getInputStream() also matched
+      # Resource.getInputStream(), which is a classpath resource, not input.
+      - pattern: (HttpServletRequest $R).getInputStream()
+      - pattern: (HttpServletRequest $R).getReader()
+      - pattern: (javax.servlet.http.HttpServletRequest $R).getInputStream()
+      - pattern: (javax.servlet.http.HttpServletRequest $R).getReader()
+      - pattern: (Cookie $C).getValue()
+      - pattern: (Cookie $C).getName()
+      # Spring MVC parameter binding
+      - patterns:
+          - pattern: $PARAM
+          - pattern-inside: |
+              $RET $METHOD(..., @RequestParam(...) $TYPE $PARAM, ...) { ... }
+      - patterns:
+          - pattern: $PARAM
+          - pattern-inside: |
+              $RET $METHOD(..., @PathVariable(...) $TYPE $PARAM, ...) { ... }
+      - patterns:
+          - pattern: $PARAM
+          - pattern-inside: |
+              $RET $METHOD(..., @RequestBody $TYPE $PARAM, ...) { ... }
+    pattern-propagators:
+      - pattern: (String $A) + (String $B)
+        from: $B
+        to: $A
+      - pattern: (String $A).concat($B)
+        from: $B
+        to: $A
+      - pattern: String.format($FMT, ..., $X, ...)
+        from: $X
+        to: String.format
+      - pattern: $B.append($X)
+        from: $X
+        to: $B
+      - pattern: (StringBuilder $B).toString()
+        from: $B
+        to: (StringBuilder $B).toString()
+      - pattern: (StringBuffer $B).toString()
+        from: $B
+        to: (StringBuffer $B).toString()
+      - pattern: URLDecoder.decode($X, ...)
+        from: $X
+        to: URLDecoder.decode
+      - pattern: java.net.URLDecoder.decode($X, ...)
+        from: $X
+        to: java.net.URLDecoder.decode
+      - pattern: (String $S).substring(...)
+        from: $S
+        to: (String $S).substring(...)
+      - pattern: (String $S).trim()
+        from: $S
+        to: (String $S).trim()
+      - pattern: $E.nextElement()
+        from: $E
+        to: $E.nextElement()
+    pattern-sinks:
+      - pattern: $RESP.getWriter().println(...)
+      - pattern: $RESP.getWriter().print(...)
+      - pattern: $RESP.getWriter().write(...)
+      - pattern: $RESP.getWriter().format(...)
+      - pattern: $RESP.getWriter().printf(...)
+      - pattern: $RESP.getWriter().append(...)
+      - pattern: $RESP.getOutputStream().write(...)
+      - pattern: (PrintWriter $W).println(...)
+      - pattern: (PrintWriter $W).print(...)
+      - pattern: (PrintWriter $W).write(...)
+      - pattern: (PrintWriter $W).format(...)
+      - pattern: (JspWriter $W).println(...)
+      - pattern: (JspWriter $W).print(...)
+      # Type constrained: an untyped $RESP.setHeader() also matched Spring
+      # messaging header accessors, which never reach a browser.
+      - pattern: (HttpServletResponse $R).setHeader($NAME, ...)
+      - pattern: (HttpServletResponse $R).addHeader($NAME, ...)
+      - pattern: (javax.servlet.http.HttpServletResponse $R).setHeader($NAME, ...)
+    pattern-sanitizers:
+      - pattern: ESAPI.encoder().encodeForHTML(...)
+      - pattern: $ENC.encodeForHTML(...)
+      - pattern: $ENC.encodeForHTMLAttribute(...)
+      - pattern: $ENC.encodeForJavaScript(...)
+      - pattern: Encode.forHtml(...)
+      - pattern: Encode.forHtmlAttribute(...)
+      - pattern: org.owasp.encoder.Encode.forHtml(...)
+      - pattern: StringEscapeUtils.escapeHtml4(...)
+      - pattern: StringEscapeUtils.escapeHtml(...)
+      - pattern: org.apache.commons.text.StringEscapeUtils.escapeHtml4(...)
+      - pattern: HtmlUtils.htmlEscape(...)
+      - pattern: org.springframework.web.util.HtmlUtils.htmlEscape(...)
+      - pattern: Jsoup.clean(...)
+      # Values coerced to a non-string type cannot carry markup
+      - pattern: Integer.parseInt(...)
+      - pattern: Long.parseLong(...)
+      - pattern: Double.parseDouble(...)
+      - pattern: UUID.fromString(...)
+    metadata:
+      category: security
+      cwe: CWE-79
+      confidence: high
+      subcategory: xss
+      vulnerability_class: "Cross-Site Scripting (XSS)"
+      owasp: "A03:2021"
+      fix: "HTML-encode the value at the point of output with OWASP Encoder (Encode.forHtml) or HtmlUtils.htmlEscape. In JSP use <c:out>; in Thymeleaf use th:text, which encodes by default."
+
+  - id: java-xpath-injection
+    message: "XPath injection vulnerability detected. User-controlled data is concatenated into an XPath expression, letting an attacker rewrite the query and read arbitrary nodes from the document. Bind the value as a variable through an XPathVariableResolver instead of building the expression by concatenation."
+    severity: HIGH
+    languages: [java]
+    mode: taint
+    paths:
+      exclude:
+        - "*/src/test/*"
+        - "*/src/testFixtures/*"
+        - "*/test/java/*"
+        - "*/testsuite/*"
+        - "*/microbench/*"
+        - "*/jmh/*"
+        - "*Test.java"
+        - "*Tests.java"
+        - "*TestCase.java"
+        - "*Benchmark.java"
+    pattern-sources:
+      - pattern: $REQ.getParameter(...)
+      - pattern: $REQ.getParameterValues(...)
+      - pattern: $REQ.getParameterMap()
+      - pattern: $REQ.getHeader(...)
+      - pattern: $REQ.getHeaders(...)
+      - pattern: $REQ.getQueryString()
+      - pattern: $REQ.getPathInfo()
+      - pattern: $REQ.getRequestURI()
+      # Type constrained: an untyped $REQ.getInputStream() also matched
+      # Resource.getInputStream(), which is a classpath resource, not input.
+      - pattern: (HttpServletRequest $R).getInputStream()
+      - pattern: (HttpServletRequest $R).getReader()
+      - pattern: (javax.servlet.http.HttpServletRequest $R).getInputStream()
+      - pattern: (javax.servlet.http.HttpServletRequest $R).getReader()
+      # Cookie values are attacker controlled and are the source in a large
+      # share of real path traversal and injection findings.
+      - pattern: (Cookie $C).getValue()
+      - pattern: (javax.servlet.http.Cookie $C).getValue()
+      # Archive entry names and uploaded filenames are attacker controlled.
+      # ZipEntry.getName() is the Zip Slip source; MultipartFile carries the
+      # client-supplied filename verbatim.
+      - pattern: (ZipEntry $E).getName()
+      - pattern: (java.util.zip.ZipEntry $E).getName()
+      - pattern: (ArchiveEntry $E).getName()
+      - pattern: (MultipartFile $F).getOriginalFilename()
+      - pattern: (org.springframework.web.multipart.MultipartFile $F).getOriginalFilename()
+      - pattern: (Part $P).getSubmittedFileName()
+      - patterns:
+          - pattern: $PARAM
+          - pattern-inside: |
+              $RET $METHOD(..., @RequestParam(...) $TYPE $PARAM, ...) { ... }
+      - patterns:
+          - pattern: $PARAM
+          - pattern-inside: |
+              $RET $METHOD(..., @PathVariable(...) $TYPE $PARAM, ...) { ... }
+    pattern-propagators:
+      - pattern: (String $A) + (String $B)
+        from: $B
+        to: $A
+      - pattern: (String $A).concat($B)
+        from: $B
+        to: $A
+      - pattern: String.format($FMT, ..., $X, ...)
+        from: $X
+        to: String.format
+      - pattern: $B.append($X)
+        from: $X
+        to: $B
+      - pattern: (StringBuilder $B).toString()
+        from: $B
+        to: (StringBuilder $B).toString()
+      # URL decoding is not sanitisation; it preserves attacker control and is
+      # applied to almost every header-sourced value in real servlet code.
+      - pattern: URLDecoder.decode($X, ...)
+        from: $X
+        to: URLDecoder.decode
+      - pattern: java.net.URLDecoder.decode($X, ...)
+        from: $X
+        to: java.net.URLDecoder.decode
+      - pattern: new String($X)
+        from: $X
+        to: new String
+      - pattern: new String($X, ...)
+        from: $X
+        to: new String
+      - pattern: (String $S).substring(...)
+        from: $S
+        to: (String $S).substring(...)
+      - pattern: (String $S).trim()
+        from: $S
+        to: (String $S).trim()
+      - pattern: (String $S).toLowerCase(...)
+        from: $S
+        to: (String $S).toLowerCase(...)
+      - pattern: (String $S).replace(...)
+        from: $S
+        to: (String $S).replace(...)
+      - pattern: (String $S).getBytes(...)
+        from: $S
+        to: (String $S).getBytes(...)
+      - pattern: $E.nextElement()
+        from: $E
+        to: $E.nextElement()
+      - pattern: Base64.decodeBase64($X)
+        from: $X
+        to: Base64.decodeBase64
+      - pattern: org.apache.commons.codec.binary.Base64.decodeBase64($X)
+        from: $X
+        to: org.apache.commons.codec.binary.Base64.decodeBase64
+      - pattern: Base64.encodeBase64($X)
+        from: $X
+        to: Base64.encodeBase64
+      - pattern: org.apache.commons.codec.binary.Base64.encodeBase64($X)
+        from: $X
+        to: org.apache.commons.codec.binary.Base64.encodeBase64
+    pattern-sinks:
+      - pattern: (XPath $XP).evaluate(...)
+      - pattern: (XPath $XP).compile(...)
+      - pattern: (javax.xml.xpath.XPath $XP).evaluate(...)
+      - pattern: (javax.xml.xpath.XPath $XP).compile(...)
+      - pattern: (XPathExpression $XE).evaluate(...)
+      - pattern: XPathFactory.newInstance().newXPath().evaluate(...)
+      - pattern: javax.xml.xpath.XPathFactory.newInstance().newXPath().evaluate(...)
+      - pattern: $XP.evaluateExpression(...)
+      - pattern: $NODE.selectNodes(...)
+      - pattern: $NODE.selectSingleNode(...)
+      - pattern: DocumentHelper.createXPath(...)
+    pattern-sanitizers:
+      - pattern: ESAPI.encoder().encodeForXPath(...)
+      - pattern: $ENC.encodeForXPath(...)
+      - pattern: Integer.parseInt(...)
+      - pattern: Long.parseLong(...)
+    metadata:
+      category: security
+      cwe: CWE-643
+      confidence: high
+      subcategory: injection
+      vulnerability_class: "Injection Vulnerability"
+      owasp: "A03:2021"
+      fix: "Use XPath.setXPathVariableResolver() and reference the value as $var in the expression, or validate the input against a strict allowlist before interpolating."
