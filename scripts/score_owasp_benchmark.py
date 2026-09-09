@@ -14,7 +14,9 @@ import sys
 from collections import defaultdict
 from pathlib import Path
 
-# Map socket-basics java rule ids -> OWASP Benchmark category
+# Map socket-basics java rule ids -> OWASP Benchmark category.
+# Benchmark's trustbound (CWE-501) category is deliberately absent: java.yml
+# has no rule for it, so it should read as unscored rather than as 0% recall.
 RULE_CATEGORY = {
     "java-sql-injection": "sqli",
     "java-jpa-sql-injection": "sqli",
@@ -27,7 +29,6 @@ RULE_CATEGORY = {
     "java-weak-cipher": "crypto",
     "java-insecure-cookie": "securecookie",
     "java-xpath-injection": "xpathi",
-    "java-trust-boundary-violation": "trustbound",
     "java-xss": "xss",
     "java-template-injection": "xss",
 }
@@ -134,4 +135,11 @@ def main(results_json, expected_csv):
 
 
 if __name__ == "__main__":
+    if len(sys.argv) != 3:
+        print(
+            "usage: score_owasp_benchmark.py <opengrep-results.json> "
+            "<expectedresults-1.2.csv>",
+            file=sys.stderr,
+        )
+        sys.exit(2)
     main(sys.argv[1], sys.argv[2])
