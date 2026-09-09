@@ -140,11 +140,30 @@ rules:
       - pattern: $SESSION.createQuery(...)
       - pattern: $SESSION.createSQLQuery(...)
       # JDBC template methods
-      - pattern: $TEMPLATE.query(...)
-      - pattern: $TEMPLATE.queryForObject(...)
-      - pattern: $TEMPLATE.queryForList(...)
-      - pattern: $TEMPLATE.execute(...)
-      - pattern: $TEMPLATE.update(...)
+      # Spring JDBC template methods. Typing the receiver is not workable here:
+      # the template is routinely reached through a static field or an
+      # interface, so a typed metavariable misses most real call sites. Instead
+      # keep the broad receiver and subtract the collisions, which are all
+      # update() on a crypto primitive rather than a query.
+      - patterns:
+          - pattern-either:
+              - pattern: $TEMPLATE.query(...)
+              - pattern: $TEMPLATE.queryForObject(...)
+              - pattern: $TEMPLATE.queryForList(...)
+              - pattern: $TEMPLATE.queryForRowSet(...)
+              - pattern: $TEMPLATE.execute(...)
+              - pattern: $TEMPLATE.update(...)
+              - pattern: $TEMPLATE.batchUpdate(...)
+          - pattern-not: (MessageDigest $D).update(...)
+          - pattern-not: (java.security.MessageDigest $D).update(...)
+          - pattern-not: (Mac $M).update(...)
+          - pattern-not: (javax.crypto.Mac $M).update(...)
+          - pattern-not: (Cipher $C).update(...)
+          - pattern-not: (javax.crypto.Cipher $C).update(...)
+          - pattern-not: (Signature $S).update(...)
+          - pattern-not: (java.security.Signature $S).update(...)
+          - pattern-not: (Checksum $K).update(...)
+          - pattern-not: (java.util.zip.Checksum $K).update(...)
     pattern-sanitizers:
       # PreparedStatement parameter binding
       - pattern: $STMT.setString(...)
@@ -209,13 +228,15 @@ rules:
       - pattern-not-inside: |
           public void readExternal($T $S) throws $EX { ... }
       # A SafeConstructor load is the remediation this rule recommends.
-      - pattern-not: new Yaml(new SafeConstructor(), ...).load(...)
-      - pattern-not: new Yaml(new org.yaml.snakeyaml.constructor.SafeConstructor(), ...).load(...)
+      # SnakeYAML 2.0 removed the no-arg SafeConstructor, so the argument
+      # list has to stay open here.
+      - pattern-not: new Yaml(new SafeConstructor(...), ...).load(...)
+      - pattern-not: new Yaml(new org.yaml.snakeyaml.constructor.SafeConstructor(...), ...).load(...)
       - pattern-not-inside: |
-          $T $Y = new Yaml(new SafeConstructor(), ...);
+          $T $Y = new Yaml(new SafeConstructor(...), ...);
           ...
       - pattern-not-inside: |
-          $T $Y = new Yaml(new org.yaml.snakeyaml.constructor.SafeConstructor(), ...);
+          $T $Y = new Yaml(new org.yaml.snakeyaml.constructor.SafeConstructor(...), ...);
           ...
     metadata:
       category: security
@@ -406,6 +427,8 @@ rules:
       - pattern: (javax.naming.directory.InitialDirContext $CTX).search(...)
       - pattern: (LdapContext $CTX).search(...)
       - pattern: (javax.naming.ldap.LdapContext $CTX).search(...)
+      - pattern: (InitialLdapContext $CTX).search(...)
+      - pattern: (javax.naming.ldap.InitialLdapContext $CTX).search(...)
       - pattern: (LdapOperations $T).search(...)
       - pattern: (org.springframework.ldap.core.LdapOperations $T).search(...)
       - pattern: new SearchFilter(...)
@@ -502,7 +525,7 @@ rules:
               # "stompCredentials", "access_token", "j_password"), not holding
               # one. Real default credentials such as "admin" or "webgoat" do
               # not restate the keyword.
-              regex: ^(?!(?=[a-z])(?i:[a-z0-9_]*(password|passwd|credential|secret|token|apikey|accesskey|auth)[a-z0-9_]*)$).*$
+              regex: ^(?!(?=[a-z])(?!.*[0-9])(?i:[a-z_]*(password|passwd|credential|secret|token|apikey|accesskey|auth)[a-z_]*)$).*$
       # Pattern 2: credential APIs called with string literals
       - pattern: new PasswordAuthentication($USER, "...".toCharArray())
       - pattern: DriverManager.getConnection($URL, $USER, "...")
@@ -595,6 +618,7 @@ rules:
       - pattern: new Random(...).$M(...)
       - pattern: new java.util.Random(...).$M(...)
       - pattern: (Random $R).$M(...)
+      - pattern: (java.util.Random $R).$M(...)
       - pattern: Math.random()
       - pattern: java.lang.Math.random()
       - pattern: ThreadLocalRandom.current().$M(...)
@@ -606,6 +630,7 @@ rules:
       - patterns:
           - pattern-either:
               - pattern: (Random $R).nextBytes($ARR)
+              - pattern: (java.util.Random $R).nextBytes($ARR)
               - pattern: new Random(...).nextBytes($ARR)
               - pattern: new java.util.Random(...).nextBytes($ARR)
           - focus-metavariable: $ARR
@@ -656,13 +681,13 @@ rules:
               # which reintroduced every one of those substring matches.
               # Each alternative also carries its own leading .* because
               # metavariable-regex anchors at the start of the name.
-              regex: (?i:.*(token|session|nonce|salt|secret|password|passwd|credential|apikey|api_key|privatekey|private_key|pincode|csrf|initvector|cookie|verifier|challenge|resetcode|activation|captcha|guid|uuid))|(?:.*_)?(?i:iv|pin|otp|key|auth)(?:$|_|[0-9])|.*[a-z](?:Iv|Pin|Otp|Key|Auth)(?:[A-Z0-9_]|$)
+              regex: (?i:.*(token|session|nonce|salt|secret|password|passwd|credential|apikey|api_key|privatekey|private_key|pincode|csrf|initvector|cookie|verifier|challenge|resetcode|activation|captcha|guid|uuid))|(?:.*[._])?(?i:iv|pin|otp|key|auth)(?:$|[_0-9]|[A-Z])|.*[a-z](?:Iv|Pin|Otp|Key|Auth)(?:[A-Z0-9_]|$)
       - patterns:
           - pattern: $TYPE $VAR = $SRC;
           - focus-metavariable: $SRC
           - metavariable-regex:
               metavariable: $VAR
-              regex: (?i:.*(token|session|nonce|salt|secret|password|passwd|credential|apikey|api_key|privatekey|private_key|pincode|csrf|initvector|cookie|verifier|challenge|resetcode|activation|captcha|guid|uuid))|(?:.*_)?(?i:iv|pin|otp|key|auth)(?:$|_|[0-9])|.*[a-z](?:Iv|Pin|Otp|Key|Auth)(?:[A-Z0-9_]|$)
+              regex: (?i:.*(token|session|nonce|salt|secret|password|passwd|credential|apikey|api_key|privatekey|private_key|pincode|csrf|initvector|cookie|verifier|challenge|resetcode|activation|captcha|guid|uuid))|(?:.*[._])?(?i:iv|pin|otp|key|auth)(?:$|[_0-9]|[A-Z])|.*[a-z](?:Iv|Pin|Otp|Key|Auth)(?:[A-Z0-9_]|$)
       # A weak PRNG inside a class whose whole purpose is a security mechanism
       # is a finding regardless of what the local variable is called. This is
       # what catches session-id and CSRF-token generators that assign to `id`.
@@ -890,7 +915,13 @@ rules:
       # is only a sanitiser when paired with a containment check. The
       # containment check is what actually makes the path safe.
       - patterns:
-          - pattern: $PATH.startsWith($BASE)
+          # Typed to Path deliberately. Path.startsWith is component-wise
+          # containment; String.startsWith is a prefix test, and an untyped
+          # receiver let a bypassable blacklist such as
+          # name.startsWith("..") sanitize the value.
+          - pattern-either:
+              - pattern: (Path $PATH).startsWith($BASE)
+              - pattern: (java.nio.file.Path $PATH).startsWith($BASE)
           - focus-metavariable: $PATH
         # Without by-side-effect the sanitizer only cleans the startsWith
         # expression itself, so the checked variable stayed tainted at every

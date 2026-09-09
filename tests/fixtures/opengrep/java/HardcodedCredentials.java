@@ -12,6 +12,13 @@ public class HardcodedCredentials {
     // ruleid: java-hardcoded-credentials
     static final String SLACK_TOKEN = "xoxb-2409januaryfake-99";
 
+    // Weak defaults that contain the keyword but also a digit, so they are
+    // values rather than a restatement of the field name.
+    // ruleid: java-hardcoded-credentials
+    static final String LEGACY_PASSWORD = "password123";
+    // ruleid: java-hardcoded-credentials
+    static final String DB_SECRET = "secret_2024";
+
     // Header names, not secrets.
     // ok: java-hardcoded-credentials
     public static final String ACCESS_CONTROL_ALLOW_CREDENTIALS = "Access-Control-Allow-Credentials";

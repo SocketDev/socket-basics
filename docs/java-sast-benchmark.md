@@ -93,15 +93,27 @@ Two behaviours worth knowing when editing these:
 
 Measured with opengrep 1.25.0.
 
+Scan time on BenchmarkJava went from 6s to 11s, roughly +70%. The extra cost is
+the taint-mode conversions and the wider sink lists. It is small in absolute
+terms on a 2,766 file corpus, but it is not free, and it is worth re-checking if
+more rules move to taint mode. Run the corpora sequentially: seven concurrent
+opengrep processes on one machine thrash badly.
+
 ### OWASP Benchmark v1.2 (ground truth)
+
+Both columns are produced by the current `scripts/score_owasp_benchmark.py`,
+so they share a denominator. An earlier revision of this table quoted a Before
+column from a scorer that still mapped the non-existent
+`java-trust-boundary-violation` rule, which counted Benchmark's 126
+`trustbound` cases against recall on the Before side only.
 
 | | Before | After |
 |---|---|---|
-| Precision | 64.5% | **76.8%** |
-| Recall | 12.4% | **68.7%** |
-| False positive rate | 7.3% | 21.5% |
-| Benchmark score (TPR - FPR) | 5.1 | **47.2** |
-| True positives found | 176 | **915** |
+| Precision | 64.5% | **76.7%** |
+| Recall | 13.2% | **70.3%** |
+| False positive rate | 7.6% | 22.2% |
+| Benchmark score (TPR - FPR) | 5.6 | **48.2** |
+| True positives found | 176 | **937** |
 
 Per category, after the change:
 
@@ -115,8 +127,21 @@ Per category, after the change:
 | ldapi | 58.3% | 77.8% |
 | xss | 67.4% | 70.7% |
 | pathtraver | 56.1% | 69.2% |
+| sqli | 66.0% | 52.2% |
 | cmdi | 63.6% | 44.4% |
-| sqli | 64.9% | 44.1% |
+
+**Cross-category findings are not counted.** Following the OWASP method, the
+scorer only credits a finding when the rule's category matches the CWE the test
+case targets; a finding of a different class in that file is discarded rather
+than counted as a false positive. That is worth stating because it hid a real
+bug. Before this change, 93 discarded pairs were `java-sql-injection` firing on
+`hash` test cases, because the untyped `$TEMPLATE.update(...)` sink matched
+`MessageDigest.update(input)`. Subtracting the crypto receivers fixed it and
+raised `sqli` recall at the same time. 40 discarded pairs remain, all `java-xss`
+on `sqli` and `xpathi` cases, where the test genuinely echoes the tainted value
+into the response; those look like real findings the OWASP scoring model
+discards. Counting all 40 as false positives would put overall precision at
+74.0% rather than 76.7%.
 
 The headline false positive rate rises because the rule set now detects seven
 categories it previously scored zero on. Precision, which is the share of
@@ -128,6 +153,21 @@ emitted findings that are real, is the comparable number and it improved.
 |---|---|---|---|
 | Total findings | 1,631 | 129 | **-92%** |
 | Unique findings, mature libraries only | 1,536 | 84 | **-94.5%** |
+
+Two caveats on these counts, both of which apply equally to the Before and
+After columns:
+
+- **Part of the reduction is scoping, not rule logic.** Several rules gained a
+  `paths: exclude` block for test, benchmark and example directories. 429 of the
+  1,631 baseline findings (26%) sit in paths that are now excluded, concentrated
+  in `java-system-out-usage` (212 of its 263, mostly netty's `example` module),
+  `java-insecure-random` (82 of 102) and `java-hardcoded-ip` (35 of 48). Those
+  three rules would still be much quieter without the exclusions, but "zero
+  findings" for them is scoping plus logic, not logic alone.
+- **guava is counted twice.** The repository ships `guava/` and a near-identical
+  `android/guava/` mirror, and both are scanned. Exactly half of guava's
+  findings are mirror duplicates (245 of 490 before, 10 of 20 after), and the
+  same applies to its share of the ~17,400 file count.
 
 Three rules produced 74% of the original noise: `java-empty-catch-block` (645),
 `java-reflection-injection` (296) and `java-system-out-usage` (263). All three
@@ -193,6 +233,21 @@ catch (IOException e) { // fine, fall through
 Anchoring the regex to the clause that binds the exception variable is not
 expressible in a single rule. The same code without the comment on the first
 clause is reported.
+
+**Ambiguous names in `java-insecure-random`.** The sink matches a security
+value by name, and `key` is genuinely ambiguous in Java. `rememberMeKey` (a
+Benchmark true positive) and `shardKey` or `cacheKey` (map keys, not secrets)
+are the same shape, so the rule reports all of them. Narrowing `key` to compound
+forms only, as `java-hardcoded-credentials` does, would drop `weakrand` recall
+from 100%. The short words `iv`, `pin`, `otp`, `key` and `auth` are matched only
+at a word boundary, so `pivot`, `divisor`, `spinner`, `monkey` and `author` are
+not reported, but `keyIndex` and `ivLen` still are.
+
+**`java-unsafe-deserialization` still reports library plumbing.** Guava's and
+commons-lang's serialization helpers take a caller-supplied `ObjectInputStream`
+and call `readObject()` on it, outside the `Serializable` contract methods the
+rule excludes. Whether that is a finding depends on who calls the helper, which
+is not visible to the rule.
 
 **Remaining noise not addressed here.** On the mature-library corpus these rules
 were untouched by this change and are still the largest remaining sources:

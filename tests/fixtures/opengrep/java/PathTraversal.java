@@ -25,6 +25,7 @@ public class PathTraversal {
         ZipEntry e = zip.entries().nextElement();
         // ruleid: java-path-traversal
         File f = new File(dir, e.getName());
+        // ruleid: java-path-traversal
         Files.copy(zip.getInputStream(e), f.toPath());
     }
 
@@ -37,6 +38,17 @@ public class PathTraversal {
         }
         // ok: java-path-traversal
         Files.newInputStream(p);
+    }
+
+    // A String prefix test is a bypassable blacklist, not containment, and
+    // must not sanitize. Only Path.startsWith is component-wise containment.
+    void blacklistedPrefix(HttpServletRequest request) throws Exception {
+        String name = request.getParameter("f");
+        if (name.startsWith("..")) {
+            throw new IOException("rejected");
+        }
+        // ruleid: java-path-traversal
+        new java.io.FileInputStream("/var/data/" + name);
     }
 
     // Reducing to a bare filename removes the traversal.

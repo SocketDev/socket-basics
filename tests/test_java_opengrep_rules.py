@@ -137,8 +137,26 @@ def test_every_annotated_rule_exists() -> None:
     assert not unknown, f"fixtures reference rules that do not exist: {unknown}"
 
 
-def _group(entries):
-    grouped = defaultdict(list)
-    for name, rule, line in entries:
-        grouped[name].append((rule, line))
-    return grouped
+def test_no_unannotated_findings(scan_results) -> None:
+    """Every finding must land on an annotated line.
+
+    Without this, an annotation can be satisfied by an unrelated finding that
+    happens to cover the same line, and the fixture silently stops guarding
+    the behaviour it was written for.
+    """
+    expected, forbidden = _expectations()
+    annotated = {(name, rule, line) for name, rule, line in expected | forbidden}
+    stray = sorted(entry for entry in scan_results if entry not in annotated)
+    # A multi-line match credits every line it spans, so only report a finding
+    # when none of its lines carry an annotation for that rule.
+    by_rule_file = defaultdict(set)
+    for name, rule, line in annotated:
+        by_rule_file[(name, rule)].add(line)
+    unexplained = [
+        (name, rule, line)
+        for name, rule, line in stray
+        if line not in by_rule_file.get((name, rule), set())
+    ]
+    assert not unexplained, "findings on unannotated lines: " + ", ".join(
+        f"{name}:{line} {rule}" for name, rule, line in unexplained
+    )

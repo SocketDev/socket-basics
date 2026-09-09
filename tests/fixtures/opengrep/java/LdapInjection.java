@@ -27,10 +27,12 @@ public class LdapInjection {
     // A Lucene search is not an LDAP search. An untyped $CTX.search() sink
     // turned this into a CRITICAL finding.
     Object luceneSearch(org.apache.lucene.search.IndexSearcher searcher,
-                        org.apache.lucene.search.Query query,
+                        org.apache.lucene.queryparser.classic.QueryParser parser,
                         HttpServletRequest request) throws Exception {
+        // Integer.parseInt is a listed sanitizer, so the tainted value has to
+        // reach the sink unparsed for this to guard the untyped-sink defect.
         String text = request.getParameter("q");
         // ok: java-ldap-injection
-        return searcher.search(query, Integer.parseInt(text));
+        return searcher.search(parser.parse(text), 10);
     }
 }

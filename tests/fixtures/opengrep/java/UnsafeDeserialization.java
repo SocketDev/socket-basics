@@ -2,6 +2,7 @@
 import java.io.*;
 import org.yaml.snakeyaml.Yaml;
 import org.yaml.snakeyaml.constructor.SafeConstructor;
+import org.yaml.snakeyaml.LoaderOptions;
 
 public class UnsafeDeserialization implements Serializable {
     Object fromStream(ObjectInputStream ois) throws Exception {
@@ -29,6 +30,12 @@ public class UnsafeDeserialization implements Serializable {
         Yaml y = new Yaml(new SafeConstructor());
         // ok: java-unsafe-deserialization
         return y.load(s);
+    }
+
+    // SnakeYAML 2.0 removed the no-arg SafeConstructor.
+    Object yamlSafeLoaderOptions(String s) {
+        // ok: java-unsafe-deserialization
+        return new Yaml(new SafeConstructor(new LoaderOptions())).load(s);
     }
 
     // Implementing the Serializable contract, including the standard throws.

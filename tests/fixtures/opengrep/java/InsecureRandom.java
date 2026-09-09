@@ -49,6 +49,39 @@ public class InsecureRandom {
         int jitterMs = rnd.nextInt(250);
     }
 
+    // Short credential words in leading position, with a camelCase suffix.
+    void leadingShortWords() {
+        Random rnd = new Random();
+        // ruleid: java-insecure-random
+        String otpCode = Integer.toString(rnd.nextInt(999999));
+        // ruleid: java-insecure-random
+        int pinNumber = rnd.nextInt(9999);
+        // ruleid: java-insecure-random
+        String keyMaterial = Long.toString(rnd.nextLong());
+    }
+
+    // Assignment to a field rather than a local.
+    private long key;
+    private String otp;
+
+    void fields() {
+        Random rnd = new Random();
+        // ruleid: java-insecure-random
+        this.key = rnd.nextLong();
+        // ruleid: java-insecure-random
+        this.otp = Integer.toString(rnd.nextInt(999999));
+    }
+
+    // The receiver type written fully qualified.
+    void qualifiedReceiver(java.util.Random rnd) {
+        // ruleid: java-insecure-random
+        String sessionToken = Long.toString(rnd.nextLong(), 36);
+        byte[] material = new byte[16];
+        rnd.nextBytes(material);
+        // ruleid: java-insecure-random
+        new SecretKeySpec(material, "AES");
+    }
+
     // camelCase and SNAKE_CASE forms of the short words still count.
     void shortWordsThatDoCount() {
         Random rnd = new Random();
