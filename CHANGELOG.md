@@ -60,11 +60,18 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   `monkey` or `author` as security-relevant names. (#112)
 - `java-unsafe-deserialization` no longer reports SnakeYAML loads that use
   `new Yaml(new SafeConstructor())`, which is the remediation the rule itself
-  recommends, and no longer matches unrelated `readObject()` APIs such as
+  recommends, including the SnakeYAML 2.0 `SafeConstructor(LoaderOptions)`
+  form, and no longer matches unrelated `readObject()` APIs such as
   BouncyCastle's `PEMParser`. (#112)
 - `java-ldap-injection` no longer reports a Lucene `IndexSearcher.search()` call
   as a CRITICAL LDAP injection. Sinks are type constrained to the LDAP APIs.
   (#112)
+- `java-sql-injection` no longer reports `MessageDigest.update(input)` as SQL
+  injection. The untyped `$TEMPLATE.update(...)` sink matched any method named
+  `update`, which produced 93 CRITICAL findings on the OWASP Benchmark's hash
+  test cases. The crypto receivers (`MessageDigest`, `Mac`, `Cipher`,
+  `Signature`, `Checksum`) are now subtracted, and `queryForRowSet` and
+  `batchUpdate` were added as sinks. (#112)
 
 ## [3.1.0] - 2026-09-02
 
