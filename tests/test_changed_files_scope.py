@@ -888,7 +888,8 @@ class TestConnectorsHonorTheResolvedScope:
                 "filesystem",
                 "--json",
                 "--include-detectors=all",
-                "--results=verified",
+                "--fail-on-scan-errors",
+                "--results=verified,unknown",
                 str(pr_repo),
             ]
         ]

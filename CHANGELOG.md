@@ -15,9 +15,9 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   low severity — meaning no secret ever blocked a run on the setting's default
   path, the exact inverse of the intended behavior. Verification now always runs,
   and the setting controls only which result types are returned:
-  `--results=verified` when off, `--results=verified,unverified,unknown` when on.
-  Verified findings are critical and blocking; unverified findings remain low and
-  non-blocking.
+  `--results=verified,unknown` when off,
+  `--results=verified,unverified,unknown` when on. Verified findings are critical
+  and blocking; unverified and unknown findings remain low and non-blocking.
 
   **Three consequences on upgrade — read before bumping:**
 
@@ -31,28 +31,30 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
      check against third-party credential-validation endpoints (AWS, GitHub,
      Slack, etc.) for every candidate secret. Runs that previously scanned fully
      offline no longer do.
-  3. **Air-gapped and proxied environments will under-report.** When verification
-     cannot reach a validation endpoint, TruffleHog classifies the result as
-     `unknown` rather than verified or unverified. With
-     `trufflehog_show_unverified` off, `--results=verified` drops those, so a
-     scanner with no egress reports *zero* findings rather than failing loudly.
-     **If your runners cannot reach the public internet, set
-     `trufflehog_show_unverified: true`** so `unknown` results are still
-     reported (as low severity). (#110)
+  3. **Air-gapped and proxied environments will surface unknown results.** When
+     verification cannot reach a validation endpoint, TruffleHog classifies the
+     result as `unknown` rather than verified or unverified. Unknown results are
+     returned by default and reported as low severity/non-blocking so a scanner
+     with no egress does not silently appear clean. (#110)
 
 - **Behavioral:** a TruffleHog run that exits non-zero, or a missing
   `trufflehog` binary, now **fails the run** instead of being reported as a
   clean scan. Previously any non-zero exit was logged and turned into an empty
   result, so a malformed exclude pattern or a broken install silently zeroed out
   every secret finding while the run exited green — a scanner that could not
-  scan looked identical to a repository with no secrets. The error names the
-  exit code and TruffleHog's own stderr. This closes the last open item from
-  CE-347, whose other halves shipped in 2.2.1. (#110)
+  scan looked identical to a repository with no secrets. Socket Basics now also
+  passes TruffleHog's `--fail-on-scan-errors` flag so source/enumeration errors
+  produce the non-zero exit that the wrapper enforces. The error names the exit
+  code and TruffleHog's own stderr. This closes the last open item from CE-347,
+  whose other halves shipped in 2.2.1. (#110)
 - `trufflehog_show_unverified` is now read through `coerce_bool` rather than
   tested for truthiness. Only the environment loader coerces boolean params;
   a Socket dashboard config is passed through verbatim and at higher priority,
   so a dashboard-supplied string `"false"` was truthy and would have reported
   unverified secrets to someone who explicitly turned them off. (#110)
+- `secret_scanning_enabled` and the TruffleHog `scan_all` fallback check now use
+  the same boolean coercion, so dashboard/JSON strings such as `"false"` cannot
+  unexpectedly enable secret scanning or widen a staged-file scan. (#110)
 
 ### Changed
 - `--include-detectors=all` is now passed unconditionally rather than only when

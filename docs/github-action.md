@@ -224,16 +224,17 @@ Include these in your workflow's `jobs.<job_id>.permissions` section.
     secret_scanning_enabled: 'true'
     # Optional: exclude paths (directory names, file names, or globs)
     trufflehog_exclude_dir: 'node_modules,vendor,dist,**/appsettings.*.json'
-    # Optional: report unverified and unknown secrets too (default: verified only)
+    # Optional: report unverified secrets too (default: verified and unknown)
     trufflehog_show_unverified: 'true'
 ```
 
 > **Secret verification runs on every scan and requires network egress.** By default only
-> verified secrets are reported, and those are critical and blocking. TruffleHog confirms
-> each candidate against third-party validation endpoints; when a runner cannot reach them
-> the result is `unknown` and is dropped in the default verified-only mode. On air-gapped or
-> proxied runners, set `trufflehog_show_unverified: 'true'` so `unknown` results are still
-> reported as low-severity findings instead of silently disappearing.
+> verified and unknown results are reported. Verified secrets are critical and blocking;
+> unknown results are low severity and nonblocking. TruffleHog confirms each candidate
+> against third-party validation endpoints, and a runner that cannot reach one reports the
+> candidate as `unknown` instead of silently dropping it. Set
+> `trufflehog_show_unverified: 'true'` to include candidates that were checked but not
+> confirmed as valid as well.
 
 **Container Scanning:**
 ```yaml
@@ -857,7 +858,7 @@ See [`action.yml`](../action.yml) for the complete list of inputs.
 **Security Scanning:**
 - `secret_scanning_enabled` — Enable secret scanning
 - `trufflehog_exclude_dir` — Comma-separated paths to exclude (directory names, file names, or globs)
-- `trufflehog_show_unverified` — Include unverified and unknown secrets alongside verified ones
+- `trufflehog_show_unverified` — Include unverified secrets alongside the verified and unknown results reported by default
 - `socket_tier_1_enabled` — Socket Tier 1 reachability
 
 **Container Scanning (configuration surface):**

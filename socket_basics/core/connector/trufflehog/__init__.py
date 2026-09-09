@@ -37,7 +37,9 @@ class TruffleHogScanner(BaseConnector):
     
     def is_enabled(self) -> bool:
         """Check if secret scanning should be enabled"""
-        return self.config.get('secret_scanning_enabled', False)
+        return coerce_bool(
+            self.config.get('secret_scanning_enabled'), False
+        )
     
     @staticmethod
     def _path_regex(value: str) -> str:
@@ -262,7 +264,7 @@ class TruffleHogScanner(BaseConnector):
             if (
                 not changed_files
                 and not scope_requested
-                and not self.config.get('scan_all', False)
+                and not coerce_bool(self.config.get('scan_all'), False)
             ):
                 try:
                     from socket_basics.core.config import _detect_git_changed_files
@@ -278,12 +280,14 @@ class TruffleHogScanner(BaseConnector):
             # bool params, while a Socket dashboard config is passed through
             # verbatim at higher priority. A dashboard-supplied string "false"
             # is truthy, and reading it as "on" would report unverified secrets
-            # to someone who explicitly asked for verified-only.
+            # to someone who explicitly left unverified results off.
             show_unverified = coerce_bool(
                 self.config.get('trufflehog_show_unverified'), False
             )
             results_filter = (
-                'verified,unverified,unknown' if show_unverified else 'verified'
+                'verified,unverified,unknown'
+                if show_unverified
+                else 'verified,unknown'
             )
 
             cmd = [
@@ -291,6 +295,7 @@ class TruffleHogScanner(BaseConnector):
                 'filesystem',
                 '--json',
                 '--include-detectors=all',
+                '--fail-on-scan-errors',
                 f'--results={results_filter}',
             ]
 
@@ -337,16 +342,17 @@ class TruffleHogScanner(BaseConnector):
             
             if result.returncode != 0:
                 # Fail closed. Returning {} here reports "no secrets found" and
-                # exits green, so a malformed exclude pattern or a broken
-                # install silently zeroes out every secret finding for the run.
-                # A scanner that cannot scan must not look like a clean scan.
+                # exits green, so a malformed exclude pattern, source error, or
+                # broken install can silently hide all or part of the scan.
+                # An incomplete scanner run must not look like a clean scan.
                 # SystemExit is deliberate: the connector manager catches
                 # Exception, and this must not be downgraded to a skipped
                 # connector.
                 stderr = (result.stderr or '').strip()
                 detail = f": {stderr}" if stderr else ''
                 raise SystemExit(
-                    f"TruffleHog exited {result.returncode} and scanned nothing"
+                    f"TruffleHog exited {result.returncode} before the scan "
+                    "completed successfully"
                     f"{detail}\nSecret scanning results are incomplete, so the "
                     "run is failing rather than reporting a clean scan. Check "
                     "the exclude patterns in 'trufflehog_exclude_dir' and that "
@@ -514,6 +520,24 @@ class TruffleHogScanner(BaseConnector):
         """Create a generic alert from a Trufflehog finding"""
         detector_name = finding.get('DetectorName', 'unknown')
         verified = finding.get('Verified', False)
+        verification_error = finding.get('VerificationError')
+        if verified:
+            verification_status = 'verified'
+            risk_assessment = (
+                "**CRITICAL**: This secret has been verified and is likely active!"
+            )
+        elif verification_error:
+            verification_status = 'unknown'
+            risk_assessment = (
+                "**LOW**: Verification could not complete, so this secret's "
+                "validity is unknown."
+            )
+        else:
+            verification_status = 'unverified'
+            risk_assessment = (
+                "**LOW**: This appears to be a potential secret but was not "
+                "confirmed as valid."
+            )
         file_path = finding.get('SourceMetadata', {}).get('Data', {}).get('Filesystem', {}).get('file', 'unknown')
         line = finding.get('SourceMetadata', {}).get('Data', {}).get('Filesystem', {}).get('line', 0)
 
@@ -532,11 +556,11 @@ class TruffleHogScanner(BaseConnector):
 - **File**: `{file_path}`
 - **Line**: {line}
 - **Detector**: {detector_name}
-- **Verified**: {"✅ Yes" if verified else "❌ No"}
+- **Verification status**: {verification_status}
 - **Redacted Value**: `{redacted_secret}`
 
 ### Risk Assessment
-{"**CRITICAL**: This secret has been verified and is likely active!" if verified else "**LOW**: This appears to be a potential secret but has not been verified."}
+{risk_assessment}
 
 ### Immediate Actions Required
 1. **Rotate the credential immediately**
@@ -574,6 +598,7 @@ export SECRET_KEY="your-secret-here"
             "props": {
                 "ruleId": detector_name,
                 "verified": verified,
+                "verificationStatus": verification_status,
                 "filePath": file_path,
                 "lineNumber": line,
                 "secretType": detector_name.lower(),

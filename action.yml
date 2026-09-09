@@ -444,7 +444,7 @@ inputs:
     required: false
     default: ""
   trufflehog_show_unverified:
-    description: "Include unverified and unknown secrets in TruffleHog results; verification always runs, and by default only verified secrets are reported"
+    description: "Include unverified secrets in TruffleHog results; verification always runs, and by default verified and unknown results are reported"
     required: false
     default: "false"
   use_custom_sast_rules:

@@ -3,7 +3,8 @@
 ``trufflehog_show_unverified`` selects which *result types* TruffleHog returns.
 It must never disable verification itself: severity is derived from each
 finding's ``Verified`` flag, so a run with verification turned off reports every
-secret as unverified/low and nothing ever blocks.
+secret as unverified/low and nothing ever blocks. Unknown results remain visible
+by default because they indicate that verification could not complete.
 """
 
 from pathlib import Path
@@ -14,10 +15,16 @@ import pytest
 from socket_basics.core.connector.trufflehog import TruffleHogScanner
 
 
-def _scanner(tmp_path, show_unverified):
+def _scanner(
+    tmp_path,
+    show_unverified,
+    *,
+    scan_all=True,
+    secret_scanning_enabled=True,
+):
     values = {
-        "secret_scanning_enabled": True,
-        "scan_all": True,
+        "secret_scanning_enabled": secret_scanning_enabled,
+        "scan_all": scan_all,
         "trufflehog_exclude_dir": "",
         "trufflehog_show_unverified": show_unverified,
     }
@@ -30,7 +37,6 @@ def _scanner(tmp_path, show_unverified):
     config.get_scan_targets = lambda: [str(tmp_path)]
     scanner = TruffleHogScanner.__new__(TruffleHogScanner)
     scanner.config = config
-    scanner.is_enabled = lambda: True
     return scanner
 
 
@@ -50,10 +56,10 @@ def _captured_cmd(tmp_path, monkeypatch, show_unverified):
     return invocations[0]
 
 
-def test_show_unverified_off_requests_verified_results_only(tmp_path, monkeypatch):
+def test_show_unverified_off_requests_high_confidence_results(tmp_path, monkeypatch):
     cmd = _captured_cmd(tmp_path, monkeypatch, show_unverified=False)
 
-    assert "--results=verified" in cmd
+    assert "--results=verified,unknown" in cmd
     assert "--no-verification" not in cmd
 
 
@@ -64,7 +70,13 @@ def test_show_unverified_on_requests_every_result_type(tmp_path, monkeypatch):
     assert "--no-verification" not in cmd
 
 
-def test_string_false_from_a_dashboard_config_stays_verified_only(
+def test_trufflehog_scan_errors_are_fatal(tmp_path, monkeypatch):
+    cmd = _captured_cmd(tmp_path, monkeypatch, show_unverified=False)
+
+    assert "--fail-on-scan-errors" in cmd
+
+
+def test_string_false_from_a_dashboard_config_excludes_unverified(
     tmp_path, monkeypatch
 ):
     """A dashboard config is passed through verbatim, so "false" arrives as a string.
@@ -75,7 +87,7 @@ def test_string_false_from_a_dashboard_config_stays_verified_only(
     """
     for raw in ("false", "False", "0", "no"):
         cmd = _captured_cmd(tmp_path, monkeypatch, show_unverified=raw)
-        assert "--results=verified" in cmd, raw
+        assert "--results=verified,unknown" in cmd, raw
 
 
 def test_string_true_from_a_dashboard_config_widens_result_types(
@@ -86,11 +98,51 @@ def test_string_true_from_a_dashboard_config_widens_result_types(
         assert "--results=verified,unverified,unknown" in cmd, raw
 
 
-def test_unset_setting_defaults_to_verified_only(tmp_path, monkeypatch):
+def test_unset_setting_defaults_to_high_confidence_results(tmp_path, monkeypatch):
     """An unset action input arrives as an empty string, not as None."""
     for raw in (None, ""):
         cmd = _captured_cmd(tmp_path, monkeypatch, show_unverified=raw)
-        assert "--results=verified" in cmd, repr(raw)
+        assert "--results=verified,unknown" in cmd, repr(raw)
+
+
+def test_string_false_disables_secret_scanning(tmp_path, monkeypatch):
+    def unexpected_run(*args, **kwargs):
+        raise AssertionError("TruffleHog should not run when scanning is disabled")
+
+    monkeypatch.setattr(
+        "socket_basics.core.connector.trufflehog.subprocess.run", unexpected_run
+    )
+
+    for raw in ("false", "False", "0", "no"):
+        assert _scanner(
+            tmp_path,
+            show_unverified=False,
+            secret_scanning_enabled=raw,
+        ).scan() == {}
+
+
+def test_string_false_scan_all_uses_staged_file_fallback(tmp_path, monkeypatch):
+    changed_file = tmp_path / "changed.py"
+    changed_file.write_text("print('changed')\n", encoding="utf-8")
+    invocations = []
+
+    monkeypatch.setattr(
+        "socket_basics.core.config._detect_git_changed_files",
+        lambda *args, **kwargs: ["changed.py"],
+    )
+    monkeypatch.setattr(
+        "socket_basics.core.connector.trufflehog.subprocess.run",
+        lambda cmd, *args, **kwargs: (
+            invocations.append(cmd)
+            or SimpleNamespace(returncode=0, stdout="", stderr="")
+        ),
+    )
+
+    _scanner(tmp_path, show_unverified=False, scan_all="false").scan()
+
+    assert len(invocations) == 1
+    assert str(changed_file) in invocations[0]
+    assert str(tmp_path) not in invocations[0]
 
 
 def test_detector_selection_is_independent_of_the_setting(tmp_path, monkeypatch):
@@ -103,8 +155,8 @@ def test_detector_selection_is_independent_of_the_setting(tmp_path, monkeypatch)
     assert detectors == [arg for arg in on if arg.startswith("--include-detectors")]
 
 
-def _finding(verified):
-    return {
+def _finding(verified, verification_error=None):
+    finding = {
         "DetectorName": "AWS",
         "Verified": verified,
         "Raw": "AKIAIOSFODNN7EXAMPLE",
@@ -112,6 +164,9 @@ def _finding(verified):
             "Data": {"Filesystem": {"file": "config/secrets.py", "line": 12}}
         },
     }
+    if verification_error:
+        finding["VerificationError"] = verification_error
+    return finding
 
 
 def test_verified_findings_are_critical_and_blocking(tmp_path):
@@ -120,6 +175,7 @@ def test_verified_findings_are_critical_and_blocking(tmp_path):
     assert alert["severity"] == "critical"
     assert alert["action"] == "error"
     assert alert["props"]["verified"] is True
+    assert alert["props"]["verificationStatus"] == "verified"
     assert alert["props"]["riskLevel"] == "critical"
 
 
@@ -129,7 +185,20 @@ def test_unverified_findings_are_low_and_nonblocking(tmp_path):
     assert alert["severity"] == "low"
     assert alert["action"] == "ignore"
     assert alert["props"]["verified"] is False
+    assert alert["props"]["verificationStatus"] == "unverified"
     assert alert["props"]["riskLevel"] == "low"
+
+
+def test_unknown_findings_are_low_and_identified_as_unknown(tmp_path):
+    alert = _scanner(tmp_path, show_unverified=False)._create_alert(
+        _finding(False, verification_error="network is unreachable")
+    )
+
+    assert alert["severity"] == "low"
+    assert alert["action"] == "ignore"
+    assert alert["props"]["verified"] is False
+    assert alert["props"]["verificationStatus"] == "unknown"
+    assert "validity is unknown" in alert["props"]["detailedReport"]["content"]
 
 
 def test_a_failed_trufflehog_run_fails_the_scan(tmp_path, monkeypatch):
