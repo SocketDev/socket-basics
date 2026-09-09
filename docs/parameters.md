@@ -4,6 +4,7 @@ Complete reference for all CLI options and environment variables supported by So
 
 ## Table of Contents
 
+- [Name Mapping](#name-mapping) — CLI flag ↔ action input ↔ environment variable ↔ JSON key
 - [Core Options](#core-options)
 - [Language Scanning](#language-scanning)
 - [Secret Scanning](#secret-scanning)
@@ -13,10 +14,151 @@ Complete reference for all CLI options and environment variables supported by So
 - [Environment Variables](#environment-variables)
 - [Configuration File](#configuration-file)
 
+## Name Mapping
+
+The same setting is spelled differently on each interface, and the CLI is
+strict: an unknown flag such as `--python-sast-enabled` exits with
+`unrecognized arguments`. Use this table to translate between them. Every
+GitHub Action input is delivered to the container as the environment variable
+`INPUT_<NAME>` (the input name upper-cased); a JSON key is the name used in a
+`--config` file and in Socket dashboard configuration.
+
+### Core, scope and credentials
+
+| CLI flag | GitHub Action input | Environment variable | JSON key | Description |
+|---|---|---|---|---|
+| `--workspace` | —<sup>1</sup> | `GITHUB_WORKSPACE` | `workspace` | Directory to scan. Defaults to the current directory (`GITHUB_WORKSPACE` in Actions). |
+| `--output` | — | `OUTPUT_DIR` (directory only) | — | Facts file name, default `.socket.facts.json`. Must stay inside the workspace when uploading to the dashboard. |
+| `--config` | — | — | — | Path to a JSON configuration file. |
+| `--changed-files` | `changed_files` | `INPUT_CHANGED_FILES` | `changed_files` | Diff-only scope: `auto`, `pr`, `current-commit`, a commit hash or a file list. |
+| `--scan-files` | `scan_files` | `INPUT_SCAN_FILES` | `scan_files` | Explicit comma-separated file list. |
+| — | `scan_all` | `INPUT_SCAN_ALL` | `scan_all` | Fail-open fallback when a `changed_files` scope cannot be resolved. |
+| `--verbose`, `-v` | `verbose` | `INPUT_VERBOSE` | `verbose` | DEBUG logging. |
+| `--console-tabular-enabled` | `console_tabular_enabled` | `INPUT_CONSOLE_TABULAR_ENABLED` | `console_tabular_enabled` | Print consolidated findings as tables. |
+| `--console-json-enabled` | `console_json_enabled` | `INPUT_CONSOLE_JSON_ENABLED` | `console_json_enabled` | Print consolidated findings as JSON. |
+| `--socket-org` | `socket_org` | `SOCKET_ORG` (also `SOCKET_ORG_SLUG`, `INPUT_SOCKET_ORG`) | `socket_org` | Socket organization slug. Not the same thing as `--repo`. |
+| —<sup>2</sup> | `socket_security_api_key` | `SOCKET_SECURITY_API_KEY` (also `SOCKET_SECURITY_API_TOKEN`, `SOCKET_API_KEY`, `INPUT_SOCKET_SECURITY_API_KEY`) | `socket_api_key`<sup>3</sup> | Socket API key (`full-scans` scope to upload, `socket-basics` scope to load dashboard config). |
+| `--repo` | — | `GITHUB_REPOSITORY` | `repo` | `owner/repo` recorded on the scan and used to find the PR. Discovered from git when omitted. |
+| `--branch` | — | `GITHUB_HEAD_REF`, `GITHUB_REF_NAME` | `branch` | Branch recorded on the scan. Discovered from git when omitted. |
+| `--pull-request` | — | `GITHUB_PR_NUMBER` (also `INPUT_PR_NUMBER`) | — | PR number. The PR notifier reads the environment variable. |
+| `--default-branch` | — | `SOCKET_DEFAULT_BRANCH` | — | Mark the scan as the repository default branch. |
+| `--enable-s3-upload` | — | `SOCKET_S3_ENABLED` | — | Upload the facts file to S3 (see [S3 Upload Configuration](#s3-upload-configuration)). |
+
+<sup>1</sup> The action has no `workspace` input; it always scans `GITHUB_WORKSPACE`. Narrow the scope with `changed_files` / `scan_files` instead.
+<sup>2</sup> No CLI flag exists for the API key, so it never lands in shell history. Set the environment variable.
+<sup>3</sup> A JSON `socket_api_key` is used to upload results but not to load dashboard configuration; prefer the environment variable.
+
+### SAST languages (OpenGrep)
+
+| CLI flag | GitHub Action input | Environment variable | JSON key | Description |
+|---|---|---|---|---|
+| `--python` | `python_sast_enabled` | `INPUT_PYTHON_SAST_ENABLED` | `python_sast_enabled` | Enable Python SAST scanning |
+| `--javascript` | `javascript_sast_enabled` | `INPUT_JAVASCRIPT_SAST_ENABLED` | `javascript_sast_enabled` | Enable JavaScript/TypeScript SAST scanning |
+| `--go` | `go_sast_enabled` | `INPUT_GO_SAST_ENABLED` | `go_sast_enabled` | Enable Go SAST scanning |
+| `--golang` | `golang_sast_enabled` | `INPUT_GOLANG_SAST_ENABLED` | `golang_sast_enabled` | Enable Golang SAST scanning |
+| `--java` | `java_sast_enabled` | `INPUT_JAVA_SAST_ENABLED` | `java_sast_enabled` | Enable Java SAST scanning |
+| `--php` | `php_sast_enabled` | `INPUT_PHP_SAST_ENABLED` | `php_sast_enabled` | Enable PHP SAST scanning |
+| `--ruby` | `ruby_sast_enabled` | `INPUT_RUBY_SAST_ENABLED` | `ruby_sast_enabled` | Enable Ruby SAST scanning |
+| `--csharp` | `csharp_sast_enabled` | `INPUT_CSHARP_SAST_ENABLED` | `csharp_sast_enabled` | Enable C# SAST scanning |
+| `--dotnet` | `dotnet_sast_enabled` | `INPUT_DOTNET_SAST_ENABLED` | `dotnet_sast_enabled` | Enable .NET SAST scanning |
+| `--c` | `c_sast_enabled` | `INPUT_C_SAST_ENABLED` | `c_sast_enabled` | Enable C SAST scanning |
+| `--cpp` | `cpp_sast_enabled` | `INPUT_CPP_SAST_ENABLED` | `cpp_sast_enabled` | Enable C++ SAST scanning |
+| `--kotlin` | `kotlin_sast_enabled` | `INPUT_KOTLIN_SAST_ENABLED` | `kotlin_sast_enabled` | Enable Kotlin SAST scanning |
+| `--scala` | `scala_sast_enabled` | `INPUT_SCALA_SAST_ENABLED` | `scala_sast_enabled` | Enable Scala SAST scanning |
+| `--swift` | `swift_sast_enabled` | `INPUT_SWIFT_SAST_ENABLED` | `swift_sast_enabled` | Enable Swift SAST scanning |
+| `--rust` | `rust_sast_enabled` | `INPUT_RUST_SAST_ENABLED` | `rust_sast_enabled` | Enable Rust SAST scanning |
+| `--elixir` | `elixir_sast_enabled` | `INPUT_ELIXIR_SAST_ENABLED` | `elixir_sast_enabled` | Enable Elixir SAST scanning |
+| `--erlang` | `erlang_sast_enabled` | `INPUT_ERLANG_SAST_ENABLED` | `erlang_sast_enabled` | Enable Erlang SAST scanning |
+
+`--javascript` / `javascript_sast_enabled` covers TypeScript; there is no separate TypeScript setting.
+
+### SAST rules and options
+
+| CLI flag | GitHub Action input | Environment variable | JSON key | Description |
+|---|---|---|---|---|
+| `--all-languages` | `all_languages_enabled` | `INPUT_ALL_LANGUAGES_ENABLED` | `all_languages_enabled` | Enable SAST for all supported languages |
+| `--all-rules` | `all_rules_enabled` | `INPUT_ALL_RULES_ENABLED` | `all_rules_enabled` | Run all bundled SAST rules regardless of language filters |
+| `--opengrep-notify` | `opengrep_notification_method` | `INPUT_OPENGREP_NOTIFICATION_METHOD` | `notification_method` | Notification method for OpenGrep (e.g., console, slack) |
+| `--use-custom-sast-rules` | `use_custom_sast_rules` | `INPUT_USE_CUSTOM_SAST_RULES` | `use_custom_sast_rules` | Use custom SAST rules instead of bundled rules (falls back to bundled rules for languages without custom rules) |
+| `--custom-sast-rule-path` | `custom_sast_rule_path` | `INPUT_CUSTOM_SAST_RULE_PATH` | `custom_sast_rule_path` | Relative path to custom SAST rules directory (relative to workspace if set, otherwise cwd) |
+| `--sast-ignore-overrides` | `sast_ignore_overrides` | `INPUT_SAST_IGNORE_OVERRIDES` | `sast_ignore_overrides` | Comma-separated list of SAST ignore overrides in rule_id or rule_id:path format |
+| `--<lang>-enabled-rules` | `<lang>_enabled_rules` | `INPUT_<LANG>_ENABLED_RULES` | `<lang>_enabled_rules` | Comma-separated allowlist of rules for one language (defaults to the high-confidence set). |
+| `--<lang>-disabled-rules` | `<lang>_disabled_rules` | `INPUT_<LANG>_DISABLED_RULES` | `<lang>_disabled_rules` | Comma-separated rules to disable for one language. |
+
+`<lang>` is one of: `c`, `cpp`, `csharp`, `dotnet`, `elixir`, `go`, `java`, `javascript`, `kotlin`, `php`, `python`, `ruby`, `rust`, `scala`, `swift`.
+
+### Secret scanning (TruffleHog)
+
+| CLI flag | GitHub Action input | Environment variable | JSON key | Description |
+|---|---|---|---|---|
+| `--secrets` | `secret_scanning_enabled` | `INPUT_SECRET_SCANNING_ENABLED` | `secret_scanning_enabled` | Enable secret scanning |
+| `--disable-secrets` | `disable_all_secrets` | `INPUT_DISABLE_ALL_SECRETS` | `disable_all_secrets` | Disable all secret scanning features |
+| `--exclude-dir` | `trufflehog_exclude_dir` | `INPUT_TRUFFLEHOG_EXCLUDE_DIR` | `trufflehog_exclude_dir` | Comma-separated literal directory/file names or glob patterns to exclude from secret scanning beneath the workspace root; matching is case-sensitive |
+| `--trufflehog-notify` | `trufflehog_notification_method` (alias `notification_method`) | `INPUT_TRUFFLEHOG_NOTIFICATION_METHOD` | `notification_method` | Notification method for TruffleHog (e.g., console, slack) |
+| `--show-unverified` | `trufflehog_show_unverified` | `INPUT_TRUFFLEHOG_SHOW_UNVERIFIED` | `trufflehog_show_unverified` | Show unverified secrets in TruffleHog results |
+
+### Socket Tier 1 reachability
+
+| CLI flag | GitHub Action input | Environment variable | JSON key | Description |
+|---|---|---|---|---|
+| `--socket-tier1` | `socket_tier_1_enabled` | `SOCKET_TIER_1_ENABLED` | `socket_tier_1_enabled` | Enable Socket Tier 1 reachability analysis |
+| `--socket-additional-params` | `socket_additional_params` | `SOCKET_ADDITIONAL_PARAMS` | `socket_additional_params` | Additional CLI params for 'socket scan reach' (comma or space separated). Also reads SOCKET_ADDITIONAL_PARAMS |
+
+Note the environment variable names here have no `INPUT_` prefix.
+
+### Container scanning (Trivy)
+
+| CLI flag | GitHub Action input | Environment variable | JSON key | Description |
+|---|---|---|---|---|
+| `--images` | `container_images` | `INPUT_CONTAINER_IMAGES_TO_SCAN` | `container_images` | Comma-separated list of container images to scan (auto-enables image scanning) |
+| `--dockerfiles` | `dockerfiles` | `INPUT_DOCKERFILES` | `dockerfiles` | Comma-separated list of Dockerfiles to scan (auto-enables Dockerfile scanning) |
+| `--trivy-notify` | `trivy_notification_method` | `INPUT_TRIVY_NOTIFICATION_METHOD` | `trivy_notification_method` | Notification method for Trivy (e.g., console, slack) |
+| `--trivy-disabled-rules` | `trivy_disabled_rules` | `INPUT_TRIVY_DISABLED_RULES` | `trivy_disabled_rules` | Comma-separated list of Trivy rules to disable |
+| `--trivy-image-scanning-disabled` | `trivy_image_scanning_disabled` | `INPUT_TRIVY_IMAGE_SCANNING_DISABLED` | `trivy_image_scanning_disabled` | Disable Trivy image scanning |
+| `--trivy-vuln-enabled` | `trivy_vuln_enabled` | `INPUT_TRIVY_VULN_ENABLED` | `trivy_vuln_enabled` | Enable Trivy vulnerability scanning for all supported language ecosystems |
+
+### Notifications
+
+A notifier turns on when its endpoint or token is present from any source.
+
+| CLI flag | GitHub Action input | Environment variable | JSON key | Description |
+|---|---|---|---|---|
+| `--slack-webhook-url` | `slack_webhook_url` | `INPUT_SLACK_WEBHOOK_URL` (also `SLACK_WEBHOOK_URL`) | `slack_webhook_url` | Slack webhook URL (also reads SLACK_WEBHOOK_URL or INPUT_SLACK_WEBHOOK_URL) |
+| `--webhook-url` | `webhook_url` | `INPUT_WEBHOOK_URL` (also `WEBHOOK_URL`) | `webhook_url` | Generic webhook URL for WebhookNotifier |
+| `--msteams-webhook-url` | `msteams_webhook_url` | `INPUT_MSTEAMS_WEBHOOK_URL` (also `MSTEAMS_WEBHOOK_URL`) | `msteams_webhook_url` | MS Teams incoming webhook URL (also reads MSTEAMS_WEBHOOK_URL or INPUT_MSTEAMS_WEBHOOK_URL) |
+| `--jira-url` | `jira_url` (alias `server`) | `INPUT_JIRA_URL` (also `JIRA_URL`) | `jira_url` | Jira base URL (turns the Jira notifier on) |
+| `--jira-project` | `jira_project` (alias `project`) | `INPUT_JIRA_PROJECT` (also `JIRA_PROJECT`) | `jira_project` | Jira project key |
+| `--jira-email` | `jira_email` | `INPUT_JIRA_EMAIL` (also `JIRA_EMAIL`) | `jira_email` | Jira account email |
+| `--jira-api-token` | `jira_api_token` | `INPUT_JIRA_API_TOKEN` (also `JIRA_API_TOKEN`) | `jira_api_token` | Jira API token |
+| `--sumologic-endpoint` | `sumologic_endpoint` | `INPUT_SUMOLOGIC_ENDPOINT` (also `SUMOLOGIC_ENDPOINT`, `SUMO_LOGIC_HTTP_SOURCE_URL`) | `sumologic_endpoint` | Sumo Logic HTTP source URL |
+| `--ms-sentinel-workspace-id` | `ms_sentinel_workspace_id` | `INPUT_MS_SENTINEL_WORKSPACE_ID` (also `MS_SENTINEL_WORKSPACE_ID`) | `ms_sentinel_workspace_id` | Microsoft Sentinel workspace ID |
+| `--ms-sentinel-key` | `ms_sentinel_key` (alias `ms_sentinel_shared_key`) | `INPUT_MS_SENTINEL_KEY` (also `MS_SENTINEL_SHARED_KEY`, `INPUT_MS_SENTINEL_SHARED_KEY`) | `ms_sentinel_key` | Microsoft Sentinel shared key |
+
+### GitHub PR comments and labels
+
+| CLI flag | GitHub Action input | Environment variable | JSON key | Description |
+|---|---|---|---|---|
+| `--github-token` | `github_token` | `GITHUB_TOKEN` (also `INPUT_GITHUB_TOKEN`) | `github_token` | GitHub token (turns the PR notifier on) |
+| `--github-api-url` | — | `GITHUB_API_URL` | `GITHUB_API_URL` | GitHub API base URL; set automatically by GitHub Actions |
+| `--pr-comment` | `pr_comment_enabled` | `INPUT_PR_COMMENT_ENABLED` | `pr_comment_enabled` | Post/update the findings comment on the PR (scanning and dashboard upload are unaffected) |
+| `--pr-comment-links` | `pr_comment_links_enabled` | `INPUT_PR_COMMENT_LINKS_ENABLED` | `pr_comment_links_enabled` | Enable clickable file/line links in PR comments |
+| `--pr-comment-collapse` | `pr_comment_collapse_enabled` | `INPUT_PR_COMMENT_COLLAPSE_ENABLED` | `pr_comment_collapse_enabled` | Enable collapsible sections in PR comments |
+| `--pr-comment-collapse-non-critical` | `pr_comment_collapse_non_critical` | `INPUT_PR_COMMENT_COLLAPSE_NON_CRITICAL` | `pr_comment_collapse_non_critical` | Auto-collapse non-critical findings (critical stays expanded) |
+| `--pr-comment-collapse-all` | `pr_comment_collapse_all` | `INPUT_PR_COMMENT_COLLAPSE_ALL` | `pr_comment_collapse_all` | Collapse the SAST and Socket Tier 1 sections, critical findings included |
+| `--pr-comment-code-fencing` | `pr_comment_code_fencing_enabled` | `INPUT_PR_COMMENT_CODE_FENCING_ENABLED` | `pr_comment_code_fencing_enabled` | Enable language-aware code fencing for trace output |
+| `--pr-comment-show-rules` | `pr_comment_show_rule_names` | `INPUT_PR_COMMENT_SHOW_RULE_NAMES` | `pr_comment_show_rule_names` | Show explicit rule names for each finding |
+| `--pr-labels` | `pr_labels_enabled` | `INPUT_PR_LABELS_ENABLED` | `pr_labels_enabled` | Add severity-based labels to PRs |
+| `--pr-label-critical` | `pr_label_critical` | `INPUT_PR_LABEL_CRITICAL` | `pr_label_critical` | Label name for critical severity findings |
+| `--pr-label-high` | `pr_label_high` | `INPUT_PR_LABEL_HIGH` | `pr_label_high` | Label name for high severity findings |
+| `--pr-label-medium` | `pr_label_medium` | `INPUT_PR_LABEL_MEDIUM` | `pr_label_medium` | Label name for medium severity findings |
+| `--pr-label-low` | `pr_label_low` | `INPUT_PR_LABEL_LOW` | `pr_label_low` | Label name for low severity findings |
+
+Boolean PR options that default to `true` have a `--no-<flag>` form on the CLI (for example `--no-pr-comment`). See the [PR Comment Guide](github-pr-comment-guide.md).
+
 ## Core Options
 
 ### `--config CONFIG`
-Path to JSON configuration file. JSON config is merged with environment variables (environment takes precedence).
+Path to JSON configuration file. JSON values override environment variables, and CLI flags override both (see [Configuration Precedence](#configuration-precedence)).
 
 **Example:**
 ```bash
@@ -24,9 +166,14 @@ socket-basics --config /path/to/config.json
 ```
 
 ### `--output OUTPUT`
-Output file name for scan results.
+Output file name for scan results. A relative name is written inside the workspace.
 
 **Default:** `.socket.facts.json`
+
+When results are uploaded to the Socket dashboard the file **must be inside the
+scanned workspace**: the upload uses the workspace as its base path, and a file
+elsewhere is discarded with `Need at least one file to be uploaded`. In Docker
+that means a path under `/workspace`, not a separate results mount.
 
 **Example:**
 ```bash
@@ -44,7 +191,10 @@ socket-basics --workspace /path/to/project
 ```
 
 ### `--repo REPO`
-Repository name (use when workspace is not a git repo).
+Repository name in `owner/repo` form (use when the workspace is not a git repo).
+This is the repository recorded on the full scan and used to look up the pull
+request. It is **not** the Socket organization: that comes from `--socket-org`
+or `SOCKET_ORG`.
 
 **Example:**
 ```bash
@@ -158,7 +308,7 @@ workflow and pass it in yourself:
   run: echo "ref=$(gh pr view ${{ github.event.issue.number }} --json baseRefName -q .baseRefName)" >> "$GITHUB_OUTPUT"
   env:
     GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-- uses: SocketDev/socket-basics@v2
+- uses: SocketDev/socket-basics@v3.1.0
   env:
     GITHUB_BASE_REF: ${{ steps.prbase.outputs.ref }}
   with:
@@ -244,6 +394,11 @@ Enable SAST for all supported languages.
 ```bash
 socket-basics --all-languages
 ```
+
+On a large repository this is the slowest and noisiest option, and the facts
+file records every non-gitignored file in the workspace regardless of findings.
+Prefer the languages the code uses, and `--changed-files` for PR and pre-commit
+runs. See [Large Repositories and Monorepos](local-install-docker.md#large-repositories-and-monorepos).
 
 ### `--all-rules`
 Run all bundled SAST rules regardless of language filters.
@@ -457,6 +612,29 @@ socket-basics --trivy-vuln-enabled
 
 ## Socket Integration
 
+### Socket organization and API key
+
+The organization can be set per run with `--socket-org` or through the
+environment. The API key is **environment only**; there is deliberately no flag,
+so the key never lands in shell history or CI logs.
+
+| Setting | CLI flag | Environment variable | Also accepted |
+|---------|----------|----------------------|---------------|
+| Organization slug | `--socket-org` | `SOCKET_ORG` | `SOCKET_ORG_SLUG`, `INPUT_SOCKET_ORG`, `socket_org` in a JSON file |
+| API key | — | `SOCKET_SECURITY_API_KEY` | `SOCKET_SECURITY_API_TOKEN`, `SOCKET_API_KEY`, `INPUT_SOCKET_SECURITY_API_KEY`, `INPUT_SOCKET_API_KEY` |
+
+**Example:**
+```bash
+export SOCKET_SECURITY_API_KEY="scrt_..."
+socket-basics --socket-org your-org-slug --python --secrets
+```
+
+The key needs the `full-scans` scope to upload results and the `socket-basics`
+scope to load dashboard configuration. With the latter the organization is
+discovered from the key; otherwise set `SOCKET_ORG` explicitly or the run logs
+`No Socket organization configured` and uploads nothing. `--repo` names the
+repository, not the organization.
+
 ### `--socket-tier1`
 Enable Socket Tier 1 reachability analysis for dependency scanning.
 
@@ -596,8 +774,13 @@ socket-basics --msteams-webhook-url "https://outlook.office.com/webhook/..."
 | Variable | Aliases | Description |
 |----------|---------|-------------|
 | `GITHUB_TOKEN` | `INPUT_GITHUB_TOKEN` | GitHub token for API access and PR comments |
-| `GITHUB_REPOSITORY` | `INPUT_GITHUB_REPOSITORY` | Repository name (owner/repo) |
-| `GITHUB_PR_NUMBER` | `INPUT_PR_NUMBER` | Pull request number |
+| `GITHUB_REPOSITORY` | `INPUT_GITHUB_REPOSITORY` | Repository name (owner/repo); discovered from the git remote when unset |
+| `GITHUB_PR_NUMBER` | `INPUT_PR_NUMBER` | Pull request number; looked up by branch through the API when unset |
+
+GitHub Actions sets everything below automatically. Outside Actions (a plain
+`docker run` or a native install) set the first three yourself to post PR
+comments deterministically; see
+[Posting PR Comments from a Docker Run](local-install-docker.md#posting-pr-comments-from-a-docker-run).
 | `GITHUB_WORKSPACE` | - | Workspace directory (auto-set in GitHub Actions) |
 | `GITHUB_ACTOR` | - | GitHub username who triggered the action |
 | `GITHUB_HEAD_REF` | - | Source branch for pull request |
@@ -609,21 +792,30 @@ socket-basics --msteams-webhook-url "https://outlook.office.com/webhook/..."
 
 | Variable | Description |
 |----------|-------------|
-| `OUTPUT_DIR` | Directory for output files (default: current directory) |
-| `INPUT_SCAN_ALL` | Set to 'true' to scan all files |
+| `OUTPUT_DIR` | Directory for output files (default: current directory, or the `--workspace` when one is given) |
+| `INPUT_CHANGED_FILES` | Diff-only scope; same values as `--changed-files` |
 | `INPUT_SCAN_FILES` | Comma-separated list of files to scan |
+| `INPUT_SCAN_ALL` | `'true'` widens to a full scan when a `changed_files` scope cannot be resolved (fail-open) |
 | `INPUT_CONSOLE_TABULAR_ENABLED` | Enable tabular console output |
+| `INPUT_CONSOLE_JSON_ENABLED` | Enable JSON console output |
 | `INPUT_VERBOSE` | Enable verbose logging |
+
+Scanner and notifier settings use the `INPUT_<ACTION INPUT NAME>` form, e.g.
+`INPUT_PYTHON_SAST_ENABLED=true`; see the [Name Mapping](#name-mapping).
 
 ### S3 Upload Configuration
 
 | Variable | Description |
 |----------|-------------|
-| `SOCKET_S3_ENABLED` | Set to 'true', '1', or 'yes' to enable S3 upload |
-| `SOCKET_S3_BUCKET` | S3 bucket name |
-| `SOCKET_S3_REGION` | S3 bucket region |
-| `SOCKET_S3_ACCESS_KEY_ID` | AWS access key ID |
-| `SOCKET_S3_SECRET_ACCESS_KEY` | AWS secret access key |
+| `SOCKET_S3_ENABLED` | Set to 'true', '1', or 'yes' to enable S3 upload (or pass `--enable-s3-upload`) |
+| `SOCKET_S3_BUCKET` | S3 bucket name (required) |
+| `SOCKET_S3_ACCESS_KEY` | AWS access key ID (required) |
+| `SOCKET_S3_SECRET_KEY` | AWS secret access key (required) |
+| `SOCKET_S3_REGION` | Bucket region (default `us-east-1`) |
+| `SOCKET_S3_ENDPOINT` | Custom S3-compatible endpoint URL (optional) |
+
+These are environment variables only; the GitHub Action has no `s3_*` inputs, so
+set them in the step `env:` block.
 
 ### Notification Configuration
 
@@ -644,35 +836,39 @@ You can provide configuration via a JSON file using `--config`:
 
 ### Example Configuration File
 
+Keys are the **JSON key** column of the [Name Mapping](#name-mapping). Keep
+credentials in the environment rather than in the file.
+
 ```json
 {
   "workspace": "/path/to/project",
-  "output": "security-scan.json",
   "console_tabular_enabled": true,
   "verbose": false,
-  
+
   "python_sast_enabled": true,
   "javascript_sast_enabled": true,
+  "go_sast_enabled": true,
   "use_custom_sast_rules": true,
   "custom_sast_rule_path": ".socket/rules",
-  "go_sast_enabled": true,
   "sast_ignore_overrides": "js-sql-injection:index.js",
-  
-  "secrets_enabled": true,
+
+  "secret_scanning_enabled": true,
   "trufflehog_exclude_dir": "node_modules,vendor,dist,.git",
-  "show_unverified": false,
-  
+  "trufflehog_show_unverified": false,
+
   "socket_tier_1_enabled": true,
   "socket_org": "your-org-slug",
-  "socket_api_key": "scrt_your_api_key",
-  
-  "images": "nginx:1.27.4,redis:7.4",
+
+  "container_images": "nginx:1.27.4,redis:7.4",
+  "dockerfiles": "Dockerfile",
   "trivy_vuln_enabled": true,
-  
-  "slack_webhook_url": "https://hooks.slack.com/services/T00/B00/XXXX",
-  "github_token": "ghp_your_token"
+
+  "slack_webhook_url": "https://hooks.slack.com/services/T00/B00/XXXX"
 }
 ```
+
+The output file name is a CLI-only option (`--output`); set
+`SOCKET_SECURITY_API_KEY` and `GITHUB_TOKEN` in the environment.
 
 ### Configuration Precedence
 

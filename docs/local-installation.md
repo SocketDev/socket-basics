@@ -23,8 +23,11 @@ git clone https://github.com/SocketDev/socket-basics.git
 cd socket-basics
 pip install -e .
 
-# Install pinned security tools
-brew install socket trivy trufflehog
+# Install the Socket CLI (npm package; there is no Homebrew formula)
+npm install -g socket
+
+# Install security tools
+brew install trivy trufflehog
 
 # Install OpenGrep (SAST scanning)
 curl -fsSL https://raw.githubusercontent.com/opengrep/opengrep/main/install.sh | bash
@@ -50,7 +53,7 @@ For detailed installation instructions, continue reading below.
 
 ### Required Software
 
-**Python 3.8 or higher:**
+**Python 3.10 or higher:**
 
 ```bash
 # Check Python version
@@ -274,22 +277,25 @@ OpenGrep works with the bundled Socket Basics SAST rules. No additional configur
 # macOS/Linux with Homebrew:
 brew install trufflehog
 
-# Using Docker (alternative; pin explicitly):
-docker pull trufflesecurity/trufflehog:v3.93.8
+# Using Docker (alternative; pin explicitly — Docker Hub tags have no "v" prefix):
+docker pull trufflesecurity/trufflehog:3.96.0
 
 # Manual installation (Linux):
-wget https://github.com/trufflesecurity/trufflehog/releases/download/v3.93.8/trufflehog_3.93.8_linux_amd64.tar.gz
-tar -xzf trufflehog_3.93.8_linux_amd64.tar.gz
+wget https://github.com/trufflesecurity/trufflehog/releases/download/v3.96.0/trufflehog_3.96.0_linux_amd64.tar.gz
+tar -xzf trufflehog_3.96.0_linux_amd64.tar.gz
 sudo mv trufflehog /usr/local/bin/
 
 # Manual installation (macOS):
-wget https://github.com/trufflesecurity/trufflehog/releases/download/v3.93.8/trufflehog_3.93.8_darwin_arm64.tar.gz
-tar -xzf trufflehog_3.93.8_darwin_arm64.tar.gz
+wget https://github.com/trufflesecurity/trufflehog/releases/download/v3.96.0/trufflehog_3.96.0_darwin_arm64.tar.gz
+tar -xzf trufflehog_3.96.0_darwin_arm64.tar.gz
 sudo mv trufflehog /usr/local/bin/
 
 # Verify installation
 trufflehog --version
 ```
+
+The versions above match the TruffleHog pinned in the Socket Basics image
+(`TRUFFLEHOG_VERSION` in the [Dockerfile](../Dockerfile)).
 
 **Documentation:** https://github.com/trufflesecurity/trufflehog
 
@@ -307,8 +313,8 @@ socket-basics --version
 # View help
 socket-basics --help
 
-# Test basic scan (dry run)
-socket-basics --python-sast-enabled --verbose
+# Run a first scan of the current directory with verbose logging
+socket-basics --python --verbose
 ```
 
 ### Test Individual Tools
@@ -405,6 +411,18 @@ chmod +x check-installation.sh
 
 ## Configuration
 
+### Socket Credentials
+
+The API key is an **environment variable only**; there is no flag for it, so it
+never lands in shell history. The organization comes from `SOCKET_ORG`, or from
+`--socket-org` when you want to set it per run. `--repo owner/repo` names the
+repository recorded on the scan and is not the organization.
+
+| Setting | CLI flag | Environment variable | Also accepted |
+|---------|----------|----------------------|---------------|
+| Organization | `--socket-org` | `SOCKET_ORG` | `SOCKET_ORG_SLUG`, `INPUT_SOCKET_ORG` |
+| API key | — | `SOCKET_SECURITY_API_KEY` | `SOCKET_SECURITY_API_TOKEN`, `SOCKET_API_KEY`, `INPUT_SOCKET_SECURITY_API_KEY` |
+
 ### Environment Variables
 
 Create `.env` file in your project (add to `.gitignore`):
@@ -414,8 +432,12 @@ Create `.env` file in your project (add to `.gitignore`):
 SOCKET_ORG=your-org-slug
 SOCKET_SECURITY_API_KEY=your-socket-api-key
 
-# GitHub Integration (for PR comments)
+# GitHub Integration (for PR comments). The repository and PR number are
+# discovered from git and the GitHub API when omitted; set them explicitly
+# for deterministic commenting outside GitHub Actions.
 GITHUB_TOKEN=your-github-token
+GITHUB_REPOSITORY=owner/repo
+GITHUB_PR_NUMBER=123
 
 # Notification Integrations (Enterprise)
 SLACK_WEBHOOK_URL=https://hooks.slack.com/services/...
@@ -424,10 +446,9 @@ JIRA_EMAIL=you@example.com
 JIRA_API_TOKEN=your-jira-token
 JIRA_PROJECT=SEC
 
-# Scanning Options
-INPUT_CONSOLE_ENABLED=true
-INPUT_VERBOSE=false
+# Scanning Options (INPUT_* names mirror the CLI flags; see parameters.md#name-mapping)
 INPUT_CONSOLE_TABULAR_ENABLED=true
+INPUT_VERBOSE=false
 ```
 
 Load environment variables:
@@ -440,7 +461,7 @@ source .env
 export $(cat .env | grep -v '^#' | xargs)
 
 # Option 3: Run with env prefix
-env $(cat .env | grep -v '^#' | xargs) socket-basics --python-sast-enabled
+env $(cat .env | grep -v '^#' | xargs) socket-basics --python
 ```
 
 ### Configuration File
@@ -456,7 +477,7 @@ Create `.socket-basics.json`:
   "console_tabular_enabled": true,
   "verbose": false,
   "trufflehog_exclude_dir": "node_modules,vendor,dist,.git",
-  "python_disabled_rules": "unused-import,line-too-long",
+  "python_disabled_rules": "python-bare-except,python-insecure-temp-file",
   "socket_tier_1_enabled": false
 }
 ```
@@ -474,10 +495,10 @@ Add to your `~/.bashrc` or `~/.zshrc`:
 ```bash
 # Quick security scans
 alias sb='socket-basics'
-alias sb-quick='socket-basics --secret-scanning-enabled --console-tabular-enabled'
-alias sb-python='socket-basics --python-sast-enabled --secret-scanning-enabled --console-tabular-enabled'
-alias sb-js='socket-basics --javascript-sast-enabled --secret-scanning-enabled --console-tabular-enabled'
-alias sb-full='socket-basics --all-languages-enabled --secret-scanning-enabled --socket-tier-1-enabled --console-tabular-enabled'
+alias sb-quick='socket-basics --secrets --console-tabular-enabled'
+alias sb-python='socket-basics --python --secrets --console-tabular-enabled'
+alias sb-js='socket-basics --javascript --secrets --console-tabular-enabled'
+alias sb-full='socket-basics --all-languages --secrets --socket-tier1 --console-tabular-enabled'
 
 # With venv activation
 alias sb-activate='source .venv/bin/activate && socket-basics'
@@ -498,73 +519,84 @@ source ~/.bashrc  # or source ~/.zshrc
 source .venv/bin/activate
 
 # Quick secret scan
-socket-basics --secret-scanning-enabled
+socket-basics --secrets
 
 # Python SAST + secrets
-socket-basics --python-sast-enabled --secret-scanning-enabled
+socket-basics --python --secrets
 
 # JavaScript/TypeScript SAST + secrets
-socket-basics --javascript-sast-enabled --typescript-sast-enabled --secret-scanning-enabled
+socket-basics --javascript --secrets
 
 # All languages
-socket-basics --all-languages-enabled --secret-scanning-enabled
+socket-basics --all-languages --secrets
 ```
 
 ### Advanced Scans
 
 ```bash
-# With Socket Tier 1 reachability
+# With Socket Tier 1 reachability (SOCKET_SECURITY_API_KEY comes from the
+# environment; the organization from SOCKET_ORG or --socket-org)
 socket-basics \
-  --python-sast-enabled \
-  --secret-scanning-enabled \
-  --socket-tier-1-enabled \
-  --socket-org your-org
+  --python \
+  --secrets \
+  --socket-tier1 \
+  --socket-org your-org-slug
 
 # Container scanning
 socket-basics \
-  --container-images nginx:1.27.4,redis:7.4 \
+  --images nginx:1.27.4,redis:7.4 \
   --dockerfiles Dockerfile,docker/Dockerfile.prod
 
 # Scan specific workspace
 socket-basics \
   --workspace /path/to/project \
-  --python-sast-enabled \
-  --secret-scanning-enabled
+  --python \
+  --secrets
 
 # Custom output file
 socket-basics \
-  --python-sast-enabled \
+  --python \
   --output ./security-results.json
 ```
 
 ### With Enterprise Features
 
+Notifiers switch on when their endpoint is present, either as an environment
+variable (`SLACK_WEBHOOK_URL`, `JIRA_URL`, ...) or as a CLI flag
+(`--slack-webhook-url`, `--jira-url`, ...). Results upload to the dashboard
+whenever `SOCKET_SECURITY_API_KEY` and `SOCKET_ORG` are set.
+
 ```bash
-# Load environment variables
+# Load credentials and notifier endpoints
 source .env
 
-# Scan with Slack notifications
+# Scan with Slack notifications (uses SLACK_WEBHOOK_URL from .env)
 socket-basics \
-  --python-sast-enabled \
-  --secret-scanning-enabled \
-  --socket-org $SOCKET_ORG \
+  --python \
+  --secrets \
   --console-tabular-enabled
 
-# Scan with Jira ticket creation
+# Scan with Jira ticket creation, passing the endpoint explicitly
 socket-basics \
-  --all-languages-enabled \
-  --secret-scanning-enabled \
-  --socket-org $SOCKET_ORG \
+  --all-languages \
+  --secrets \
+  --jira-url "https://your-org.atlassian.net" \
+  --jira-project SEC \
   --console-tabular-enabled
 
 # Full enterprise scan
 socket-basics \
-  --all-languages-enabled \
-  --secret-scanning-enabled \
-  --socket-tier-1-enabled \
-  --socket-org $SOCKET_ORG \
+  --all-languages \
+  --secrets \
+  --socket-tier1 \
   --verbose
 ```
+
+> [!TIP]
+> `--all-languages` over a large monorepo is slow and noisy, and the facts file
+> records every non-gitignored file in the workspace. Prefer the languages the
+> project uses, and `--changed-files auto` for pre-commit or PR runs. See
+> [Large repositories and monorepos](local-install-docker.md#large-repositories-and-monorepos).
 
 ### CI/CD Integration
 
@@ -582,11 +614,11 @@ brew install fswatch
 sudo apt install inotify-tools
 
 # Watch and scan on changes (macOS)
-fswatch -o . | xargs -n1 -I{} socket-basics --python-sast-enabled --secret-scanning-enabled
+fswatch -o . | xargs -n1 -I{} socket-basics --python --secrets
 
 # Watch and scan on changes (Linux)
 while inotifywait -r -e modify .; do
-  socket-basics --python-sast-enabled --secret-scanning-enabled
+  socket-basics --python --secrets
 done
 ```
 
@@ -647,14 +679,14 @@ ls -la /path/to/project
 1. Exclude unnecessary directories:
    ```bash
    socket-basics \
-     --python-sast-enabled \
-     --trufflehog-exclude-dir "node_modules,vendor,dist,.git"
+     --python \
+     --exclude-dir "node_modules,vendor,dist,.git"
    ```
 
 2. Scan specific languages only:
    ```bash
-   # Instead of --all-languages-enabled
-   socket-basics --python-sast-enabled --javascript-sast-enabled
+   # Instead of --all-languages
+   socket-basics --python --javascript
    ```
 
 3. Use faster storage (SSD vs HDD)
@@ -731,4 +763,4 @@ eval "$(/opt/homebrew/bin/brew shellenv)"
 **Next Steps:**
 - [GitHub Actions Integration](github-action.md) — Automate in CI/CD
 - [Pre-Commit Hook Setup](pre-commit-hook.md) — Catch issues before commit
-- [Configuration Guide](configuration.md) — Detailed configuration options
+- [Parameters Reference](parameters.md) — Every CLI flag, action input and environment variable, with the mapping between them
