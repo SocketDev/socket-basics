@@ -4,6 +4,8 @@ import logging
 import re
 from types import SimpleNamespace
 
+import pytest
+
 from socket_basics.core.connector.trufflehog import TruffleHogScanner
 
 
@@ -488,6 +490,9 @@ def test_scan_cleans_exclude_file_when_trufflehog_fails(tmp_path, monkeypatch):
         fake_run,
     )
 
-    scanner.scan()
+    # A failed run surfaces rather than reporting a clean scan (CE-347); the
+    # temporary filter file must still be cleaned up on that path.
+    with pytest.raises(SystemExit):
+        scanner.scan()
 
     assert not captured["exclude_path"].exists()
