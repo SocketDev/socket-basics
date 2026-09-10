@@ -829,6 +829,14 @@ def load_config_from_env() -> Dict[str, Any]:
         'scan_all': os.getenv('INPUT_SCAN_ALL', 'false').lower() == 'true',
         'scan_files': os.getenv('INPUT_SCAN_FILES', ''),
         'changed_files': os.getenv('INPUT_CHANGED_FILES', ''),
+
+        # Output and logging toggles. These mirror the --verbose,
+        # --console-tabular-enabled and --console-json-enabled CLI flags so the
+        # GitHub Action inputs of the same name (and INPUT_* entries in a .env
+        # file) behave identically to the flags.
+        'verbose': coerce_bool(os.getenv('INPUT_VERBOSE', ''), False),
+        'console_tabular_enabled': coerce_bool(os.getenv('INPUT_CONSOLE_TABULAR_ENABLED', ''), False),
+        'console_json_enabled': coerce_bool(os.getenv('INPUT_CONSOLE_JSON_ENABLED', ''), False),
         
         # Core Socket API configuration (top-level, like workspace)
         'socket_org': (
@@ -953,9 +961,13 @@ def load_config_from_env() -> Dict[str, Any]:
     return config
 
 
-def load_socket_basics_config() -> Dict[str, Any] | None:
+def load_socket_basics_config(org_slug_override: str | None = None) -> Dict[str, Any] | None:
     """Load Socket Basics configuration from Socket API if organization has enterprise plan
-    
+
+    Args:
+        org_slug_override: Organization slug given on the command line
+            (``--socket-org``). Takes precedence over the environment.
+
     Returns:
         Socket Basics configuration dictionary if available, None otherwise
     """
@@ -987,7 +999,7 @@ def load_socket_basics_config() -> Dict[str, Any] | None:
     logger.info("Socket API key detected - attempting to load dashboard configuration")
     
     # Support both direct env vars and GitHub Actions INPUT_ prefixed vars
-    org_slug = (
+    org_slug = org_slug_override or (
         os.environ.get('SOCKET_ORG_SLUG')
         or os.environ.get('SOCKET_ORG')
         or os.environ.get('INPUT_SOCKET_ORG')
@@ -1130,6 +1142,12 @@ def load_explicit_env_config() -> Dict[str, Any]:
         config['changed_files'] = os.environ['INPUT_CHANGED_FILES']
     if 'INPUT_OPENGREP_RULES_DIR' in os.environ:
         config['opengrep_rules_dir'] = os.environ['INPUT_OPENGREP_RULES_DIR']
+    if 'INPUT_VERBOSE' in os.environ:
+        config['verbose'] = coerce_bool(os.environ['INPUT_VERBOSE'], False)
+    if 'INPUT_CONSOLE_TABULAR_ENABLED' in os.environ:
+        config['console_tabular_enabled'] = coerce_bool(os.environ['INPUT_CONSOLE_TABULAR_ENABLED'], False)
+    if 'INPUT_CONSOLE_JSON_ENABLED' in os.environ:
+        config['console_json_enabled'] = coerce_bool(os.environ['INPUT_CONSOLE_JSON_ENABLED'], False)
     
     # Dynamically load connector parameters from YAML configuration - only if explicitly set
     try:
@@ -1342,7 +1360,10 @@ def normalize_api_config(api_config: Dict[str, Any]) -> Dict[str, Any]:
     return normalized
 
 
-def merge_json_and_env_config(json_config: Dict[str, Any] | None = None) -> Dict[str, Any]:
+def merge_json_and_env_config(
+    json_config: Dict[str, Any] | None = None,
+    socket_org: str | None = None,
+) -> Dict[str, Any]:
     """Merge JSON configuration with environment variables
     
     Priority order (highest to lowest):
@@ -1352,6 +1373,9 @@ def merge_json_and_env_config(json_config: Dict[str, Any] | None = None) -> Dict
     
     Args:
         json_config: Optional dictionary from JSON config file
+        socket_org: Organization slug from ``--socket-org``. Applied before the
+            dashboard lookup so the right organization's configuration loads,
+            and re-applied by the caller after the merge so it wins overall.
         
     Returns:
         Merged configuration dictionary
@@ -1360,13 +1384,15 @@ def merge_json_and_env_config(json_config: Dict[str, Any] | None = None) -> Dict
 
     # Start with environment defaults (lowest priority)
     config = load_config_from_env()
+    if socket_org:
+        config['socket_org'] = socket_org
     logger.info("Configuration sources: environment defaults loaded")
     
     # Override with Socket Basics API config if no explicit JSON config provided
     # API config takes precedence over environment defaults
     if not json_config:
         logger.debug(" No JSON config provided, attempting to load Socket Basics API config")
-        socket_basics_config = load_socket_basics_config()
+        socket_basics_config = load_socket_basics_config(org_slug_override=socket_org)
         logger.debug(f" Socket Basics API config result: {socket_basics_config is not None}")
         if socket_basics_config:
             # Normalize camelCase API keys to snake_case internal format
@@ -1564,12 +1590,20 @@ def add_dynamic_cli_args(parser: argparse.ArgumentParser):
 
 def parse_cli_args():
     """Parse command line arguments and return argument parser"""
-    parser = argparse.ArgumentParser(description='Socket Security Basics - Dynamic security scanning')
+    parser = argparse.ArgumentParser(prog='socket-basics', description='Socket Security Basics - Dynamic security scanning')
+    try:
+        from ..version import __version__ as _socket_basics_version
+    except Exception:  # pragma: no cover - version module is always shipped
+        _socket_basics_version = 'unknown'
+    parser.add_argument('--version', action='version', version=f'%(prog)s {_socket_basics_version}')
     parser.add_argument('--config', type=str, 
                        help='Path to JSON configuration file. JSON config is merged with environment variables (JSON takes precedence)')
     parser.add_argument('--output', type=str, default='.socket.facts.json', 
                        help='Output file name (default: .socket.facts.json)')
     parser.add_argument('--workspace', type=str, help='Workspace directory to scan')
+    parser.add_argument('--socket-org', type=str, default=None,
+                        help='Socket organization slug (overrides SOCKET_ORG). The API key has no flag; '
+                             'set SOCKET_SECURITY_API_KEY in the environment.')
     parser.add_argument('--repo', type=str, help='Repository name (use when workspace is not a git repo)')
     parser.add_argument('--branch', type=str, help='Branch name (use when workspace is not a git repo)')
     parser.add_argument('--default-branch', action='store_true', help='Explicitly mark this as the default branch (sets make_default_branch=true and set_as_pending_head=true)')
@@ -1590,19 +1624,23 @@ def parse_cli_args():
 
 def create_config_from_args(args) -> Config:
     """Create configuration object from parsed CLI arguments"""
+    cli_socket_org = (getattr(args, 'socket_org', None) or '').strip() or None
+
     # Load base config from environment or JSON file
     if args.config:
         try:
             json_config = load_config_from_json(args.config)
-            config_dict = merge_json_and_env_config(json_config)
+            config_dict = merge_json_and_env_config(json_config, socket_org=cli_socket_org)
         except (FileNotFoundError, json.JSONDecodeError, ValueError) as e:
             logger = logging.getLogger(__name__)
             logger.error("Failed to load JSON config from %s: %s", args.config, e)
             raise SystemExit(f"Error loading configuration file: {e}")
     else:
-        config_dict = merge_json_and_env_config()
+        config_dict = merge_json_and_env_config(socket_org=cli_socket_org)
     
     # Override config with CLI args
+    if cli_socket_org:
+        config_dict['socket_org'] = cli_socket_org
     if args.workspace:
         config_dict['workspace'] = args.workspace
         # When workspace is explicitly set, default output_dir to workspace unless OUTPUT_DIR env var is set

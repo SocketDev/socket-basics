@@ -8,64 +8,62 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Added
+- `--version` CLI flag.
+- `--socket-org` CLI flag, the command-line equivalent of the `socket_org`
+  action input and the `SOCKET_ORG` environment variable. The API key remains
+  environment-only.
+- GitHub Action inputs `verbose`, `console_tabular_enabled` and
+  `console_json_enabled`, delivered as `INPUT_VERBOSE`,
+  `INPUT_CONSOLE_TABULAR_ENABLED` and `INPUT_CONSOLE_JSON_ENABLED` and honored
+  from the environment the same way as the matching CLI flags.
+- GitHub Action inputs `jira_url` and `jira_project`, matching the names used in
+  the documentation; `server` and `project` remain as aliases. Also added
+  `ms_sentinel_shared_key` (alias of `ms_sentinel_key`),
+  `opengrep_notification_method` and `trufflehog_notification_method`
+  (`notification_method` remains as an alias).
+- `docs/parameters.md` gains a **Name Mapping** section listing every setting as
+  CLI flag, GitHub Action input, environment variable and JSON key, generated
+  from `connectors.yaml`, `notifications.yaml` and `action.yml`. A new test
+  keeps `action.yml` and the parameter declarations in step.
+- `scripts/check_release_docs.py` now also checks that action references use an
+  exact release tag and that the bundled scanner versions quoted in the guides
+  match the Dockerfile pins; `--write` updates both.
+- Documentation for the `-heavy` image variant and for when the standard image
+  is the right choice.
+
+### Removed
+- The `workspace` and `GITHUB_API_URL` GitHub Action inputs. Neither had an
+  effect: the action always scans `GITHUB_WORKSPACE`, and `GITHUB_API_URL` is
+  provided by the runner. Workflows that still set them receive an
+  "Unexpected input" warning and otherwise behave as before.
+- `docs/alert-quality-improvement-plan.md`, a draft working document from a
+  hackathon branch. The plan itself is now tracked separately.
+
 ### Fixed
-- **Behavioral:** TruffleHog secret scanning no longer passes `--no-verification`
-  when `trufflehog_show_unverified` is off. That flag disabled verification
-  entirely, so every finding came back with `Verified: false` and was reported as
-  low severity — meaning no secret ever blocked a run on the setting's default
-  path, the exact inverse of the intended behavior. Verification now always runs,
-  and the setting controls only which result types are returned:
-  `--results=verified,unknown` when off,
-  `--results=verified,unverified,unknown` when on. Verified findings are critical
-  and blocking; unverified and unknown findings remain low and non-blocking.
-
-  **Three consequences on upgrade — read before bumping:**
-
-  1. **Runs will start failing that previously passed.** With
-     `trufflehog_show_unverified` off, verified secrets are now reported as
-     critical and block. Previously they were downgraded to low and ignored. This
-     is the intended behavior, but it lands as newly-red pipelines on the first
-     run after upgrading. It is not a new detection — those secrets were always
-     there, they were just never surfaced as blocking.
-  2. **TruffleHog now makes outbound network requests.** Verification is a live
-     check against third-party credential-validation endpoints (AWS, GitHub,
-     Slack, etc.) for every candidate secret. Runs that previously scanned fully
-     offline no longer do.
-  3. **Air-gapped and proxied environments will surface unknown results.** When
-     verification cannot reach a validation endpoint, TruffleHog classifies the
-     result as `unknown` rather than verified or unverified. Unknown results are
-     returned by default and reported as low severity/non-blocking so a scanner
-     with no egress does not silently appear clean. (#110)
-
-- **Behavioral:** a TruffleHog run that exits non-zero, or a missing
-  `trufflehog` binary, now **fails the run** instead of being reported as a
-  clean scan. Previously any non-zero exit was logged and turned into an empty
-  result, so a malformed exclude pattern or a broken install silently zeroed out
-  every secret finding while the run exited green — a scanner that could not
-  scan looked identical to a repository with no secrets. Socket Basics now also
-  passes TruffleHog's `--fail-on-scan-errors` flag so source/enumeration errors
-  produce the non-zero exit that the wrapper enforces. The error names the exit
-  code and TruffleHog's own stderr. This closes the last open item from CE-347,
-  whose other halves shipped in 2.2.1. (#110)
-- `trufflehog_show_unverified` is now read through `coerce_bool` rather than
-  tested for truthiness. Only the environment loader coerces boolean params;
-  a Socket dashboard config is passed through verbatim and at higher priority,
-  so a dashboard-supplied string `"false"` was truthy and would have reported
-  unverified secrets to someone who explicitly turned them off. (#110)
-- `secret_scanning_enabled` and the TruffleHog `scan_all` fallback check now use
-  the same boolean coercion, so dashboard/JSON strings such as `"false"` cannot
-  unexpectedly enable secret scanning or widen a staged-file scan. (#110)
-
-### Changed
-- `--include-detectors=all` is now passed unconditionally rather than only when
-  `trufflehog_show_unverified` is on, so detector selection no longer changes as a
-  side effect of that setting. TruffleHog already defaults to all detectors, so
-  this is a no-op in practice. (#110)
-- Clarified TruffleHog parameter documentation: `trufflehog_exclude_dir` accepts
-  directory names, file names, and glob patterns (not just directories), matching
-  is case-sensitive, and excluded paths are removed from the scan entirely rather
-  than filtered from results. `trufflehog_show_unverified` is documented as
-  widening result types, not as toggling verification. (#110)
+- TruffleHog now always verifies candidates, reports verified and unknown
+  results by default, and adds unverified results only when requested. Verified
+  findings are critical/blocking; unknown and unverified findings remain
+  low/non-blocking. Boolean string configuration is handled correctly. (#110)
+- Missing or unsuccessful TruffleHog scans now fail the run instead of returning
+  an empty clean result, including source errors surfaced by
+  `--fail-on-scan-errors`. (#110)
+- The Sentinel and Sumo Logic notifiers now read `ms_sentinel_workspace_id`,
+  `ms_sentinel_key` and `sumologic_endpoint` from CLI flags, action inputs and
+  dashboard configuration, in addition to the `MS_SENTINEL_*` and
+  `SUMO_LOGIC_HTTP_SOURCE_URL` environment variables.
+- Documentation consistency pass across the GitHub Action, Docker and local
+  installation guides. CLI examples use the flag names that
+  `socket-basics --help` prints. Docker examples keep the facts file inside the
+  workspace so the dashboard upload succeeds, and show the environment variables
+  needed for PR comments outside GitHub Actions. The GitHub Action guide reflects
+  the bundled Trivy scanner, lists only declared inputs, and passes discovered
+  Dockerfiles through in the auto-discovery example. JSON configuration examples
+  use the keys the loader reads, the S3 variable names and `--config` precedence
+  match the code, GitLab and Jenkins examples override the image entrypoint,
+  pre-commit hook examples use the published image name, and the installation
+  guide states the Python 3.10 requirement and the npm install path for the
+  Socket CLI. New guidance covers large repositories and facts-file size.
 
 ## [3.1.0] - 2026-09-02
 

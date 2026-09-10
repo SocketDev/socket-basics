@@ -97,7 +97,7 @@ Socket Basics can also run locally or in other CI/CD environments:
 **Flexible Configuration:**
 - Configure via CLI flags, environment variables, JSON files, or the Socket Dashboard
 - Auto-enablement for container scanning when images or Dockerfiles are specified
-- Support for both standard and GitHub Actions `INPUT_*` environment variables
+- Every setting is reachable as an `INPUT_*` environment variable (the GitHub Action input name, upper-cased); credentials and notifier endpoints also accept plain names such as `SOCKET_ORG` and `SLACK_WEBHOOK_URL`
 
 ## 🎨 Enhanced PR Comments
 
@@ -129,9 +129,9 @@ All configuration can be managed through:
 1. **Socket Dashboard** (Enterprise) — Centralized policy management
 2. **CLI Arguments** — Direct command-line flags
 3. **Environment Variables** — Standard or `INPUT_*` prefixed for GitHub Actions
-4. **JSON Configuration File** — Structured configuration (see `socket_config_example.json`)
+4. **JSON Configuration File** — Structured configuration passed with `--config` (see [Configuration File](docs/parameters.md#configuration-file))
 
-See [Parameters Reference](docs/parameters.md) for the full list of CLI options and environment variables.
+See [Parameters Reference](docs/parameters.md) for the full list of CLI options and environment variables, including the [name mapping](docs/parameters.md#name-mapping) between CLI flags, GitHub Action inputs, environment variables and JSON keys. The names differ between interfaces (for example `--python` on the CLI is `python_sast_enabled` in the action and `INPUT_PYTHON_SAST_ENABLED` in the environment), and the CLI rejects unknown flags.
 
 #### Integration Environment Variables
 
@@ -184,20 +184,24 @@ docker pull ghcr.io/socketdev/socket-basics:3.1.0
 # Run scan
 docker run --rm -v "$PWD:/workspace" ghcr.io/socketdev/socket-basics:3.1.0 \
   --workspace /workspace \
-  --python-sast-enabled \
-  --secret-scanning-enabled \
+  --python \
+  --secrets \
   --console-tabular-enabled
 ```
 
 The pre-built image is versioned and intended to be pinned exactly. Avoid floating tags like `:latest` in CI.
+
+Use the standard image. The registries also carry a `-heavy` variant that exists for one specific deployment constraint and adds nothing to Socket Basics itself; see [Image variants](docs/local-install-docker.md#image-variants) before choosing it.
 
 📖 **[View Docker Installation Guide](docs/local-install-docker.md)**
 
 ### CLI
 
 ```bash
-socket-basics --python --secrets --containers --verbose
+socket-basics --python --secrets --dockerfiles Dockerfile --verbose
 ```
+
+The API key is read from the environment (`SOCKET_SECURITY_API_KEY`; there is deliberately no flag for it) and the organization from `SOCKET_ORG` or `--socket-org`. The same flag names work inside the Docker image. The [name mapping table](docs/parameters.md#name-mapping) shows how every CLI flag corresponds to a GitHub Action input and an environment variable.
 
 📖 **[View Local Installation Guide](docs/local-installation.md)**
 
@@ -259,8 +263,10 @@ Add new connectors by:
 **Connector fails to load:**
 - Verify `module_path` and `class` in `socket_basics/connectors.yaml`
 
-**Socket API errors:**
+**Socket API errors / results missing from the dashboard:**
 - Ensure `SOCKET_SECURITY_API_KEY` and `SOCKET_ORG` are set correctly
+- `No Socket organization configured` in the log means nothing was uploaded: set `SOCKET_ORG`, or use a key with the `socket-basics` scope so the organization can be discovered
+- `Need at least one file to be uploaded` means the facts file was written outside the scanned workspace; keep `--output` inside it (see [Save Results to File](docs/local-install-docker.md#save-results-to-file))
 - Verify your Socket Enterprise subscription is active
 - If you see `Insufficient permissions`, confirm your API token has the scopes required for your configuration mode (see [Required API Token Scopes](#required-api-token-scopes))
 
@@ -348,13 +354,13 @@ The `app_tests/` directory contains deliberately vulnerable applications (git su
 ```bash
 # Scan a vulnerable Node.js app
 socket-basics --workspace app_tests/juice-shop \
-  --javascript-sast-enabled \
-  --secret-scanning-enabled
+  --javascript \
+  --secrets
 
 # Scan a vulnerable Python app
 socket-basics --workspace app_tests/pygoat \
-  --python-sast-enabled \
-  --secret-scanning-enabled
+  --python \
+  --secrets
 
 # Compare results against known vulnerabilities
 # (Manual verification of findings)
