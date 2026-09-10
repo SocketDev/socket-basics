@@ -31,6 +31,14 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   match the Dockerfile pins; `--write` updates both.
 - Documentation for the `-heavy` image variant and for when the standard image
   is the right choice.
+- Java SAST: `java-xss` (CWE-79) and `java-xpath-injection` (CWE-643) taint
+  rules; an OWASP Benchmark scorer (`scripts/score_owasp_benchmark.py`) with the
+  method and results in `docs/java-sast-benchmark.md`; and annotated Java rule
+  regression fixtures under `tests/fixtures/opengrep/java`, which CI now runs
+  against the opengrep release pinned in the Dockerfile. (#112)
+
+### Changed
+- Socket Python CLI 2.7.0 → 2.8.0 in the heavy and app-tests images. (#112)
 
 ### Removed
 - The `workspace` and `GITHUB_API_URL` GitHub Action inputs. Neither had an
@@ -64,6 +72,24 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   pre-commit hook examples use the published image name, and the installation
   guide states the Python 3.10 requirement and the npm install path for the
   Socket CLI. New guidance covers large repositories and facts-file size.
+- **Java SAST precision and recall.** Twelve Java rules were rewritten after a
+  customer evaluation reported roughly 90% false positives. On six mature open
+  source projects (~17,400 files) the rule set now emits about 95% fewer
+  findings, and the lint-style rules (`java-empty-catch-block`,
+  `java-system-out-usage`, `java-reflection-injection`,
+  `java-hardcoded-credentials`) report nothing there. On OWASP Benchmark v1.2,
+  recall rises from 13% to 71% while precision improves from 64.5% to 76.7%.
+  Two systematic defects drove the recall gap: patterns written with simple
+  type names never matched fully qualified call sites, and crypto rules matched
+  exact algorithm literals instead of transformation strings. (#112)
+- Java SAST false positives removed along the way: `RSA/ECB/...` is no longer a
+  weak cipher; a hardened cookie no longer hides an unhardened neighbour;
+  parameterized `JdbcTemplate`/`PreparedStatement` calls, the four-argument
+  LDAP `search(base, filter, args, controls)` form, `MessageDigest.update()`,
+  and the `Path.startsWith`/canonical-path containment idioms are no longer
+  reported; SnakeYAML `SafeConstructor` loads are excluded (including the 2.0
+  `LoaderOptions` form) while `loadAs`/`loadAll` are now sinks; `"10.0.0.1"` is
+  reported as a hardcoded IP and `"10.2.3"` is not. (#112)
 
 ## [3.1.0] - 2026-09-02
 

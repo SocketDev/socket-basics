@@ -6,6 +6,8 @@ on:
     paths:
       - "socket_basics/**/*.py"
       - "tests/**/*.py"
+      - "tests/fixtures/**"
+      - "socket_basics/rules/**"
       - "pyproject.toml"
       - "uv.lock"
       - "action.yml"
@@ -19,6 +21,8 @@ on:
     paths:
       - "socket_basics/**/*.py"
       - "tests/**/*.py"
+      - "tests/fixtures/**"
+      - "socket_basics/rules/**"
       - "pyproject.toml"
       - "uv.lock"
       - "action.yml"
@@ -57,6 +61,20 @@ jobs:
         run: |
           python -m pip install --upgrade pip uv
           uv sync --locked --extra dev
+      - name: 🔎 Install opengrep
+        # The Java rule regression tests skip when opengrep is not on PATH.
+        # Install the exact release the images ship (the Dockerfile ARG) so the
+        # tests exercise the engine users get, and require it below so a broken
+        # install fails the job instead of quietly skipping the module.
+        run: |
+          version="$(sed -n 's/^ARG OPENGREP_VERSION=//p' Dockerfile)"
+          test -n "$version"
+          install -d "$RUNNER_TEMP/opengrep"
+          curl -fsSL --retry 3 -o "$RUNNER_TEMP/opengrep/opengrep" \
+            "https://github.com/opengrep/opengrep/releases/download/${version}/opengrep_manylinux_x86"
+          chmod +x "$RUNNER_TEMP/opengrep/opengrep"
+          echo "$RUNNER_TEMP/opengrep" >> "$GITHUB_PATH"
+          "$RUNNER_TEMP/opengrep/opengrep" --version
       - name: 🔐 Assert uv.lock is in sync with pyproject.toml
         # Catches dependency PRs (Dependabot or maintainer) that change
         # pyproject.toml without regenerating the lock, or vice versa.
@@ -66,4 +84,6 @@ jobs:
       - name: 📚 Assert current-release docs are in sync
         run: python3 scripts/check_release_docs.py --check
       - name: 🧪 Run tests
+        env:
+          SOCKET_BASICS_REQUIRE_OPENGREP: "1"
         run: uv run --no-sync pytest -q tests/
