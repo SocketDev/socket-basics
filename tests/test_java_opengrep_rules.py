@@ -13,6 +13,7 @@ who only touch Python.
 from __future__ import annotations
 
 import json
+import os
 import re
 import shutil
 import subprocess
@@ -28,8 +29,18 @@ FIXTURES = REPO_ROOT / "tests" / "fixtures" / "opengrep" / "java"
 
 ANNOTATION = re.compile(r"//\s*(ruleid|ok):\s*([\w-]+)\s*$")
 
+# CI sets this so a missing opengrep fails the job instead of silently
+# skipping every test in this module.
+REQUIRE_OPENGREP_ENV = "SOCKET_BASICS_REQUIRE_OPENGREP"
+
+_HAVE_OPENGREP = shutil.which("opengrep") is not None
+if not _HAVE_OPENGREP and os.environ.get(REQUIRE_OPENGREP_ENV):
+    pytest.fail(
+        f"{REQUIRE_OPENGREP_ENV} is set but opengrep is not on PATH", pytrace=False
+    )
+
 pytestmark = pytest.mark.skipif(
-    shutil.which("opengrep") is None,
+    not _HAVE_OPENGREP,
     reason="opengrep is not installed; Java rule regression tests skipped",
 )
 
@@ -57,25 +68,37 @@ def _expectations() -> tuple[set[tuple[str, str, int]], set[tuple[str, str, int]
 
 
 def _scan() -> set[tuple[str, str, int]]:
-    """Run opengrep over the fixtures and return {(file, rule, line)}."""
-    with tempfile.NamedTemporaryFile(suffix=".json", delete=False) as handle:
-        out = Path(handle.name)
-    # Pass explicit file paths. opengrep's default ignore list skips any
-    # directory named tests/, so handing it FIXTURES scans nothing.
-    targets = [str(path) for path in sorted(FIXTURES.glob("*.java"))]
-    try:
-        subprocess.run(
+    """Run opengrep over a copy of the fixtures and return {(file, rule, line)}."""
+    fixtures = sorted(FIXTURES.glob("*.java"))
+    # Scan a copy outside the repository. opengrep's default ignore list skips
+    # any path with a tests/ directory in it, and on some versions (1.19.0)
+    # that applies even to explicitly listed files, so scanning in place
+    # silently scanned nothing and every positive annotation "failed".
+    with tempfile.TemporaryDirectory(prefix="opengrep-java-fixtures-") as tmp:
+        for path in fixtures:
+            shutil.copy(path, tmp)
+        out = Path(tmp) / "results.json"
+        proc = subprocess.run(
             [
-                "opengrep", "--json", "--quiet", "-a", "--no-git-ignore",
-                "--config", str(RULES), "--output", str(out), *targets,
+                "opengrep", "--json", "--quiet", "--no-git-ignore",
+                "--config", str(RULES), "--output", str(out), tmp,
             ],
             capture_output=True,
             text=True,
             check=False,
         )
+        assert out.exists(), (
+            f"opengrep wrote no output (exit {proc.returncode}): {proc.stderr[-2000:]}"
+        )
         data = json.loads(out.read_text() or "{}")
-    finally:
-        out.unlink(missing_ok=True)
+
+    errors = [e.get("message", str(e))[:200] for e in data.get("errors", [])]
+    assert not errors, f"opengrep reported errors while scanning the fixtures: {errors}"
+    scanned = {Path(p).name for p in data.get("paths", {}).get("scanned", [])}
+    expected = {p.name for p in fixtures}
+    assert scanned == expected, (
+        f"opengrep scanned {sorted(scanned)} but the fixtures are {sorted(expected)}"
+    )
 
     found: set[tuple[str, str, int]] = set()
     for result in data.get("results", []):
