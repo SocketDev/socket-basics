@@ -531,7 +531,9 @@ socket-basics --disable-secrets
 ### `--exclude-dir EXCLUDE_DIR`
 Comma-separated literal directory/file names or glob patterns to exclude from
 secret scanning beneath the workspace root. Matching is case-sensitive. For
-example, `**/appsettings.*.json` matches files at any directory depth.
+example, `**/appsettings.*.json` matches files at any directory depth. Excluded
+paths are removed from the scan entirely — they are not scanned for verified or
+unverified secrets.
 
 **Example:**
 ```bash
@@ -547,7 +549,20 @@ socket-basics --secrets --trufflehog-notify slack
 ```
 
 ### `--show-unverified`
-Show unverified secrets in TruffleHog results (by default only verified secrets are shown).
+Include unverified secrets in TruffleHog results. TruffleHog always performs verification;
+this flag only widens which result types are reported. By default verified and unknown
+results are returned (`--results=verified,unknown`); with this flag, verified, unverified,
+and unknown results are all returned (`--results=verified,unverified,unknown`).
+
+Verified findings are reported as critical and block. Unverified and unknown findings are
+reported as low and do not block; unknown means verification could not complete because of
+a network or API error.
+
+> **Verification makes live network requests.** TruffleHog validates candidate secrets
+> against third-party endpoints (AWS, GitHub, Slack, and so on). If a runner cannot reach
+> those endpoints, the result is classified as `unknown` and returned as a low-severity,
+> nonblocking finding. This keeps verification failures visible on air-gapped or proxied
+> runners without treating an inconclusive candidate as a confirmed live credential.
 
 **Example:**
 ```bash
