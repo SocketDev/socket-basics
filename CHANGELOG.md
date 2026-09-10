@@ -8,58 +8,109 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [3.2.0] - 2026-09-10
+
+Scanner accuracy release. TruffleHog secret verification and the Java SAST rule
+set were both fixed, and both change which findings a scan produces — read the
+upgrade notes before rolling this out to a pipeline that gates on findings.
+
+### Upgrade notes
+
+Nothing here requires a configuration change, but expect different results on
+the first run after upgrading.
+
+- **TruffleHog secrets can now block a run.** With `trufflehog_show_unverified`
+  off (the default), the connector passed `--no-verification`, which disabled
+  verification outright instead of filtering to verified results. Severity is
+  derived from each finding's `Verified` flag, so every result came back
+  unverified, low severity and non-blocking: on the default path no secret
+  could ever block a run, the exact inverse of intent. Verification now always
+  runs and the setting only selects result types, so a real leaked credential
+  is reported as critical and blocking. (#110)
+- **TruffleHog verification reaches third-party endpoints.** Verification is a
+  live check: candidate credentials are sent to the issuing provider's
+  validation endpoint on every scan. This is TruffleHog's own default behavior,
+  but it is new for runs with `trufflehog_show_unverified` off. Egress
+  restricted runners should account for it. (#110)
+- **A TruffleHog scan that cannot run now fails the run.** A non-zero exit, a
+  missing binary or a source error was logged and converted into an empty clean
+  result, so a broken install or a malformed exclude pattern was
+  indistinguishable from a repository with no secrets. These now fail with
+  TruffleHog's exit code and stderr — the same fail-closed idiom as an
+  unresolvable `changed_files` scope in 3.1.0. (#110)
+- **Java SAST findings shift substantially, in both directions.** Twelve rules
+  were rewritten (see Fixed). Existing Java baselines will lose most of their
+  current findings and gain new ones at call sites the old patterns could never
+  match, so re-baseline instead of diffing against a previous run. (#112)
+
 ### Added
-- `--version` CLI flag.
-- `--socket-org` CLI flag, the command-line equivalent of the `socket_org`
-  action input and the `SOCKET_ORG` environment variable. The API key remains
-  environment-only.
-- GitHub Action inputs `verbose`, `console_tabular_enabled` and
-  `console_json_enabled`, delivered as `INPUT_VERBOSE`,
-  `INPUT_CONSOLE_TABULAR_ENABLED` and `INPUT_CONSOLE_JSON_ENABLED` and honored
-  from the environment the same way as the matching CLI flags.
-- GitHub Action inputs `jira_url` and `jira_project`, matching the names used in
-  the documentation; `server` and `project` remain as aliases. Also added
-  `ms_sentinel_shared_key` (alias of `ms_sentinel_key`),
-  `opengrep_notification_method` and `trufflehog_notification_method`
-  (`notification_method` remains as an alias).
-- `docs/parameters.md` gains a **Name Mapping** section listing every setting as
-  CLI flag, GitHub Action input, environment variable and JSON key, generated
-  from `connectors.yaml`, `notifications.yaml` and `action.yml`. A new test
-  keeps `action.yml` and the parameter declarations in step.
-- `scripts/check_release_docs.py` now also checks that action references use an
-  exact release tag and that the bundled scanner versions quoted in the guides
-  match the Dockerfile pins; `--write` updates both.
+- `--version` and `--socket-org` CLI flags. `--socket-org` is the command-line
+  equivalent of the `socket_org` action input and the `SOCKET_ORG` environment
+  variable; the API key remains environment-only. (#111)
+- Action inputs for settings that previously existed only as CLI flags or
+  environment variables: `verbose`, `console_tabular_enabled`,
+  `console_json_enabled`, `jira_url`, `jira_project`, `ms_sentinel_shared_key`,
+  `opengrep_notification_method` and `trufflehog_notification_method`. The
+  older `server`, `project`, `ms_sentinel_key` and `notification_method` names
+  remain as aliases. (#111)
+- A **Name Mapping** section in `docs/parameters.md` listing every setting as
+  CLI flag, action input, environment variable and JSON key, generated from
+  `connectors.yaml`, `notifications.yaml` and `action.yml`, plus a test that
+  keeps `action.yml` and the parameter declarations in step. (#111)
 - Documentation for the `-heavy` image variant and for when the standard image
-  is the right choice.
+  is the right choice. (#111)
 - Java SAST: `java-xss` (CWE-79) and `java-xpath-injection` (CWE-643) taint
   rules; an OWASP Benchmark scorer (`scripts/score_owasp_benchmark.py`) with the
   method and results in `docs/java-sast-benchmark.md`; and annotated Java rule
   regression fixtures under `tests/fixtures/opengrep/java`, which CI now runs
   against the opengrep release pinned in the Dockerfile. (#112)
+- `scripts/check_release_docs.py` also verifies that action references use an
+  exact release tag and that the bundled scanner versions quoted in the guides
+  match the Dockerfile pins; `--write` updates both. (#111)
 
 ### Changed
+- TruffleHog reports verified and unknown results by default, and adds
+  unverified results only when `trufflehog_show_unverified` is on. Verified
+  findings are critical and blocking; unknown and unverified findings remain
+  low and non-blocking. Boolean strings are now coerced wherever the setting
+  comes from, so a Socket dashboard config supplying `"false"` is no longer
+  read as on. (#110)
 - Socket Python CLI 2.7.0 → 2.8.0 in the heavy and app-tests images. (#112)
 
 ### Removed
 - The `workspace` and `GITHUB_API_URL` GitHub Action inputs. Neither had an
   effect: the action always scans `GITHUB_WORKSPACE`, and `GITHUB_API_URL` is
   provided by the runner. Workflows that still set them receive an
-  "Unexpected input" warning and otherwise behave as before.
+  "Unexpected input" warning and otherwise behave as before. (#111)
 - `docs/alert-quality-improvement-plan.md`, a draft working document from a
-  hackathon branch. The plan itself is now tracked separately.
+  hackathon branch. The plan itself is now tracked separately. (#111)
 
 ### Fixed
-- TruffleHog now always verifies candidates, reports verified and unknown
-  results by default, and adds unverified results only when requested. Verified
-  findings are critical/blocking; unknown and unverified findings remain
-  low/non-blocking. Boolean string configuration is handled correctly. (#110)
-- Missing or unsuccessful TruffleHog scans now fail the run instead of returning
-  an empty clean result, including source errors surfaced by
-  `--fail-on-scan-errors`. (#110)
+- **Java SAST precision and recall.** Twelve rules were rewritten after a
+  customer evaluation reported roughly 90% false positives. Two systematic
+  defects drove the recall gap: patterns written with simple type names never
+  matched fully qualified call sites, and crypto rules matched exact algorithm
+  literals instead of transformation strings. On OWASP Benchmark v1.2 recall
+  rises from 13.2% to 71.3% while precision improves from 64.5% to 76.7%; on
+  six mature open source projects (~17,400 files) findings drop by 92%, and the
+  four lint-style rules (`java-empty-catch-block`, `java-system-out-usage`,
+  `java-reflection-injection`, `java-hardcoded-credentials`) report nothing
+  there — the first three alone produced 74% of the original noise. About a
+  quarter of that volume drop comes from new test, benchmark and example path
+  exclusions rather than rule logic; `docs/java-sast-benchmark.md` records the
+  method, the per-category numbers and the caveats. (#112)
+- Java SAST false positives removed along the way: `RSA/ECB/...` is no longer a
+  weak cipher; a hardened cookie no longer hides an unhardened neighbour;
+  parameterized `JdbcTemplate`/`PreparedStatement` calls, the four-argument
+  LDAP `search(base, filter, args, controls)` form, `MessageDigest.update()`,
+  and the `Path.startsWith`/canonical-path containment idioms are no longer
+  reported; SnakeYAML `SafeConstructor` loads are excluded (including the 2.0
+  `LoaderOptions` form) while `loadAs`/`loadAll` are now sinks; `"10.0.0.1"` is
+  reported as a hardcoded IP and `"10.2.3"` is not. (#112)
 - The Sentinel and Sumo Logic notifiers now read `ms_sentinel_workspace_id`,
   `ms_sentinel_key` and `sumologic_endpoint` from CLI flags, action inputs and
   dashboard configuration, in addition to the `MS_SENTINEL_*` and
-  `SUMO_LOGIC_HTTP_SOURCE_URL` environment variables.
+  `SUMO_LOGIC_HTTP_SOURCE_URL` environment variables. (#111)
 - Documentation consistency pass across the GitHub Action, Docker and local
   installation guides. CLI examples use the flag names that
   `socket-basics --help` prints. Docker examples keep the facts file inside the
@@ -71,25 +122,11 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   match the code, GitLab and Jenkins examples override the image entrypoint,
   pre-commit hook examples use the published image name, and the installation
   guide states the Python 3.10 requirement and the npm install path for the
-  Socket CLI. New guidance covers large repositories and facts-file size.
-- **Java SAST precision and recall.** Twelve Java rules were rewritten after a
-  customer evaluation reported roughly 90% false positives. On six mature open
-  source projects (~17,400 files) the rule set now emits about 95% fewer
-  findings, and the lint-style rules (`java-empty-catch-block`,
-  `java-system-out-usage`, `java-reflection-injection`,
-  `java-hardcoded-credentials`) report nothing there. On OWASP Benchmark v1.2,
-  recall rises from 13% to 71% while precision improves from 64.5% to 76.7%.
-  Two systematic defects drove the recall gap: patterns written with simple
-  type names never matched fully qualified call sites, and crypto rules matched
-  exact algorithm literals instead of transformation strings. (#112)
-- Java SAST false positives removed along the way: `RSA/ECB/...` is no longer a
-  weak cipher; a hardened cookie no longer hides an unhardened neighbour;
-  parameterized `JdbcTemplate`/`PreparedStatement` calls, the four-argument
-  LDAP `search(base, filter, args, controls)` form, `MessageDigest.update()`,
-  and the `Path.startsWith`/canonical-path containment idioms are no longer
-  reported; SnakeYAML `SafeConstructor` loads are excluded (including the 2.0
-  `LoaderOptions` form) while `loadAs`/`loadAll` are now sinks; `"10.0.0.1"` is
-  reported as a hardcoded IP and `"10.2.3"` is not. (#112)
+  Socket CLI. New guidance covers large repositories and facts-file size. (#111)
+- TruffleHog parameter documentation: exclude paths accept files and globs, not
+  only directories, and `trufflehog_show_unverified` widens result types rather
+  than toggling verification. A JSON configuration example named a nonexistent
+  `show_unverified` key. (#110)
 
 ## [3.1.0] - 2026-09-02
 
