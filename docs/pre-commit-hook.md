@@ -41,7 +41,7 @@ Best for: Teams wanting consistent environments without installing security tool
 
 ```bash
 # Pull the pre-built image (no build step required)
-docker pull ghcr.io/socketdev/socket-basics:3.1.0
+docker pull ghcr.io/socketdev/socket-basics:3.2.0
 ```
 
 **2. Create pre-commit hook:**
@@ -64,7 +64,7 @@ fi
 # Run Socket Basics in Docker
 docker run --rm \
   -v "$PWD:/workspace" \
-  ghcr.io/socketdev/socket-basics:3.1.0 \
+  ghcr.io/socketdev/socket-basics:3.2.0 \
   --workspace /workspace \
   --python \
   --javascript \
@@ -118,7 +118,7 @@ fi
 # Scope the scan to the staged changes
 docker run --rm \
   -v "$PWD:/workspace" \
-  ghcr.io/socketdev/socket-basics:3.1.0 \
+  ghcr.io/socketdev/socket-basics:3.2.0 \
   --workspace /workspace \
   --changed-files auto \
   --python \
@@ -153,7 +153,7 @@ docker run --rm \
   -e SOCKET_ORG="$SOCKET_ORG" \
   -e SOCKET_SECURITY_API_KEY="$SOCKET_SECURITY_API_KEY" \
   -e SLACK_WEBHOOK_URL="$SLACK_WEBHOOK_URL" \
-  ghcr.io/socketdev/socket-basics:3.1.0 \
+  ghcr.io/socketdev/socket-basics:3.2.0 \
   --workspace /workspace \
   --python \
   --javascript \
@@ -504,7 +504,7 @@ repos:
     hooks:
       - id: socket-basics
         name: Socket Basics Security Scan
-        entry: docker run --rm -v "$PWD:/workspace" ghcr.io/socketdev/socket-basics:3.1.0 --workspace /workspace --changed-files auto --python --secrets
+        entry: docker run --rm -v "$PWD:/workspace" ghcr.io/socketdev/socket-basics:3.2.0 --workspace /workspace --changed-files auto --python --secrets
         language: system
         pass_filenames: false
 ```
