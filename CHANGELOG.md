@@ -9,69 +9,34 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 ## [Unreleased]
 
 ### Added
-- Two new Java SAST rules, both taint mode: `java-xss` (CWE-79) and
-  `java-xpath-injection` (CWE-643). XSS was the largest recall gap in the Java
-  rule set, accounting for 246 missed true positives on the OWASP Benchmark
-  corpus. (#112)
-- `scripts/score_owasp_benchmark.py` scores an OpenGrep JSON run against the
-  OWASP Benchmark v1.2 `expectedresults` CSV, reporting per-category precision,
-  recall, false positive rate and the Benchmark score, plus per-rule TP/FP
-  counts. (#112)
-- `docs/java-sast-benchmark.md` documents the benchmarking method, the
-  before/after numbers, the known limits of OWASP Benchmark for pattern-based
-  engines, and the remaining noise sources in the Java rules. (#112)
-- Java rule regression fixtures under `tests/fixtures/opengrep/java` with
-  `// ruleid:` and `// ok:` annotations, exercised by
-  `tests/test_java_opengrep_rules.py`. The tests skip when `opengrep` is not on
-  `PATH`, so they are a no-op for contributors who only touch Python. (#112)
+- Java SAST: `java-xss` (CWE-79) and `java-xpath-injection` (CWE-643) taint
+  rules; an OWASP Benchmark scorer (`scripts/score_owasp_benchmark.py`) with the
+  method and results in `docs/java-sast-benchmark.md`; and annotated Java rule
+  regression fixtures under `tests/fixtures/opengrep/java`, which CI now runs
+  against the opengrep release pinned in the Dockerfile. (#112)
+
+### Changed
+- Socket Python CLI 2.7.0 → 2.8.0 in the heavy and app-tests images. (#112)
 
 ### Fixed
-- **Java SAST precision.** Twelve Java rules were rewritten after a customer
-  evaluation reported roughly 90% false positives. On six mature open source
-  Java projects (~17,400 files) the rule set previously emitted 1,631 findings,
-  of which a hand adjudicated random sample of 40 contained no true positives.
-  `java-empty-catch-block`, `java-reflection-injection`,
-  `java-system-out-usage` and `java-hardcoded-credentials` produced most of that
-  volume and now report nothing on those projects. `java-reflection-injection`,
-  `java-insecure-random`, `java-path-traversal` and `java-ldap-injection` were
-  converted to taint mode. (#112)
-- **Java SAST recall.** Two systematic defects suppressed whole categories.
-  Patterns written with simple type names never matched fully qualified call
-  sites, so `java.security.MessageDigest.getInstance("MD5")`,
-  `new java.util.Random()` and `new javax.servlet.http.Cookie(...)` were
-  invisible; qualified variants were added throughout. Crypto rules matched
-  exact algorithm literals, so `Cipher.getInstance("DES/CBC/PKCS5Padding")`
-  never matched a rule looking for `"DES"`; these now use `metavariable-regex`
-  over the transformation string and cover the provider overloads of
-  `getInstance`. (#112)
-- `java-insecure-cookie` no longer drops an unhardened cookie when a
-  neighbouring cookie in the same method calls `setSecure(true)`. The exclusion
-  is bound per variable and also recognises hardening through a field. (#112)
-- `java-weak-cipher` no longer reports `RSA/ECB/PKCS1Padding`, where `ECB` is a
-  JCA placeholder rather than a block mode. `AES/ECB/...` is still reported.
-  (#112)
-- `java-hardcoded-ip` now requires a full dotted quad, so version strings such
-  as `"10.0"` and `"10.2.3"` are no longer reported and `"10.0.0.1"` is. (#112)
-- `java-path-traversal` honours a `startsWith` containment check at later file
-  sinks, and detects Zip Slip via `ZipEntry.getName()` and Spring multipart
-  uploads via `MultipartFile.getOriginalFilename()`. (#112)
-- `java-insecure-random` detects weak key and IV material generated through
-  `Random.nextBytes(array)`, and no longer treats `pivot`, `divisor`, `spinner`,
-  `monkey` or `author` as security-relevant names. (#112)
-- `java-unsafe-deserialization` no longer reports SnakeYAML loads that use
-  `new Yaml(new SafeConstructor())`, which is the remediation the rule itself
-  recommends, including the SnakeYAML 2.0 `SafeConstructor(LoaderOptions)`
-  form, and no longer matches unrelated `readObject()` APIs such as
-  BouncyCastle's `PEMParser`. (#112)
-- `java-ldap-injection` no longer reports a Lucene `IndexSearcher.search()` call
-  as a CRITICAL LDAP injection. Sinks are type constrained to the LDAP APIs.
-  (#112)
-- `java-sql-injection` no longer reports `MessageDigest.update(input)` as SQL
-  injection. The untyped `$TEMPLATE.update(...)` sink matched any method named
-  `update`, which produced 93 CRITICAL findings on the OWASP Benchmark's hash
-  test cases. The crypto receivers (`MessageDigest`, `Mac`, `Cipher`,
-  `Signature`, `Checksum`) are now subtracted, and `queryForRowSet` and
-  `batchUpdate` were added as sinks. (#112)
+- **Java SAST precision and recall.** Twelve Java rules were rewritten after a
+  customer evaluation reported roughly 90% false positives. On six mature open
+  source projects (~17,400 files) the rule set now emits about 95% fewer
+  findings, and the lint-style rules (`java-empty-catch-block`,
+  `java-system-out-usage`, `java-reflection-injection`,
+  `java-hardcoded-credentials`) report nothing there. On OWASP Benchmark v1.2,
+  recall rises from 13% to 71% while precision improves from 64.5% to 76.7%.
+  Two systematic defects drove the recall gap: patterns written with simple
+  type names never matched fully qualified call sites, and crypto rules matched
+  exact algorithm literals instead of transformation strings. (#112)
+- Java SAST false positives removed along the way: `RSA/ECB/...` is no longer a
+  weak cipher; a hardened cookie no longer hides an unhardened neighbour;
+  parameterized `JdbcTemplate`/`PreparedStatement` calls, the four-argument
+  LDAP `search(base, filter, args, controls)` form, `MessageDigest.update()`,
+  and the `Path.startsWith`/canonical-path containment idioms are no longer
+  reported; SnakeYAML `SafeConstructor` loads are excluded (including the 2.0
+  `LoaderOptions` form) while `loadAs`/`loadAll` are now sinks; `"10.0.0.1"` is
+  reported as a hardcoded IP and `"10.2.3"` is not. (#112)
 
 ## [3.1.0] - 2026-09-02
 

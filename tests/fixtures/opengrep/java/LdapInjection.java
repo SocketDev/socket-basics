@@ -35,4 +35,12 @@ public class LdapInjection {
         // ok: java-ldap-injection
         return searcher.search(parser.parse(text), 10);
     }
+
+    // The four-argument form binds the value through filterArgs, which the
+    // provider escapes. It is the remediation the rule's fix text recommends.
+    Object parameterized(DirContext ctx, HttpServletRequest request) throws Exception {
+        String user = request.getParameter("u");
+        // ok: java-ldap-injection
+        return ctx.search("ou=people", "(uid={0})", new Object[]{user}, new SearchControls());
+    }
 }

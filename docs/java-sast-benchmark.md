@@ -36,10 +36,10 @@ Alert volume there is the number that maps to triage burden.
 
 Pin both the engine and the corpus, or the numbers below will not reproduce.
 
-- **Engine.** Measured with **opengrep 1.25.0**. The images pin
-  `OPENGREP_VERSION=v1.26.0` in `Dockerfile` and `Dockerfile.heavy`; rule
-  behaviour was identical on 1.19.0, 1.25.0 and 1.26.0 everywhere it was
-  checked, but re-measure if you change the pin.
+- **Engine.** Measured with **opengrep 1.26.0**, the release the images pin
+  (`OPENGREP_VERSION` in `Dockerfile` and `Dockerfile.heavy`). Rule behaviour
+  was identical on 1.19.0, 1.25.0 and 1.26.0 everywhere it was checked, but
+  re-measure if you change the pin.
 - **Corpus.** BenchmarkJava at commit
   [`51f0a7c`](https://github.com/OWASP-Benchmark/BenchmarkJava/commit/51f0a7cf8bb9d17ce1f6d72598c1d1c6ce90f661)
   (2026-08-31). A `--depth 1` clone of `main` moves, and both the test cases and
@@ -49,7 +49,7 @@ Pin both the engine and the corpus, or the numbers below will not reproduce.
 git clone https://github.com/OWASP-Benchmark/BenchmarkJava.git
 git -C BenchmarkJava checkout 51f0a7cf8bb9d17ce1f6d72598c1d1c6ce90f661
 
-opengrep --json --dataflow-traces --quiet -a --no-git-ignore \
+opengrep --json --dataflow-traces --quiet --no-git-ignore \
   --config socket_basics/rules/java.yml \
   --output results.json \
   BenchmarkJava/src/main/java
@@ -74,11 +74,14 @@ scans them and diffs against the annotations:
 pytest tests/test_java_opengrep_rules.py
 ```
 
-The tests skip when `opengrep` is not on `PATH`. Add a case to the relevant
-fixture whenever you change a rule; the substring, qualified-name and
-containment-check bugs found in review are all covered there now.
+Locally the tests skip when `opengrep` is not on `PATH`. CI installs the
+release pinned in `Dockerfile` and sets `SOCKET_BASICS_REQUIRE_OPENGREP=1`, so
+there a missing engine fails the job instead of skipping the module. Add a case
+to the relevant fixture whenever you change a rule; the substring,
+qualified-name and containment-check bugs found in review are all covered there
+now.
 
-Two behaviours worth knowing when editing these:
+Three behaviours worth knowing when editing these:
 
 - `metavariable-regex` **anchors at the start** of the metavariable text, so
   every alternation branch needs its own leading `.*`.
@@ -86,12 +89,15 @@ Two behaviours worth knowing when editing these:
   also lowercases the deliberately case-sensitive camelCase branches, which is
   how `pivot`, `divisor`, `spinner` and `monkey` were matching `iv`, `pin` and
   `key`.
-- opengrep's default ignore list skips any directory named `tests/`, so the test
-  harness passes explicit file paths rather than the fixture directory.
+- opengrep's default ignore list skips any path under a `tests/` directory, and
+  on some releases (1.19.0) that applies even to explicitly listed files. The
+  harness therefore scans a temporary copy of the fixtures and asserts that
+  every fixture was actually scanned, so an ignored file fails loudly instead
+  of passing every negative annotation by scanning nothing.
 
 ## Results
 
-Measured with opengrep 1.25.0.
+Measured with opengrep 1.26.0.
 
 Scan time on BenchmarkJava went from 6s to 11s, roughly +70%. The extra cost is
 the taint-mode conversions and the wider sink lists. It is small in absolute
@@ -110,10 +116,10 @@ column from a scorer that still mapped the non-existent
 | | Before | After |
 |---|---|---|
 | Precision | 64.5% | **76.7%** |
-| Recall | 13.2% | **70.3%** |
-| False positive rate | 7.6% | 22.2% |
-| Benchmark score (TPR - FPR) | 5.6 | **48.2** |
-| True positives found | 176 | **937** |
+| Recall | 13.2% | **71.3%** |
+| False positive rate | 7.6% | 22.5% |
+| Benchmark score (TPR - FPR) | 5.6 | **48.9** |
+| True positives found | 176 | **950** |
 
 Per category, after the change:
 
@@ -127,7 +133,7 @@ Per category, after the change:
 | ldapi | 58.3% | 77.8% |
 | xss | 67.4% | 70.7% |
 | pathtraver | 56.1% | 69.2% |
-| sqli | 66.0% | 52.2% |
+| sqli | 66.8% | 57.0% |
 | cmdi | 63.6% | 44.4% |
 
 **Cross-category findings are not counted.** Following the OWASP method, the
@@ -141,7 +147,15 @@ raised `sqli` recall at the same time. 40 discarded pairs remain, all `java-xss`
 on `sqli` and `xpathi` cases, where the test genuinely echoes the tainted value
 into the response; those look like real findings the OWASP scoring model
 discards. Counting all 40 as false positives would put overall precision at
-74.0% rather than 76.7%.
+74.3% rather than 76.7%.
+
+Making the SQL string the only sink argument (so parameterized
+`update("... = ?", input)` calls stop being reported) and adding
+`prepareStatement()` as a sink moved `sqli` from 142 to 155 true positives at
+slightly higher precision. Demoting the `File` and `Path` constructors from
+sinks to propagators, with filesystem operations such as `exists()` as the
+sinks instead, left `pathtraver` exactly where it was: 107 of Benchmark's 268
+path traversal cases never open the file, they only probe it.
 
 The headline false positive rate rises because the rule set now detects seven
 categories it previously scored zero on. Precision, which is the share of
@@ -151,8 +165,8 @@ emitted findings that are real, is the comparable number and it improved.
 
 | | Before | After | Change |
 |---|---|---|---|
-| Total findings | 1,631 | 129 | **-92%** |
-| Unique findings, mature libraries only | 1,536 | 84 | **-94.5%** |
+| Total findings | 1,631 | 126 | **-92%** |
+| Unique findings, mature libraries only | 1,536 | 83 | **-94.6%** |
 
 Two caveats on these counts, both of which apply equally to the Before and
 After columns:
@@ -175,12 +189,15 @@ now emit zero findings on the mature-library corpus.
 
 ### WebGoat (deliberately vulnerable)
 
-87 findings before, 45 after. The removed findings were lint noise
-(`java-system-out-usage` 26, `java-hardcoded-ip` 5, `java-empty-catch-block` 4)
-plus three `java-reflection-injection` matches on factory `newInstance()` calls
-and a JDK dynamic proxy. The security findings, including the Zip Slip in
-`ProfileZipSlip`, the default credentials in `DefaultCredentialsTask`, and the
-weak PRNG in `PasswordResetLink`, are still reported.
+87 findings before, 43 after. The removed findings were lint noise
+(`java-system-out-usage` 26, `java-hardcoded-ip` 5, `java-empty-catch-block` 4),
+three `java-reflection-injection` matches on factory `newInstance()` calls and a
+JDK dynamic proxy, and two `java-path-traversal` duplicates on `new File(...)`
+constructors (one of them only ever passed to a log statement) now that the
+filesystem operation rather than the constructor is the sink. The security
+findings, including the Zip Slip in `ProfileZipSlip`, the default credentials in
+`DefaultCredentialsTask`, and the weak PRNG in `PasswordResetLink`, are still
+reported.
 
 ## Known limits
 
@@ -234,6 +251,16 @@ Anchoring the regex to the clause that binds the exception variable is not
 expressible in a single rule. The same code without the comment on the first
 clause is reported.
 
+**Containment checks must be visible as one expression.** `java-path-traversal`
+recognises `Path.startsWith`, `normalize().startsWith` and
+`getCanonicalPath().startsWith` as containment when the check is written on the
+variable that later reaches the sink, and the `File`/`Path` constructors are
+propagators rather than sinks so the check gets a chance to run. The String
+form, `String canon = f.getCanonicalPath(); if (!canon.startsWith(base))`, is
+indistinguishable from a bypassable prefix blacklist such as
+`name.startsWith("..")` and is not a sanitizer, so that spelling of the idiom is
+still reported at the open.
+
 **Ambiguous names in `java-insecure-random`.** The sink matches a security
 value by name, and `key` is genuinely ambiguous in Java. `rememberMeKey` (a
 Benchmark true positive) and `shardKey` or `cacheKey` (map keys, not secrets)
@@ -250,15 +277,15 @@ rule excludes. Whether that is a finding depends on who calls the helper, which
 is not visible to the rule.
 
 **Remaining noise not addressed here.** On the mature-library corpus these rules
-were untouched by this change and are still the largest remaining sources:
+are the largest remaining sources:
 
 | Rule | Findings | Cause |
 |---|---|---|
 | `java-template-injection` | 20 | Matches any `.process(...)` call |
 | `java-xxe-vulnerability` | 14 | Matches `DocumentBuilderFactory.newInstance()` unconditionally, ignoring whether secure features are set |
-| `java-unsafe-deserialization` | 14 | Library serialization helpers that accept a caller-supplied `ObjectInputStream` |
+| `java-unsafe-deserialization` | 24 | Library serialization helpers that accept a caller-supplied `ObjectInputStream`, plus Spring's `YamlProcessor`, whose restrictive `Constructor` and tag inspector are configured in a different method from the `loadAll()` call |
 | `java-jndi-injection` | 8 | Matches any `.lookup(...)` call |
-| `java-sql-injection` | 4 | `$STMT.execute(...)` and `$TEMPLATE.query(...)` sinks match any method of those names |
+| `java-sql-injection` | 2 | `$STMT.execute(...)` still matches any method named `execute` with a tainted first argument. Two SpEL `ConstructorExecutor.execute()` matches dropped out once the SQL string became the only sink argument |
 | `java-unvalidated-redirect` | 4 | All four are Spring's own `RedirectView`, which is the framework's redirect implementation |
 
 Every one of these is the same defect class the change fixes elsewhere: an

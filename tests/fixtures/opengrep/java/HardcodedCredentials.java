@@ -37,6 +37,9 @@ public class HardcodedCredentials {
     // Values that merely restate the keyword, including snake_case forms.
     // ok: java-hardcoded-credentials
     private static final String AUTH_PASSWORD = "password";
+    // A capitalised restatement is a UI label.
+    // ok: java-hardcoded-credentials
+    private static final String PASSWORD_LABEL = "Password";
     // ok: java-hardcoded-credentials
     public static final String ACCESSKEY_ATTRIBUTE = "accesskey";
     // ok: java-hardcoded-credentials

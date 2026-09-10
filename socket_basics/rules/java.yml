@@ -129,31 +129,38 @@ rules:
         from: $B
         to: $A
     pattern-sinks:
-      # JDBC statement execution
-      - pattern: $STMT.executeQuery(...)
-      - pattern: $STMT.execute(...)
-      - pattern: $STMT.executeUpdate(...)
-      - pattern: $STMT.executeLargeUpdate(...)
-      # JPA/Hibernate query creation
-      - pattern: $EM.createQuery(...)
-      - pattern: $EM.createNativeQuery(...)
-      - pattern: $SESSION.createQuery(...)
-      - pattern: $SESSION.createSQLQuery(...)
-      # JDBC template methods
-      # Spring JDBC template methods. Typing the receiver is not workable here:
-      # the template is routinely reached through a static field or an
-      # interface, so a typed metavariable misses most real call sites. Instead
-      # keep the broad receiver and subtract the collisions, which are all
-      # update() on a crypto primitive rather than a query.
+      # Only the SQL string is the sink. The other arguments of these APIs are
+      # bind parameters, row mappers and result types, so a parameterized call
+      # such as update("... = ?", input) is the remediation, not an injection.
       - patterns:
           - pattern-either:
-              - pattern: $TEMPLATE.query(...)
-              - pattern: $TEMPLATE.queryForObject(...)
-              - pattern: $TEMPLATE.queryForList(...)
-              - pattern: $TEMPLATE.queryForRowSet(...)
-              - pattern: $TEMPLATE.execute(...)
-              - pattern: $TEMPLATE.update(...)
-              - pattern: $TEMPLATE.batchUpdate(...)
+              # JDBC statement execution and preparation. The prepare sinks are
+              # what catch a concatenated query handed to prepareStatement()
+              # and then run with a no-argument execute().
+              - pattern: $STMT.executeQuery($SQL, ...)
+              - pattern: $STMT.execute($SQL, ...)
+              - pattern: $STMT.executeUpdate($SQL, ...)
+              - pattern: $STMT.executeLargeUpdate($SQL, ...)
+              - pattern: $STMT.addBatch($SQL)
+              - pattern: $CONN.prepareStatement($SQL, ...)
+              - pattern: $CONN.prepareCall($SQL, ...)
+              # JPA/Hibernate query creation
+              - pattern: $EM.createQuery($SQL, ...)
+              - pattern: $EM.createNativeQuery($SQL, ...)
+              - pattern: $SESSION.createQuery($SQL, ...)
+              - pattern: $SESSION.createSQLQuery($SQL, ...)
+              # Spring JDBC template methods. Typing the receiver is not
+              # workable here: the template is routinely reached through a
+              # static field or an interface, so a typed metavariable misses
+              # most real call sites. Keep the broad receiver and subtract the
+              # collisions, which are all update() on a crypto primitive.
+              - pattern: $TEMPLATE.query($SQL, ...)
+              - pattern: $TEMPLATE.queryForObject($SQL, ...)
+              - pattern: $TEMPLATE.queryForList($SQL, ...)
+              - pattern: $TEMPLATE.queryForMap($SQL, ...)
+              - pattern: $TEMPLATE.queryForRowSet($SQL, ...)
+              - pattern: $TEMPLATE.update($SQL, ...)
+              - pattern: $TEMPLATE.batchUpdate($SQL, ...)
           - pattern-not: (MessageDigest $D).update(...)
           - pattern-not: (java.security.MessageDigest $D).update(...)
           - pattern-not: (Mac $M).update(...)
@@ -164,6 +171,17 @@ rules:
           - pattern-not: (java.security.Signature $S).update(...)
           - pattern-not: (Checksum $K).update(...)
           - pattern-not: (java.util.zip.Checksum $K).update(...)
+          # An inline chain has no declared receiver for the typed subtraction
+          # to see, so name the factory calls as well.
+          - pattern-not: MessageDigest.getInstance(...).update(...)
+          - pattern-not: java.security.MessageDigest.getInstance(...).update(...)
+          - pattern-not: Mac.getInstance(...).update(...)
+          - pattern-not: javax.crypto.Mac.getInstance(...).update(...)
+          - pattern-not: Cipher.getInstance(...).update(...)
+          - pattern-not: javax.crypto.Cipher.getInstance(...).update(...)
+          - pattern-not: Signature.getInstance(...).update(...)
+          - pattern-not: java.security.Signature.getInstance(...).update(...)
+          - focus-metavariable: $SQL
     pattern-sanitizers:
       # PreparedStatement parameter binding
       - pattern: $STMT.setString(...)
@@ -205,39 +223,55 @@ rules:
         - "*Tests.java"
         - "*TestCase.java"
         - "*Benchmark.java"
-    patterns:
-      - pattern-either:
-          # Receiver must actually be an ObjectInputStream. A bare $X.readObject()
-          # also matches unrelated APIs such as BouncyCastle's PEMParser and
-          # JBoss Marshalling's Unmarshaller, which are not Java deserialization.
-          - pattern: (ObjectInputStream $OIS).readObject()
-          - pattern: new ObjectInputStream(...).readObject()
-          - pattern: (XMLDecoder $D).readObject()
-          - pattern: new XMLDecoder(...).readObject()
-          # SnakeYAML without a SafeConstructor deserializes arbitrary types
-          - pattern: new Yaml().load(...)
-          - pattern: (Yaml $Y).load(...)
-      # Implementing the java.io.Serializable contract requires calling
-      # readObject() on the stream the JVM hands you. That is not a finding.
-      - pattern-not-inside: |
-          private void readObject($T $S) { ... }
-      - pattern-not-inside: |
-          private void readObject($T $S) throws $EX { ... }
-      - pattern-not-inside: |
-          public void readExternal($T $S) { ... }
-      - pattern-not-inside: |
-          public void readExternal($T $S) throws $EX { ... }
-      # A SafeConstructor load is the remediation this rule recommends.
-      # SnakeYAML 2.0 removed the no-arg SafeConstructor, so the argument
-      # list has to stay open here.
-      - pattern-not: new Yaml(new SafeConstructor(...), ...).load(...)
-      - pattern-not: new Yaml(new org.yaml.snakeyaml.constructor.SafeConstructor(...), ...).load(...)
-      - pattern-not-inside: |
-          $T $Y = new Yaml(new SafeConstructor(...), ...);
-          ...
-      - pattern-not-inside: |
-          $T $Y = new Yaml(new org.yaml.snakeyaml.constructor.SafeConstructor(...), ...);
-          ...
+    pattern-either:
+      # Java native deserialization and XMLDecoder. The receiver must actually
+      # be an ObjectInputStream: a bare $X.readObject() also matches unrelated
+      # APIs such as BouncyCastle's PEMParser and JBoss Marshalling's
+      # Unmarshaller, which are not Java deserialization.
+      - patterns:
+          - pattern-either:
+              - pattern: (ObjectInputStream $OIS).readObject()
+              - pattern: new ObjectInputStream(...).readObject()
+              - pattern: (XMLDecoder $D).readObject()
+              - pattern: new XMLDecoder(...).readObject()
+          # Implementing the java.io.Serializable contract requires calling
+          # readObject() on the stream the JVM hands you. That is not a finding.
+          - pattern-not-inside: |
+              private void readObject($T $S) { ... }
+          - pattern-not-inside: |
+              private void readObject($T $S) throws $EX { ... }
+          - pattern-not-inside: |
+              public void readExternal($T $S) { ... }
+          - pattern-not-inside: |
+              public void readExternal($T $S) throws $EX { ... }
+      # SnakeYAML without a SafeConstructor deserializes arbitrary types,
+      # through load(), loadAs() and loadAll() alike.
+      - patterns:
+          - pattern: new Yaml().$LOAD(...)
+          - metavariable-regex:
+              metavariable: $LOAD
+              regex: ^(load|loadAs|loadAll)$
+      - patterns:
+          - pattern: (Yaml $Y).$LOAD(...)
+          - metavariable-regex:
+              metavariable: $LOAD
+              regex: ^(load|loadAs|loadAll)$
+          # A SafeConstructor load is the remediation this rule recommends.
+          # SnakeYAML 2.0 removed the no-arg SafeConstructor, so the argument
+          # list has to stay open here.
+          - pattern-not: new Yaml(new SafeConstructor(...), ...).$LOAD(...)
+          - pattern-not: new Yaml(new org.yaml.snakeyaml.constructor.SafeConstructor(...), ...).$LOAD(...)
+          # Bound to the receiver: $Y here is the $Y of the load above. These
+          # exclusions live in their own branch because a metavariable the
+          # positive pattern does not bind is free inside pattern-not-inside,
+          # and a free $Y let one SafeConstructor field exclude every
+          # readObject() finding in the same class.
+          - pattern-not-inside: |
+              $T $Y = new Yaml(new SafeConstructor(...), ...);
+              ...
+          - pattern-not-inside: |
+              $T $Y = new Yaml(new org.yaml.snakeyaml.constructor.SafeConstructor(...), ...);
+              ...
     metadata:
       category: security
       cwe: CWE-502
@@ -421,20 +455,27 @@ rules:
         from: $X
         to: org.apache.commons.codec.binary.Base64.encodeBase64
     pattern-sinks:
-      - pattern: (DirContext $CTX).search(...)
-      - pattern: (InitialDirContext $CTX).search(...)
-      - pattern: (javax.naming.directory.DirContext $CTX).search(...)
-      - pattern: (javax.naming.directory.InitialDirContext $CTX).search(...)
-      - pattern: (LdapContext $CTX).search(...)
-      - pattern: (javax.naming.ldap.LdapContext $CTX).search(...)
-      - pattern: (InitialLdapContext $CTX).search(...)
-      - pattern: (javax.naming.ldap.InitialLdapContext $CTX).search(...)
-      - pattern: (LdapOperations $T).search(...)
-      - pattern: (org.springframework.ldap.core.LdapOperations $T).search(...)
+      - patterns:
+          - pattern-either:
+              - pattern: (DirContext $CTX).search(...)
+              - pattern: (InitialDirContext $CTX).search(...)
+              - pattern: (javax.naming.directory.DirContext $CTX).search(...)
+              - pattern: (javax.naming.directory.InitialDirContext $CTX).search(...)
+              - pattern: (LdapContext $CTX).search(...)
+              - pattern: (javax.naming.ldap.LdapContext $CTX).search(...)
+              - pattern: (InitialLdapContext $CTX).search(...)
+              - pattern: (javax.naming.ldap.InitialLdapContext $CTX).search(...)
+              - pattern: (LdapOperations $T).search(...)
+              - pattern: (org.springframework.ldap.core.LdapOperations $T).search(...)
+              - pattern: (LdapTemplate $T).search(...)
+          # The four-argument form with a literal filter expression is the
+          # parameterized API: values passed through filterArgs are escaped by
+          # the provider. It is the remediation this rule's own fix text
+          # recommends, so it must not be reported.
+          - pattern-not: $CTX.search($NAME, "...", $ARGS, $CONTROLS)
       - pattern: new SearchFilter(...)
       - pattern: new LdapName(...)
       - pattern: new javax.naming.ldap.LdapName(...)
-      - pattern: (LdapTemplate $T).search(...)
       - pattern: (LdapQueryBuilder $Q).filter(...)
     pattern-sanitizers:
       - pattern: LdapEncoder.filterEncode(...)
@@ -520,12 +561,12 @@ rules:
               regex: ^(?!(?i:bearer|basic|digest|oauth|negotiate)$).*$
           - metavariable-regex:
               metavariable: $VALUE
-              # A lowercase value that just restates the credential keyword is
-              # naming a field or an auth method ("password", "accesskey",
-              # "stompCredentials", "access_token", "j_password"), not holding
-              # one. Real default credentials such as "admin" or "webgoat" do
-              # not restate the keyword.
-              regex: ^(?!(?=[a-z])(?!.*[0-9])(?i:[a-z_]*(password|passwd|credential|secret|token|apikey|accesskey|auth)[a-z_]*)$).*$
+              # A value that just restates the credential keyword is naming a
+              # field, a UI label or an auth method ("password", "Password",
+              # "accesskey", "stompCredentials", "access_token", "j_password"),
+              # not holding one. Real default credentials such as "admin",
+              # "webgoat" or "password123" do not restate the keyword alone.
+              regex: ^(?!(?=[A-Za-z])(?!.*[0-9])(?i:[a-z_]*(password|passwd|credential|secret|token|apikey|accesskey|auth)[a-z_]*)$).*$
       # Pattern 2: credential APIs called with string literals
       - pattern: new PasswordAuthentication($USER, "...".toCharArray())
       - pattern: DriverManager.getConnection($URL, $USER, "...")
@@ -880,8 +921,11 @@ rules:
       # Both the imported and fully qualified spellings. Servlet code and
       # generated code routinely write java.io.* in full, and the previous
       # short-name-only sinks missed every one of those call sites.
-      - pattern: new File(...)
-      - pattern: new java.io.File(...)
+      # Constructing a File or a Path touches nothing, so new File(...) and
+      # Paths.get(...) are propagators (above) rather than sinks. Making the
+      # constructor a sink reported the canonical-path containment idiom
+      # (construct, canonicalize, check, then open) at the constructor, before
+      # the check could run. The filesystem operations below are the sinks.
       - pattern: new FileInputStream(...)
       - pattern: new java.io.FileInputStream(...)
       - pattern: new FileOutputStream(...)
@@ -892,24 +936,31 @@ rules:
       - pattern: new java.io.FileWriter(...)
       - pattern: new RandomAccessFile(...)
       - pattern: new java.io.RandomAccessFile(...)
-      - pattern: Files.newInputStream(...)
-      - pattern: Files.newOutputStream(...)
-      - pattern: Files.newBufferedReader(...)
-      - pattern: Files.newBufferedWriter(...)
-      - pattern: Files.readAllBytes(...)
-      - pattern: Files.readAllLines(...)
-      - pattern: Files.write(...)
-      - pattern: Files.copy(...)
-      - pattern: Files.move(...)
-      - pattern: Files.delete(...)
-      - pattern: Files.deleteIfExists(...)
-      - pattern: java.nio.file.Files.readAllBytes(...)
-      - pattern: java.nio.file.Files.write(...)
-      - pattern: java.nio.file.Files.copy(...)
-      - pattern: java.nio.file.Files.newInputStream(...)
-      - pattern: java.nio.file.Files.newOutputStream(...)
-      - pattern: Paths.get(...)
-      - pattern: java.nio.file.Paths.get(...)
+      # Filesystem operations on a File built from the tainted value. exists()
+      # and friends are included: probing an attacker-chosen path discloses the
+      # filesystem, and it is the sink in a large share of real traversal code.
+      - patterns:
+          - pattern-either:
+              - pattern: (File $F).$M(...)
+              - pattern: (java.io.File $F).$M(...)
+          - metavariable-regex:
+              metavariable: $M
+              regex: ^(exists|isFile|isDirectory|canRead|canWrite|canExecute|length|lastModified|list|listFiles|createNewFile|delete|deleteOnExit|mkdir|mkdirs|renameTo|setLastModified|setReadable|setWritable|setExecutable)$
+          - focus-metavariable: $F
+      - patterns:
+          - pattern-either:
+              - pattern: new File(...).$M(...)
+              - pattern: new java.io.File(...).$M(...)
+          - metavariable-regex:
+              metavariable: $M
+              regex: ^(exists|isFile|isDirectory|canRead|canWrite|canExecute|length|lastModified|list|listFiles|createNewFile|delete|deleteOnExit|mkdir|mkdirs|renameTo|setLastModified|setReadable|setWritable|setExecutable)$
+      - patterns:
+          - pattern-either:
+              - pattern: Files.$M(...)
+              - pattern: java.nio.file.Files.$M(...)
+          - metavariable-regex:
+              metavariable: $M
+              regex: ^(newInputStream|newOutputStream|newBufferedReader|newBufferedWriter|newByteChannel|newDirectoryStream|readAllBytes|readAllLines|readString|lines|write|writeString|copy|move|delete|deleteIfExists|createFile|createDirectory|createDirectories|exists|notExists|isDirectory|isRegularFile|isReadable|isWritable|size|list|walk|find|getLastModifiedTime)$
     pattern-sanitizers:
       # normalize() alone collapses ../ but does not confine the result, so it
       # is only a sanitiser when paired with a containment check. The
@@ -926,6 +977,31 @@ rules:
         # Without by-side-effect the sanitizer only cleans the startsWith
         # expression itself, so the checked variable stayed tainted at every
         # later sink and the containment check suppressed nothing.
+        by-side-effect: true
+      # The same containment check with normalize() inside the condition.
+      - patterns:
+          - pattern-either:
+              - pattern: (Path $PATH).normalize().startsWith($BASE)
+              - pattern: (Path $PATH).toAbsolutePath().normalize().startsWith($BASE)
+              - pattern: (Path $PATH).normalize().toAbsolutePath().startsWith($BASE)
+              - pattern: (java.nio.file.Path $PATH).normalize().startsWith($BASE)
+              - pattern: (java.nio.file.Path $PATH).toAbsolutePath().normalize().startsWith($BASE)
+          - focus-metavariable: $PATH
+        by-side-effect: true
+      # The java.io idiom: canonicalize, then prefix test against the canonical
+      # base. getCanonicalPath() resolves ../ so, unlike a prefix test on the
+      # raw string, this is containment. The String form (canon = f.getCanonicalPath();
+      # canon.startsWith(base)) is indistinguishable from a blacklist and is not
+      # a sanitizer; see the known limits in docs/java-sast-benchmark.md.
+      - patterns:
+          - pattern-either:
+              - pattern: (File $F).getCanonicalPath().startsWith($BASE)
+              - pattern: (java.io.File $F).getCanonicalPath().startsWith($BASE)
+              - pattern: (File $F).getCanonicalFile().toPath().startsWith($BASE)
+              - pattern: (java.io.File $F).getCanonicalFile().toPath().startsWith($BASE)
+              - pattern: (File $F).toPath().normalize().startsWith($BASE)
+              - pattern: (java.io.File $F).toPath().normalize().startsWith($BASE)
+          - focus-metavariable: $F
         by-side-effect: true
       - pattern: FilenameUtils.getName(...)
       - pattern: org.apache.commons.io.FilenameUtils.getName(...)
