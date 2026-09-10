@@ -626,6 +626,7 @@ rules:
       - pattern: DigestUtils.sha1($DATA)
       - pattern: DigestUtils.sha1Hex($DATA)
       - pattern: org.apache.commons.codec.digest.DigestUtils.sha1($DATA)
+      - pattern: org.apache.commons.codec.digest.DigestUtils.sha1Hex($DATA)
     metadata:
       category: security
       cwe: CWE-327

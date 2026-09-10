@@ -81,7 +81,7 @@ to the relevant fixture whenever you change a rule; the substring,
 qualified-name and containment-check bugs found in review are all covered there
 now.
 
-Three behaviours worth knowing when editing these:
+Four behaviours worth knowing when editing these:
 
 - `metavariable-regex` **anchors at the start** of the metavariable text, so
   every alternation branch needs its own leading `.*`.
@@ -89,6 +89,13 @@ Three behaviours worth knowing when editing these:
   also lowercases the deliberately case-sensitive camelCase branches, which is
   how `pivot`, `divisor`, `spinner` and `monkey` were matching `iv`, `pin` and
   `key`.
+- The explicit `pattern-propagators` for `String` methods (`toLowerCase`,
+  `replace`, `substring`, `StringBuilder.toString`, `Long.toHexString`) are
+  belt-and-braces. opengrep propagates taint through any method call on a
+  tainted receiver and through any call with a tainted argument by default, so
+  a taint rule that omits them still reports those flows. Review tooling that
+  reasons from the propagator list alone will report their absence as a missed
+  flow; probe with a fixture before acting on such a finding.
 - opengrep's default ignore list skips any path under a `tests/` directory, and
   on some releases (1.19.0) that applies even to explicitly listed files. The
   harness therefore scans a temporary copy of the fixtures and asserts that
