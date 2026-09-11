@@ -21,6 +21,7 @@ from socket_basics.core.config import (
     _discover_repository,
     _git_env,
     create_config_from_args,
+    parse_cli_args,
     resolve_changed_files_request,
 )
 
@@ -103,11 +104,12 @@ def _git(repo, *args):
     )
 
 
-def _config_args(workspace, changed_files):
+def _config_args(workspace, changed_files, scan_all=None):
     return Namespace(
         config=None,
         workspace=str(workspace),
         scan_files=None,
+        scan_all=scan_all,
         console_tabular_enabled=False,
         output_console_enabled=False,
         console_json_enabled=False,
@@ -374,6 +376,65 @@ class TestScopeRequestReachesEveryConfigPath:
         cfg = create_config_from_args(_config_args(pr_repo, ""))
 
         assert sorted(cfg.get("changed_files")) == ["base.py", "feat.py"]
+
+
+class TestScanAllCliFlag:
+    """``--scan-all``/``--no-scan-all``: the CLI spelling of ``scan_all``.
+
+    Every other scope setting had a flag, so the fail-open escape hatch the
+    unresolvable-scope error recommends could not be followed from the CLI.
+    """
+
+    def test_flag_absent_parses_to_none(self):
+        assert parse_cli_args().parse_args([]).scan_all is None
+
+    def test_scan_all_parses_to_true(self):
+        assert parse_cli_args().parse_args(["--scan-all"]).scan_all is True
+
+    def test_no_scan_all_parses_to_false(self):
+        assert parse_cli_args().parse_args(["--no-scan-all"]).scan_all is False
+
+    def test_flag_opts_into_the_full_scan_fallback(self, pr_repo, monkeypatch):
+        monkeypatch.delenv("INPUT_SCAN_ALL", raising=False)
+
+        cfg = create_config_from_args(_config_args(pr_repo, "pr", scan_all=True))
+
+        assert cfg.get("scan_all") is True
+        assert cfg.get("changed_files") == []
+        assert cfg.get("changed_files_scope_requested") is False
+        assert cfg.get_scan_targets() == [str(pr_repo)]
+
+    def test_without_the_flag_an_unresolvable_scope_still_fails(self, pr_repo, monkeypatch):
+        monkeypatch.delenv("INPUT_SCAN_ALL", raising=False)
+
+        with pytest.raises(SystemExit, match="could not be resolved"):
+            create_config_from_args(_config_args(pr_repo, "pr"))
+
+    def test_no_scan_all_overrides_an_environment_scan_all(self, pr_repo, monkeypatch):
+        """The flag has to be able to turn off a value set somewhere else."""
+        monkeypatch.setenv("INPUT_SCAN_ALL", "true")
+
+        with pytest.raises(SystemExit, match="could not be resolved"):
+            create_config_from_args(_config_args(pr_repo, "pr", scan_all=False))
+
+    def test_omitting_the_flag_leaves_an_environment_scan_all_alone(self, pr_repo, monkeypatch):
+        monkeypatch.setenv("INPUT_SCAN_ALL", "true")
+
+        cfg = create_config_from_args(_config_args(pr_repo, "pr"))
+
+        assert cfg.get("scan_all") is True
+        assert cfg.get_scan_targets() == [str(pr_repo)]
+
+    def test_failure_message_names_every_interface(self, pr_repo, monkeypatch):
+        monkeypatch.delenv("INPUT_SCAN_ALL", raising=False)
+
+        with pytest.raises(SystemExit) as error:
+            create_config_from_args(_config_args(pr_repo, "pr"))
+
+        message = str(error.value)
+        assert "--scan-all" in message
+        assert "INPUT_SCAN_ALL" in message
+        assert "scan_all: true" in message
 
 
 class TestPrBaseResolution:

@@ -8,6 +8,20 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Added
+- `--scan-all` / `--no-scan-all` CLI flags, the command-line equivalent of the
+  `scan_all` action input, `INPUT_SCAN_ALL` and the `scan_all` JSON/dashboard
+  key. `scan_all` was the one scope setting the 3.2.0 parity pass missed, so
+  the remediation the unresolvable-scope error recommends was not reachable
+  from the CLI at all. `--no-scan-all` forces the fail-closed behaviour back on
+  for a single run when `scan_all` is already set elsewhere; passing neither
+  flag leaves the configured value untouched.
+
+### Changed
+- The unresolvable `changed_files` error now names the remediation for each
+  interface (`--scan-all`, the `scan_all` action input, `INPUT_SCAN_ALL`, a
+  `--config` JSON or dashboard key) instead of saying only "set scan_all".
+
 ## [3.2.0] - 2026-09-10
 
 Scanner accuracy release. TruffleHog secret verification and the Java SAST rule

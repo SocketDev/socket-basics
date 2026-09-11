@@ -32,7 +32,7 @@ GitHub Action input is delivered to the container as the environment variable
 | `--config` | — | — | — | Path to a JSON configuration file. |
 | `--changed-files` | `changed_files` | `INPUT_CHANGED_FILES` | `changed_files` | Diff-only scope: `auto`, `pr`, `current-commit`, a commit hash or a file list. |
 | `--scan-files` | `scan_files` | `INPUT_SCAN_FILES` | `scan_files` | Explicit comma-separated file list. |
-| — | `scan_all` | `INPUT_SCAN_ALL` | `scan_all` | Fail-open fallback when a `changed_files` scope cannot be resolved. |
+| `--scan-all` / `--no-scan-all` | `scan_all` | `INPUT_SCAN_ALL` | `scan_all` | Fail-open fallback when a `changed_files` scope cannot be resolved. |
 | `--verbose`, `-v` | `verbose` | `INPUT_VERBOSE` | `verbose` | DEBUG logging. |
 | `--console-tabular-enabled` | `console_tabular_enabled` | `INPUT_CONSOLE_TABULAR_ENABLED` | `console_tabular_enabled` | Print consolidated findings as tables. |
 | `--console-json-enabled` | `console_json_enabled` | `INPUT_CONSOLE_JSON_ENABLED` | `console_json_enabled` | Print consolidated findings as JSON. |
@@ -289,7 +289,9 @@ repository, git refused to read the repository, no PR base at all) and fails
 with a configuration error. It never reports a green scan of nothing and never
 silently widens to the whole repository.
 
-Set **`scan_all`** to opt into widening on that failure path. An unresolvable
+Pass **`--scan-all`** (or set `scan_all: true` as an action input, in a
+`--config` JSON file or in your dashboard config, or `INPUT_SCAN_ALL=true` in
+the environment) to opt into widening on that failure path. An unresolvable
 scope then falls back to a full-workspace scan with a warning, consistently
 across every enabled scanner. A scope that resolves successfully remains
 authoritative even when `scan_all` is set; a genuinely empty diff still skips
@@ -326,6 +328,30 @@ the scanners this setting does scope are SAST/OpenGrep, secrets and containers.
 **Example:**
 ```bash
 socket-basics --changed-files auto
+```
+
+### `--scan-all`, `--no-scan-all`
+Fail-open fallback for `--changed-files`. When the requested scope cannot be
+resolved — a shallow checkout, a workspace that is not a git repository, no
+pull-request base — the run normally fails with a configuration error.
+`--scan-all` widens to a full-workspace scan with a warning instead, across
+every enabled scanner.
+
+It is only a fallback: a scope that resolves successfully stays authoritative
+even with `--scan-all` set, and a genuinely empty diff still skips the scoped
+scanners. On its own, with no `--changed-files`, it is the default behaviour —
+scan the whole workspace.
+
+`--no-scan-all` restores the fail-closed behaviour. Use it when `scan_all` is
+already on from `INPUT_SCAN_ALL`, a `--config` JSON file or dashboard config
+and you want this run to fail rather than silently widen. Omitting both flags
+leaves whatever those sources configured untouched.
+
+**Example:**
+```bash
+# Scan the changed files; fall back to the whole workspace if git can't say
+# what changed
+socket-basics --changed-files auto --scan-all
 ```
 
 ### `--console-tabular-enabled`
