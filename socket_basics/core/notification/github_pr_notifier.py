@@ -22,8 +22,12 @@ class GithubPRNotifier(BaseNotifier):
 
     def __init__(self, params: Dict[str, Any] | None = None):
         super().__init__(params or {})
-        # GitHub token from params, env variable, or app config
+        # GitHub token from params, env variable, or app config. The notifier
+        # parameter is named github_token in notifications.yaml, which is the
+        # key the manager resolves dashboard config and env vars into; token is
+        # kept for callers that construct the notifier directly.
         self.token = (
+            self.config.get('github_token') or
             self.config.get('token') or
             get_github_token()
         )
