@@ -22,6 +22,17 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   interface (`--scan-all`, the `scan_all` action input, `INPUT_SCAN_ALL`, a
   `--config` JSON or dashboard key) instead of saying only "set scan_all".
 
+### Fixed
+- **GitHub PR notifier now reads the `github_token` notifier parameter.** The
+  parameter is declared as `github_token` in `notifications.yaml`, which is the
+  key the notification manager resolves dashboard configuration and the
+  `GITHUB_TOKEN` environment variable into, but the notifier looked up `token`.
+  A token supplied through dashboard configuration enabled the notifier without
+  reaching the GitHub API call, so the run logged `no GitHub token available`
+  and posted nothing. Environment-variable configuration was unaffected, since
+  the notifier fell back to reading `GITHUB_TOKEN` directly. `token` is still
+  accepted for callers that construct the notifier themselves.
+
 ## [3.2.0] - 2026-09-10
 
 Scanner accuracy release. TruffleHog secret verification and the Java SAST rule
