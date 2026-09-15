@@ -8,6 +8,12 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [3.3.0] - 2026-09-15
+
+Small release pairing a CLI parity addition with a notification fix. The fix
+changes behavior for anyone who configured a GitHub token through the Socket
+dashboard: PR comments that were silently never posted will start posting.
+
 ### Added
 - `--scan-all` / `--no-scan-all` CLI flags, the command-line equivalent of the
   `scan_all` action input, `INPUT_SCAN_ALL` and the `scan_all` JSON/dashboard
@@ -15,12 +21,14 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   the remediation the unresolvable-scope error recommends was not reachable
   from the CLI at all. `--no-scan-all` forces the fail-closed behavior back on
   for a single run when `scan_all` is already set elsewhere; passing neither
-  flag leaves the configured value untouched.
+  flag leaves the configured value untouched. (#115)
 
 ### Changed
 - The unresolvable `changed_files` error now names the remediation for each
   interface (`--scan-all`, the `scan_all` action input, `INPUT_SCAN_ALL`, a
   `--config` JSON or dashboard key) instead of saying only "set scan_all".
+  (#115)
+- Socket Python CLI 2.8.0 -> 2.9.0 in the heavy and app-tests images.
 
 ### Fixed
 - **GitHub PR notifier now reads the `github_token` notifier parameter.** The
@@ -31,7 +39,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   reaching the GitHub API call, so the run logged `no GitHub token available`
   and posted nothing. Environment-variable configuration was unaffected, since
   the notifier fell back to reading `GITHUB_TOKEN` directly. `token` is still
-  accepted for callers that construct the notifier themselves.
+  accepted for callers that construct the notifier themselves. (#114)
 
 ## [3.2.0] - 2026-09-10
 
