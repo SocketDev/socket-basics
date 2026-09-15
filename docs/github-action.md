@@ -397,7 +397,7 @@ If the scope could not be applied, the run fails and says why:
 | `no pull request base was found` | The trigger is not `pull_request`, so there is no base. Use `changed_files: 'current-commit'` or an explicit file list |
 | `is not a git repository` | Run `actions/checkout` before the scan step |
 | `git refused to read ... even with ... safe.directory` | The checkout is damaged or incomplete. Re-run `actions/checkout`, or pass an explicit file list |
-| `the scope could not be resolved` | Fix the preceding Git error, or set `scan_all: true` to opt into a full-repository fallback |
+| `the scope could not be resolved` | Fix the preceding Git error, or set `scan_all: true` (CLI: `--scan-all`) to opt into a full-repository fallback |
 
 A successful empty diff is logged separately as genuinely empty and skips the
 scoped scanners; it is never conflated with a resolution failure.
@@ -416,7 +416,10 @@ writes the runner's git config rather than the container's.
 `INPUT_CHANGED_FILES` environment variable, the `--changed-files` CLI flag, a
 `--config` JSON file, and a Socket dashboard config. `scan_all` is only the
 fail-open fallback when one of those requests cannot be resolved; it does not
-override a successfully resolved scope.
+override a successfully resolved scope. It reaches the scan the same five ways
+— the `scan_all` input, `INPUT_SCAN_ALL=true`, the `--scan-all` CLI flag, a
+`--config` JSON key, or dashboard config — and `--no-scan-all` turns it back
+off for a single CLI run.
 
 ## PR Comment Customization
 
@@ -852,7 +855,7 @@ Every input has a CLI flag and environment-variable equivalent; the
 **Scan Scope:**
 - `changed_files` — Diff-only mode (`auto`, `pr`, `current-commit`, a commit hash, or a file list)
 - `scan_files` — Explicit comma-separated file list
-- `scan_all` — Fail-open fallback when a `changed_files` scope cannot be resolved
+- `scan_all` — Fail-open fallback when a `changed_files` scope cannot be resolved (CLI: `--scan-all` / `--no-scan-all`)
 
 **SAST Languages:**
 - `all_languages_enabled` — Enable all languages
