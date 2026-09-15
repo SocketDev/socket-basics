@@ -8,6 +8,37 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Fixed
+- **Findings no longer reproduce the credential they report.** The SAST
+  connector copied OpenGrep's matched source line into `props.codeSnippet` and
+  into the `detailedReport` markdown verbatim. For the hardcoded-credential
+  rules the matched line *is* the credential, so the value was written to
+  `.socket.facts.json` in the scanned workspace, uploaded to Socket, rendered
+  in the dashboard, and included in every notifier payload. This affected the
+  `*-hardcoded-secret`, `*-hardcoded-credentials`, `*-hardcoded-password`,
+  `*-default-credentials`, `*-plain-text-password` and `*-weak-jwt-secret`
+  rules across all fifteen bundled language rule sets, not only Python and
+  JavaScript. Snippets for these rules now keep the assignment target, the
+  syntax, the file and the line, and mask the literal's contents.
+- Every snippet, dataflow-trace step and detailed report, regardless of which
+  rule produced it, is now scrubbed of values matching a well-known credential
+  format (AWS key IDs, GitHub tokens, Stripe keys, Slack tokens, Google API
+  keys, npm/PyPI tokens, JWTs, PEM private key bodies, and credentials embedded
+  in a URL). A rule unrelated to secrets can still match a line that happens to
+  carry one.
+- Short secrets are no longer partly revealed. TruffleHog's `redactedValue` kept
+  the first and last four characters of any value longer than eight, which for a
+  short password left most of it readable. Values under sixteen characters are
+  now masked completely.
+- TruffleHog no longer scans the facts file this run writes. The file lands
+  inside the scan target, so a previous run's output was re-detected as a
+  finding of its own that pointed at the output file rather than the source
+  line.
+
+### Added
+- A `redact` rule-metadata key. Set it on a custom SAST rule to mark the match
+  as a credential (or to opt a rule out); without it, the rule name decides.
+
 ## [3.3.0] - 2026-09-15
 
 Small release pairing a CLI parity addition with a notification fix. The fix

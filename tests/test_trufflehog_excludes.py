@@ -176,7 +176,11 @@ def test_scan_passes_one_exclude_paths_flag_and_cleans_up(tmp_path, monkeypatch)
     command = captured["command"]
     assert command.count("--exclude-paths") == 1
     assert captured["exists_during_run"] is True
-    assert len(captured["contents"]) == 3
+    # Three configured directories, plus the facts file this run writes and the
+    # temporary name it is staged under.
+    facts_patterns = [p for p in captured["contents"] if "facts" in p]
+    assert len(facts_patterns) == 2
+    assert len(captured["contents"]) == 5
     assert not Path(command[command.index("--exclude-paths") + 1]).exists()
 
 

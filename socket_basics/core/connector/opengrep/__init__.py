@@ -23,6 +23,11 @@ from ..base import BaseConnector
 from . import github_pr, slack, ms_teams, ms_sentinel, sumologic, console, jira, webhook, json_notifier
 from .custom_rules import CustomRulesBuilder
 from .cwe_catalog import CWE_CATALOG
+from ...utils.redaction import (
+	is_credential_finding,
+	redact_dataflow_trace,
+	redact_snippet,
+)
 
 # Import shared formatters
 from ...formatters import get_all_formatters
@@ -423,7 +428,17 @@ class OpenGrepScanner(BaseConnector):
 							# default if unknown
 							sev_label = 'medium'
 
+						# Mask here, not at the destinations: everything below
+						# reads `code_snippet`, and the props it lands in are
+						# read in turn by the facts file, the upload and every
+						# notifier. See socket_basics.core.utils.redaction.
 						code_snippet = (r.get('extra') or {}).get('lines') or (r.get('extra') or {}).get('snippet') or ''
+						code_snippet = redact_snippet(
+							code_snippet,
+							credential_finding=is_credential_finding(
+								check_id, (r.get('extra') or {}).get('metadata') or {}
+							),
+						)
 
 						alert = {
 							'title': check_id,
@@ -527,7 +542,9 @@ class OpenGrepScanner(BaseConnector):
 								if _intermediates:
 									_trace_data['intermediates'] = [_fmt_trace_loc(v) for v in _intermediates]
 
-								alert['props']['dataflowTrace'] = _trace_data
+								# Trace steps quote source lines the same way the
+								# snippet does, so they get the same treatment.
+								alert['props']['dataflowTrace'] = redact_dataflow_trace(_trace_data)
 							except Exception:
 								pass  # Skip trace if structure is unexpected
 

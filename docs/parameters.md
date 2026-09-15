@@ -467,6 +467,37 @@ Custom rule file notes:
 - Files ending in `.test.yml` or `.test.yaml` are ignored.
 - Rules without `languages` are skipped.
 
+#### Masking a custom rule's matched line
+
+A finding's `codeSnippet` is the source line the rule matched. For most rules
+that line is vulnerable code and is shown as written; for a rule that matches a
+hardcoded credential, the line contains the credential, so Socket Basics masks
+the string literals in it before the finding is written to the facts file,
+uploaded, or sent to a notifier. The file path and line number are kept either
+way.
+
+Bundled rules are recognized by name (`*-hardcoded-secret`,
+`*-hardcoded-credentials`, `*-hardcoded-password`, `*-default-credentials`,
+`*-plain-text-password`, `*-weak-jwt-secret`). A custom rule can say so
+directly with a `redact` metadata key, which also works to opt a rule out:
+
+```yaml
+rules:
+  - id: acme-internal-token
+    message: "Internal service token committed to source"
+    severity: HIGH
+    languages: [python]
+    pattern: $VAR = "acme_tok_..."
+    metadata:
+      redact: true
+```
+
+Independently of this setting, every snippet is scrubbed of values matching a
+well-known credential format (AWS key IDs, GitHub tokens, Stripe keys, Slack
+tokens, Google API keys, npm and PyPI tokens, JWTs, PEM private key bodies, and
+credentials embedded in a URL), so a rule unrelated to secrets that matches a
+line carrying one does not pass it through.
+
 ### Language-Specific Rule Configuration
 
 For each language, you can enable or disable specific rules:
