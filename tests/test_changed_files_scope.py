@@ -381,8 +381,8 @@ class TestScopeRequestReachesEveryConfigPath:
 class TestScanAllCliFlag:
     """``--scan-all``/``--no-scan-all``: the CLI spelling of ``scan_all``.
 
-    Every other scope setting had a flag, so the fail-open escape hatch the
-    unresolvable-scope error recommends could not be followed from the CLI.
+    The error raised on an unresolvable scope recommends scan_all, so every
+    interface it names -- the CLI included -- has to be able to set it.
     """
 
     def test_flag_absent_parses_to_none(self):

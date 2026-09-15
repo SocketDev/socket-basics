@@ -13,7 +13,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   `scan_all` action input, `INPUT_SCAN_ALL` and the `scan_all` JSON/dashboard
   key. `scan_all` was the one scope setting the 3.2.0 parity pass missed, so
   the remediation the unresolvable-scope error recommends was not reachable
-  from the CLI at all. `--no-scan-all` forces the fail-closed behaviour back on
+  from the CLI at all. `--no-scan-all` forces the fail-closed behavior back on
   for a single run when `scan_all` is already set elsewhere; passing neither
   flag leaves the configured value untouched.
 

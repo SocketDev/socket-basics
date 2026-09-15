@@ -339,10 +339,10 @@ every enabled scanner.
 
 It is only a fallback: a scope that resolves successfully stays authoritative
 even with `--scan-all` set, and a genuinely empty diff still skips the scoped
-scanners. On its own, with no `--changed-files`, it is the default behaviour —
+scanners. On its own, with no `--changed-files`, it is the default behavior —
 scan the whole workspace.
 
-`--no-scan-all` restores the fail-closed behaviour. Use it when `scan_all` is
+`--no-scan-all` restores the fail-closed behavior. Use it when `scan_all` is
 already on from `INPUT_SCAN_ALL`, a `--config` JSON file or dashboard config
 and you want this run to fail rather than silently widen. Omitting both flags
 leaves whatever those sources configured untouched.

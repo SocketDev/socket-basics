@@ -1613,15 +1613,14 @@ def parse_cli_args():
     parser.add_argument('--pull-request', type=int, help='Pull request number for full scan submission')
     parser.add_argument('--committers', type=str, help='Comma-separated list of committers for full scan submission')
     parser.add_argument('--scan-files', type=str, help='Comma-separated list of files to scan')
-    # Paired --scan-all / --no-scan-all rather than a plain store_true: the
-    # setting is false by default but can already be on from INPUT_SCAN_ALL, a
-    # --config file or dashboard configuration, and a store_true flag could
-    # never turn that back off.
+    # Paired form rather than store_true: the default is false, but scan_all can
+    # already be on from INPUT_SCAN_ALL, a --config file or dashboard config, and
+    # store_true offers no way to turn that back off.
     parser.add_argument('--scan-all', action=argparse.BooleanOptionalAction, default=None,
                         help="Widen to a full-workspace scan when a --changed-files scope cannot "
                              "be resolved, instead of failing with a configuration error. Does "
                              "not override a scope that resolved successfully. --no-scan-all "
-                             "forces the fail-closed behaviour back on.")
+                             "forces the fail-closed behavior back on.")
     parser.add_argument('--console-tabular-enabled', action='store_true', help='Enable consolidated console tabular output')
     parser.add_argument('--console-json-enabled', action='store_true', help='Enable consolidated console JSON output')
     parser.add_argument('--verbose', '-v', action='store_true', help='Verbose logging')
@@ -1659,8 +1658,7 @@ def create_config_from_args(args) -> Config:
             config_dict['output_dir'] = args.workspace
     if args.scan_files:
         config_dict['scan_files'] = args.scan_files
-    # --scan-all / --no-scan-all. Absent, the flag parses to None, so it only
-    # speaks when the user used it and never overwrites an INPUT_SCAN_ALL,
+    # None means the flag was absent, which must not overwrite an INPUT_SCAN_ALL,
     # --config JSON or dashboard value with an implicit false.
     scan_all_arg = getattr(args, 'scan_all', None)
     if scan_all_arg is not None:
