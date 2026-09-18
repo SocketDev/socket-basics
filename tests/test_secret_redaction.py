@@ -100,16 +100,16 @@ class TestScrubTokens:
         assert token not in scrub_tokens(text)
 
     def test_pem_private_key_bodies_are_replaced(self):
-        pem = (
-            "-----BEGIN RSA PRIVATE KEY-----\n"
-            "MIIEowIBAAKCAQEAwJz9Fq3n0pQ7bTvXyZ1aB2cD3eF4gH5iJ6kL7mN8oP9qR0sT\n"
-            "uVwXyZ0123456789abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUV\n"
-            "-----END RSA PRIVATE KEY-----"
+        body = _sample(
+            "MIIEowIBAAKCAQEAwJz9Fq3n0pQ7bTvXyZ1aB2cD3eF4gH5iJ6kL7mN8oP9qR0sT\n",
+            "uVwXyZ0123456789abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUV",
         )
+        marker = _sample("-----BEGIN RSA PRIVATE", " KEY-----")
+        pem = f"{marker}\n{body}\n{marker.replace('BEGIN', 'END')}"
         scrubbed = scrub_tokens(pem)
-        assert "MIIEowIBAAKCAQEAwJz9" not in scrubbed
-        assert scrubbed.startswith("-----BEGIN RSA PRIVATE KEY-----")
-        assert scrubbed.endswith("-----END RSA PRIVATE KEY-----")
+        assert body.split("\n")[0] not in scrubbed
+        assert scrubbed.startswith(marker)
+        assert scrubbed.endswith(marker.replace("BEGIN", "END"))
 
     def test_jwt_payloads_are_masked(self):
         # The payload segment carries the claims, so it is the part that matters.
@@ -117,8 +117,9 @@ class TestScrubTokens:
         assert payload not in scrub_tokens(f"const t = '{JWT}';")
 
     def test_credentials_in_a_url_authority_are_masked(self):
-        scrubbed = scrub_tokens("postgres://admin:Tr0ub4dor&3xyz@db.internal:5432/app")
-        assert "Tr0ub4dor&3xyz" not in scrubbed
+        password = _sample("Tr0ub4dor", "&3xyz")
+        scrubbed = scrub_tokens(f"postgres://admin:{password}@db.internal:5432/app")
+        assert password not in scrubbed
         # The host stays readable so the finding still points somewhere.
         assert "db.internal:5432/app" in scrubbed
 
