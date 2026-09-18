@@ -108,7 +108,17 @@ _STRING_LITERAL = re.compile(
 
 # Fallback for unquoted forms such as ``password: hunter2`` in config-style
 # sources, used only when a credential finding has no string literal to mask.
-_UNQUOTED_ASSIGNMENT = re.compile(r'^(?P<head>[^=:]*[=:]\s*)(?P<body>\S.*?)(?P<tail>\s*)$')
+#
+# The operator alternation is what keeps a quoted value out of this branch. A
+# bare ``[=:]`` stops on the first character of ``:=`` or ``==`` and leaves the
+# rest of the operator at the head of the value, which no longer looks quoted,
+# so a Go short declaration or a comparison would be starred out whole instead
+# of going to the literal pass. ``=`` and ``:`` are matched only where they are
+# not part of a longer operator, and a comparison assigns nothing, so it does
+# not match here at all.
+_UNQUOTED_ASSIGNMENT = re.compile(
+    r'^(?P<head>[^=:]*(?::=|=(?!=)|:(?!:))\s*)(?P<body>\S.*?)(?P<tail>\s*)$'
+)
 
 # Rule-name fragments whose finding *is* the credential. ``hardcoded-ip`` and
 # the password-policy rules deliberately do not appear: their snippets are
@@ -247,17 +257,27 @@ def redact_message(text: Any, metavars: Any = None,
     return redacted
 
 
-def redact_dataflow_trace(trace: Any) -> Any:
-    """Scrub the code fragments carried by a taint-mode dataflow trace."""
+def redact_dataflow_trace(trace: Any, credential_finding: bool = False) -> Any:
+    """Mask the code fragments carried by a taint-mode dataflow trace.
+
+    Each step quotes a source line, so a step gets the same treatment the
+    snippet does: the token scrub always, and the string-literal pass when the
+    rule's match is a credential. A taint rule reaches this for a credential
+    only by declaring ``redact`` in its metadata, since none of the bundled
+    credential rules are taint-mode, but the trace must not be the one field
+    that keeps the value when one does.
+    """
     if not isinstance(trace, dict):
         return trace
-    for key in ('source', 'sink'):
-        step = trace.get(key)
+
+    def _mask(step: Any) -> None:
         if isinstance(step, dict) and step.get('content'):
-            step['content'] = scrub_tokens(step['content'])
+            step['content'] = redact_snippet(step['content'], credential_finding)
+
+    for key in ('source', 'sink'):
+        _mask(trace.get(key))
     intermediates = trace.get('intermediates')
     if isinstance(intermediates, list):
         for step in intermediates:
-            if isinstance(step, dict) and step.get('content'):
-                step['content'] = scrub_tokens(step['content'])
+            _mask(step)
     return trace

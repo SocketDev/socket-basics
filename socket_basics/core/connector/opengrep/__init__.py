@@ -551,7 +551,9 @@ class OpenGrepScanner(BaseConnector):
 
 								# Trace steps quote source lines the same way the
 								# snippet does, so they get the same treatment.
-								alert['props']['dataflowTrace'] = redact_dataflow_trace(_trace_data)
+								alert['props']['dataflowTrace'] = redact_dataflow_trace(
+									_trace_data, credential_finding
+								)
 							except Exception:
 								pass  # Skip trace if structure is unexpected
 

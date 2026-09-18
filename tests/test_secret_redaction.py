@@ -160,6 +160,30 @@ class TestRedactLiterals:
         redacted = redact_literals(r'key = "abc\"def SuperSecret123!"')
         assert "SuperSecret123!" not in redacted
 
+    def test_multi_character_operators_keep_their_syntax(self):
+        """A quoted value must reach the literal pass whatever precedes it.
+
+        Matching only the first character of ``:=`` or ``==`` leaves the rest of
+        the operator heading the value, which stops looking quoted and sends the
+        line to the unquoted branch -- which stars out the operator and quotes
+        the literal pass exists to keep. ``go-hardcoded-credentials`` matches
+        ``$VAR := "..."``, so this is a shape the bundled rules produce.
+        """
+        for line, prefix in (
+            ('apiKey := "SuperSecret123!"', 'apiKey := "'),
+            ('if password == "SuperSecret123!" {', 'if password == "'),
+            ('if password != "SuperSecret123!" {', 'if password != "'),
+        ):
+            redacted = redact_literals(line)
+            assert "SuperSecret123!" not in redacted
+            assert redacted.startswith(prefix), redacted
+
+    def test_a_scope_operator_is_not_read_as_an_assignment(self):
+        # ``::`` is not an assignment, so the line keeps its shape and the
+        # literal pass handles the value.
+        redacted = redact_literals('let cfg = Config::new("SuperSecret123!");')
+        assert "SuperSecret123!" not in redacted
+
     def test_unquoted_assignments_fall_back_to_masking_the_value(self):
         redacted = redact_literals("password: SuperSecret123!")
         assert "SuperSecret123!" not in redacted
@@ -278,6 +302,32 @@ class TestRedactMessage:
 
 
 class TestRedactDataflowTrace:
+    def test_a_credential_finding_masks_literals_in_its_trace(self):
+        """A trace step is a source line, so it gets the snippet's treatment.
+
+        ``scrub_tokens`` alone would keep a generic password, which the
+        vendor-format patterns do not recognize.
+        """
+        trace = {
+            "source": {"content": 'password = "SuperSecret123!"', "file": "a.py", "line": 1},
+            "intermediates": [
+                {"content": 'tmp = "SuperSecret123!"', "file": "a.py", "line": 2}
+            ],
+            "sink": {"content": 'connect(password="SuperSecret123!")', "file": "a.py", "line": 3},
+        }
+        serialized = json.dumps(redact_dataflow_trace(trace, credential_finding=True))
+        assert "SuperSecret123!" not in serialized
+        assert '"line": 3' in serialized
+
+    def test_a_non_credential_finding_keeps_its_trace_readable(self):
+        trace = {
+            "source": {"content": "user_id = request.args.get('id')", "file": "a.py", "line": 1},
+            "sink": {"content": "cursor.execute(query)", "file": "a.py", "line": 2},
+        }
+        redacted = redact_dataflow_trace(trace)
+        assert redacted["source"]["content"] == "user_id = request.args.get('id')"
+        assert redacted["sink"]["content"] == "cursor.execute(query)"
+
     def test_trace_steps_are_scrubbed(self):
         trace = {
             "source": {"content": f"key = '{AWS_KEY_ID}'", "file": "a.py", "line": 1},
