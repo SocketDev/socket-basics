@@ -3,17 +3,17 @@
 # To override at build time: docker build --build-arg TRUFFLEHOG_VERSION=3.93.8 .
 #
 # Dependabot-trackable (each has a corresponding FROM <image>:<ARG> stage):
-ARG GOLANG_VERSION=1.26.5
+ARG GOLANG_VERSION=1.27.3
 ARG NODE_VERSION=22
 ARG PYTHON_VERSION=3.12
-ARG TRUFFLEHOG_VERSION=3.96.0
-ARG UV_VERSION=0.12.1
+ARG TRUFFLEHOG_VERSION=3.99.8
+ARG UV_VERSION=0.13.7
 #
 # NOT Dependabot-trackable (no official Docker image with a stable binary path):
-ARG GOSEC_VERSION=v2.28.0
-ARG OPENGREP_VERSION=v1.26.0
-ARG SOCKET_NPM_CLI_VERSION=1.1.165
-ARG SOCKET_PYTHON_CLI_VERSION=2.11.3
+ARG GOSEC_VERSION=v2.30.0
+ARG OPENGREP_VERSION=v1.33.1
+ARG SOCKET_NPM_CLI_VERSION=1.13.1
+ARG SOCKET_PYTHON_CLI_VERSION=2.11.11
 #
 # NOT Dependabot-trackable — Socket-built Trivy, pinned by digest; updated by
 # Socket's trivy-dist release process. See the note in the root ./Dockerfile.
