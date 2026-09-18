@@ -8,6 +8,24 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Changed
+- Bundled scanner and CLI pins refreshed across the standard, heavy and
+  app-tests images:
+  - OpenGrep `v1.26.0` -> `v1.30.0`
+  - TruffleHog `3.96.0` -> `3.97.5`
+  - Socket npm CLI `1.1.165` -> `1.1.176`
+  - Socket Python CLI `2.9.0` -> `2.9.4` (heavy and app-tests images)
+  - uv `0.12.1` -> `0.12.17`
+  - Gosec `v2.28.0` -> `v2.29.0` and Go `1.26.5` -> `1.26.8` (app-tests image)
+- TruffleHog 3.97.0 retires the AppOptics and Bing Subscription Key detectors,
+  so credentials of those two kinds are no longer reported. No other detector
+  changed, and nothing about how Socket Basics invokes TruffleHog changed.
+- OpenGrep 1.27-1.30 are engine-only releases for the languages Socket Basics
+  scans: PCRE1 was replaced with PCRE2, constant propagation was extended to
+  assignment right-hand sides and array indices, and JS/TS destructuring is now
+  taint-tracked. The Java rule set was re-measured on 1.30.0 and the OWASP
+  Benchmark numbers are unchanged from the 1.26.0 baseline.
+
 ## [3.3.0] - 2026-09-15
 
 Small release pairing a CLI parity addition with a notification fix. The fix

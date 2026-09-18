@@ -50,8 +50,8 @@ docker inspect ghcr.io/socketdev/socket-basics:3.3.0 \
   | jq '.[0].Config.Labels'
 # {
 #   "com.socket.trivy-version": "0.73.0",
-#   "com.socket.trufflehog-version": "3.96.0",
-#   "com.socket.opengrep-version": "v1.26.0",
+#   "com.socket.trufflehog-version": "3.97.5",
+#   "com.socket.opengrep-version": "v1.30.0",
 #   "org.opencontainers.image.version": "3.3.0",
 #   ...
 # }
@@ -204,8 +204,8 @@ The image pins the bundled tools to specific versions. You can override them at 
 
 ```bash
 docker build \
-  --build-arg TRUFFLEHOG_VERSION=3.96.0 \
-  --build-arg OPENGREP_VERSION=v1.26.0 \
+  --build-arg TRUFFLEHOG_VERSION=3.97.5 \
+  --build-arg OPENGREP_VERSION=v1.30.0 \
   -t socket-basics:3.3.0 .
 ```
 

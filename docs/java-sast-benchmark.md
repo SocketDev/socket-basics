@@ -36,10 +36,10 @@ Alert volume there is the number that maps to triage burden.
 
 Pin both the engine and the corpus, or the numbers below will not reproduce.
 
-- **Engine.** Measured with **opengrep 1.26.0**, the release the images pin
+- **Engine.** Measured with **opengrep 1.30.0**, the release the images pin
   (`OPENGREP_VERSION` in `Dockerfile` and `Dockerfile.heavy`). Rule behaviour
-  was identical on 1.19.0, 1.25.0 and 1.26.0 everywhere it was checked, but
-  re-measure if you change the pin.
+  was identical on 1.19.0, 1.25.0, 1.26.0 and 1.30.0 everywhere it was checked,
+  but re-measure if you change the pin.
 - **Corpus.** BenchmarkJava at commit
   [`51f0a7c`](https://github.com/OWASP-Benchmark/BenchmarkJava/commit/51f0a7cf8bb9d17ce1f6d72598c1d1c6ce90f661)
   (2026-08-31). A `--depth 1` clone of `main` moves, and both the test cases and
@@ -104,7 +104,9 @@ Four behaviours worth knowing when editing these:
 
 ## Results
 
-Measured with opengrep 1.26.0.
+Measured with opengrep 1.30.0. Every number below is unchanged from the
+1.26.0 measurement; the 1.27-1.30 engine work (PCRE2, wider constant
+propagation, JS/TS destructuring taint) does not move the Java results.
 
 Scan time on BenchmarkJava went from 6s to 11s, roughly +70%. The extra cost is
 the taint-mode conversions and the wider sink lists. It is small in absolute
