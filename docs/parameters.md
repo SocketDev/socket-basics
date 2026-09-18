@@ -310,7 +310,7 @@ workflow and pass it in yourself:
   run: echo "ref=$(gh pr view ${{ github.event.issue.number }} --json baseRefName -q .baseRefName)" >> "$GITHUB_OUTPUT"
   env:
     GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-- uses: SocketDev/socket-basics@v3.3.0
+- uses: SocketDev/socket-basics@v3.4.0
   env:
     GITHUB_BASE_REF: ${{ steps.prbase.outputs.ref }}
   with:
