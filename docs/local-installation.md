@@ -295,7 +295,7 @@ trufflehog --version
 ```
 
 The versions above match the TruffleHog pinned in the Socket Basics image
-(`TRUFFLEHOG_VERSION` in the [Dockerfile](../Dockerfile)).
+(the `trufflesecurity/trufflehog` `FROM` tag in the [Dockerfile](../Dockerfile)).
 
 **Documentation:** https://github.com/trufflesecurity/trufflehog
 
