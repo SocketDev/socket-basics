@@ -43,12 +43,14 @@ upgrading.
   rules it contains the credential, so the finding carried the value into
   `.socket.facts.json`, the uploaded facts and the configured notifiers.
   Snippets for those rules now keep the assignment target, the syntax, the file
-  and the line, and mask the literal's contents. This covers 20 rules across all
+  and the line, and mask the literal's contents. This covers 19 rules across all
   fifteen bundled language rule sets, not only the Python and JavaScript ones:
   `*-hardcoded-secret(s)`, `*-hardcoded-credentials`,
-  `*-hardcoded-password-default`, `*-default-credentials`,
-  `*-plain-text-password`, `*-weak-jwt-secret` and `*-empty-password`. Rules
-  whose match is not a credential keep their snippets verbatim. (#119)
+  `*-hardcoded-password-default`, `*-default-credentials`, `*-weak-jwt-secret`
+  and `*-empty-password`. Rules whose match is logic rather than a literal keep
+  their snippets verbatim — `*-hardcoded-ip`, the password-policy rules and
+  `python-plain-text-password`, which matches password handling such as
+  assigning request input to a password field. (#119)
 - Every snippet, dataflow-trace step, rule message and detailed report, whatever
   rule produced it, is now masked of values matching a well-known credential
   format: AWS key

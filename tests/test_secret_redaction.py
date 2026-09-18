@@ -232,6 +232,10 @@ class TestCredentialRuleSelection:
             # These match a length comparison, not a credential.
             "python-weak-password-validation",
             "js-weak-password-validation",
+            # Matches password handling -- request input assigned to a password
+            # field, or compared against one -- so the match is an expression,
+            # not a literal, and the literal pass leaves nothing readable.
+            "python-plain-text-password",
             "python-sql-injection-format",
             "js-eval-usage",
         ],
@@ -300,8 +304,6 @@ class TestRedactMessage:
     def test_known_tokens_are_scrubbed_from_every_message(self):
         assert AWS_KEY_ID not in redact_message(f"Logged value: {AWS_KEY_ID}")
 
-
-class TestRedactMessage:
     def test_a_short_bound_value_does_not_mangle_the_rest_of_the_message(self):
         """The replace is by value, so a short one is also an ordinary substring.
 
@@ -341,6 +343,18 @@ class TestRedactMessage:
     def test_a_non_credential_finding_keeps_its_message(self):
         message = "Use of eval() on untrusted input"
         assert redact_message(message, {"$X": {"abstract_content": "eval"}}) == message
+
+
+class TestPasswordLogicRules:
+    def test_a_password_handling_snippet_stays_readable(self):
+        """``python-plain-text-password`` reports logic, so the logic must show.
+
+        Its main pattern assigns request input to a password field. No literal
+        credential appears on the line, and masking it leaves nothing to act on.
+        """
+        snippet = "user.password = request.form.get('password')"
+        credential = is_credential_finding("python-plain-text-password", {})
+        assert redact_snippet(snippet, credential_finding=credential) == snippet
 
 
 class TestRedactDataflowTrace:

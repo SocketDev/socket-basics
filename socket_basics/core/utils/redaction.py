@@ -128,6 +128,14 @@ _UNQUOTED_ASSIGNMENT = re.compile(
 # Rule-name fragments whose finding *is* the credential. ``hardcoded-ip`` and
 # the password-policy rules deliberately do not appear: their snippets are
 # logic, and masking them would remove the reason the finding was raised.
+#
+# ``plain-text-password`` belongs with them despite the name. The rule it names
+# matches password *handling* -- assigning request input to a password field, or
+# comparing against one -- so its match is an expression rather than a literal,
+# and the literal pass reduces ``user.password = request.form.get('password')``
+# to a row of asterisks. A comparison against a hardcoded value is the one shape
+# it covers that carries a credential, and that shape is what the
+# ``hardcoded-*`` rules are for.
 _CREDENTIAL_RULE_FRAGMENTS = (
     'hardcoded-secret',
     'hardcoded-credential',
@@ -135,7 +143,6 @@ _CREDENTIAL_RULE_FRAGMENTS = (
     'hardcoded-key',
     'hardcoded-token',
     'default-credentials',
-    'plain-text-password',
     'empty-password',
     'weak-jwt-secret',
     'private-key',
