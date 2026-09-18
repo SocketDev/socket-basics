@@ -205,6 +205,51 @@ class TestRedactLiterals:
         assert redact_literals('password = ""') == 'password = ""'
 
 
+class TestOperatorBinding:
+    """Which operator binds decides whether a value reaches the literal pass."""
+
+    def test_an_annotated_declaration_keeps_its_syntax(self):
+        # The colon of the annotation must not win over the assignment: binding
+        # it leaves `str = "..."` as the value, which is not quoted.
+        for line, prefix in (
+            ('password: str = "SuperSecret123!"', 'password: str = "'),
+            ('const password: string = "SuperSecret123!";', 'const password: string = "'),
+        ):
+            redacted = redact_literals(line)
+            assert "SuperSecret123!" not in redacted
+            assert redacted.startswith(prefix), redacted
+
+    def test_an_operator_inside_a_literal_does_not_bind(self):
+        # The `:` in the URL scheme would otherwise split the line and star out
+        # the value instead of masking it as a literal.
+        redacted = redact_literals('url = "https://example.com/a"')
+        assert redacted.startswith('url = "')
+        assert redacted.endswith('"')
+
+    def test_a_value_containing_an_operator_is_masked(self):
+        assert "hunter2" not in redact_literals('password = "a=b:c hunter2"')
+
+    def test_a_line_with_no_value_after_the_operator_is_left_alone(self):
+        assert redact_literals("password =") == "password ="
+
+
+class TestTrailingComments:
+    def test_a_comment_beside_a_masked_value_is_masked_too(self):
+        """Masking the value alone leaves the plaintext sitting next to it."""
+        for line in (
+            'DB_PASSWORD = "x"  # real one is hunter2',
+            "password = get_secret()  # real value is hunter2",
+            "user.password = request.form.get('pw')  // was hunter2",
+            'password = "SuperSecret123!" -- legacy hunter2',
+        ):
+            assert "hunter2" not in redact_literals(line), line
+
+    def test_a_marker_inside_a_literal_is_not_a_comment(self):
+        # The `#` is part of the URL, so the line is not truncated there.
+        redacted = redact_literals('password = "a # b"')
+        assert redacted == 'password = "*****"'
+
+
 class TestCredentialRuleSelection:
     @pytest.mark.parametrize(
         "rule_id",

@@ -114,20 +114,33 @@ _STRING_LITERAL = re.compile(
 # Fallback for unquoted forms such as ``password: hunter2`` in config-style
 # sources, used only when a credential finding has no string literal to mask.
 #
-# The operator alternation is what keeps a quoted value out of this branch. A
-# bare ``[=:]`` stops on the first character of ``:=`` or ``==`` and leaves the
-# rest of the operator at the head of the value, which no longer looks quoted,
-# so a Go short declaration or a comparison would be starred out whole instead
-# of going to the literal pass. ``=`` and ``:`` are matched only where they are
-# not part of a longer operator, and a comparison assigns nothing, so it does
-# not match here at all.
-_UNQUOTED_ASSIGNMENT = re.compile(
-    r'^(?P<head>[^=:]*(?::=|=(?!=)|:(?!:))\s*)(?P<body>\S.*?)(?P<tail>\s*)$'
-)
+# Which operator binds decides whether a value reaches the literal pass, and
+# three things have to hold at once:
+#
+#  - Only a whole operator counts. Stopping on the first character of ``:=`` or
+#    ``==`` leaves the rest of it heading the value, which then does not look
+#    quoted, so a Go short declaration would be starred out whole. A comparison
+#    assigns nothing and does not match here at all.
+#  - The last operator on the line binds. Taking the colon of
+#    ``password: str = "..."`` leaves ``str = "..."`` as the value, so an
+#    annotated declaration -- ordinary Python and TypeScript -- would never
+#    reach the literal pass.
+#  - An operator inside a string literal is not an operator. The ``:`` in
+#    ``url = "https://..."`` would otherwise bind and star out the URL.
+#
+# A single regex cannot express the third, so ``_split_assignment`` walks the
+# matches and skips the ones a literal covers.
+_ASSIGNMENT_OPERATOR = re.compile(r':=|(?<![=!<>:])=(?!=)|(?<!:):(?!:)')
 
-# An assigned value that calls something is an expression rather than a bare
+# Comment markers, used to mask text after the value on a credential line. A
+# marker inside a string literal is not a comment, so callers check the spans.
+_COMMENT_MARKER = re.compile(r'(?:#|//|--)')
+
+# An assigned value that *opens* with a call is an expression rather than a bare
 # credential, so the literal pass handles it instead of the unquoted fallback.
-_CALL_EXPRESSION = re.compile(r'[\w\]\)]\s*\(')
+# Anchored deliberately: matching a call anywhere would let a trailing comment
+# such as ``# see get_secret()`` disable masking for the value in front of it.
+_CALL_EXPRESSION = re.compile(r'^[\w.\[\]]+\s*\(')
 
 # Rule-name fragments whose finding *is* the credential. ``hardcoded-ip`` and
 # the password-policy rules deliberately do not appear: their snippets are
@@ -180,12 +193,43 @@ def scrub_tokens(text: Any) -> str:
     return scrubbed
 
 
+def _split_assignment(line: str) -> 'tuple[str, str, str] | None':
+    """Split a line at the assignment operator that binds, if it has one.
+
+    Returns ``(head, value, trailing_whitespace)``, where ``head`` runs through
+    the operator and any space after it. Operators covered by a string literal
+    are skipped, and the last of the rest wins.
+    """
+    spans = [m.span() for m in _STRING_LITERAL.finditer(line)]
+    chosen = None
+    for match in _ASSIGNMENT_OPERATOR.finditer(line):
+        if any(start <= match.start() < end for start, end in spans):
+            continue
+        chosen = match
+    if chosen is None:
+        return None
+
+    rest = line[chosen.end():]
+    value = rest.lstrip()
+    if not value:
+        return None
+    head = line[:chosen.end()] + rest[:len(rest) - len(value)]
+    stripped = value.rstrip()
+    return head, stripped, value[len(stripped):]
+
+
 def redact_literals(text: Any) -> str:
     """Mask the body of every string literal, keeping the surrounding syntax.
 
     ``API_KEY = "sk_live_abc123"`` becomes ``API_KEY = "****************"``:
     the name, the operator and the line all survive, which is what makes the
     finding actionable, while the value does not.
+
+    Where the shape of the value is not recognized the whole value is masked
+    rather than guessed at, so a subscript, a ternary or a prefixed literal
+    (``f"..."``, ``r'...'``) loses more of the line than a plain assignment
+    does. That direction is deliberate: the rule ID, file and line still
+    identify the finding, and the alternative is leaving a credential in place.
     """
     if not isinstance(text, str) or not text:
         return text if isinstance(text, str) else ''
@@ -202,27 +246,42 @@ def redact_literals(text: Any) -> str:
     # masked even if another line or a trailing comment contains quoted text.
     masked_lines = []
     for line in text.split('\n'):
-        match = _UNQUOTED_ASSIGNMENT.match(line)
-        body = match.group('body') if match else ''
-        if match and not body.lstrip().startswith(('"', "'", '`')):
-            if _CALL_EXPRESSION.search(body):
+        split = _split_assignment(line)
+        body = split[1] if split else ''
+        if split and not body.startswith(('"', "'", '`')):
+            if _CALL_EXPRESSION.match(body):
                 # A call is code, not a value: ``request.form.get('password')``
                 # is the finding. Starring the whole body leaves nothing to act
                 # on, so the literal pass masks just the quoted parts.
                 masked_lines.append(line)
                 continue
-            # A bare value with quoted text after it, such as a trailing
-            # comment, is masked whole. Measuring the combined text could
-            # otherwise make a short credential eligible for a partial reveal.
-            masked_body = (
-                '*' * len(body) if _STRING_LITERAL.search(body) else mask_value(body)
-            )
-            masked_lines.append(
-                f"{match.group('head')}{masked_body}{match.group('tail')}"
-            )
+            # Everything else on this path is masked whole. Where the value
+            # ends is unknowable here -- a trailing comment reads the same as
+            # more value -- and measuring the two together would reveal the
+            # head of a short credential: ``hunter2 # plain comment`` is long
+            # enough for a partial reveal even though ``hunter2`` is not.
+            masked_lines.append(f"{split[0]}{'*' * len(body)}{split[2]}")
         else:
             masked_lines.append(line)
-    return _STRING_LITERAL.sub(_mask_literal, '\n'.join(masked_lines))
+    masked = _STRING_LITERAL.sub(_mask_literal, '\n'.join(masked_lines))
+    return '\n'.join(_mask_trailing_comment(line) for line in masked.split('\n'))
+
+
+def _mask_trailing_comment(line: str) -> str:
+    """Mask whatever follows a comment marker on a credential finding's line.
+
+    The passes above mask the value, which leaves a comment beside it holding
+    the plaintext -- ``password = get_secret()  # real value is hunter2`` keeps
+    the credential the finding is about. A marker inside a string literal is not
+    a comment, so literal spans are skipped.
+    """
+    spans = [m.span() for m in _STRING_LITERAL.finditer(line)]
+    for marker in _COMMENT_MARKER.finditer(line):
+        if any(start <= marker.start() < end for start, end in spans):
+            continue
+        rest = line[marker.end():]
+        return line[:marker.end()] + '*' * len(rest)
+    return line
 
 
 def is_credential_finding(rule_id: Any, metadata: Mapping[str, Any] | None = None) -> bool:
