@@ -197,76 +197,91 @@ def scrub_tokens(text: Any) -> str:
     return scrubbed
 
 
-def _split_assignment(line: str) -> 'tuple[str, str, str] | None':
-    """Split a line at the assignment operator that binds, if it has one.
+def _split_assignment(code: str, offset: int, in_literal) -> 'tuple[str, str, str] | None':
+    """Split a statement at the assignment operator that binds, if it has one.
 
     Returns ``(head, value, trailing_whitespace)``, where ``head`` runs through
     the operator and any space after it. Operators covered by a string literal
     are skipped, and the last of the rest wins.
     """
-    spans = [m.span() for m in _STRING_LITERAL.finditer(line)]
     chosen = None
-    for match in _ASSIGNMENT_OPERATOR.finditer(line):
-        if any(start <= match.start() < end for start, end in spans):
+    for match in _ASSIGNMENT_OPERATOR.finditer(code):
+        if in_literal(offset + match.start()):
             continue
         chosen = match
     if chosen is None:
         return None
 
-    rest = line[chosen.end():]
+    rest = code[chosen.end():]
     value = rest.lstrip()
     if not value:
         return None
-    head = line[:chosen.end()] + rest[:len(rest) - len(value)]
+    head = code[:chosen.end()] + rest[:len(rest) - len(value)]
     stripped = value.rstrip()
     return head, stripped, value[len(stripped):]
 
 
-def _split_statements(code: str) -> 'list[str]':
+def _split_statements(code: str, offset: int, in_literal) -> 'list[tuple[str, int]]':
     """Split code on statement separators, keeping each separator as a piece.
 
     One operator binds per statement, so a line carrying more than one has to be
     handled a statement at a time: in ``a = hunter2; password = x`` the last
     operator is the second, which would leave the first value in the head.
-    A separator inside a string literal is part of the value.
     """
-    spans = [m.span() for m in _STRING_LITERAL.finditer(code)]
-    pieces: 'list[str]' = []
+    pieces: 'list[tuple[str, int]]' = []
     start = 0
     for separator in _STATEMENT_SEPARATOR.finditer(code):
-        if any(span_start <= separator.start() < span_end
-               for span_start, span_end in spans):
+        if in_literal(offset + separator.start()):
             continue
-        pieces.append(code[start:separator.start()])
-        pieces.append(separator.group(0))
+        pieces.append((code[start:separator.start()], offset + start))
+        pieces.append((separator.group(0), offset + separator.start()))
         start = separator.end()
-    pieces.append(code[start:])
+    pieces.append((code[start:], offset + start))
     return pieces
 
 
-def _mask_statement(code: str) -> str:
+def _mask_statement(code: str, offset: int, in_literal) -> str:
     """Mask the assigned value in a single statement."""
-    split = _split_assignment(code)
+    split = _split_assignment(code, offset, in_literal)
     if not split:
         return code
     head, value, trailing = split
-    # A quoted value is the literal pass's job, and a value that opens with a
-    # call is code rather than a credential: ``request.form.get('password')`` is
-    # the finding, and starring it leaves nothing to act on.
-    if value.startswith(('"', "'", '`')) or _CALL_EXPRESSION.match(value):
+
+    # A value that opens with a call is code rather than a credential:
+    # ``request.form.get('password')`` is the finding, and starring it leaves
+    # nothing to act on. A quoted value is the literal pass's job -- but only
+    # where the quote opens a literal that pass can find. A snippet cut mid
+    # string has an opening quote and no closing one, so nothing matches and
+    # the value would survive untouched.
+    opens_literal = value.startswith(('"', "'", '`')) and in_literal(offset + len(head))
+    if opens_literal or _CALL_EXPRESSION.match(value):
         return code
+
     # Anything else is masked whole. Where the value ends is unknowable here,
     # and measuring it together with what follows would reveal the head of a
     # short credential.
     return f"{head}{'*' * len(value)}{trailing}"
 
 
-def _mask_code(code: str) -> str:
+def _mask_code(code: str, offset: int, in_literal) -> str:
     """Mask the assigned value in every statement on one line of code."""
     return ''.join(
-        piece if piece == ';' else _mask_statement(piece)
-        for piece in _split_statements(code)
+        piece if piece == ';' else _mask_statement(piece, piece_offset, in_literal)
+        for piece, piece_offset in _split_statements(code, offset, in_literal)
     )
+
+
+def _split_comment(line: str, offset: int, in_literal) -> 'tuple[str, str, str]':
+    """Split a line into code, comment marker and comment text.
+
+    The marker is kept so the masked line still reads as commented. A marker
+    inside a string literal is part of the value, not a comment.
+    """
+    for marker in _COMMENT_MARKER.finditer(line):
+        if in_literal(offset + marker.start()):
+            continue
+        return line[:marker.start()], marker.group(0), line[marker.end():]
+    return line, '', ''
 
 
 def redact_literals(text: Any) -> str:
@@ -290,35 +305,39 @@ def redact_literals(text: Any) -> str:
         if not body:
             return match.group(0)
         quote = match.group('quote')
-        return f'{quote}{mask_value(body)}{quote}'
+        if '\n' in body:
+            # A multi-line body is a block of content rather than one opaque
+            # value, so the head-and-tail reveal would expose real text -- the
+            # first line of it. Mask every line and keep the line breaks, so
+            # the snippet still shows where the literal starts and ends.
+            masked = '\n'.join('*' * len(segment) for segment in body.split('\n'))
+        else:
+            masked = mask_value(body)
+        return f'{quote}{masked}{quote}'
 
-    # Mask unquoted assignments line by line before processing literals. A
-    # quoted value is left for the literal pass, while an unquoted value is
-    # masked even if another line or a trailing comment contains quoted text.
+    # Literal spans are measured over the whole snippet, not line by line. A
+    # literal can span lines, and a ``#`` or ``--`` on its second line is part
+    # of the value; reading it as a comment and starring the rest of that line
+    # can drop the closing quote, after which the literal pass no longer matches
+    # and the opening line's credential survives.
+    spans = [match.span() for match in _STRING_LITERAL.finditer(text)]
+
+    def in_literal(position: int) -> bool:
+        return any(start <= position < end for start, end in spans)
+
     masked_lines = []
+    offset = 0
     for line in text.split('\n'):
         # The comment comes off first. Everything below reasons about where the
         # value ends, and a comment can hold anything the value can -- including
         # an operator later in the line than the real one, which would bind and
         # leave the credential sitting in the head.
-        code, marker, comment = _split_comment(line)
-        masked_lines.append(f"{_mask_code(code)}{marker}{'*' * len(comment)}")
+        code, marker, comment = _split_comment(line, offset, in_literal)
+        masked_lines.append(
+            f"{_mask_code(code, offset, in_literal)}{marker}{'*' * len(comment)}"
+        )
+        offset += len(line) + 1
     return _STRING_LITERAL.sub(_mask_literal, '\n'.join(masked_lines))
-
-
-def _split_comment(line: str) -> 'tuple[str, str, str]':
-    """Split a line into code, comment marker and comment text.
-
-    The marker is kept so the masked line still reads as commented. A marker
-    inside a string literal is part of the value, not a comment, so literal
-    spans are skipped. Returns empty marker and text when there is no comment.
-    """
-    spans = [m.span() for m in _STRING_LITERAL.finditer(line)]
-    for marker in _COMMENT_MARKER.finditer(line):
-        if any(start <= marker.start() < end for start, end in spans):
-            continue
-        return line[:marker.start()], marker.group(0), line[marker.end():]
-    return line, '', ''
 
 
 def is_credential_finding(rule_id: Any, metadata: Mapping[str, Any] | None = None) -> bool:

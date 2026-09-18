@@ -283,6 +283,33 @@ class TestStatementsAndComments:
         )
 
 
+class TestMultilineAndUnterminatedLiterals:
+    """Literal spans are a property of the snippet, not of one line.
+
+    A snippet is a slice of a file, so a literal can open on one line and close
+    on another, or never close at all.
+    """
+
+    TRIPLE_DOUBLE = 'PASSWORD = ' + '"' * 3 + 'hunter2\n# not a comment\n' + '"' * 3
+    TRIPLE_SINGLE = 'SQL = ' + "'" * 3 + '\nSELECT hunter2 -- inline\n' + "'" * 3
+    BACKTICK = 'password = `hunter2\n// js template\n`'
+
+    def test_a_marker_on_a_later_line_of_a_literal_is_not_a_comment(self):
+        for snippet in (self.TRIPLE_DOUBLE, self.TRIPLE_SINGLE, self.BACKTICK):
+            assert "hunter2" not in redact_literals(snippet), snippet
+
+    def test_an_unterminated_literal_is_masked_rather_than_deferred(self):
+        # A snippet cut mid-string has an opening quote and no closing one, so
+        # the literal pass never matches it. Deferring would leave it untouched.
+        for snippet in ('password = "hunter2\n# broken', "password = 'hunter2\n-- sql"):
+            assert "hunter2" not in redact_literals(snippet), snippet
+
+    def test_a_literal_spanning_lines_keeps_the_line_structure(self):
+        redacted = redact_literals(self.TRIPLE_DOUBLE)
+        assert redacted.count("\n") == 2
+        assert "hunter2" not in redacted
+
+
 class TestCredentialRuleSelection:
     @pytest.mark.parametrize(
         "rule_id",
