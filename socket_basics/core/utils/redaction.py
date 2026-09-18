@@ -125,17 +125,20 @@ _UNQUOTED_ASSIGNMENT = re.compile(
     r'^(?P<head>[^=:]*(?::=|=(?!=)|:(?!:))\s*)(?P<body>\S.*?)(?P<tail>\s*)$'
 )
 
+# An assigned value that calls something is an expression rather than a bare
+# credential, so the literal pass handles it instead of the unquoted fallback.
+_CALL_EXPRESSION = re.compile(r'[\w\]\)]\s*\(')
+
 # Rule-name fragments whose finding *is* the credential. ``hardcoded-ip`` and
 # the password-policy rules deliberately do not appear: their snippets are
 # logic, and masking them would remove the reason the finding was raised.
 #
-# ``plain-text-password`` belongs with them despite the name. The rule it names
-# matches password *handling* -- assigning request input to a password field, or
-# comparing against one -- so its match is an expression rather than a literal,
-# and the literal pass reduces ``user.password = request.form.get('password')``
-# to a row of asterisks. A comparison against a hardcoded value is the one shape
-# it covers that carries a credential, and that shape is what the
-# ``hardcoded-*`` rules are for.
+# ``plain-text-password`` does stay, even though the rule it names mostly
+# matches password *handling* rather than a literal. One of its patterns is a
+# comparison against a hardcoded string, and no ``hardcoded-*`` rule covers that
+# shape, so dropping it here is the difference between masking a password and
+# publishing one. Keeping the handling snippets readable is the job of the
+# expression carve-out in ``redact_literals``, not of this list.
 _CREDENTIAL_RULE_FRAGMENTS = (
     'hardcoded-secret',
     'hardcoded-credential',
@@ -143,6 +146,7 @@ _CREDENTIAL_RULE_FRAGMENTS = (
     'hardcoded-key',
     'hardcoded-token',
     'default-credentials',
+    'plain-text-password',
     'empty-password',
     'weak-jwt-secret',
     'private-key',
@@ -201,9 +205,15 @@ def redact_literals(text: Any) -> str:
         match = _UNQUOTED_ASSIGNMENT.match(line)
         body = match.group('body') if match else ''
         if match and not body.lstrip().startswith(('"', "'", '`')):
-            # If quoted text appears later in an unquoted value, mask the whole
-            # body. Measuring that combined text could otherwise make a short
-            # credential eligible for a partial reveal.
+            if _CALL_EXPRESSION.search(body):
+                # A call is code, not a value: ``request.form.get('password')``
+                # is the finding. Starring the whole body leaves nothing to act
+                # on, so the literal pass masks just the quoted parts.
+                masked_lines.append(line)
+                continue
+            # A bare value with quoted text after it, such as a trailing
+            # comment, is masked whole. Measuring the combined text could
+            # otherwise make a short credential eligible for a partial reveal.
             masked_body = (
                 '*' * len(body) if _STRING_LITERAL.search(body) else mask_value(body)
             )

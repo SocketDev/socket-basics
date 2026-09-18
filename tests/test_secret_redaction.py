@@ -217,6 +217,7 @@ class TestCredentialRuleSelection:
             "python-hardcoded-password-default",
             "js-default-credentials",
             "js-weak-jwt-secret",
+            "python-plain-text-password",
         ],
     )
     def test_hardcoded_credential_rules_are_selected(self, rule_id):
@@ -232,10 +233,6 @@ class TestCredentialRuleSelection:
             # These match a length comparison, not a credential.
             "python-weak-password-validation",
             "js-weak-password-validation",
-            # Matches password handling -- request input assigned to a password
-            # field, or compared against one -- so the match is an expression,
-            # not a literal, and the literal pass leaves nothing readable.
-            "python-plain-text-password",
             "python-sql-injection-format",
             "js-eval-usage",
         ],
@@ -346,15 +343,41 @@ class TestRedactMessage:
 
 
 class TestPasswordLogicRules:
-    def test_a_password_handling_snippet_stays_readable(self):
-        """``python-plain-text-password`` reports logic, so the logic must show.
+    """``python-plain-text-password`` matches two shapes and needs both served.
 
-        Its main pattern assigns request input to a password field. No literal
-        credential appears on the line, and masking it leaves nothing to act on.
-        """
-        snippet = "user.password = request.form.get('password')"
-        credential = is_credential_finding("python-plain-text-password", {})
-        assert redact_snippet(snippet, credential_finding=credential) == snippet
+    Its handling patterns assign request input to a password field, where the
+    expression is the finding. Its comparison pattern can bind a hardcoded
+    string, and no ``hardcoded-*`` rule covers that shape, so the value has to
+    be masked here or it is not masked at all.
+    """
+
+    def test_a_password_handling_snippet_keeps_its_expression(self):
+        redacted = redact_snippet(
+            "user.password = request.form.get('password')", credential_finding=True
+        )
+        assert redacted.startswith("user.password = request.form.get(")
+        assert redacted.endswith(")")
+
+    def test_a_hardcoded_comparison_value_is_masked(self):
+        redacted = redact_snippet(
+            'if user.password == "hunter2":', credential_finding=True
+        )
+        assert "hunter2" not in redacted
+        assert redacted.startswith('if user.password == "')
+
+    def test_a_bare_value_with_a_trailing_comment_is_masked_whole(self):
+        # No call, so this stays on the unquoted path: measuring the value plus
+        # the comment could otherwise partially reveal a short credential.
+        redacted = redact_snippet('password: hunter2 # see "notes"', credential_finding=True)
+        assert "hunter2" not in redacted
+        assert "notes" not in redacted
+
+    def test_a_literal_argument_to_a_call_is_still_masked(self):
+        redacted = redact_snippet(
+            "password = get_secret('default_pw')", credential_finding=True
+        )
+        assert "default_pw" not in redacted
+        assert redacted.startswith("password = get_secret(")
 
 
 class TestRedactDataflowTrace:
