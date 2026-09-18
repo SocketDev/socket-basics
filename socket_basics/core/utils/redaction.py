@@ -136,6 +136,10 @@ _ASSIGNMENT_OPERATOR = re.compile(r':=|(?<![=!<>:])=(?!=)|(?<!:):(?!:)')
 # marker inside a string literal is not a comment, so callers check the spans.
 _COMMENT_MARKER = re.compile(r'(?:#|//|--)')
 
+# Statement separator. A line can carry more than one assignment, and only one
+# operator binds per statement.
+_STATEMENT_SEPARATOR = re.compile(r';')
+
 # An assigned value that *opens* with a call is an expression rather than a bare
 # credential, so the literal pass handles it instead of the unquoted fallback.
 # Anchored deliberately: matching a call anywhere would let a trailing comment
@@ -218,6 +222,53 @@ def _split_assignment(line: str) -> 'tuple[str, str, str] | None':
     return head, stripped, value[len(stripped):]
 
 
+def _split_statements(code: str) -> 'list[str]':
+    """Split code on statement separators, keeping each separator as a piece.
+
+    One operator binds per statement, so a line carrying more than one has to be
+    handled a statement at a time: in ``a = hunter2; password = x`` the last
+    operator is the second, which would leave the first value in the head.
+    A separator inside a string literal is part of the value.
+    """
+    spans = [m.span() for m in _STRING_LITERAL.finditer(code)]
+    pieces: 'list[str]' = []
+    start = 0
+    for separator in _STATEMENT_SEPARATOR.finditer(code):
+        if any(span_start <= separator.start() < span_end
+               for span_start, span_end in spans):
+            continue
+        pieces.append(code[start:separator.start()])
+        pieces.append(separator.group(0))
+        start = separator.end()
+    pieces.append(code[start:])
+    return pieces
+
+
+def _mask_statement(code: str) -> str:
+    """Mask the assigned value in a single statement."""
+    split = _split_assignment(code)
+    if not split:
+        return code
+    head, value, trailing = split
+    # A quoted value is the literal pass's job, and a value that opens with a
+    # call is code rather than a credential: ``request.form.get('password')`` is
+    # the finding, and starring it leaves nothing to act on.
+    if value.startswith(('"', "'", '`')) or _CALL_EXPRESSION.match(value):
+        return code
+    # Anything else is masked whole. Where the value ends is unknowable here,
+    # and measuring it together with what follows would reveal the head of a
+    # short credential.
+    return f"{head}{'*' * len(value)}{trailing}"
+
+
+def _mask_code(code: str) -> str:
+    """Mask the assigned value in every statement on one line of code."""
+    return ''.join(
+        piece if piece == ';' else _mask_statement(piece)
+        for piece in _split_statements(code)
+    )
+
+
 def redact_literals(text: Any) -> str:
     """Mask the body of every string literal, keeping the surrounding syntax.
 
@@ -246,42 +297,28 @@ def redact_literals(text: Any) -> str:
     # masked even if another line or a trailing comment contains quoted text.
     masked_lines = []
     for line in text.split('\n'):
-        split = _split_assignment(line)
-        body = split[1] if split else ''
-        if split and not body.startswith(('"', "'", '`')):
-            if _CALL_EXPRESSION.match(body):
-                # A call is code, not a value: ``request.form.get('password')``
-                # is the finding. Starring the whole body leaves nothing to act
-                # on, so the literal pass masks just the quoted parts.
-                masked_lines.append(line)
-                continue
-            # Everything else on this path is masked whole. Where the value
-            # ends is unknowable here -- a trailing comment reads the same as
-            # more value -- and measuring the two together would reveal the
-            # head of a short credential: ``hunter2 # plain comment`` is long
-            # enough for a partial reveal even though ``hunter2`` is not.
-            masked_lines.append(f"{split[0]}{'*' * len(body)}{split[2]}")
-        else:
-            masked_lines.append(line)
-    masked = _STRING_LITERAL.sub(_mask_literal, '\n'.join(masked_lines))
-    return '\n'.join(_mask_trailing_comment(line) for line in masked.split('\n'))
+        # The comment comes off first. Everything below reasons about where the
+        # value ends, and a comment can hold anything the value can -- including
+        # an operator later in the line than the real one, which would bind and
+        # leave the credential sitting in the head.
+        code, marker, comment = _split_comment(line)
+        masked_lines.append(f"{_mask_code(code)}{marker}{'*' * len(comment)}")
+    return _STRING_LITERAL.sub(_mask_literal, '\n'.join(masked_lines))
 
 
-def _mask_trailing_comment(line: str) -> str:
-    """Mask whatever follows a comment marker on a credential finding's line.
+def _split_comment(line: str) -> 'tuple[str, str, str]':
+    """Split a line into code, comment marker and comment text.
 
-    The passes above mask the value, which leaves a comment beside it holding
-    the plaintext -- ``password = get_secret()  # real value is hunter2`` keeps
-    the credential the finding is about. A marker inside a string literal is not
-    a comment, so literal spans are skipped.
+    The marker is kept so the masked line still reads as commented. A marker
+    inside a string literal is part of the value, not a comment, so literal
+    spans are skipped. Returns empty marker and text when there is no comment.
     """
     spans = [m.span() for m in _STRING_LITERAL.finditer(line)]
     for marker in _COMMENT_MARKER.finditer(line):
         if any(start <= marker.start() < end for start, end in spans):
             continue
-        rest = line[marker.end():]
-        return line[:marker.end()] + '*' * len(rest)
-    return line
+        return line[:marker.start()], marker.group(0), line[marker.end():]
+    return line, '', ''
 
 
 def is_credential_finding(rule_id: Any, metadata: Mapping[str, Any] | None = None) -> bool:

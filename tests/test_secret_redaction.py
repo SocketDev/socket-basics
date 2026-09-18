@@ -250,6 +250,39 @@ class TestTrailingComments:
         assert redacted == 'password = "*****"'
 
 
+class TestStatementsAndComments:
+    """A line can carry more than the one value the operator search finds."""
+
+    def test_each_statement_on_a_line_is_masked(self):
+        # One operator binds per statement. Searching the whole line finds the
+        # last one and leaves every earlier value sitting in the head.
+        for line in (
+            "a = hunter2; password = x",
+            "password = hunter2; b = 1",
+            "user = admin; pwd = hunter2",
+        ):
+            assert "hunter2" not in redact_literals(line), line
+
+    def test_a_separator_inside_a_literal_is_part_of_the_value(self):
+        assert redact_literals('password = "a;b"') == 'password = "***"'
+
+    def test_an_operator_in_a_comment_does_not_bind(self):
+        # The comment's `=` is later in the line than the real one, so binding
+        # it would leave the credential in the head.
+        for line in (
+            "password = hunter2  # see x = y",
+            "password: hunter2 # ratio a:b",
+            "token = SuperSecret123!  # cf. k=v",
+        ):
+            redacted = redact_literals(line)
+            assert "hunter2" not in redacted and "SuperSecret123!" not in redacted, line
+
+    def test_the_comment_marker_survives_so_the_line_still_reads(self):
+        assert redact_literals("password = hunter2 # note").startswith(
+            "password = ******* #"
+        )
+
+
 class TestCredentialRuleSelection:
     @pytest.mark.parametrize(
         "rule_id",
