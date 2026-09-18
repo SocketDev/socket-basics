@@ -212,6 +212,17 @@ def test_scan_uses_absolute_targets_for_relative_workspace(tmp_path, monkeypatch
     assert command[-1] == str(tmp_path)
 
 
+def test_output_file_patterns_are_absolute_for_relative_output_dir(tmp_path, monkeypatch):
+    monkeypatch.chdir(tmp_path)
+    scanner = _scanner(Path("."), "")
+    scanner.config.output_dir = Path(".")
+
+    patterns = scanner._output_file_patterns()
+
+    assert scanner._path_matches_patterns(str(tmp_path / ".socket.facts.json"), patterns)
+    assert scanner._path_matches_patterns(str(tmp_path / ".socket.facts.json.tmp"), patterns)
+
+
 def test_process_results_strips_absolute_workspace_from_output_and_id(tmp_path):
     scanner = _scanner(tmp_path, "")
     scanner.generate_notifications = lambda components: {}

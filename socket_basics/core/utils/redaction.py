@@ -20,8 +20,9 @@ Two passes are available:
     of every string literal on the line, keeping the assignment target and the
     surrounding syntax so the finding is still readable.
 
-``redact_snippet`` composes them, and ``is_credential_finding`` decides which
-rules get the second pass.
+``redact_snippet`` composes them, ``redact_message`` removes values interpolated
+into rule messages, and ``is_credential_finding`` decides which rules get the
+second pass.
 """
 
 import re
@@ -32,6 +33,7 @@ __all__ = [
     "scrub_tokens",
     "redact_literals",
     "redact_snippet",
+    "redact_message",
     "redact_dataflow_trace",
     "is_credential_finding",
 ]
@@ -132,7 +134,11 @@ def _mask_match(match: 're.Match[str]') -> str:
     secret = match.group(1)
     if not secret:
         return whole
-    return whole.replace(secret, mask_value(secret), 1)
+    secret_start, secret_end = match.span(1)
+    match_start = match.start(0)
+    relative_start = secret_start - match_start
+    relative_end = secret_end - match_start
+    return f"{whole[:relative_start]}{mask_value(secret)}{whole[relative_end:]}"
 
 
 def scrub_tokens(text: Any) -> str:
@@ -158,35 +164,33 @@ def redact_literals(text: Any) -> str:
     if not isinstance(text, str) or not text:
         return text if isinstance(text, str) else ''
 
-    found_literal = False
-
     def _mask_literal(match: 're.Match[str]') -> str:
-        # A quoted empty string is recorded as a literal even though there is
-        # nothing to mask, so an already-quoted line does not fall through to
-        # the unquoted branch and get its quotes masked instead.
-        nonlocal found_literal
-        found_literal = True
         body = match.group('body')
         if not body:
             return match.group(0)
         quote = match.group('quote')
         return f'{quote}{mask_value(body)}{quote}'
 
-    redacted = _STRING_LITERAL.sub(_mask_literal, text)
-    if found_literal:
-        return redacted
-
-    # No literal on the line, so fall back to masking each assignment's value.
+    # Mask unquoted assignments line by line before processing literals. A
+    # quoted value is left for the literal pass, while an unquoted value is
+    # masked even if another line or a trailing comment contains quoted text.
     masked_lines = []
     for line in text.split('\n'):
         match = _UNQUOTED_ASSIGNMENT.match(line)
-        if match:
+        body = match.group('body') if match else ''
+        if match and not body.lstrip().startswith(('"', "'", '`')):
+            # If quoted text appears later in an unquoted value, mask the whole
+            # body. Measuring that combined text could otherwise make a short
+            # credential eligible for a partial reveal.
+            masked_body = (
+                '*' * len(body) if _STRING_LITERAL.search(body) else mask_value(body)
+            )
             masked_lines.append(
-                f"{match.group('head')}{mask_value(match.group('body'))}{match.group('tail')}"
+                f"{match.group('head')}{masked_body}{match.group('tail')}"
             )
         else:
             masked_lines.append(line)
-    return '\n'.join(masked_lines)
+    return _STRING_LITERAL.sub(_mask_literal, '\n'.join(masked_lines))
 
 
 def is_credential_finding(rule_id: Any, metadata: Mapping[str, Any] | None = None) -> bool:
@@ -215,6 +219,32 @@ def redact_snippet(text: Any, credential_finding: bool = False) -> str:
     if credential_finding:
         scrubbed = redact_literals(scrubbed)
     return scrubbed
+
+
+def redact_message(text: Any, metavars: Any = None,
+                   credential_finding: bool = False) -> str:
+    """Mask credentials interpolated into a scanner rule's message.
+
+    OpenGrep expands metavariables before returning a result. For credential
+    findings, mask every expanded metavariable that appears in the message;
+    the connector cannot reliably identify which metavariable held the secret.
+    Well-known token formats are scrubbed from every message independently.
+    """
+    redacted = scrub_tokens(text)
+    if not credential_finding or not isinstance(metavars, Mapping):
+        return redacted
+
+    values = set()
+    for details in metavars.values():
+        if not isinstance(details, Mapping):
+            continue
+        value = details.get('abstract_content')
+        if isinstance(value, str) and value:
+            values.add(value)
+
+    for value in sorted(values, key=len, reverse=True):
+        redacted = redacted.replace(value, mask_value(value))
+    return redacted
 
 
 def redact_dataflow_trace(trace: Any) -> Any:

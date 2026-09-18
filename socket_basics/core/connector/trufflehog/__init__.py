@@ -184,7 +184,9 @@ class TruffleHogScanner(BaseConnector):
         if not output_dir:
             return []
         try:
-            output_path = Path(output_dir) / output_name
+            output_path = Path(
+                self._absolute_scan_target(Path(output_dir) / output_name)
+            )
         except (TypeError, ValueError):
             return []
 

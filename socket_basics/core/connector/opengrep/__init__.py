@@ -26,6 +26,7 @@ from .cwe_catalog import CWE_CATALOG
 from ...utils.redaction import (
 	is_credential_finding,
 	redact_dataflow_trace,
+	redact_message,
 	redact_snippet,
 )
 
@@ -412,6 +413,14 @@ class OpenGrepScanner(BaseConnector):
 						severity = ((r.get('extra') or {}).get('severity') or r.get('severity') or '')
 						severity_norm = str(severity).lower() if severity is not None else ''
 						message = (r.get('extra') or {}).get('message') or r.get('message') or ''
+						credential_finding = is_credential_finding(
+							check_id, (r.get('extra') or {}).get('metadata') or {}
+						)
+						message = redact_message(
+							message,
+							(r.get('extra') or {}).get('metavars') or {},
+							credential_finding=credential_finding,
+						)
 						start = (r.get('start') or {}).get('line')
 						end = (r.get('end') or {}).get('line')
 
@@ -435,9 +444,7 @@ class OpenGrepScanner(BaseConnector):
 						code_snippet = (r.get('extra') or {}).get('lines') or (r.get('extra') or {}).get('snippet') or ''
 						code_snippet = redact_snippet(
 							code_snippet,
-							credential_finding=is_credential_finding(
-								check_id, (r.get('extra') or {}).get('metadata') or {}
-							),
+							credential_finding=credential_finding,
 						)
 
 						alert = {

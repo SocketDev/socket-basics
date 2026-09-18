@@ -24,6 +24,7 @@ from socket_basics.core.utils.redaction import (
     mask_value,
     redact_dataflow_trace,
     redact_literals,
+    redact_message,
     redact_snippet,
     scrub_tokens,
 )
@@ -123,6 +124,11 @@ class TestScrubTokens:
         # The host stays readable so the finding still points somewhere.
         assert "db.internal:5432/app" in scrubbed
 
+    def test_url_password_is_masked_when_it_matches_the_username(self):
+        scrubbed = scrub_tokens("postgres://admin:admin@db.internal/app")
+        assert scrubbed.startswith("postgres://admin:")
+        assert ":admin@" not in scrubbed
+
     def test_ordinary_code_is_left_alone(self):
         for snippet in (
             "eval(rawConfigStr)",
@@ -158,6 +164,18 @@ class TestRedactLiterals:
         redacted = redact_literals("password: SuperSecret123!")
         assert "SuperSecret123!" not in redacted
         assert redacted.startswith("password: ")
+
+    def test_quoted_text_does_not_skip_an_unquoted_value(self):
+        redacted = redact_literals('password: hunter2 # "temporary"')
+        assert "hunter2" not in redacted
+        assert redacted.startswith("password: ")
+
+    def test_each_line_uses_the_appropriate_redaction(self):
+        redacted = redact_literals(
+            'credentials:\n  user: "admin"\n  password: hunter2'
+        )
+        assert "admin" not in redacted
+        assert "hunter2" not in redacted
 
     def test_empty_literals_are_left_as_they_are(self):
         assert redact_literals('password = ""') == 'password = ""'
@@ -240,6 +258,25 @@ class TestRedactSnippet:
         assert "console.log" in redacted
 
 
+class TestRedactMessage:
+    def test_interpolated_metavariables_are_masked_for_credential_findings(self):
+        secret = "SuperSecret123!"
+        redacted = redact_message(
+            f"Hardcoded credential {secret} assigned to database_password",
+            {
+                "$VALUE": {"abstract_content": secret},
+                "$VAR": {"abstract_content": "database_password"},
+            },
+            credential_finding=True,
+        )
+        assert secret not in redacted
+        assert "database_password" not in redacted
+        assert redacted.startswith("Hardcoded credential ")
+
+    def test_known_tokens_are_scrubbed_from_every_message(self):
+        assert AWS_KEY_ID not in redact_message(f"Logged value: {AWS_KEY_ID}")
+
+
 class TestRedactDataflowTrace:
     def test_trace_steps_are_scrubbed(self):
         trace = {
@@ -275,8 +312,11 @@ class TestConnectorOutput:
                     "end": {"line": 3},
                     "extra": {
                         "severity": "ERROR",
-                        "message": "Hardcoded secret or credential detected",
-                        "lines": 'STRIPE_SECRET_KEY = STRIPE_KEY',
+                        "message": f"Hardcoded credential detected: {STRIPE_KEY}",
+                        "lines": f'STRIPE_SECRET_KEY = "{STRIPE_KEY}"',
+                        "metavars": {
+                            "$VALUE": {"abstract_content": STRIPE_KEY},
+                        },
                         "metadata": {"cwe": "CWE-798", "confidence": "medium"},
                     },
                 }
