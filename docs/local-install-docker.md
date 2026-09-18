@@ -200,14 +200,20 @@ docker build --platform linux/amd64 -t socket-basics:3.3.0 .
 
 ### Build with Custom Tool Versions
 
-The image pins the bundled tools to specific versions. You can override them at build time:
+The image pins the bundled tools to specific versions. Tools installed by a
+script or package manager are build args and can be overridden:
 
 ```bash
 docker build \
-  --build-arg TRUFFLEHOG_VERSION=3.97.5 \
   --build-arg OPENGREP_VERSION=v1.30.0 \
+  --build-arg SOCKET_NPM_CLI_VERSION=1.1.176 \
   -t socket-basics:3.3.0 .
 ```
+
+Base and tool *images* — python, trufflehog, uv — are pinned as literal tags on
+their `FROM` lines instead, because that is the only form Dependabot reads; it
+does not expand ARGs, so an interpolated `FROM` is skipped and the pin silently
+rots. To use a different image tag locally, edit the `FROM` line.
 
 Trivy comes from a Socket-built image pinned by digest via the `TRIVY_IMAGE`
 build arg (`TRIVY_VERSION` feeds the image label and must match its tag).

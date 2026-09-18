@@ -1,44 +1,42 @@
-# ─── Global version pins (single source of truth) ────────────────────────────
-# Dependabot tracks all ARGs below via the FROM lines that reference them.
-# To override at build time: docker build --build-arg TRUFFLEHOG_VERSION=3.93.8 .
+# ─── Pinned build inputs ──────────────────────────────────────────────────────
+# Images are pinned as literal tags on the FROM lines below, which is the only
+# form Dependabot's Dockerfile parser reads — it does no ARG substitution, so
+# `FROM image:${VERSION}` is silently skipped. See the note at the top of the
+# root ./Dockerfile.
 #
-# Dependabot-trackable (each has a corresponding FROM <image>:<ARG> stage):
-ARG GOLANG_VERSION=1.26.8
-ARG NODE_VERSION=22
-ARG PYTHON_VERSION=3.12
-ARG TRUFFLEHOG_VERSION=3.97.5
-ARG UV_VERSION=0.12.17
-#
-# NOT Dependabot-trackable (no official Docker image with a stable binary path):
+# Tools installed by a script or package manager have no FROM line, so they keep
+# an ARG pin and are bumped by hand. Overridable at build time, e.g.:
+#   docker build --build-arg OPENGREP_VERSION=v1.30.0 -f app_tests/Dockerfile app_tests
 ARG GOSEC_VERSION=v2.29.0
 ARG OPENGREP_VERSION=v1.30.0
 ARG SOCKET_NPM_CLI_VERSION=1.1.176
 ARG SOCKET_PYTHON_CLI_VERSION=2.9.4
 #
-# NOT Dependabot-trackable — Socket-built Trivy, pinned by digest; updated by
-# Socket's trivy-dist release process. See the note in the root ./Dockerfile.
+# Socket-built Trivy, pinned by digest and deliberately kept out of Dependabot's
+# reach; updated by Socket's trivy-dist release process. See the root
+# ./Dockerfile.
 ARG TRIVY_IMAGE=ghcr.io/socketdev/trivy:0.73.0@sha256:e3d9d5f10250cb73b0ea9446ae1191c0f2da2f5e6173eac08a840b1812f02e0b
 
 # ─── Stage: trivy (Socket-built redistribution) ───────────────────────────────
 FROM ${TRIVY_IMAGE} AS trivy
 
-# ─── Stage: trufflehog (Dependabot-trackable) ─────────────────────────────────
-FROM trufflesecurity/trufflehog:${TRUFFLEHOG_VERSION} AS trufflehog
+# ─── Stage: trufflehog ────────────────────────────────────────────────────────
+FROM trufflesecurity/trufflehog:3.97.5 AS trufflehog
 
-# ─── Stage: golang (Dependabot-trackable) ─────────────────────────────────────
-FROM golang:${GOLANG_VERSION} AS golang
+# ─── Stage: golang ────────────────────────────────────────────────────────────
+FROM golang:1.26.8 AS golang
 
-# ─── Stage: node (Dependabot-trackable) ───────────────────────────────────────
-# Named stage replaces the nodesource curl install, making the Node version
-# Dependabot-trackable via the FROM line.
-FROM node:${NODE_VERSION}-slim AS node
+# ─── Stage: node ──────────────────────────────────────────────────────────────
+# Named stage replaces the nodesource curl install, which put the Node version
+# out of reach of both Dependabot and the pin checkers.
+FROM node:22-slim AS node
 
-# ─── Stage: uv (Dependabot-trackable) ─────────────────────────────────────────
+# ─── Stage: uv ────────────────────────────────────────────────────────────────
 # Named stage required — COPY --from does not support ARG variable expansion.
-FROM ghcr.io/astral-sh/uv:${UV_VERSION} AS uv
+FROM ghcr.io/astral-sh/uv:0.12.17 AS uv
 
 # ─── Stage: gosec-installer ───────────────────────────────────────────────────
-FROM python:${PYTHON_VERSION}-slim AS gosec-installer
+FROM python:3.12-slim AS gosec-installer
 ARG GOSEC_VERSION
 RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
     --mount=type=cache,target=/var/lib/apt,sharing=locked \
@@ -50,8 +48,7 @@ RUN curl -sfL https://raw.githubusercontent.com/securego/gosec/master/install.sh
 # ─── Stage: opengrep-installer ────────────────────────────────────────────────
 # OpenGrep does not publish an official Docker image with a stable binary path,
 # so we install via their official script in a dedicated build stage.
-# NOTE: OPENGREP_VERSION is not Dependabot-trackable; update manually above.
-FROM python:${PYTHON_VERSION}-slim AS opengrep-installer
+FROM python:3.12-slim AS opengrep-installer
 ARG OPENGREP_VERSION
 RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
     --mount=type=cache,target=/var/lib/apt,sharing=locked \
@@ -61,7 +58,7 @@ RUN curl -fsSL https://raw.githubusercontent.com/opengrep/opengrep/main/install.
     | bash -s -- -v "${OPENGREP_VERSION}"
 
 # ─── Stage: runtime ───────────────────────────────────────────────────────────
-FROM python:${PYTHON_VERSION}-slim AS runtime
+FROM python:3.12-slim AS runtime
 
 WORKDIR /app-tests
 ENV PATH=$PATH:/usr/local/go/bin
@@ -75,7 +72,7 @@ COPY --from=opengrep-installer /root/.opengrep         /root/.opengrep
 COPY --from=golang          /usr/local/go              /usr/local/go
 COPY --from=gosec-installer /usr/local/bin/gosec       /usr/local/bin/gosec
 
-# Node binary + npm from the versioned node stage (Dependabot-trackable).
+# Node binary + npm from the versioned node stage.
 # npm/npx in the node image are symlinks into node_modules/npm/bin — COPY
 # dereferences symlinks into flat files, which breaks npm's relative requires,
 # so recreate them as proper symlinks instead of copying.

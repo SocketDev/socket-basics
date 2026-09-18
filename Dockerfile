@@ -1,40 +1,44 @@
-# ─── Global version pins (single source of truth) ────────────────────────────
-# Dependabot tracks all ARGs below via the FROM lines that reference them.
-# To override at build time: docker build --build-arg TRUFFLEHOG_VERSION=3.93.8 .
+# ─── Pinned build inputs ──────────────────────────────────────────────────────
+# Two kinds of pin live in this file, and they look different because Dependabot
+# can only read one of them.
 #
-# Dependabot-trackable (each has a corresponding FROM <image>:<ARG> stage):
-ARG PYTHON_VERSION=3.12
-ARG TRUFFLEHOG_VERSION=3.97.5
-ARG UV_VERSION=0.12.17
+# 1. Images are pinned as literal tags on the FROM lines below. Dependabot's
+#    Dockerfile parser is a regex over FROM lines whose image and tag groups
+#    both require literal characters (`[a-z\d]` / `[\w]`); it does no ARG
+#    substitution, so `FROM image:${VERSION}` and `FROM ${IMAGE}` are matched
+#    with no version and silently skipped. Carrying the version inline is the
+#    only form it updates. To use a different tag locally, edit the FROM line.
 #
-# NOT Dependabot-trackable (no official Docker image with a stable binary path):
+# 2. Tools installed by a script or package manager have no FROM line for
+#    Dependabot to read, so they keep an ARG pin and are bumped by hand. These
+#    stay overridable: docker build --build-arg OPENGREP_VERSION=v1.30.0 .
 ARG OPENGREP_VERSION=v1.30.0
 ARG SOCKET_NPM_CLI_VERSION=1.1.176
 #
-# NOT Dependabot-trackable — Socket-built Trivy, rebuilt from unmodified upstream
-# source and published by Socket's own release pipeline. Pinned by digest; both
-# ARGs are updated together by that release process, never bumped independently.
-# Building requires pull access to the registry; contributors without it can
-# override, e.g.: docker build --build-arg TRIVY_IMAGE=aquasec/trivy:0.73.0 .
-# TRIVY_VERSION feeds the image label — keep it in sync with the TRIVY_IMAGE tag.
+# 3. Socket-built Trivy, rebuilt from unmodified upstream source and published
+#    by Socket's own release pipeline. Deliberately kept out of Dependabot's
+#    reach: it is pinned by digest and both ARGs move together with that
+#    release process, never independently. Building requires pull access to the
+#    registry; contributors without it can override, e.g.:
+#    docker build --build-arg TRIVY_IMAGE=aquasec/trivy:0.73.0 .
+#    TRIVY_VERSION feeds the image label — keep it in sync with the tag.
 ARG TRIVY_VERSION=0.73.0
 ARG TRIVY_IMAGE=ghcr.io/socketdev/trivy:0.73.0@sha256:e3d9d5f10250cb73b0ea9446ae1191c0f2da2f5e6173eac08a840b1812f02e0b
 
 # ─── Stage: trivy (Socket-built redistribution) ───────────────────────────────
 FROM ${TRIVY_IMAGE} AS trivy
 
-# ─── Stage: trufflehog (Dependabot-trackable) ─────────────────────────────────
-FROM trufflesecurity/trufflehog:${TRUFFLEHOG_VERSION} AS trufflehog
+# ─── Stage: trufflehog ────────────────────────────────────────────────────────
+FROM trufflesecurity/trufflehog:3.97.5 AS trufflehog
 
-# ─── Stage: uv (Dependabot-trackable) ─────────────────────────────────────────
+# ─── Stage: uv ────────────────────────────────────────────────────────────────
 # Named stage required — COPY --from does not support ARG variable expansion.
-FROM ghcr.io/astral-sh/uv:${UV_VERSION} AS uv
+FROM ghcr.io/astral-sh/uv:0.12.17 AS uv
 
 # ─── Stage: opengrep-installer ────────────────────────────────────────────────
 # OpenGrep does not publish an official Docker image with a stable binary path,
 # so we install via their official script in a dedicated build stage.
-# NOTE: OPENGREP_VERSION is not Dependabot-trackable; update manually above.
-FROM python:${PYTHON_VERSION}-slim AS opengrep-installer
+FROM python:3.12-slim AS opengrep-installer
 ARG OPENGREP_VERSION
 RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
     --mount=type=cache,target=/var/lib/apt,sharing=locked \
@@ -44,7 +48,7 @@ RUN curl -fsSL https://raw.githubusercontent.com/opengrep/opengrep/main/install.
     | bash -s -- -v "${OPENGREP_VERSION}"
 
 # ─── Stage: runtime ───────────────────────────────────────────────────────────
-FROM python:${PYTHON_VERSION}-slim AS runtime
+FROM python:3.12-slim AS runtime
 
 WORKDIR /socket-basics
 
@@ -81,8 +85,11 @@ ARG SOCKET_BASICS_VERSION=dev
 ARG VCS_REF=unknown
 ARG BUILD_DATE=unknown
 ARG TRIVY_VERSION
-ARG TRUFFLEHOG_VERSION
 ARG OPENGREP_VERSION
+# Mirrors the trufflehog FROM tag above. A literal FROM tag cannot be read back
+# into an ARG, so this is the one pin stated twice;
+# tests/test_dockerfile_pins.py fails if the two ever disagree.
+ARG TRUFFLEHOG_VERSION=3.97.5
 ARG SOCKET_NPM_CLI_VERSION
 LABEL org.opencontainers.image.title="Socket Basics" \
       org.opencontainers.image.source="https://github.com/SocketDev/socket-basics" \

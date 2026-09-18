@@ -242,6 +242,29 @@ def _read_dockerfile_args(name: str) -> list[str]:
     return versions
 
 
+def _read_dockerfile_from_tags(image: str) -> list[str]:
+    """Distinct tags a literal `FROM <image>:<tag>` pins across all Dockerfiles.
+
+    Images are pinned inline on the FROM line rather than through an ARG,
+    because that is the only form Dependabot's Dockerfile parser reads. The
+    FROM line is therefore the build's real input, so score that rather than a
+    label ARG that merely mirrors it.
+    """
+    versions: list[str] = []
+    for dockerfile in DOCKERFILES:
+        if not dockerfile.exists():
+            continue
+        for match in re.finditer(
+            rf"^FROM\s+{re.escape(image)}:(?P<tag>[\w][\w.-]*)",
+            dockerfile.read_text(),
+            re.MULTILINE,
+        ):
+            tag = match.group("tag")
+            if tag not in versions:
+                versions.append(tag)
+    return versions
+
+
 def _read_docker_image_versions(name: str) -> list[str]:
     """Read image tag versions from a digest-pinned Dockerfile ARG.
 
@@ -315,7 +338,7 @@ def build_tools() -> list[Tool]:
         Tool(
             key="trufflehog",
             label="TruffleHog (secret scanner)",
-            read_pinned=lambda: _read_dockerfile_args("TRUFFLEHOG_VERSION"),
+            read_pinned=lambda: _read_dockerfile_from_tags("trufflesecurity/trufflehog"),
             discover_latest=lambda: _github_latest_release("trufflesecurity/trufflehog"),
             purl=lambda v: f"pkg:golang/github.com/trufflesecurity/trufflehog/v3@{_ensure_v(v)}",
         ),

@@ -26,6 +26,28 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   taint-tracked. The Java rule set was re-measured on 1.30.0 and the OWASP
   Benchmark numbers are unchanged from the 1.26.0 baseline.
 
+### Fixed
+- **Dependabot can now actually update the pinned base and tool images.** All
+  three Dockerfiles pinned images as `FROM image:${VERSION}` against an `ARG`,
+  and the comments claimed Dependabot tracked them through those `FROM` lines.
+  It never did: its Dockerfile parser is a regex whose image and tag groups
+  require literal characters and which performs no `ARG` substitution, so every
+  interpolated line matched with no version and was skipped without an error.
+  No Docker-ecosystem pull request had ever been opened against this repo;
+  every pin above had only ever moved by hand, which is how uv came to sit 16
+  patch releases behind. The images are now pinned as literal tags on their
+  `FROM` lines, `node` and `uv` were added to the app-tests allow list (an
+  `allow:` list silently drops what it does not name), and
+  `tests/test_dockerfile_pins.py` re-implements the upstream parser so a
+  reintroduced interpolation fails the build instead of quietly freezing a pin.
+
+  Two consequences for anyone building locally: `--build-arg
+  TRUFFLEHOG_VERSION=` no longer has any effect (edit the `FROM` line instead),
+  and `com.socket.trufflehog-version` is now the one version stated twice in a
+  Dockerfile, with a test keeping the label `ARG` equal to the `FROM` tag.
+  `TRIVY_IMAGE` stays an interpolated `ARG` on purpose — Socket's Trivy build
+  is digest-pinned and must not be bumped independently.
+
 ## [3.3.0] - 2026-09-15
 
 Small release pairing a CLI parity addition with a notification fix. The fix
