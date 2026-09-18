@@ -301,6 +301,48 @@ class TestRedactMessage:
         assert AWS_KEY_ID not in redact_message(f"Logged value: {AWS_KEY_ID}")
 
 
+class TestRedactMessage:
+    def test_a_short_bound_value_does_not_mangle_the_rest_of_the_message(self):
+        """The replace is by value, so a short one is also an ordinary substring.
+
+        Masking every occurrence would rewrite words that merely contain it.
+        The credential still has to be masked, so the replace is anchored rather
+        than skipped.
+        """
+        redacted = redact_message(
+            "secret a is bad", {"$X": {"abstract_content": "a"}}, credential_finding=True
+        )
+        assert redacted == "secret * is bad"
+
+    def test_a_short_bound_value_is_still_masked(self):
+        for message, expected in (
+            ("password admin is a bad default", "password ***** is a bad default"),
+            ("key is at the end: admin", "key is at the end: *****"),
+        ):
+            assert (
+                redact_message(
+                    message, {"$P": {"abstract_content": "admin"}}, credential_finding=True
+                )
+                == expected
+            )
+
+    def test_a_long_bound_value_is_masked_wherever_it_appears(self):
+        redacted = redact_message(
+            'Hardcoded secret in DB_PASSWORD = "SuperSecret123!"',
+            {
+                "$VAR": {"abstract_content": "DB_PASSWORD"},
+                "$V": {"abstract_content": "SuperSecret123!"},
+            },
+            credential_finding=True,
+        )
+        assert "SuperSecret123!" not in redacted
+        assert "DB_PASSWORD" not in redacted
+
+    def test_a_non_credential_finding_keeps_its_message(self):
+        message = "Use of eval() on untrusted input"
+        assert redact_message(message, {"$X": {"abstract_content": "eval"}}) == message
+
+
 class TestRedactDataflowTrace:
     def test_a_credential_finding_masks_literals_in_its_trace(self):
         """A trace step is a source line, so it gets the snippet's treatment.

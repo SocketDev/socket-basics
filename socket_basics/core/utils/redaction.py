@@ -43,6 +43,11 @@ __all__ = [
 _MIN_LENGTH_FOR_PARTIAL_REVEAL = 16
 _DEFAULT_REVEAL = 4
 
+# At or above this length a bound metavariable value is specific enough that
+# replacing it anywhere in a message is safe; below it, the replace is anchored
+# to non-word boundaries instead.
+_MIN_STANDALONE_METAVAR_LENGTH = 8
+
 
 def mask_value(value: Any, reveal: int = _DEFAULT_REVEAL,
                min_length: int = _MIN_LENGTH_FOR_PARTIAL_REVEAL) -> str:
@@ -253,7 +258,22 @@ def redact_message(text: Any, metavars: Any = None,
             values.add(value)
 
     for value in sorted(values, key=len, reverse=True):
-        redacted = redacted.replace(value, mask_value(value))
+        if len(value) >= _MIN_STANDALONE_METAVAR_LENGTH:
+            # Long enough to be specific to itself.
+            redacted = redacted.replace(value, mask_value(value))
+        else:
+            # A short bound value is also an ordinary substring, and an
+            # unanchored replace masks every occurrence rather than the one
+            # that is the credential: "a" turns "secret a is bad" into
+            # "secret * is b*d". Requiring a non-word character on each side
+            # keeps the credential masked without touching words that merely
+            # contain it. Skipping short values outright is not an option --
+            # a short credential still has to be masked.
+            redacted = re.sub(
+                rf'(?<!\w){re.escape(value)}(?!\w)',
+                mask_value(value),
+                redacted,
+            )
     return redacted
 
 
