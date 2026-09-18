@@ -8,6 +8,42 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Fixed
+- **A finding's snippet no longer reproduces the value it reports.** A SAST
+  finding's `codeSnippet` is the source line the rule matched. For nearly every
+  rule that line is the code the finding is about; for the hardcoded-credential
+  rules it contains the credential, so the finding carried the value into
+  `.socket.facts.json`, the uploaded facts and the configured notifiers.
+  Snippets for those rules now keep the assignment target, the syntax, the file
+  and the line, and mask the literal's contents. This covers 20 rules across all
+  fifteen bundled language rule sets, not only the Python and JavaScript ones:
+  `*-hardcoded-secret(s)`, `*-hardcoded-credentials`,
+  `*-hardcoded-password-default`, `*-default-credentials`,
+  `*-plain-text-password`, `*-weak-jwt-secret` and `*-empty-password`. Rules
+  whose match is not a credential keep their snippets verbatim.
+- Every snippet, dataflow-trace step and detailed report, whatever rule produced
+  it, is now masked of values matching a well-known credential format: AWS key
+  IDs, GitHub tokens, Stripe keys, Slack tokens, Google API keys, npm and PyPI
+  tokens, JWTs, PEM private key bodies, and credentials in a URL authority. A
+  rule unrelated to secrets can still match a line that carries one.
+- TruffleHog's `redactedValue` kept the first and last four characters of any
+  value longer than eight, which left most of a short password readable. Values
+  under sixteen characters are now masked in full.
+- TruffleHog no longer scans the facts file the run writes. That file lands
+  inside the scan target, so a previous run's output was on disk during the walk
+  and its contents were reported as findings of their own, pointing at the
+  output file rather than the source line.
+
+### Changed
+- `load_explicit_env_config` builds its "API key sources detected" debug line by
+  iterating a tuple of variable names rather than a dict of presence booleans.
+  The line is unchanged, including the exclusion of an exported-but-empty
+  variable.
+
+### Added
+- A `redact` rule-metadata key. Set it on a custom SAST rule to mark the match
+  as a credential, or to opt a rule out; without it, the rule name decides.
+
 ## [3.3.0] - 2026-09-15
 
 Small release pairing a CLI parity addition with a notification fix. The fix

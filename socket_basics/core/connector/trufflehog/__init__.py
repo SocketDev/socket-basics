@@ -19,6 +19,7 @@ from ..base import BaseConnector
 # coerce_bool lives in the config layer because the environment loader, a
 # Socket dashboard config, and a JSON config each deliver booleans differently.
 from ...config import coerce_bool
+from ...utils.redaction import mask_value
 
 # Import individual notifier modules
 from . import github_pr, slack, ms_teams, ms_sentinel, sumologic, console, jira, webhook, json_notifier
@@ -169,6 +170,31 @@ class TruffleHogScanner(BaseConnector):
 
         return patterns
 
+    def _output_file_patterns(self) -> List[str]:
+        """Exclude the facts file this run writes into the scanned workspace.
+
+        The facts file lands inside the scan target, so a previous run's output
+        is on disk by the time TruffleHog walks the tree. Whatever another
+        scanner recorded there gets re-detected as a finding of its own,
+        pointing at the output file instead of the source line. Exclude both
+        the file and the temporary name it is staged under.
+        """
+        output_name = self.config.get('output', '.socket.facts.json') or '.socket.facts.json'
+        output_dir = getattr(self.config, 'output_dir', None) or self._workspace_root()
+        if not output_dir:
+            return []
+        try:
+            output_path = Path(
+                self._absolute_scan_target(Path(output_dir) / output_name)
+            )
+        except (TypeError, ValueError):
+            return []
+
+        patterns = []
+        for candidate in (output_path, output_path.with_name(output_path.name + '.tmp')):
+            patterns.append(rf'^{self._path_regex(str(candidate))}$')
+        return patterns
+
     def _write_exclude_file(self, exclude_dirs: Any) -> str | None:
         """Write exclude regexes to a temporary file for TruffleHog."""
         patterns = self._build_exclude_patterns(exclude_dirs)
@@ -304,6 +330,8 @@ class TruffleHogScanner(BaseConnector):
             exclude_dirs = self.config.get('trufflehog_exclude_dir', '')
             if exclude_dirs:
                 exclude_patterns = self._build_exclude_patterns(exclude_dirs)
+            exclude_patterns.extend(self._output_file_patterns())
+            if exclude_patterns:
                 logger.debug("TruffleHog exclude patterns: %s", exclude_patterns)
                 exclude_file_path = self._write_exclude_patterns(exclude_patterns)
                 if exclude_file_path:
@@ -546,10 +574,11 @@ class TruffleHogScanner(BaseConnector):
 
         file_path = self._workspace_relative_path(file_path)
 
-        # Redact the actual secret
-        raw_secret = finding.get('Raw', '')
-        redacted_secret = raw_secret[:4] + '*' * (len(raw_secret) - 8) + raw_secret[-4:] if len(raw_secret) > 8 else '*' * len(raw_secret)
-    
+        # TruffleHog reports the match verbatim in `Raw` and leaves its own
+        # `Redacted` field empty for most detectors, so neither field can be
+        # passed through and the masking has to happen here.
+        redacted_secret = mask_value(finding.get('Raw', ''))
+
         markdown_content = f"""## Secret Detected: {detector_name}
 
 ### Detection Details

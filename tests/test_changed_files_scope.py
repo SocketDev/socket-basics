@@ -943,16 +943,19 @@ class TestConnectorsHonorTheResolvedScope:
 
         TruffleHogScanner(cfg).scan()
         assert staged_calls == []
-        assert invocations == [
-            [
-                "trufflehog",
-                "filesystem",
-                "--json",
-                "--include-detectors=all",
-                "--fail-on-scan-errors",
-                "--results=verified,unknown",
-                str(pr_repo),
-            ]
+        assert len(invocations) == 1
+        # --exclude-paths always carries the facts file and is not part of the
+        # scope this test covers.
+        command = invocations[0]
+        exclude_index = command.index("--exclude-paths")
+        assert command[:exclude_index] + command[exclude_index + 2:] == [
+            "trufflehog",
+            "filesystem",
+            "--json",
+            "--include-detectors=all",
+            "--fail-on-scan-errors",
+            "--results=verified,unknown",
+            str(pr_repo),
         ]
 
     def test_staged_fallback_still_runs_when_no_scope_was_requested(self, pr_repo, monkeypatch):
