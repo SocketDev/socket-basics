@@ -1121,13 +1121,15 @@ def load_explicit_env_config() -> Dict[str, Any]:
     logger = logging.getLogger(__name__)
     config = {}
     
-    # Log which API key sources are available for debugging
-    api_key_sources = {
-        'SOCKET_SECURITY_API_KEY': bool(os.environ.get('SOCKET_SECURITY_API_KEY')),
-        'SOCKET_SECURITY_API_TOKEN': bool(os.environ.get('SOCKET_SECURITY_API_TOKEN')),
-        'INPUT_SOCKET_SECURITY_API_KEY': bool(os.environ.get('INPUT_SOCKET_SECURITY_API_KEY')),
-    }
-    found_sources = [k for k, v in api_key_sources.items() if v]
+    # Log which API key sources are available for debugging. The list holds the
+    # variable names, which come from the tuple below; a variable's value is
+    # only ever tested for emptiness and is never carried into the log line.
+    api_key_env_vars = (
+        'SOCKET_SECURITY_API_KEY',
+        'SOCKET_SECURITY_API_TOKEN',
+        'INPUT_SOCKET_SECURITY_API_KEY',
+    )
+    found_sources = [name for name in api_key_env_vars if os.environ.get(name)]
     if found_sources:
         logger.debug(f"API key sources detected: {', '.join(found_sources)}")
     
