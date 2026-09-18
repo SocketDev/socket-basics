@@ -278,16 +278,16 @@ OpenGrep works with the bundled Socket Basics SAST rules. No additional configur
 brew install trufflehog
 
 # Using Docker (alternative; pin explicitly — Docker Hub tags have no "v" prefix):
-docker pull trufflesecurity/trufflehog:3.96.0
+docker pull trufflesecurity/trufflehog:3.97.5
 
 # Manual installation (Linux):
-wget https://github.com/trufflesecurity/trufflehog/releases/download/v3.96.0/trufflehog_3.96.0_linux_amd64.tar.gz
-tar -xzf trufflehog_3.96.0_linux_amd64.tar.gz
+wget https://github.com/trufflesecurity/trufflehog/releases/download/v3.97.5/trufflehog_3.97.5_linux_amd64.tar.gz
+tar -xzf trufflehog_3.97.5_linux_amd64.tar.gz
 sudo mv trufflehog /usr/local/bin/
 
 # Manual installation (macOS):
-wget https://github.com/trufflesecurity/trufflehog/releases/download/v3.96.0/trufflehog_3.96.0_darwin_arm64.tar.gz
-tar -xzf trufflehog_3.96.0_darwin_arm64.tar.gz
+wget https://github.com/trufflesecurity/trufflehog/releases/download/v3.97.5/trufflehog_3.97.5_darwin_arm64.tar.gz
+tar -xzf trufflehog_3.97.5_darwin_arm64.tar.gz
 sudo mv trufflehog /usr/local/bin/
 
 # Verify installation
@@ -295,7 +295,7 @@ trufflehog --version
 ```
 
 The versions above match the TruffleHog pinned in the Socket Basics image
-(`TRUFFLEHOG_VERSION` in the [Dockerfile](../Dockerfile)).
+(the `trufflesecurity/trufflehog` `FROM` tag in the [Dockerfile](../Dockerfile)).
 
 **Documentation:** https://github.com/trufflesecurity/trufflehog
 

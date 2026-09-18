@@ -49,12 +49,17 @@ REFERENCE_PATTERNS = (
     re.compile(r"SocketDev/socket-basics@v(?P<version>\d+)(?![\d.])"),
 )
 
-# Bundled scanner pins: Dockerfile ARG name per tool, and the doc patterns that
-# quote that tool's version. Values are compared without any leading "v".
+# Bundled scanner pins: how to read each tool's version out of the Dockerfile,
+# and the doc patterns that quote it. Values are compared without a leading "v".
+#
+# TruffleHog is pinned inline on its FROM line (the only form Dependabot reads),
+# so it is matched there; the others have no FROM line and keep an ARG pin.
 TOOL_PINS = {
-    "trufflehog": "TRUFFLEHOG_VERSION",
-    "opengrep": "OPENGREP_VERSION",
-    "trivy": "TRIVY_VERSION",
+    "trufflehog": re.compile(
+        rf"^FROM\s+trufflesecurity/trufflehog:v?(?P<version>{SEMVER})", re.MULTILINE
+    ),
+    "opengrep": re.compile(rf"^ARG OPENGREP_VERSION=v?(?P<version>{SEMVER})\b", re.MULTILINE),
+    "trivy": re.compile(rf"^ARG TRIVY_VERSION=v?(?P<version>{SEMVER})\b", re.MULTILINE),
 }
 TOOL_REFERENCE_PATTERNS = {
     "trufflehog": (
@@ -88,13 +93,13 @@ def read_canonical_version() -> str:
 
 
 def read_tool_pins() -> dict[str, str]:
-    """Return {tool: version} from the Dockerfile ARG pins, without any "v"."""
+    """Return {tool: version} from the Dockerfile pins, without any "v"."""
     content = DOCKERFILE_PATH.read_text()
     pins: dict[str, str] = {}
-    for tool, arg in TOOL_PINS.items():
-        match = re.search(rf"^ARG {arg}=v?(?P<version>{SEMVER})\b", content, re.MULTILINE)
+    for tool, pattern in TOOL_PINS.items():
+        match = pattern.search(content)
         if not match:
-            raise ValueError(f"Dockerfile has no 'ARG {arg}=<version>' pin")
+            raise ValueError(f"Dockerfile has no {tool} version pin matching {pattern.pattern!r}")
         pins[tool] = match.group("version")
     return pins
 

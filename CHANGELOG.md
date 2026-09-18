@@ -8,6 +8,46 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Changed
+- Bundled scanner and CLI pins refreshed across the standard, heavy and
+  app-tests images:
+  - OpenGrep `v1.26.0` -> `v1.30.0`
+  - TruffleHog `3.96.0` -> `3.97.5`
+  - Socket npm CLI `1.1.165` -> `1.1.176`
+  - Socket Python CLI `2.9.0` -> `2.9.4` (heavy and app-tests images)
+  - uv `0.12.1` -> `0.12.17`
+  - Gosec `v2.28.0` -> `v2.29.0` and Go `1.26.5` -> `1.26.8` (app-tests image)
+- TruffleHog 3.97.0 retires the AppOptics and Bing Subscription Key detectors,
+  so credentials of those two kinds are no longer reported. No other detector
+  changed, and nothing about how Socket Basics invokes TruffleHog changed.
+- OpenGrep 1.27-1.30 are engine-only releases for the languages Socket Basics
+  scans: PCRE1 was replaced with PCRE2, constant propagation was extended to
+  assignment right-hand sides and array indices, and JS/TS destructuring is now
+  taint-tracked. The Java rule set was re-measured on 1.30.0 and the OWASP
+  Benchmark numbers are unchanged from the 1.26.0 baseline.
+
+### Fixed
+- **Dependabot can now actually update the pinned base and tool images.** All
+  three Dockerfiles pinned images as `FROM image:${VERSION}` against an `ARG`,
+  and the comments claimed Dependabot tracked them through those `FROM` lines.
+  It never did: its Dockerfile parser is a regex whose image and tag groups
+  require literal characters and which performs no `ARG` substitution, so every
+  interpolated line matched with no version and was skipped without an error.
+  No Docker-ecosystem pull request had ever been opened against this repo;
+  every pin above had only ever moved by hand, which is how uv came to sit 16
+  patch releases behind. The images are now pinned as literal tags on their
+  `FROM` lines, `node` and `uv` were added to the app-tests allow list (an
+  `allow:` list silently drops what it does not name), and
+  `tests/test_dockerfile_pins.py` re-implements the upstream parser so a
+  reintroduced interpolation fails the build instead of quietly freezing a pin.
+
+  Two consequences for anyone building locally: `--build-arg
+  TRUFFLEHOG_VERSION=` no longer has any effect (edit the `FROM` line instead),
+  and `com.socket.trufflehog-version` is now the one version stated twice in a
+  Dockerfile, with a test keeping the label `ARG` equal to the `FROM` tag.
+  `TRIVY_IMAGE` stays an interpolated `ARG` on purpose — Socket's Trivy build
+  is digest-pinned and must not be bumped independently.
+
 ## [3.3.0] - 2026-09-15
 
 Small release pairing a CLI parity addition with a notification fix. The fix
