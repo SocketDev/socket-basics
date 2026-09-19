@@ -163,6 +163,13 @@ _LITERAL_OPENER = re.compile(
 # Interpolation placeholders: f-strings, template literals, shell-style.
 _INTERPOLATION = re.compile(r'\$?\{[^}]*\}')
 
+# Any quote character. Used to find the opening delimiter of a literal that
+# never closes, which by definition no literal match can cover.
+_QUOTE = re.compile(r'["\'`]')
+
+# Triple-quote delimiters, counted to detect a block that never closes.
+_TRIPLE_QUOTE = re.compile(r'\"\"\"|\'\'\'')
+
 # Rule-name fragments whose finding *is* the credential. ``hardcoded-ip`` and
 # the password-policy rules deliberately do not appear: their snippets are
 # logic, and masking them would remove the reason the finding was raised.
@@ -344,7 +351,17 @@ def redact_literals(text: Any) -> str:
     # of the value; reading it as a comment and starring the rest of that line
     # can drop the closing quote, after which the literal pass no longer matches
     # and the opening line's credential survives.
-    spans = [match.span() for match in _STRING_LITERAL.finditer(text)]
+    # A ``"`` or ``'`` literal cannot hold a raw newline in any language these
+    # rules cover, so a match that does is not a literal -- it is an unclosed
+    # quote that paired with a stray one further down, and the span between them
+    # would hide whatever it covers, including a real assignment on a later
+    # line. Backticks and triple quotes span lines legitimately and are kept.
+    spans = [
+        match.span() for match in _STRING_LITERAL.finditer(text)
+        if len(match.group('quote')) > 1
+        or match.group('quote') == '`'
+        or '\n' not in match.group(0)
+    ]
 
     def in_literal(position: int) -> bool:
         return any(start <= position < end for start, end in spans)
@@ -363,6 +380,23 @@ def redact_literals(text: Any) -> str:
             for start, end in spans
         )
 
+    def _mask_unterminated(line: str, line_offset: int) -> str:
+        """Mask the content of a literal that never closes.
+
+        A quote outside every matched span opens a literal with no end, so the
+        masking pass cannot reach what follows it. The assignment fallback
+        covers this where the value is an assignment, but a comparison or a call
+        argument reaches the literal pass directly and would keep the value.
+        Rather than enumerate those paths, treat an unmatched quote as the
+        boundary it is and mask the rest of the line.
+        """
+        for quote in _QUOTE.finditer(line):
+            if in_literal(line_offset + quote.start()):
+                continue
+            kept = quote.end()
+            return line[:kept] + '*' * len(line[kept:])
+        return line
+
     masked_lines = []
     offset = 0
     for line in text.split('\n'):
@@ -376,7 +410,31 @@ def redact_literals(text: Any) -> str:
             f"{marker}{'*' * len(comment)}"
         )
         offset += len(line) + 1
-    return _STRING_LITERAL.sub(_mask_literal, '\n'.join(masked_lines))
+    masked = _STRING_LITERAL.sub(_mask_literal, '\n'.join(masked_lines))
+
+    # An unclosed triple-quoted block poisons the spans rather than producing
+    # none: its first two quotes match as an empty string, and the third pairs
+    # with any stray quote further on, so one long bogus span swallows whatever
+    # lies between -- including a real assignment on a later line. Once string
+    # state is lost there is nothing trustworthy after the opener, so mask from
+    # it to the end.
+    unclosed = None
+    for delimiter in ('\"\"\"', "'''"):
+        found = [m.start() for m in re.finditer(re.escape(delimiter), text)]
+        if len(found) % 2:
+            unclosed = found[-1] if unclosed is None else min(unclosed, found[-1])
+    if unclosed is not None:
+        kept = unclosed + 3
+        masked = masked[:kept] + re.sub(r'[^\n]', '*', masked[kept:])
+
+    # Every pass above preserves length, so a position in the masked text still
+    # indexes the same character of the original and the spans stay valid.
+    final_lines = []
+    offset = 0
+    for line in masked.split('\n'):
+        final_lines.append(_mask_unterminated(line, offset))
+        offset += len(line) + 1
+    return '\n'.join(final_lines)
 
 
 def is_credential_finding(rule_id: Any, metadata: Mapping[str, Any] | None = None) -> bool:
