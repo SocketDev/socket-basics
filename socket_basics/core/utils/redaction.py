@@ -127,10 +127,11 @@ _STRING_LITERAL = re.compile(
 #    ``==`` leaves the rest of it heading the value, which then does not look
 #    quoted, so a Go short declaration would be starred out whole. A comparison
 #    assigns nothing and does not match here at all.
-#  - The last operator on the line binds. Taking the colon of
+#  - The last operator before a real literal binds. Taking the colon of
 #    ``password: str = "..."`` leaves ``str = "..."`` as the value, so an
 #    annotated declaration -- ordinary Python and TypeScript -- would never
-#    reach the literal pass.
+#    reach the literal pass. Without a literal, the first operator wins so an
+#    ``=`` or ``:`` inside an unquoted credential stays in the masked value.
 #  - An operator inside a string literal is not an operator. The ``:`` in
 #    ``url = "https://..."`` would otherwise bind and star out the URL.
 #
@@ -146,11 +147,10 @@ _COMMENT_MARKER = re.compile(r'(?:#|//|--)')
 # operator binds per statement.
 _STATEMENT_SEPARATOR = re.compile(r';')
 
-# An assigned value that *opens* with a call is an expression rather than a bare
-# credential, so the literal pass handles it instead of the unquoted fallback.
-# Anchored deliberately: matching a call anywhere would let a trailing comment
-# such as ``# see get_secret()`` disable masking for the value in front of it.
-_CALL_EXPRESSION = re.compile(r'^[\w.\[\]]+\s*\(')
+# A complete call with a literal argument is code rather than a bare credential,
+# so the literal pass can handle it without erasing the expression. Calls with
+# no literal stay on the fail-closed path: a config value can look call-shaped.
+_CALL_EXPRESSION = re.compile(r'^[\w.\[\]]+\s*\(.*\)$')
 
 # A value that opens a string literal, allowing the usual raw/bytes/format/
 # unicode prefixes. The prefix has to be recognized here: treating ``r"""...``
@@ -223,20 +223,30 @@ def scrub_tokens(text: Any) -> str:
     return scrubbed
 
 
-def _split_assignment(code: str, offset: int, in_literal) -> 'tuple[str, str, str] | None':
+def _split_assignment(code: str, offset: int, in_literal,
+                      literal_start_within) -> 'tuple[str, str, str, str] | None':
     """Split a statement at the assignment operator that binds, if it has one.
 
-    Returns ``(head, value, trailing_whitespace)``, where ``head`` runs through
-    the operator and any space after it. Operators covered by a string literal
-    are skipped, and the last of the rest wins.
+    Returns ``(head, value, trailing_whitespace, operator)``, where ``head``
+    runs through the operator and any space after it. Operators covered by a
+    string literal are skipped. The last operator before the first real literal
+    wins; with no literal, the first operator wins so punctuation inside an
+    unquoted credential cannot be mistaken for syntax.
     """
-    chosen = None
+    operators = []
     for match in _ASSIGNMENT_OPERATOR.finditer(code):
         if in_literal(offset + match.start()):
             continue
-        chosen = match
-    if chosen is None:
+        operators.append(match)
+    if not operators:
         return None
+
+    literal_at = literal_start_within(offset, offset + len(code))
+    before_literal = [
+        match for match in operators
+        if literal_at is not None and offset + match.end() <= literal_at
+    ]
+    chosen = before_literal[-1] if before_literal else operators[0]
 
     rest = code[chosen.end():]
     value = rest.lstrip()
@@ -244,7 +254,7 @@ def _split_assignment(code: str, offset: int, in_literal) -> 'tuple[str, str, st
         return None
     head = code[:chosen.end()] + rest[:len(rest) - len(value)]
     stripped = value.rstrip()
-    return head, stripped, value[len(stripped):]
+    return head, stripped, value[len(stripped):], chosen.group(0)
 
 
 def _split_statements(code: str, offset: int, in_literal) -> 'list[tuple[str, int]]':
@@ -266,53 +276,90 @@ def _split_statements(code: str, offset: int, in_literal) -> 'list[tuple[str, in
     return pieces
 
 
-def _mask_statement(code: str, offset: int, in_literal, literal_opens_at,
-                    literal_start_within) -> str:
-    """Mask the assigned value in a single statement."""
-    split = _split_assignment(code, offset, in_literal)
-    if not split:
-        return code
-    head, value, trailing = split
-
-    # A value that opens with a call is code rather than a credential:
-    # ``request.form.get('password')`` is the finding, and starring it leaves
-    # nothing to act on. A quoted value is the literal pass's job -- but only
-    # where the quote opens a literal that pass can find. A snippet cut mid
-    # string has an opening quote and no closing one, so nothing matches and
-    # the value would survive untouched.
-    opener = _LITERAL_OPENER.match(value)
-    opens_literal = bool(opener) and literal_opens_at(
-        offset + len(head) + opener.start('quote'), len(opener.group('quote'))
+def _mask_outside_literals(text: str, offset: int, in_literal,
+                           prefix: int = 0) -> str:
+    """Mask text except a trusted prefix and recognized literal spans."""
+    return ''.join(
+        char if index < prefix or in_literal(offset + index) else '*'
+        for index, char in enumerate(text)
     )
-    if opens_literal or _CALL_EXPRESSION.match(value):
-        return code
 
-    # Anything else is masked whole. Where the value ends is unknowable here,
-    # and measuring it together with what follows would reveal the head of a
-    # short credential.
-    #
-    # Unless the value contains a literal that runs past this line. Starring it
-    # would destroy the opening quote, and the masking pass -- which runs over
-    # the whole snippet afterwards -- would then no longer match, leaving the
-    # rest of that literal untouched on its continuation lines. Mask up to the
-    # opener and let the pass have the literal itself.
+
+def _mask_statement(code: str, offset: int, in_literal, literal_opens_at,
+                    literal_start_within) -> 'tuple[str, bool]':
+    """Mask one statement and report whether it contained an assignment."""
+    split = _split_assignment(code, offset, in_literal, literal_start_within)
+    if not split:
+        return code, False
+    head, value, trailing, operator = split
+
     value_start = offset + len(head)
     literal_at = literal_start_within(value_start, value_start + len(value))
+
+    # A complete code assignment that calls something with a literal argument
+    # remains readable; the literal pass masks the argument. The literal is
+    # required because an unquoted config value can otherwise look like a call.
+    # Colon-delimited values stay conservative for the same reason.
+    call_with_literal = all((
+        operator in ('=', ':='),
+        literal_at is not None,
+        _CALL_EXPRESSION.match(value),
+    ))
+    if call_with_literal:
+        return code, True
+
+    # Preserve real literal spans for the literal pass, while masking every
+    # adjacent character. Keeping the suffix wholesale would expose values such
+    # as ``abc"decoy"hunter2``; masking the opening quote would instead break a
+    # multiline literal and leave its continuation unprotected.
+    opener = _LITERAL_OPENER.match(value)
+    opens_literal = bool(opener) and literal_opens_at(
+        value_start + opener.start('quote'), len(opener.group('quote'))
+    )
     if literal_at is not None:
-        keep_from = literal_at - value_start
-        return f"{head}{'*' * keep_from}{value[keep_from:]}{trailing}"
-    return f"{head}{'*' * len(value)}{trailing}"
+        prefix = opener.start('quote') if opens_literal else 0
+        masked_value = _mask_outside_literals(
+            value, value_start, in_literal, prefix
+        )
+        return f"{head}{masked_value}{trailing}", True
+
+    # With no literal there is no syntax worth guessing at. Mask the whole value
+    # so embedded operators and call-shaped config values cannot escape.
+    return f"{head}{'*' * len(value)}{trailing}", True
 
 
 def _mask_code(code: str, offset: int, in_literal, literal_opens_at,
                literal_start_within) -> str:
-    """Mask the assigned value in every statement on one line of code."""
-    return ''.join(
-        piece if piece == ';'
-        else _mask_statement(piece, piece_offset, in_literal, literal_opens_at,
-                             literal_start_within)
-        for piece, piece_offset in _split_statements(code, offset, in_literal)
-    )
+    """Mask a line of code without trusting ambiguous statement boundaries."""
+    handled = []
+    has_assignment = False
+    for piece, piece_offset in _split_statements(code, offset, in_literal):
+        if piece == ';':
+            handled.append((piece, piece_offset, piece, False, True))
+            continue
+        masked, assigned = _mask_statement(
+            piece, piece_offset, in_literal, literal_opens_at,
+            literal_start_within
+        )
+        handled.append((piece, piece_offset, masked, assigned, False))
+        has_assignment = has_assignment or assigned
+
+    # Once a line contains an assignment, every other semicolon fragment is
+    # ambiguous: it may be another statement, or it may be part of an unquoted
+    # config value. Keep the first assignment readable, preserve literal spans
+    # for the later masking pass, and fail closed on every other fragment.
+    if has_assignment:
+        first_assignment = next(
+            index for index, item in enumerate(handled) if item[3]
+        )
+        return ''.join(
+            original if separator
+            else masked if index == first_assignment or not original.strip()
+            else _mask_outside_literals(original, piece_offset, in_literal)
+            for index, (original, piece_offset, masked, _, separator)
+            in enumerate(handled)
+        )
+    return ''.join(masked for _, _, masked, _, _ in handled)
 
 
 def _split_comment(line: str, offset: int, in_literal) -> 'tuple[str, str, str]':

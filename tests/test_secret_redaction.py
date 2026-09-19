@@ -229,6 +229,15 @@ class TestOperatorBinding:
     def test_a_value_containing_an_operator_is_masked(self):
         assert "hunter2" not in redact_literals('password = "a=b:c hunter2"')
 
+    def test_operators_inside_an_unquoted_value_do_not_rebind(self):
+        for line in (
+            "password: hunter2=foo",
+            "password: hunter2:foo",
+            "password = hunter2=foo",
+        ):
+            redacted = redact_literals(line)
+            assert "hunter2" not in redacted, redacted
+
     def test_a_line_with_no_value_after_the_operator_is_left_alone(self):
         assert redact_literals("password =") == "password ="
 
@@ -266,6 +275,12 @@ class TestStatementsAndComments:
     def test_a_separator_inside_a_literal_is_part_of_the_value(self):
         assert redact_literals('password = "a;b"') == 'password = "***"'
 
+    def test_a_separator_inside_an_unquoted_value_masks_every_fragment(self):
+        for line in ("password: abc;hunter2", "password: abc;hunter2=foo"):
+            redacted = redact_literals(line)
+            assert "hunter2" not in redacted
+            assert redacted.startswith("password: ***;")
+
     def test_an_operator_in_a_comment_does_not_bind(self):
         # The comment's `=` is later in the line than the real one, so binding
         # it would leave the credential in the head.
@@ -281,6 +296,10 @@ class TestStatementsAndComments:
         assert redact_literals("password = hunter2 # note").startswith(
             "password = ******* #"
         )
+
+    def test_a_call_shaped_unquoted_value_is_masked(self):
+        for line in ("password: hunter2(foo)", "password = hunter2(foo)"):
+            assert "hunter2" not in redact_literals(line), line
 
 
 class TestMultilineAndUnterminatedLiterals:
@@ -341,6 +360,11 @@ class TestPrefixedAndInterpolatedLiterals:
         redacted = redact_literals("password = r'SuperSecret123!'")
         assert "SuperSecret123!" not in redacted
         assert redacted.startswith("password = r'")
+
+    def test_text_adjacent_to_a_literal_is_masked_too(self):
+        for line in ('password: r""hunter2', 'password: abc"decoy"hunter2'):
+            redacted = redact_literals(line)
+            assert "hunter2" not in redacted, redacted
 
     def test_an_interpolated_body_is_masked_whole(self):
         # The literal text around a placeholder inflates the body past the

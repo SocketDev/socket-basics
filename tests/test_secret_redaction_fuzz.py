@@ -39,6 +39,11 @@ WRAPPERS = [
     "{value}", "get_secret({value})", "a if b else {value}",
     "{value} + other", "other + {value}", "[{value}]", "f({value}, x)",
 ]
+BARE_VALUES = [
+    "{secret}", "{secret}=suffix", "prefix:{secret}", "prefix;{secret}",
+    "prefix;{secret}=suffix", "{secret}(arg)",
+    'prefix"decoy"{secret}', 'r""{secret}',
+]
 
 
 def _value(rng, secret, allow_bare=True):
@@ -50,7 +55,7 @@ def _value(rng, secret, allow_bare=True):
         choices.append("bare")
     style = rng.choice(choices)
     if style == "bare":
-        return secret
+        return rng.choice(BARE_VALUES).format(secret=secret)
     if style == "wrapped":
         return rng.choice(WRAPPERS).format(value=_value(rng, secret, allow_bare=False))
     body = secret
