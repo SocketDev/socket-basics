@@ -104,30 +104,84 @@ _PEM_BLOCK = re.compile(
     re.DOTALL,
 )
 
-# Quoted string literals, including escaped quotes. Covers the single, double
-# and backtick forms the bundled rules match across languages.
+# Quoted string literals, including escaped quotes. Covers the single, double,
+# backtick and triple-quoted forms the bundled rules match across languages.
+#
+# The triple-quoted alternatives come first so a terminated block matches as one
+# literal with its real body. They do not rescue the unterminated case: the
+# engine backtracks to the single-quote alternative, which matches the first two
+# quotes of ``\"\"\"`` as an empty string. ``_mask_statement`` guards against that
+# spurious match rather than the pattern.
 _STRING_LITERAL = re.compile(
-    r"""(?P<quote>["'`])(?P<body>(?:\\.|(?!(?P=quote))[^\\])*)(?P=quote)""",
+    r'(?P<quote>"""|\'\'\'|["\'`])(?P<body>(?:\\.|(?!(?P=quote))[^\\])*)(?P=quote)',
     re.DOTALL,
 )
 
 # Fallback for unquoted forms such as ``password: hunter2`` in config-style
 # sources, used only when a credential finding has no string literal to mask.
 #
-# The operator alternation is what keeps a quoted value out of this branch. A
-# bare ``[=:]`` stops on the first character of ``:=`` or ``==`` and leaves the
-# rest of the operator at the head of the value, which no longer looks quoted,
-# so a Go short declaration or a comparison would be starred out whole instead
-# of going to the literal pass. ``=`` and ``:`` are matched only where they are
-# not part of a longer operator, and a comparison assigns nothing, so it does
-# not match here at all.
-_UNQUOTED_ASSIGNMENT = re.compile(
-    r'^(?P<head>[^=:]*(?::=|=(?!=)|:(?!:))\s*)(?P<body>\S.*?)(?P<tail>\s*)$'
+# Which operator binds decides whether a value reaches the literal pass, and
+# three things have to hold at once:
+#
+#  - Only a whole operator counts. Stopping on the first character of ``:=`` or
+#    ``==`` leaves the rest of it heading the value, which then does not look
+#    quoted, so a Go short declaration would be starred out whole. A comparison
+#    assigns nothing and does not match here at all.
+#  - The last operator before a real literal binds. Taking the colon of
+#    ``password: str = "..."`` leaves ``str = "..."`` as the value, so an
+#    annotated declaration -- ordinary Python and TypeScript -- would never
+#    reach the literal pass. Without a literal, the first operator wins so an
+#    ``=`` or ``:`` inside an unquoted credential stays in the masked value.
+#  - An operator inside a string literal is not an operator. The ``:`` in
+#    ``url = "https://..."`` would otherwise bind and star out the URL.
+#
+# A single regex cannot express the third, so ``_split_assignment`` walks the
+# matches and skips the ones a literal covers.
+_ASSIGNMENT_OPERATOR = re.compile(r':=|(?<![=!<>:])=(?!=)|(?<!:):(?!:)')
+
+# Comment markers, used to mask text after the value on a credential line. A
+# marker inside a string literal is not a comment, so callers check the spans.
+_COMMENT_MARKER = re.compile(r'(?:#|//|--)')
+
+# Statement separator. A line can carry more than one assignment, and only one
+# operator binds per statement.
+_STATEMENT_SEPARATOR = re.compile(r';')
+
+# A complete call with a literal argument is code rather than a bare credential,
+# so the literal pass can handle it without erasing the expression. Calls with
+# no literal stay on the fail-closed path: a config value can look call-shaped.
+_CALL_EXPRESSION = re.compile(r'^[\w.\[\]]+\s*\(.*\)$')
+
+# A value that opens a string literal, allowing the usual raw/bytes/format/
+# unicode prefixes. The prefix has to be recognized here: treating ``r"""...``
+# as unquoted stars the opening line, which removes the quotes the rest of the
+# snippet is measured against.
+_LITERAL_OPENER = re.compile(
+    r'^(?:rb|br|rf|fr|r|b|u|f)?(?P<quote>"""|\'\'\'|["\'`])', re.IGNORECASE
 )
+
+# Interpolation placeholders: f-strings, template literals, shell-style.
+_INTERPOLATION = re.compile(r'\$?\{[^}]*\}')
+
+# Any quote character. Used to find the opening delimiter of a literal that
+# never closes, which by definition no literal match can cover.
+_QUOTE = re.compile(r'["\'`]')
+
+# Triple-quote delimiters, counted to detect a block that never closes.
+TRIPLE_DOUBLE = chr(34) * 3
+TRIPLE_SINGLE = chr(39) * 3
+_TRIPLE_QUOTE = re.compile(r'\"\"\"|\'\'\'')
 
 # Rule-name fragments whose finding *is* the credential. ``hardcoded-ip`` and
 # the password-policy rules deliberately do not appear: their snippets are
 # logic, and masking them would remove the reason the finding was raised.
+#
+# ``plain-text-password`` does stay, even though the rule it names mostly
+# matches password *handling* rather than a literal. One of its patterns is a
+# comparison against a hardcoded string, and no ``hardcoded-*`` rule covers that
+# shape, so dropping it here is the difference between masking a password and
+# publishing one. Keeping the handling snippets readable is the job of the
+# expression carve-out in ``redact_literals``, not of this list.
 _CREDENTIAL_RULE_FRAGMENTS = (
     'hardcoded-secret',
     'hardcoded-credential',
@@ -169,12 +223,170 @@ def scrub_tokens(text: Any) -> str:
     return scrubbed
 
 
+def _split_assignment(code: str, offset: int, in_literal,
+                      literal_start_within) -> 'tuple[str, str, str, str] | None':
+    """Split a statement at the assignment operator that binds, if it has one.
+
+    Returns ``(head, value, trailing_whitespace, operator)``, where ``head``
+    runs through the operator and any space after it. Operators covered by a
+    string literal are skipped. The last operator before the first real literal
+    wins; with no literal, the first operator wins so punctuation inside an
+    unquoted credential cannot be mistaken for syntax.
+    """
+    operators = []
+    for match in _ASSIGNMENT_OPERATOR.finditer(code):
+        if in_literal(offset + match.start()):
+            continue
+        operators.append(match)
+    if not operators:
+        return None
+
+    literal_at = literal_start_within(offset, offset + len(code))
+    before_literal = [
+        match for match in operators
+        if literal_at is not None and offset + match.end() <= literal_at
+    ]
+    chosen = before_literal[-1] if before_literal else operators[0]
+
+    rest = code[chosen.end():]
+    value = rest.lstrip()
+    if not value:
+        return None
+    head = code[:chosen.end()] + rest[:len(rest) - len(value)]
+    stripped = value.rstrip()
+    return head, stripped, value[len(stripped):], chosen.group(0)
+
+
+def _split_statements(code: str, offset: int, in_literal) -> 'list[tuple[str, int]]':
+    """Split code on statement separators, keeping each separator as a piece.
+
+    One operator binds per statement, so a line carrying more than one has to be
+    handled a statement at a time: in ``a = hunter2; password = x`` the last
+    operator is the second, which would leave the first value in the head.
+    """
+    pieces: 'list[tuple[str, int]]' = []
+    start = 0
+    for separator in _STATEMENT_SEPARATOR.finditer(code):
+        if in_literal(offset + separator.start()):
+            continue
+        pieces.append((code[start:separator.start()], offset + start))
+        pieces.append((separator.group(0), offset + separator.start()))
+        start = separator.end()
+    pieces.append((code[start:], offset + start))
+    return pieces
+
+
+def _mask_outside_literals(text: str, offset: int, in_literal,
+                           prefix: int = 0) -> str:
+    """Mask text except a trusted prefix and recognized literal spans."""
+    return ''.join(
+        char if index < prefix or in_literal(offset + index) else '*'
+        for index, char in enumerate(text)
+    )
+
+
+def _mask_statement(code: str, offset: int, in_literal, literal_opens_at,
+                    literal_start_within) -> 'tuple[str, bool]':
+    """Mask one statement and report whether it contained an assignment."""
+    split = _split_assignment(code, offset, in_literal, literal_start_within)
+    if not split:
+        return code, False
+    head, value, trailing, operator = split
+
+    value_start = offset + len(head)
+    literal_at = literal_start_within(value_start, value_start + len(value))
+
+    # A complete code assignment that calls something with a literal argument
+    # remains readable; the literal pass masks the argument. The literal is
+    # required because an unquoted config value can otherwise look like a call.
+    # Colon-delimited values stay conservative for the same reason.
+    call_with_literal = all((
+        operator in ('=', ':='),
+        literal_at is not None,
+        _CALL_EXPRESSION.match(value),
+    ))
+    if call_with_literal:
+        return code, True
+
+    # Preserve real literal spans for the literal pass, while masking every
+    # adjacent character. Keeping the suffix wholesale would expose values such
+    # as ``abc"decoy"hunter2``; masking the opening quote would instead break a
+    # multiline literal and leave its continuation unprotected.
+    opener = _LITERAL_OPENER.match(value)
+    opens_literal = bool(opener) and literal_opens_at(
+        value_start + opener.start('quote'), len(opener.group('quote'))
+    )
+    if literal_at is not None:
+        prefix = opener.start('quote') if opens_literal else 0
+        masked_value = _mask_outside_literals(
+            value, value_start, in_literal, prefix
+        )
+        return f"{head}{masked_value}{trailing}", True
+
+    # With no literal there is no syntax worth guessing at. Mask the whole value
+    # so embedded operators and call-shaped config values cannot escape.
+    return f"{head}{'*' * len(value)}{trailing}", True
+
+
+def _mask_code(code: str, offset: int, in_literal, literal_opens_at,
+               literal_start_within) -> str:
+    """Mask a line of code without trusting ambiguous statement boundaries."""
+    handled = []
+    has_assignment = False
+    for piece, piece_offset in _split_statements(code, offset, in_literal):
+        if piece == ';':
+            handled.append((piece, piece_offset, piece, False, True))
+            continue
+        masked, assigned = _mask_statement(
+            piece, piece_offset, in_literal, literal_opens_at,
+            literal_start_within
+        )
+        handled.append((piece, piece_offset, masked, assigned, False))
+        has_assignment = has_assignment or assigned
+
+    # Once a line contains an assignment, every other semicolon fragment is
+    # ambiguous: it may be another statement, or it may be part of an unquoted
+    # config value. Keep the first assignment readable, preserve literal spans
+    # for the later masking pass, and fail closed on every other fragment.
+    if has_assignment:
+        first_assignment = next(
+            index for index, item in enumerate(handled) if item[3]
+        )
+        return ''.join(
+            original if separator
+            else masked if index == first_assignment or not original.strip()
+            else _mask_outside_literals(original, piece_offset, in_literal)
+            for index, (original, piece_offset, masked, _, separator)
+            in enumerate(handled)
+        )
+    return ''.join(masked for _, _, masked, _, _ in handled)
+
+
+def _split_comment(line: str, offset: int, in_literal) -> 'tuple[str, str, str]':
+    """Split a line into code, comment marker and comment text.
+
+    The marker is kept so the masked line still reads as commented. A marker
+    inside a string literal is part of the value, not a comment.
+    """
+    for marker in _COMMENT_MARKER.finditer(line):
+        if in_literal(offset + marker.start()):
+            continue
+        return line[:marker.start()], marker.group(0), line[marker.end():]
+    return line, '', ''
+
+
 def redact_literals(text: Any) -> str:
     """Mask the body of every string literal, keeping the surrounding syntax.
 
     ``API_KEY = "sk_live_abc123"`` becomes ``API_KEY = "****************"``:
     the name, the operator and the line all survive, which is what makes the
     finding actionable, while the value does not.
+
+    Where the shape of the value is not recognized the whole value is masked
+    rather than guessed at, so a subscript, a ternary or a prefixed literal
+    (``f"..."``, ``r'...'``) loses more of the line than a plain assignment
+    does. That direction is deliberate: the rule ID, file and line still
+    identify the finding, and the alternative is leaving a credential in place.
     """
     if not isinstance(text, str) or not text:
         return text if isinstance(text, str) else ''
@@ -184,28 +396,98 @@ def redact_literals(text: Any) -> str:
         if not body:
             return match.group(0)
         quote = match.group('quote')
-        return f'{quote}{mask_value(body)}{quote}'
-
-    # Mask unquoted assignments line by line before processing literals. A
-    # quoted value is left for the literal pass, while an unquoted value is
-    # masked even if another line or a trailing comment contains quoted text.
-    masked_lines = []
-    for line in text.split('\n'):
-        match = _UNQUOTED_ASSIGNMENT.match(line)
-        body = match.group('body') if match else ''
-        if match and not body.lstrip().startswith(('"', "'", '`')):
-            # If quoted text appears later in an unquoted value, mask the whole
-            # body. Measuring that combined text could otherwise make a short
-            # credential eligible for a partial reveal.
-            masked_body = (
-                '*' * len(body) if _STRING_LITERAL.search(body) else mask_value(body)
-            )
-            masked_lines.append(
-                f"{match.group('head')}{masked_body}{match.group('tail')}"
-            )
+        if '\n' in body or _INTERPOLATION.search(body):
+            # A body that spans lines, or that interpolates, is a block of
+            # content rather than one opaque value. The head-and-tail reveal
+            # measures the whole thing, so the literal text around a placeholder
+            # inflates the length and buys a reveal the bare value would not get
+            # -- ``f"{b}_SuperSecret123!"`` would show ``123!``. Mask every line
+            # and keep the line breaks, so the snippet still shows where the
+            # literal starts and ends.
+            masked = '\n'.join('*' * len(segment) for segment in body.split('\n'))
         else:
-            masked_lines.append(line)
-    return _STRING_LITERAL.sub(_mask_literal, '\n'.join(masked_lines))
+            masked = mask_value(body)
+        return f'{quote}{masked}{quote}'
+
+    # Literal spans are measured over the whole snippet, not line by line. A
+    # literal can span lines, and a ``#`` or ``--`` on its second line is part
+    # of the value; reading it as a comment and starring the rest of that line
+    # can drop the closing quote, after which the literal pass no longer matches
+    # and the opening line's credential survives.
+    # A ``"`` or ``'`` literal cannot hold a raw newline in any language these
+    # rules cover, so a match that does is not a literal -- it is an unclosed
+    # quote that paired with a stray one further down, and the span between them
+    # would hide whatever it covers, including a real assignment on a later
+    # line. Backticks and triple quotes span lines legitimately and are kept.
+    spans = [
+        match.span() for match in _STRING_LITERAL.finditer(text)
+        if len(match.group('quote')) > 1
+        or match.group('quote') == '`'
+        or '\n' not in match.group(0)
+    ]
+
+    def in_literal(position: int) -> bool:
+        return any(start <= position < end for start, end in spans)
+
+    def literal_start_within(start: int, stop: int):
+        """Return the first literal opening inside ``[start, stop)``, if any."""
+        found = [s for s, _ in spans if start <= s < stop]
+        return min(found) if found else None
+
+    def literal_opens_at(position: int, delimiter: int) -> bool:
+        """Report whether a real literal starts at ``position``.
+
+        A value is only deferred to the masking pass when that pass will cover
+        it. ``\"\"\"secret`` with no closing delimiter still produces a match --
+        the first two quotes read as an empty string -- so requiring the span to
+        hold an opening and a closing delimiter is what separates a literal the
+        pass can mask from an artifact of the unterminated one.
+        """
+        return any(
+            start == position and end - start >= 2 * delimiter
+            for start, end in spans
+        )
+
+    masked_lines = []
+    offset = 0
+    for line in text.split('\n'):
+        # The comment comes off first. Everything below reasons about where the
+        # value ends, and a comment can hold anything the value can -- including
+        # an operator later in the line than the real one, which would bind and
+        # leave the credential sitting in the head.
+        code, marker, comment = _split_comment(line, offset, in_literal)
+        masked_lines.append(
+            f"{_mask_code(code, offset, in_literal, literal_opens_at, literal_start_within)}"
+            f"{marker}{'*' * len(comment)}"
+        )
+        offset += len(line) + 1
+    masked = _STRING_LITERAL.sub(_mask_literal, "\n".join(masked_lines))
+
+    # Everything above depends on knowing where literals begin and end. A
+    # snippet is a slice of a file, so that is sometimes unknowable, and the two
+    # ways it happens both read as "a literal opened and never closed":
+    #
+    #  - a quote no surviving span covers, and
+    #  - an odd number of triple delimiters, whose first two quotes match as an
+    #    empty string while the third pairs with any stray quote further on.
+    #
+    # Past such a point every character is inside that literal as far as any
+    # reader can tell, so it is masked to the end of the snippet rather than to
+    # the end of its line: the credential is often on a continuation line.
+    # Every pass above preserves length, so positions still line up.
+    unreliable = []
+    for quote in _QUOTE.finditer(text):
+        if not in_literal(quote.start()):
+            unreliable.append(quote.end())
+            break
+    for delimiter in (TRIPLE_DOUBLE, TRIPLE_SINGLE):
+        found = [m.start() for m in re.finditer(re.escape(delimiter), text)]
+        if len(found) % 2:
+            unreliable.append(found[-1] + len(delimiter))
+    if unreliable:
+        kept = min(unreliable)
+        masked = masked[:kept] + re.sub(r"[^\n]", "*", masked[kept:])
+    return masked
 
 
 def is_credential_finding(rule_id: Any, metadata: Mapping[str, Any] | None = None) -> bool:

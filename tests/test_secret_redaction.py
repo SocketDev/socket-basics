@@ -205,6 +205,179 @@ class TestRedactLiterals:
         assert redact_literals('password = ""') == 'password = ""'
 
 
+class TestOperatorBinding:
+    """Which operator binds decides whether a value reaches the literal pass."""
+
+    def test_an_annotated_declaration_keeps_its_syntax(self):
+        # The colon of the annotation must not win over the assignment: binding
+        # it leaves `str = "..."` as the value, which is not quoted.
+        for line, prefix in (
+            ('password: str = "SuperSecret123!"', 'password: str = "'),
+            ('const password: string = "SuperSecret123!";', 'const password: string = "'),
+        ):
+            redacted = redact_literals(line)
+            assert "SuperSecret123!" not in redacted
+            assert redacted.startswith(prefix), redacted
+
+    def test_an_operator_inside_a_literal_does_not_bind(self):
+        # The `:` in the URL scheme would otherwise split the line and star out
+        # the value instead of masking it as a literal.
+        redacted = redact_literals('url = "https://example.com/a"')
+        assert redacted.startswith('url = "')
+        assert redacted.endswith('"')
+
+    def test_a_value_containing_an_operator_is_masked(self):
+        assert "hunter2" not in redact_literals('password = "a=b:c hunter2"')
+
+    def test_operators_inside_an_unquoted_value_do_not_rebind(self):
+        for line in (
+            "password: hunter2=foo",
+            "password: hunter2:foo",
+            "password = hunter2=foo",
+        ):
+            redacted = redact_literals(line)
+            assert "hunter2" not in redacted, redacted
+
+    def test_a_line_with_no_value_after_the_operator_is_left_alone(self):
+        assert redact_literals("password =") == "password ="
+
+
+class TestTrailingComments:
+    def test_a_comment_beside_a_masked_value_is_masked_too(self):
+        """Masking the value alone leaves the plaintext sitting next to it."""
+        for line in (
+            'DB_PASSWORD = "x"  # real one is hunter2',
+            "password = get_secret()  # real value is hunter2",
+            "user.password = request.form.get('pw')  // was hunter2",
+            'password = "SuperSecret123!" -- legacy hunter2',
+        ):
+            assert "hunter2" not in redact_literals(line), line
+
+    def test_a_marker_inside_a_literal_is_not_a_comment(self):
+        # The `#` is part of the URL, so the line is not truncated there.
+        redacted = redact_literals('password = "a # b"')
+        assert redacted == 'password = "*****"'
+
+
+class TestStatementsAndComments:
+    """A line can carry more than the one value the operator search finds."""
+
+    def test_each_statement_on_a_line_is_masked(self):
+        # One operator binds per statement. Searching the whole line finds the
+        # last one and leaves every earlier value sitting in the head.
+        for line in (
+            "a = hunter2; password = x",
+            "password = hunter2; b = 1",
+            "user = admin; pwd = hunter2",
+        ):
+            assert "hunter2" not in redact_literals(line), line
+
+    def test_a_separator_inside_a_literal_is_part_of_the_value(self):
+        assert redact_literals('password = "a;b"') == 'password = "***"'
+
+    def test_a_separator_inside_an_unquoted_value_masks_every_fragment(self):
+        for line in ("password: abc;hunter2", "password: abc;hunter2=foo"):
+            redacted = redact_literals(line)
+            assert "hunter2" not in redacted
+            assert redacted.startswith("password: ***;")
+
+    def test_an_operator_in_a_comment_does_not_bind(self):
+        # The comment's `=` is later in the line than the real one, so binding
+        # it would leave the credential in the head.
+        for line in (
+            "password = hunter2  # see x = y",
+            "password: hunter2 # ratio a:b",
+            "token = SuperSecret123!  # cf. k=v",
+        ):
+            redacted = redact_literals(line)
+            assert "hunter2" not in redacted and "SuperSecret123!" not in redacted, line
+
+    def test_the_comment_marker_survives_so_the_line_still_reads(self):
+        assert redact_literals("password = hunter2 # note").startswith(
+            "password = ******* #"
+        )
+
+    def test_a_call_shaped_unquoted_value_is_masked(self):
+        for line in ("password: hunter2(foo)", "password = hunter2(foo)"):
+            assert "hunter2" not in redact_literals(line), line
+
+
+class TestMultilineAndUnterminatedLiterals:
+    """Literal spans are a property of the snippet, not of one line.
+
+    A snippet is a slice of a file, so a literal can open on one line and close
+    on another, or never close at all.
+    """
+
+    TRIPLE_DOUBLE = 'PASSWORD = ' + '"' * 3 + 'hunter2\n# not a comment\n' + '"' * 3
+    TRIPLE_SINGLE = 'SQL = ' + "'" * 3 + '\nSELECT hunter2 -- inline\n' + "'" * 3
+    BACKTICK = 'password = `hunter2\n// js template\n`'
+
+    def test_a_marker_on_a_later_line_of_a_literal_is_not_a_comment(self):
+        for snippet in (self.TRIPLE_DOUBLE, self.TRIPLE_SINGLE, self.BACKTICK):
+            assert "hunter2" not in redact_literals(snippet), snippet
+
+    def test_an_unterminated_triple_quote_is_masked(self):
+        """The spurious empty match must not read as a literal worth deferring.
+
+        ``\"\"\"secret`` with no closing delimiter still produces a match: the
+        first two quotes parse as an empty string. Treating that as "a literal
+        the masking pass will cover" leaves the value untouched, because the
+        pass covers only the two quotes.
+        """
+        for opener in ('"' * 3, "'" * 3, 'r' + '"' * 3, "f" + "'" * 3):
+            snippet = f"password = {opener}hunter2\nunterminated"
+            assert "hunter2" not in redact_literals(snippet), snippet
+
+    def test_an_unterminated_literal_is_masked_rather_than_deferred(self):
+        # A snippet cut mid-string has an opening quote and no closing one, so
+        # the literal pass never matches it. Deferring would leave it untouched.
+        for snippet in ('password = "hunter2\n# broken', "password = 'hunter2\n-- sql"):
+            assert "hunter2" not in redact_literals(snippet), snippet
+
+    def test_a_literal_spanning_lines_keeps_the_line_structure(self):
+        redacted = redact_literals(self.TRIPLE_DOUBLE)
+        assert redacted.count("\n") == 2
+        assert "hunter2" not in redacted
+
+
+class TestPrefixedAndInterpolatedLiterals:
+    """A prefix still opens a literal, and an interpolated body is not one value."""
+
+    Q3 = '"' * 3
+
+    def test_a_prefixed_multiline_literal_is_masked(self):
+        # Treating the prefix as unquoted stars the opening line, which removes
+        # the quotes the rest of the snippet is measured against: later lines
+        # still read as inside a literal, so nothing masks them.
+        for prefix in ("r", "f", "rb", "R"):
+            snippet = f"password = {prefix}{self.Q3}hunter2\nmore SuperSecret123!\n{self.Q3}"
+            redacted = redact_literals(snippet)
+            assert "hunter2" not in redacted, snippet
+            assert "SuperSecret123!" not in redacted, snippet
+
+    def test_a_prefixed_single_line_literal_keeps_its_syntax(self):
+        redacted = redact_literals("password = r'SuperSecret123!'")
+        assert "SuperSecret123!" not in redacted
+        assert redacted.startswith("password = r'")
+
+    def test_text_adjacent_to_a_literal_is_masked_too(self):
+        for line in ('password: r""hunter2', 'password: abc"decoy"hunter2'):
+            redacted = redact_literals(line)
+            assert "hunter2" not in redacted, redacted
+
+    def test_an_interpolated_body_is_masked_whole(self):
+        # The literal text around a placeholder inflates the body past the
+        # partial-reveal threshold, which would expose the tail of the value.
+        for snippet in (
+            'password = f"{b}_SuperSecret123!"',
+            "password = `${b}_SuperSecret123!`",
+        ):
+            redacted = redact_literals(snippet)
+            assert "SuperSecret123!" not in redacted
+            assert "123!" not in redacted, redacted
+
+
 class TestCredentialRuleSelection:
     @pytest.mark.parametrize(
         "rule_id",
@@ -217,6 +390,7 @@ class TestCredentialRuleSelection:
             "python-hardcoded-password-default",
             "js-default-credentials",
             "js-weak-jwt-secret",
+            "python-plain-text-password",
         ],
     )
     def test_hardcoded_credential_rules_are_selected(self, rule_id):
@@ -300,8 +474,6 @@ class TestRedactMessage:
     def test_known_tokens_are_scrubbed_from_every_message(self):
         assert AWS_KEY_ID not in redact_message(f"Logged value: {AWS_KEY_ID}")
 
-
-class TestRedactMessage:
     def test_a_short_bound_value_does_not_mangle_the_rest_of_the_message(self):
         """The replace is by value, so a short one is also an ordinary substring.
 
@@ -341,6 +513,44 @@ class TestRedactMessage:
     def test_a_non_credential_finding_keeps_its_message(self):
         message = "Use of eval() on untrusted input"
         assert redact_message(message, {"$X": {"abstract_content": "eval"}}) == message
+
+
+class TestPasswordLogicRules:
+    """``python-plain-text-password`` matches two shapes and needs both served.
+
+    Its handling patterns assign request input to a password field, where the
+    expression is the finding. Its comparison pattern can bind a hardcoded
+    string, and no ``hardcoded-*`` rule covers that shape, so the value has to
+    be masked here or it is not masked at all.
+    """
+
+    def test_a_password_handling_snippet_keeps_its_expression(self):
+        redacted = redact_snippet(
+            "user.password = request.form.get('password')", credential_finding=True
+        )
+        assert redacted.startswith("user.password = request.form.get(")
+        assert redacted.endswith(")")
+
+    def test_a_hardcoded_comparison_value_is_masked(self):
+        redacted = redact_snippet(
+            'if user.password == "hunter2":', credential_finding=True
+        )
+        assert "hunter2" not in redacted
+        assert redacted.startswith('if user.password == "')
+
+    def test_a_bare_value_with_a_trailing_comment_is_masked_whole(self):
+        # No call, so this stays on the unquoted path: measuring the value plus
+        # the comment could otherwise partially reveal a short credential.
+        redacted = redact_snippet('password: hunter2 # see "notes"', credential_finding=True)
+        assert "hunter2" not in redacted
+        assert "notes" not in redacted
+
+    def test_a_literal_argument_to_a_call_is_still_masked(self):
+        redacted = redact_snippet(
+            "password = get_secret('default_pw')", credential_finding=True
+        )
+        assert "default_pw" not in redacted
+        assert redacted.startswith("password = get_secret(")
 
 
 class TestRedactDataflowTrace:

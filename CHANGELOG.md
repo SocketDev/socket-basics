@@ -8,41 +8,78 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [3.4.0] - 2026-09-18
+
+Findings for the hardcoded-credential rules now report where a credential is
+without reproducing what it is. Minor rather than patch: the snippet a finding
+carries changes for every consumer that reads it, and the release adds a new
+rule-metadata key.
+
+### Upgrade notes
+
+No configuration change is required, but findings differ on the first run after
+upgrading.
+
+- **`codeSnippet` content changes for the credential rules.** The field keeps
+  the assignment target and surrounding syntax where that is unambiguous, as
+  well as the file and line, and masks the literal. A baseline keyed on exact
+  snippet text will not match; key on rule ID plus location instead. Rules whose
+  match is not a credential are unaffected. (#119)
+- **The same applies to `detailedReport.content` and `dataflowTrace`.** Both
+  quote source lines and both are masked on the same terms. (#119)
+- **A finding's `description` can also change.** OpenGrep expands metavariables
+  into a rule's message before returning a result, so a message quoting the
+  matched value carried it too. Expanded metavariables are masked for the
+  credential rules. (#119)
+- **Masking is deliberately conservative in several visible places.**
+  `define('SECRET', '...')` masks the constant name along with the value, and
+  `password: "admin"` hides which default was used. Ambiguous unquoted values
+  can also mask the rest of a statement or line rather than risk treating part
+  of the credential as source syntax. Rule ID, file and line still identify the
+  finding in each case. (#119)
+
 ### Fixed
 - **A finding's snippet no longer reproduces the value it reports.** A SAST
   finding's `codeSnippet` is the source line the rule matched. For nearly every
   rule that line is the code the finding is about; for the hardcoded-credential
   rules it contains the credential, so the finding carried the value into
   `.socket.facts.json`, the uploaded facts and the configured notifiers.
-  Snippets for those rules now keep the assignment target, the syntax, the file
-  and the line, and mask the literal's contents. This covers 20 rules across all
-  fifteen bundled language rule sets, not only the Python and JavaScript ones:
+  Snippets for those rules now keep the assignment target and syntax when safe,
+  keep the file and line, and mask the literal's contents. This covers 20 rules
+  across all fifteen bundled language rule sets, not only the Python and
+  JavaScript ones:
   `*-hardcoded-secret(s)`, `*-hardcoded-credentials`,
   `*-hardcoded-password-default`, `*-default-credentials`,
   `*-plain-text-password`, `*-weak-jwt-secret` and `*-empty-password`. Rules
-  whose match is not a credential keep their snippets verbatim.
-- Every snippet, dataflow-trace step and detailed report, whatever rule produced
-  it, is now masked of values matching a well-known credential format: AWS key
+  whose match is logic keep their snippets verbatim, and a complete assigned
+  call with a literal argument is treated as code, so
+  `user.password = request.form.get('password')` keeps its expression while the
+  quoted argument is masked. (#119)
+- Every snippet, dataflow-trace step, rule message and detailed report, whatever
+  rule produced it, is now masked of values matching a well-known credential
+  format: AWS key
   IDs, GitHub tokens, Stripe keys, Slack tokens, Google API keys, npm and PyPI
   tokens, JWTs, PEM private key bodies, and credentials in a URL authority. A
-  rule unrelated to secrets can still match a line that carries one.
+  rule unrelated to secrets can still match a line that carries one. (#119)
 - TruffleHog's `redactedValue` kept the first and last four characters of any
   value longer than eight, which left most of a short password readable. Values
-  under sixteen characters are now masked in full.
+  under sixteen characters are now masked in full. (#119)
 - TruffleHog no longer scans the facts file the run writes. That file lands
   inside the scan target, so a previous run's output was on disk during the walk
   and its contents were reported as findings of their own, pointing at the
-  output file rather than the source line.
+  output file rather than the source line. (#119)
 
 ### Changed
+- socketdev 3.5.0 -> 3.6.0 in the lockfile. The `>=3.5.0` floor in
+  `pyproject.toml` is unchanged. (#117)
 - `load_explicit_env_config` builds its "API key sources detected" debug line by
   iterating a tuple of variable names rather than a dict of presence booleans.
   The line is unchanged, including the exclusion of an exported-but-empty
-  variable.
+  variable. (#119)
 
 ### Added
 - A `redact` rule-metadata key. Set it on a custom SAST rule to mark the match
-  as a credential, or to opt a rule out; without it, the rule name decides.
+  as a credential, or to opt a rule out; without it, the rule name decides. (#119)
 
 ## [3.3.0] - 2026-09-15
 
