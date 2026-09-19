@@ -104,10 +104,16 @@ _PEM_BLOCK = re.compile(
     re.DOTALL,
 )
 
-# Quoted string literals, including escaped quotes. Covers the single, double
-# and backtick forms the bundled rules match across languages.
+# Quoted string literals, including escaped quotes. Covers the single, double,
+# backtick and triple-quoted forms the bundled rules match across languages.
+#
+# The triple-quoted alternatives come first so a terminated block matches as one
+# literal with its real body. They do not rescue the unterminated case: the
+# engine backtracks to the single-quote alternative, which matches the first two
+# quotes of ``\"\"\"`` as an empty string. ``_mask_statement`` guards against that
+# spurious match rather than the pattern.
 _STRING_LITERAL = re.compile(
-    r"""(?P<quote>["'`])(?P<body>(?:\\.|(?!(?P=quote))[^\\])*)(?P=quote)""",
+    r'(?P<quote>"""|\'\'\'|["\'`])(?P<body>(?:\\.|(?!(?P=quote))[^\\])*)(?P=quote)',
     re.DOTALL,
 )
 
@@ -150,7 +156,9 @@ _CALL_EXPRESSION = re.compile(r'^[\w.\[\]]+\s*\(')
 # unicode prefixes. The prefix has to be recognized here: treating ``r"""...``
 # as unquoted stars the opening line, which removes the quotes the rest of the
 # snippet is measured against.
-_LITERAL_OPENER = re.compile(r'^(?:rb|br|rf|fr|r|b|u|f)?(?P<quote>["\'`])', re.IGNORECASE)
+_LITERAL_OPENER = re.compile(
+    r'^(?:rb|br|rf|fr|r|b|u|f)?(?P<quote>"""|\'\'\'|["\'`])', re.IGNORECASE
+)
 
 # Interpolation placeholders: f-strings, template literals, shell-style.
 _INTERPOLATION = re.compile(r'\$?\{[^}]*\}')
@@ -249,7 +257,7 @@ def _split_statements(code: str, offset: int, in_literal) -> 'list[tuple[str, in
     return pieces
 
 
-def _mask_statement(code: str, offset: int, in_literal) -> str:
+def _mask_statement(code: str, offset: int, in_literal, literal_opens_at) -> str:
     """Mask the assigned value in a single statement."""
     split = _split_assignment(code, offset, in_literal)
     if not split:
@@ -263,8 +271,8 @@ def _mask_statement(code: str, offset: int, in_literal) -> str:
     # string has an opening quote and no closing one, so nothing matches and
     # the value would survive untouched.
     opener = _LITERAL_OPENER.match(value)
-    opens_literal = bool(opener) and in_literal(
-        offset + len(head) + opener.start('quote')
+    opens_literal = bool(opener) and literal_opens_at(
+        offset + len(head) + opener.start('quote'), len(opener.group('quote'))
     )
     if opens_literal or _CALL_EXPRESSION.match(value):
         return code
@@ -275,10 +283,11 @@ def _mask_statement(code: str, offset: int, in_literal) -> str:
     return f"{head}{'*' * len(value)}{trailing}"
 
 
-def _mask_code(code: str, offset: int, in_literal) -> str:
+def _mask_code(code: str, offset: int, in_literal, literal_opens_at) -> str:
     """Mask the assigned value in every statement on one line of code."""
     return ''.join(
-        piece if piece == ';' else _mask_statement(piece, piece_offset, in_literal)
+        piece if piece == ';'
+        else _mask_statement(piece, piece_offset, in_literal, literal_opens_at)
         for piece, piece_offset in _split_statements(code, offset, in_literal)
     )
 
@@ -340,6 +349,20 @@ def redact_literals(text: Any) -> str:
     def in_literal(position: int) -> bool:
         return any(start <= position < end for start, end in spans)
 
+    def literal_opens_at(position: int, delimiter: int) -> bool:
+        """Report whether a real literal starts at ``position``.
+
+        A value is only deferred to the masking pass when that pass will cover
+        it. ``\"\"\"secret`` with no closing delimiter still produces a match --
+        the first two quotes read as an empty string -- so requiring the span to
+        hold an opening and a closing delimiter is what separates a literal the
+        pass can mask from an artifact of the unterminated one.
+        """
+        return any(
+            start == position and end - start >= 2 * delimiter
+            for start, end in spans
+        )
+
     masked_lines = []
     offset = 0
     for line in text.split('\n'):
@@ -349,7 +372,8 @@ def redact_literals(text: Any) -> str:
         # leave the credential sitting in the head.
         code, marker, comment = _split_comment(line, offset, in_literal)
         masked_lines.append(
-            f"{_mask_code(code, offset, in_literal)}{marker}{'*' * len(comment)}"
+            f"{_mask_code(code, offset, in_literal, literal_opens_at)}"
+            f"{marker}{'*' * len(comment)}"
         )
         offset += len(line) + 1
     return _STRING_LITERAL.sub(_mask_literal, '\n'.join(masked_lines))

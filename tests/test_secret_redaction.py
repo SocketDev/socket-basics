@@ -298,6 +298,18 @@ class TestMultilineAndUnterminatedLiterals:
         for snippet in (self.TRIPLE_DOUBLE, self.TRIPLE_SINGLE, self.BACKTICK):
             assert "hunter2" not in redact_literals(snippet), snippet
 
+    def test_an_unterminated_triple_quote_is_masked(self):
+        """The spurious empty match must not read as a literal worth deferring.
+
+        ``\"\"\"secret`` with no closing delimiter still produces a match: the
+        first two quotes parse as an empty string. Treating that as "a literal
+        the masking pass will cover" leaves the value untouched, because the
+        pass covers only the two quotes.
+        """
+        for opener in ('"' * 3, "'" * 3, 'r' + '"' * 3, "f" + "'" * 3):
+            snippet = f"password = {opener}hunter2\nunterminated"
+            assert "hunter2" not in redact_literals(snippet), snippet
+
     def test_an_unterminated_literal_is_masked_rather_than_deferred(self):
         # A snippet cut mid-string has an opening quote and no closing one, so
         # the literal pass never matches it. Deferring would leave it untouched.
