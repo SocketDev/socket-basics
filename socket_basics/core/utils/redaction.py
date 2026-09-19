@@ -168,6 +168,8 @@ _INTERPOLATION = re.compile(r'\$?\{[^}]*\}')
 _QUOTE = re.compile(r'["\'`]')
 
 # Triple-quote delimiters, counted to detect a block that never closes.
+TRIPLE_DOUBLE = chr(34) * 3
+TRIPLE_SINGLE = chr(39) * 3
 _TRIPLE_QUOTE = re.compile(r'\"\"\"|\'\'\'')
 
 # Rule-name fragments whose finding *is* the credential. ``hardcoded-ip`` and
@@ -264,7 +266,8 @@ def _split_statements(code: str, offset: int, in_literal) -> 'list[tuple[str, in
     return pieces
 
 
-def _mask_statement(code: str, offset: int, in_literal, literal_opens_at) -> str:
+def _mask_statement(code: str, offset: int, in_literal, literal_opens_at,
+                    literal_start_within) -> str:
     """Mask the assigned value in a single statement."""
     split = _split_assignment(code, offset, in_literal)
     if not split:
@@ -287,14 +290,27 @@ def _mask_statement(code: str, offset: int, in_literal, literal_opens_at) -> str
     # Anything else is masked whole. Where the value ends is unknowable here,
     # and measuring it together with what follows would reveal the head of a
     # short credential.
+    #
+    # Unless the value contains a literal that runs past this line. Starring it
+    # would destroy the opening quote, and the masking pass -- which runs over
+    # the whole snippet afterwards -- would then no longer match, leaving the
+    # rest of that literal untouched on its continuation lines. Mask up to the
+    # opener and let the pass have the literal itself.
+    value_start = offset + len(head)
+    literal_at = literal_start_within(value_start, value_start + len(value))
+    if literal_at is not None:
+        keep_from = literal_at - value_start
+        return f"{head}{'*' * keep_from}{value[keep_from:]}{trailing}"
     return f"{head}{'*' * len(value)}{trailing}"
 
 
-def _mask_code(code: str, offset: int, in_literal, literal_opens_at) -> str:
+def _mask_code(code: str, offset: int, in_literal, literal_opens_at,
+               literal_start_within) -> str:
     """Mask the assigned value in every statement on one line of code."""
     return ''.join(
         piece if piece == ';'
-        else _mask_statement(piece, piece_offset, in_literal, literal_opens_at)
+        else _mask_statement(piece, piece_offset, in_literal, literal_opens_at,
+                             literal_start_within)
         for piece, piece_offset in _split_statements(code, offset, in_literal)
     )
 
@@ -366,6 +382,11 @@ def redact_literals(text: Any) -> str:
     def in_literal(position: int) -> bool:
         return any(start <= position < end for start, end in spans)
 
+    def literal_start_within(start: int, stop: int):
+        """Return the first literal opening inside ``[start, stop)``, if any."""
+        found = [s for s, _ in spans if start <= s < stop]
+        return min(found) if found else None
+
     def literal_opens_at(position: int, delimiter: int) -> bool:
         """Report whether a real literal starts at ``position``.
 
@@ -380,23 +401,6 @@ def redact_literals(text: Any) -> str:
             for start, end in spans
         )
 
-    def _mask_unterminated(line: str, line_offset: int) -> str:
-        """Mask the content of a literal that never closes.
-
-        A quote outside every matched span opens a literal with no end, so the
-        masking pass cannot reach what follows it. The assignment fallback
-        covers this where the value is an assignment, but a comparison or a call
-        argument reaches the literal pass directly and would keep the value.
-        Rather than enumerate those paths, treat an unmatched quote as the
-        boundary it is and mask the rest of the line.
-        """
-        for quote in _QUOTE.finditer(line):
-            if in_literal(line_offset + quote.start()):
-                continue
-            kept = quote.end()
-            return line[:kept] + '*' * len(line[kept:])
-        return line
-
     masked_lines = []
     offset = 0
     for line in text.split('\n'):
@@ -406,35 +410,37 @@ def redact_literals(text: Any) -> str:
         # leave the credential sitting in the head.
         code, marker, comment = _split_comment(line, offset, in_literal)
         masked_lines.append(
-            f"{_mask_code(code, offset, in_literal, literal_opens_at)}"
+            f"{_mask_code(code, offset, in_literal, literal_opens_at, literal_start_within)}"
             f"{marker}{'*' * len(comment)}"
         )
         offset += len(line) + 1
-    masked = _STRING_LITERAL.sub(_mask_literal, '\n'.join(masked_lines))
+    masked = _STRING_LITERAL.sub(_mask_literal, "\n".join(masked_lines))
 
-    # An unclosed triple-quoted block poisons the spans rather than producing
-    # none: its first two quotes match as an empty string, and the third pairs
-    # with any stray quote further on, so one long bogus span swallows whatever
-    # lies between -- including a real assignment on a later line. Once string
-    # state is lost there is nothing trustworthy after the opener, so mask from
-    # it to the end.
-    unclosed = None
-    for delimiter in ('\"\"\"', "'''"):
+    # Everything above depends on knowing where literals begin and end. A
+    # snippet is a slice of a file, so that is sometimes unknowable, and the two
+    # ways it happens both read as "a literal opened and never closed":
+    #
+    #  - a quote no surviving span covers, and
+    #  - an odd number of triple delimiters, whose first two quotes match as an
+    #    empty string while the third pairs with any stray quote further on.
+    #
+    # Past such a point every character is inside that literal as far as any
+    # reader can tell, so it is masked to the end of the snippet rather than to
+    # the end of its line: the credential is often on a continuation line.
+    # Every pass above preserves length, so positions still line up.
+    unreliable = []
+    for quote in _QUOTE.finditer(text):
+        if not in_literal(quote.start()):
+            unreliable.append(quote.end())
+            break
+    for delimiter in (TRIPLE_DOUBLE, TRIPLE_SINGLE):
         found = [m.start() for m in re.finditer(re.escape(delimiter), text)]
         if len(found) % 2:
-            unclosed = found[-1] if unclosed is None else min(unclosed, found[-1])
-    if unclosed is not None:
-        kept = unclosed + 3
-        masked = masked[:kept] + re.sub(r'[^\n]', '*', masked[kept:])
-
-    # Every pass above preserves length, so a position in the masked text still
-    # indexes the same character of the original and the spans stay valid.
-    final_lines = []
-    offset = 0
-    for line in masked.split('\n'):
-        final_lines.append(_mask_unterminated(line, offset))
-        offset += len(line) + 1
-    return '\n'.join(final_lines)
+            unreliable.append(found[-1] + len(delimiter))
+    if unreliable:
+        kept = min(unreliable)
+        masked = masked[:kept] + re.sub(r"[^\n]", "*", masked[kept:])
+    return masked
 
 
 def is_credential_finding(rule_id: Any, metadata: Mapping[str, Any] | None = None) -> bool:

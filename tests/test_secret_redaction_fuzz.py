@@ -57,7 +57,10 @@ def _value(rng, secret, allow_bare=True):
     if rng.random() < 0.25:
         body = "{x}_" + secret          # interpolation inflates the length
     if rng.random() < 0.2:
-        body = secret + "\nsecond line"  # the literal spans lines
+        # The secret goes on either side of the break: a continuation line is
+        # exactly where masking that stops at the opener's line loses it.
+        body = (secret + "\nsecond line" if rng.random() < 0.5
+                else "first line\n" + secret)
     quote = rng.choice(QUOTES)
     terminated = rng.random() < 0.8
     return rng.choice(PREFIXES) + quote + body + (quote if terminated else "")
