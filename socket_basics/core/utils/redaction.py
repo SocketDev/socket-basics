@@ -146,6 +146,15 @@ _STATEMENT_SEPARATOR = re.compile(r';')
 # such as ``# see get_secret()`` disable masking for the value in front of it.
 _CALL_EXPRESSION = re.compile(r'^[\w.\[\]]+\s*\(')
 
+# A value that opens a string literal, allowing the usual raw/bytes/format/
+# unicode prefixes. The prefix has to be recognized here: treating ``r"""...``
+# as unquoted stars the opening line, which removes the quotes the rest of the
+# snippet is measured against.
+_LITERAL_OPENER = re.compile(r'^(?:rb|br|rf|fr|r|b|u|f)?(?P<quote>["\'`])', re.IGNORECASE)
+
+# Interpolation placeholders: f-strings, template literals, shell-style.
+_INTERPOLATION = re.compile(r'\$?\{[^}]*\}')
+
 # Rule-name fragments whose finding *is* the credential. ``hardcoded-ip`` and
 # the password-policy rules deliberately do not appear: their snippets are
 # logic, and masking them would remove the reason the finding was raised.
@@ -253,7 +262,10 @@ def _mask_statement(code: str, offset: int, in_literal) -> str:
     # where the quote opens a literal that pass can find. A snippet cut mid
     # string has an opening quote and no closing one, so nothing matches and
     # the value would survive untouched.
-    opens_literal = value.startswith(('"', "'", '`')) and in_literal(offset + len(head))
+    opener = _LITERAL_OPENER.match(value)
+    opens_literal = bool(opener) and in_literal(
+        offset + len(head) + opener.start('quote')
+    )
     if opens_literal or _CALL_EXPRESSION.match(value):
         return code
 
@@ -305,11 +317,14 @@ def redact_literals(text: Any) -> str:
         if not body:
             return match.group(0)
         quote = match.group('quote')
-        if '\n' in body:
-            # A multi-line body is a block of content rather than one opaque
-            # value, so the head-and-tail reveal would expose real text -- the
-            # first line of it. Mask every line and keep the line breaks, so
-            # the snippet still shows where the literal starts and ends.
+        if '\n' in body or _INTERPOLATION.search(body):
+            # A body that spans lines, or that interpolates, is a block of
+            # content rather than one opaque value. The head-and-tail reveal
+            # measures the whole thing, so the literal text around a placeholder
+            # inflates the length and buys a reveal the bare value would not get
+            # -- ``f"{b}_SuperSecret123!"`` would show ``123!``. Mask every line
+            # and keep the line breaks, so the snippet still shows where the
+            # literal starts and ends.
             masked = '\n'.join('*' * len(segment) for segment in body.split('\n'))
         else:
             masked = mask_value(body)

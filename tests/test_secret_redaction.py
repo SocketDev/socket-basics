@@ -310,6 +310,38 @@ class TestMultilineAndUnterminatedLiterals:
         assert "hunter2" not in redacted
 
 
+class TestPrefixedAndInterpolatedLiterals:
+    """A prefix still opens a literal, and an interpolated body is not one value."""
+
+    Q3 = '"' * 3
+
+    def test_a_prefixed_multiline_literal_is_masked(self):
+        # Treating the prefix as unquoted stars the opening line, which removes
+        # the quotes the rest of the snippet is measured against: later lines
+        # still read as inside a literal, so nothing masks them.
+        for prefix in ("r", "f", "rb", "R"):
+            snippet = f"password = {prefix}{self.Q3}hunter2\nmore SuperSecret123!\n{self.Q3}"
+            redacted = redact_literals(snippet)
+            assert "hunter2" not in redacted, snippet
+            assert "SuperSecret123!" not in redacted, snippet
+
+    def test_a_prefixed_single_line_literal_keeps_its_syntax(self):
+        redacted = redact_literals("password = r'SuperSecret123!'")
+        assert "SuperSecret123!" not in redacted
+        assert redacted.startswith("password = r'")
+
+    def test_an_interpolated_body_is_masked_whole(self):
+        # The literal text around a placeholder inflates the body past the
+        # partial-reveal threshold, which would expose the tail of the value.
+        for snippet in (
+            'password = f"{b}_SuperSecret123!"',
+            "password = `${b}_SuperSecret123!`",
+        ):
+            redacted = redact_literals(snippet)
+            assert "SuperSecret123!" not in redacted
+            assert "123!" not in redacted, redacted
+
+
 class TestCredentialRuleSelection:
     @pytest.mark.parametrize(
         "rule_id",
