@@ -50,7 +50,7 @@ jobs:
 > with a review gate. See [docs/github-action.md](docs/github-action.md#pinning-strategies)
 > for the full explanation and Dependabot setup.
 
-**That's it!** With a properly scoped `SOCKET_SECURITY_API_KEY`, all scanning configurations are managed through the [Socket Dashboard](https://socket.dev/dashboard) — no workflow changes needed. See [Required API Token Scopes](#required-api-token-scopes) for details.
+**That's it!** On a Socket Enterprise organization with Socket Basics enabled, a properly scoped `SOCKET_SECURITY_API_KEY` loads your scanning configuration from the [Socket Dashboard](https://socket.dev/dashboard), so the workflow needs no scanner inputs. Dashboard settings take precedence over scanner inputs in the workflow, including dashboard fields left blank (see [Dashboard Settings and Workflow Inputs](docs/github-action.md#dashboard-settings-and-workflow-inputs)). Without dashboard configuration, turn scanners on with [action inputs](docs/github-action.md#common-scanning-options). See [Required API Token Scopes](#required-api-token-scopes) for details.
 
 ### What You Get
 
@@ -154,7 +154,7 @@ Socket Enterprise customers can configure Socket Basics directly from the [Socke
 
 ![Socket Basics Settings](docs/screenshots/socket_basics_settings.png)
 
-Configure scanning policies, notification channels, and rule sets for your entire organization in one place. Your settings are automatically synchronized when you provide `SOCKET_SECURITY_API_KEY` and `SOCKET_ORG`.
+Configure scanning policies, notification channels, and rule sets for your entire organization in one place. Socket Basics loads these settings on every run when its API key has the `socket-basics` scope, and they take precedence over the matching workflow inputs, including fields you leave blank. See [Dashboard Settings and Workflow Inputs](docs/github-action.md#dashboard-settings-and-workflow-inputs) for the exceptions and for setting values per repository.
 
 ![Socket Basics Section Config](docs/screenshots/socket_basics_section_config.png)
 
@@ -269,6 +269,9 @@ Add new connectors by:
 - `Need at least one file to be uploaded` means the facts file was written outside the scanned workspace; keep `--output` inside it (see [Save Results to File](docs/local-install-docker.md#save-results-to-file))
 - Verify your Socket Enterprise subscription is active
 - If you see `Insufficient permissions`, confirm your API token has the scopes required for your configuration mode (see [Required API Token Scopes](#required-api-token-scopes))
+
+**Workflow inputs have no effect, or Dockerfile and image scanning finds nothing:**
+- If the log shows `Loaded Socket Basics API configuration (overrides environment defaults)`, the dashboard configuration took precedence over your inputs, blank fields included (see [Dashboard Settings and Workflow Inputs](docs/github-action.md#dashboard-settings-and-workflow-inputs))
 
 **Notifier errors:**
 - Check that notification credentials (Slack webhook, Jira token, etc.) are properly configured
