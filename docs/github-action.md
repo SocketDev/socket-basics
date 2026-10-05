@@ -51,7 +51,9 @@ jobs:
           socket_security_api_key: ${{ secrets.SOCKET_SECURITY_API_KEY }}
 ```
 
-With just your `SOCKET_SECURITY_API_KEY`, all scanning configurations are managed through the [Socket Dashboard](https://socket.dev/dashboard) — no workflow changes needed.
+On a Socket Enterprise organization with Socket Basics enabled, this is the whole workflow: the API key loads your scanning configuration from the [Socket Dashboard](https://socket.dev/dashboard). Dashboard settings take precedence over scanner inputs you add to `with:`, including dashboard fields you leave blank. See [Dashboard Settings and Workflow Inputs](#dashboard-settings-and-workflow-inputs).
+
+Without dashboard configuration, every scanner input defaults to off, so turn on the scanners you want with the inputs under [Common Scanning Options](#common-scanning-options).
 
 ## Performance and Caching
 
@@ -263,6 +265,13 @@ Include these in your workflow's `jobs.<job_id>.permissions` section.
     trivy_vuln_enabled: 'true'
 ```
 
+`dockerfiles` checks each Dockerfile for misconfigurations with `trivy config`.
+It does not report vulnerabilities in the base image or in packages the build
+installs. For those, build the image and list it in `container_images`, which
+runs `trivy image`. Both inputs take literal, comma-separated values. Dockerfile
+paths are relative to the repository root, wildcards are not expanded, and a
+path that does not exist is skipped with a `Dockerfile not found` warning.
+
 > [!NOTE]
 > Trivy is bundled in the pre-built action image (a Socket-built distribution,
 > rebuilt from unmodified upstream source and pinned by digest), so these inputs
@@ -472,6 +481,89 @@ Your workflow will automatically use the settings configured in the dashboard.
 
 ![Socket Basics Section Configuration](screenshots/socket_basics_section_config.png)
 
+### Dashboard Settings and Workflow Inputs
+
+When the dashboard configuration loads, it takes precedence over the action's
+`with:` inputs. The action passes every input to the scanner as an `INPUT_*`
+environment variable, and dashboard settings are applied on top of environment
+variables (see [Configuration Precedence](parameters.md#configuration-precedence)).
+
+The dashboard configuration loads when all three of these are true:
+
+- The organization is on a Socket Enterprise plan.
+- Socket Basics is enabled for the organization.
+- The API key has the `socket-basics` scope.
+
+Fields you leave blank in the dashboard still count. The dashboard sends a blank
+field as an empty value and a switched-off toggle as `false`, and either one
+replaces what the workflow set. This covers the SAST language and rule settings,
+secret scanning, Socket Tier 1, the **Container Images** and **Dockerfiles**
+fields, console output and verbose logging. For example, if the **Dockerfiles**
+field is blank, a workflow that sets `dockerfiles: 'Dockerfile'` scans no
+Dockerfiles.
+
+The exceptions:
+
+- A blank `<language>_enabled_rules` or `<language>_disabled_rules` field is
+  skipped, so the workflow's value or the action's default list applies.
+- A blank notification field (Slack, Jira, Microsoft Teams, generic webhook,
+  Microsoft Sentinel, Sumo Logic) falls back to the workflow's value, and so does
+  a blank GitHub token. A filled-in dashboard field still wins.
+- These inputs have no dashboard field, so the workflow's value applies:
+  `changed_files`, `scan_files`, `scan_all`, `use_custom_sast_rules`,
+  `custom_sast_rule_path`, `sast_ignore_overrides`, `trivy_vuln_enabled` and the
+  PR comment and label inputs.
+
+To check which configuration a run used, look for one of these lines in the step
+log:
+
+| Log line | What it means |
+|---|---|
+| `Loaded Socket Basics API configuration (overrides environment defaults)` | The dashboard configuration loaded and takes precedence over your `with:` inputs |
+| `Loaded Socket plan metadata (free/non-enterprise mode; no dashboard overrides)` | No dashboard configuration loaded, so your `with:` inputs apply |
+| `Error loading Socket Basics config: ...` | The dashboard configuration could not be loaded, so your `with:` inputs apply. The message says why. |
+
+#### Setting Values Per Repository
+
+Dashboard values apply to every repository in the organization, so put a value
+in the dashboard when it is the same everywhere. A Dockerfile path that does not
+exist in a repository is skipped with a `Dockerfile not found` warning, so one
+list of common paths can serve every repository.
+
+For values that differ per repository, such as Dockerfile paths or images built
+earlier in the job, pass CLI flags. CLI flags are applied after the dashboard
+configuration, but the action does not accept them, so run the action's image
+directly as a step:
+
+```yaml
+- name: Build image
+  run: docker build -t myapp:${{ github.sha }} .
+
+- name: Run Socket Basics
+  uses: docker://ghcr.io/socketdev/socket-basics:3.4.0
+  env:
+    SOCKET_SECURITY_API_KEY: ${{ secrets.SOCKET_SECURITY_API_KEY }}
+    GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+    GITHUB_PR_NUMBER: ${{ github.event.pull_request.number || github.event.issue.number }}
+  with:
+    args: --dockerfiles Dockerfile,docker/Dockerfile.prod --images myapp:${{ github.sha }}
+```
+
+Only the flags you pass take precedence. Every other setting still comes from
+the dashboard. Running the image directly differs from the action in two ways:
+
+- The action's default rule lists (`<language>_enabled_rules` in
+  [`action.yml`](../action.yml)) don't apply. Where the dashboard's rule-list
+  fields are blank, SAST uses the image's own defaults from
+  [`connectors.yaml`](../socket_basics/connectors.yaml), which include more rules
+  for some languages.
+- The step isn't tied to an action version, so update the image tag yourself
+  when you upgrade. To pin by digest, append `@sha256:<digest>` to the image.
+  `docker buildx imagetools inspect ghcr.io/socketdev/socket-basics:3.4.0`
+  prints the digest.
+
+See the [Parameters Reference](parameters.md) for every CLI flag.
+
 ### Notification Integrations
 
 All notification integrations require Socket Enterprise.
@@ -641,6 +733,13 @@ jobs:
 > rebuilt from unmodified upstream source and pinned by digest), so the
 > container-scanning inputs below work out of the box with no Trivy install step.
 
+> [!IMPORTANT]
+> When your organization's dashboard configuration loads, its **Container
+> Images** and **Dockerfiles** fields take precedence over `container_images`
+> and `dockerfiles` in this example, even when those fields are blank. Pass the
+> values as CLI flags instead, as shown in
+> [Setting Values Per Repository](#setting-values-per-repository).
+
 ```yaml
 name: Container Security
 on:
@@ -681,6 +780,27 @@ jobs:
 ### Dockerfile Auto-Discovery
 
 For repositories with multiple Dockerfiles across different directories, you can automatically discover them instead of manually listing each path.
+
+> [!IMPORTANT]
+> This example passes the discovered paths through the `dockerfiles` input. When
+> your organization's dashboard configuration loads, the dashboard's
+> **Dockerfiles** field takes precedence over that input, even when the field is
+> blank, and the discovered paths are never scanned. In that case, replace the
+> `Run Socket Basics` step in the `security-scan` job with:
+>
+> ```yaml
+> - name: Run Socket Basics
+>   uses: docker://ghcr.io/socketdev/socket-basics:3.4.0
+>   env:
+>     SOCKET_SECURITY_API_KEY: ${{ secrets.SOCKET_SECURITY_API_KEY }}
+>     GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+>     GITHUB_PR_NUMBER: ${{ github.event.pull_request.number || github.event.issue.number }}
+>   with:
+>     args: --dockerfiles ${{ needs.discover-dockerfiles.outputs.dockerfiles }} --verbose
+> ```
+>
+> [Setting Values Per Repository](#setting-values-per-repository) covers how
+> this step differs from the action.
 
 ```yaml
 name: Security Scan with Dockerfile Auto-Discovery
@@ -810,8 +930,12 @@ jobs:
 ```
 
 Important behavior:
-- `socket_security_api_key` + `socket_org` enables dashboard config loading.
-- Dashboard/API settings override overlapping `with:` values.
+- When the dashboard configuration loads, its SAST language toggles,
+  `all_rules_enabled` and rule lists take precedence over these `with:` values,
+  including fields left blank. A blank rule list is the exception and is skipped.
+  `use_custom_sast_rules`, `custom_sast_rule_path` and `sast_ignore_overrides`
+  have no dashboard field and come from the workflow. See
+  [Dashboard Settings and Workflow Inputs](#dashboard-settings-and-workflow-inputs).
 - `<language>_enabled_rules` is an allowlist and can suppress custom rule IDs.
 - `all_rules_enabled: 'true'` disables allowlist filtering for enabled languages.
 
@@ -1001,6 +1125,27 @@ env:
 - name: Login to Registry
   run: echo "${{ secrets.DOCKER_PASSWORD }}" | docker login -u "${{ secrets.DOCKER_USERNAME }}" --password-stdin
 ```
+
+### Workflow Inputs Have No Effect
+
+**Problem:** A scanner turned on in `with:` doesn't run, or Dockerfile and image
+scanning reports nothing even though `dockerfiles` or `container_images` is set.
+
+**Likely cause:** The dashboard configuration loaded and took precedence over
+those inputs, blank fields included. When the **Dockerfiles** and **Container
+Images** fields are blank, Trivy doesn't load, so the log has no
+`Successfully loaded connector: trivy` line. If `trivy_vuln_enabled` is on,
+Trivy loads for the filesystem scan and logs
+`No Dockerfiles specified, skipping Trivy Dockerfile scanning` instead.
+
+**How to confirm:** Look for `Loaded Socket Basics API configuration (overrides
+environment defaults)` in the step log, then check the matching fields on the
+dashboard's Socket Basics settings page.
+
+**Solutions:**
+1. Set the value in the dashboard if it is the same for every repository.
+2. Pass it as a CLI flag by running the image directly, as shown in
+   [Setting Values Per Repository](#setting-values-per-repository).
 
 ### Enterprise Features Not Working
 
