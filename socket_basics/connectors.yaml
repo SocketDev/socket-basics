@@ -440,7 +440,7 @@ connectors:
         default: false
       - name: socket_additional_params
         option: --socket-additional-params
-        description: "Additional CLI params for 'socket scan reach' (comma or space separated). Also reads SOCKET_ADDITIONAL_PARAMS"
+        description: "Additional CLI params for 'socket scan reach'. Separate options with spaces; repeat list-valued flags. A comma before another option is also supported. Also reads SOCKET_ADDITIONAL_PARAMS."
         env_variable: SOCKET_ADDITIONAL_PARAMS
         type: str
         default: ""
