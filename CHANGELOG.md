@@ -8,6 +8,19 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Fixed
+
+- **The image no longer trusts certificates issued from the compromised eMudhra
+  intermediate CAs.** The private keys for eight eMudhra intermediates leaked
+  (disclosed 2026-10-20). The build now requires `ca-certificates`
+  `20250419+deb13u1` or newer, which removes the emSign ECC Root CA - G3 and AAA
+  Certificate Services roots those intermediates chain to, and `certifi` moves
+  to 2026.10.19. The bundled Trivy and TruffleHog, `curl`, and Python `requests`
+  now reject those chains. Node's bundled CA store keeps trusting them until
+  Node ships its fix, and container scanners may still report CVE-2026-111943
+  against the Trivy and TruffleHog binaries until they are rebuilt on Go 1.26.10
+  or 1.27.3.
+
 ## [3.4.0] - 2026-09-18
 
 Findings for the hardcoded-credential rules now report where a credential is
