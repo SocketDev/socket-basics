@@ -8,6 +8,12 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [3.4.1] - 2026-10-20
+
+### Changed
+- Socket Python CLI 2.9.0 -> 2.11.2 in the heavy and app-tests images. 2.11.2
+  carries the same eMudhra CA fix for its own image (SocketDev/socket-python-cli#415).
+
 ### Fixed
 
 - **The images no longer trust certificates from the compromised eMudhra

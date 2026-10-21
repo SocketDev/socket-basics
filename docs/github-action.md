@@ -43,7 +43,7 @@ jobs:
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
       - name: Run Socket Basics
-        uses: SocketDev/socket-basics@v3.4.0
+        uses: SocketDev/socket-basics@v3.4.1
         env:
           GITHUB_PR_NUMBER: ${{ github.event.pull_request.number || github.event.issue.number }}
         with:
@@ -59,7 +59,7 @@ Without dashboard configuration, every scanner input defaults to off, so turn on
 
 ### How the action is currently built
 
-When you reference `uses: SocketDev/socket-basics@v3.4.0`, GitHub Actions pulls the
+When you reference `uses: SocketDev/socket-basics@v3.4.1`, GitHub Actions pulls the
 pre-built image referenced by [`action.yml`](../action.yml). The historical multi-stage
 Docker build still matters for maintainers because it determines what lands in the
 published image:
@@ -77,7 +77,7 @@ Socket Basics from source in every workflow run.
 ### Pre-built image
 
 Starting with v2, the action pulls a pre-built image from GHCR rather than
-building from source on every run. Pinning to a specific version tag (e.g. `@v3.4.0`)
+building from source on every run. Pinning to a specific version tag (e.g. `@v3.4.1`)
 means the action starts in seconds — the image is built, integration-tested, and
 published before the release tag is ever created.
 
@@ -87,7 +87,7 @@ If you run socket-basics in other CI systems (Jenkins, GitLab, CircleCI, etc.) o
 as a standalone `docker run`, pull the pre-built image directly:
 
 ```bash
-docker pull ghcr.io/socketdev/socket-basics:3.4.0
+docker pull ghcr.io/socketdev/socket-basics:3.4.1
 ```
 
 See [Local Docker Installation](local-install-docker.md) for usage examples.
@@ -103,7 +103,7 @@ is immediately affected. We've seen this happen across the ecosystem:
   publish `:latest`/`:latest-heavy` Docker aliases as an onboarding
   convenience, but treat them as exactly that — production pipelines should
   pin an exact version or digest.)
-- **Version tags** (`@v3.4.0`) are better, but tags are mutable by default.
+- **Version tags** (`@v3.4.1`) are better, but tags are mutable by default.
   A tag can be deleted and recreated pointing at a different commit. There are
   documented cases of this happening — maliciously and accidentally.
 - **Commit SHAs** are the only truly immutable reference. A SHA cannot be
@@ -128,14 +128,14 @@ The only truly immutable reference. Dependabot keeps it current automatically.
 ```yaml
 - name: Run Socket Basics
   # Dependabot keeps this SHA up to date — see .github/dependabot.yml setup below.
-  uses: SocketDev/socket-basics@<sha>  # v3.4.0
+  uses: SocketDev/socket-basics@<sha>  # v3.4.1
   with:
     socket_security_api_key: ${{ secrets.SOCKET_SECURITY_API_KEY }}
 ```
 
 Get the SHA for any release:
 ```bash
-git ls-remote https://github.com/SocketDev/socket-basics refs/tags/v3.4.0
+git ls-remote https://github.com/SocketDev/socket-basics refs/tags/v3.4.1
 ```
 
 ---
@@ -147,7 +147,7 @@ enforces tag protection rules). SHA pinning is still preferable for defence
 in depth.
 
 ```yaml
-- uses: SocketDev/socket-basics@v3.4.0
+- uses: SocketDev/socket-basics@v3.4.1
   with:
     socket_security_api_key: ${{ secrets.SOCKET_SECURITY_API_KEY }}
 ```
@@ -168,7 +168,7 @@ updates:
 ```
 
 Dependabot opens a PR for each new release, updating the SHA or version tag
-and keeping the `# v3.4.0` comment in sync. You review, approve, and merge
+and keeping the `# v3.4.1` comment in sync. You review, approve, and merge
 on your own schedule — automated upgrades with a human gate.
 
 ---
@@ -178,7 +178,7 @@ on your own schedule — automated upgrades with a human gate.
 | Strategy | Immutable? | Auto-updates | Review gate |
 |---|---|---|---|
 | `@v2` floating tag | ❌ (not published) | — | — |
-| `@v3.4.0` + Dependabot | ✅ (tag protection enforced) | Yes (weekly PR) | Yes |
+| `@v3.4.1` + Dependabot | ✅ (tag protection enforced) | Yes (weekly PR) | Yes |
 | `@<sha>` + Dependabot | ✅ always | Yes (weekly PR) | Yes |
 
 ## Basic Configuration
@@ -219,7 +219,7 @@ Include these in your workflow's `jobs.<job_id>.permissions` section.
 
 **SAST (Static Analysis):**
 ```yaml
-- uses: SocketDev/socket-basics@v3.4.0
+- uses: SocketDev/socket-basics@v3.4.1
   with:
     github_token: ${{ secrets.GITHUB_TOKEN }}
     # Enable SAST for specific languages
@@ -233,7 +233,7 @@ Include these in your workflow's `jobs.<job_id>.permissions` section.
 
 **Secret Scanning:**
 ```yaml
-- uses: SocketDev/socket-basics@v3.4.0
+- uses: SocketDev/socket-basics@v3.4.1
   with:
     github_token: ${{ secrets.GITHUB_TOKEN }}
     secret_scanning_enabled: 'true'
@@ -253,7 +253,7 @@ Include these in your workflow's `jobs.<job_id>.permissions` section.
 
 **Container Scanning:**
 ```yaml
-- uses: SocketDev/socket-basics@v3.4.0
+- uses: SocketDev/socket-basics@v3.4.1
   with:
     github_token: ${{ secrets.GITHUB_TOKEN }}
     # Listing images or Dockerfiles auto-enables the matching Trivy scan.
@@ -280,7 +280,7 @@ path that does not exist is skipped with a `Dockerfile not found` warning.
 
 **Socket Tier 1 Reachability:**
 ```yaml
-- uses: SocketDev/socket-basics@v3.4.0
+- uses: SocketDev/socket-basics@v3.4.1
   with:
     github_token: ${{ secrets.GITHUB_TOKEN }}
     socket_tier_1_enabled: 'true'
@@ -289,7 +289,7 @@ path that does not exist is skipped with a `Dockerfile not found` warning.
 ### Output Configuration
 
 ```yaml
-- uses: SocketDev/socket-basics@v3.4.0
+- uses: SocketDev/socket-basics@v3.4.1
   with:
     github_token: ${{ secrets.GITHUB_TOKEN }}
     python_sast_enabled: 'true'
@@ -327,7 +327,7 @@ jobs:
           fetch-depth: 0
 
       - name: Run Socket Basics (changed files only)
-        uses: SocketDev/socket-basics@v3.4.0
+        uses: SocketDev/socket-basics@v3.4.1
         env:
           GITHUB_PR_NUMBER: ${{ github.event.pull_request.number }}
         with:
@@ -456,7 +456,7 @@ Configure Socket Basics centrally from the [Socket Dashboard](https://socket.dev
 
 **Enable in workflow:**
 ```yaml
-- uses: SocketDev/socket-basics@v3.4.0
+- uses: SocketDev/socket-basics@v3.4.1
   env:
     GITHUB_PR_NUMBER: ${{ github.event.pull_request.number || github.event.issue.number }}
   with:
@@ -469,7 +469,7 @@ Configure Socket Basics centrally from the [Socket Dashboard](https://socket.dev
 > [!NOTE]
 > You can also pass credentials using environment variables instead of the `with:` section:
 > ```yaml
-> - uses: SocketDev/socket-basics@v3.4.0
+> - uses: SocketDev/socket-basics@v3.4.1
 >   env:
 >     SOCKET_SECURITY_API_KEY: ${{ secrets.SOCKET_SECURITY_API_KEY }}
 >   with:
@@ -540,7 +540,7 @@ directly as a step:
   run: docker build -t myapp:${{ github.sha }} .
 
 - name: Run Socket Basics
-  uses: docker://ghcr.io/socketdev/socket-basics:3.4.0
+  uses: docker://ghcr.io/socketdev/socket-basics:3.4.1
   env:
     SOCKET_SECURITY_API_KEY: ${{ secrets.SOCKET_SECURITY_API_KEY }}
     GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -559,7 +559,7 @@ the dashboard. Running the image directly differs from the action in two ways:
   for some languages.
 - The step isn't tied to an action version, so update the image tag yourself
   when you upgrade. To pin by digest, append `@sha256:<digest>` to the image.
-  `docker buildx imagetools inspect ghcr.io/socketdev/socket-basics:3.4.0`
+  `docker buildx imagetools inspect ghcr.io/socketdev/socket-basics:3.4.1`
   prints the digest.
 
 See the [Parameters Reference](parameters.md) for every CLI flag.
@@ -570,7 +570,7 @@ All notification integrations require Socket Enterprise.
 
 **Slack Notifications:**
 ```yaml
-- uses: SocketDev/socket-basics@v3.4.0
+- uses: SocketDev/socket-basics@v3.4.1
   with:
     github_token: ${{ secrets.GITHUB_TOKEN }}
     socket_org: ${{ secrets.SOCKET_ORG }}
@@ -582,7 +582,7 @@ All notification integrations require Socket Enterprise.
 
 **Jira Issue Creation:**
 ```yaml
-- uses: SocketDev/socket-basics@v3.4.0
+- uses: SocketDev/socket-basics@v3.4.1
   with:
     github_token: ${{ secrets.GITHUB_TOKEN }}
     socket_org: ${{ secrets.SOCKET_ORG }}
@@ -597,7 +597,7 @@ All notification integrations require Socket Enterprise.
 
 **Microsoft Teams:**
 ```yaml
-- uses: SocketDev/socket-basics@v3.4.0
+- uses: SocketDev/socket-basics@v3.4.1
   with:
     github_token: ${{ secrets.GITHUB_TOKEN }}
     socket_org: ${{ secrets.SOCKET_ORG }}
@@ -609,7 +609,7 @@ All notification integrations require Socket Enterprise.
 
 **Generic Webhook:**
 ```yaml
-- uses: SocketDev/socket-basics@v3.4.0
+- uses: SocketDev/socket-basics@v3.4.1
   with:
     github_token: ${{ secrets.GITHUB_TOKEN }}
     socket_org: ${{ secrets.SOCKET_ORG }}
@@ -621,7 +621,7 @@ All notification integrations require Socket Enterprise.
 
 **SIEM Integration:**
 ```yaml
-- uses: SocketDev/socket-basics@v3.4.0
+- uses: SocketDev/socket-basics@v3.4.1
   with:
     github_token: ${{ secrets.GITHUB_TOKEN }}
     socket_org: ${{ secrets.SOCKET_ORG }}
@@ -657,7 +657,7 @@ jobs:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
       
       - name: Run Socket Basics
-        uses: SocketDev/socket-basics@v3.4.0
+        uses: SocketDev/socket-basics@v3.4.1
         env:
           GITHUB_PR_NUMBER: ${{ github.event.pull_request.number || github.event.issue.number }}
         with:
@@ -699,7 +699,7 @@ jobs:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
       
       - name: Run Full Security Scan
-        uses: SocketDev/socket-basics@v3.4.0
+        uses: SocketDev/socket-basics@v3.4.1
         env:
           GITHUB_PR_NUMBER: ${{ github.event.pull_request.number || github.event.issue.number }}
         with:
@@ -765,7 +765,7 @@ jobs:
         run: docker build -t myapp:${{ github.sha }} .
 
       - name: Run Socket Basics (image + Dockerfile scan)
-        uses: SocketDev/socket-basics@v3.4.0
+        uses: SocketDev/socket-basics@v3.4.1
         env:
           GITHUB_PR_NUMBER: ${{ github.event.pull_request.number }}
         with:
@@ -790,7 +790,7 @@ For repositories with multiple Dockerfiles across different directories, you can
 >
 > ```yaml
 > - name: Run Socket Basics
->   uses: docker://ghcr.io/socketdev/socket-basics:3.4.0
+>   uses: docker://ghcr.io/socketdev/socket-basics:3.4.1
 >   env:
 >     SOCKET_SECURITY_API_KEY: ${{ secrets.SOCKET_SECURITY_API_KEY }}
 >     GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -847,7 +847,7 @@ jobs:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
 
       - name: Run Socket Basics
-        uses: SocketDev/socket-basics@v3.4.0
+        uses: SocketDev/socket-basics@v3.4.1
         env:
           GITHUB_PR_NUMBER: ${{ github.event.pull_request.number || github.event.issue.number }}
         with:
@@ -905,7 +905,7 @@ jobs:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
       
       - name: Run Socket Basics
-        uses: SocketDev/socket-basics@v3.4.0
+        uses: SocketDev/socket-basics@v3.4.1
         env:
           GITHUB_PR_NUMBER: ${{ github.event.pull_request.number || github.event.issue.number }}
         with:
@@ -1070,7 +1070,7 @@ in the [name mapping](parameters.md#name-mapping).
 ```yaml
 steps:
   - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2 - Must be first
-  - uses: SocketDev/socket-basics@v3.4.0
+  - uses: SocketDev/socket-basics@v3.4.1
 ```
 
 ### PR Comments Not Appearing
