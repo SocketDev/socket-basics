@@ -56,10 +56,13 @@ COPY --from=trufflehog /usr/bin/trufflehog        /usr/local/bin/trufflehog
 COPY --from=opengrep-installer /root/.opengrep    /root/.opengrep
 
 # System deps + Node.js 22.x + Socket CLI
+# ca-certificates must be 20250419+deb13u1 or newer, which drops the roots the
+# compromised eMudhra intermediates chain to.
 RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
     --mount=type=cache,target=/var/lib/apt,sharing=locked \
     apt-get update && apt-get install -y --no-install-recommends \
-      curl git wget ca-certificates
+      curl git wget ca-certificates \
+    && dpkg --compare-versions "$(dpkg-query -W -f='${Version}' ca-certificates)" ge 20250419+deb13u1
 RUN curl -fsSL https://deb.nodesource.com/setup_22.x | bash - \
     && apt-get install -y nodejs
 ARG SOCKET_NPM_CLI_VERSION
