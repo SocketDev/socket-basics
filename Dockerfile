@@ -63,12 +63,10 @@ RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
     apt-get update && apt-get install -y --no-install-recommends \
       curl git wget ca-certificates \
     && dpkg --compare-versions "$(dpkg-query -W -f='${Version}' ca-certificates)" ge 20250419+deb13u1
+# Node rejects the compromised eMudhra intermediates from 22.23.4.
 RUN curl -fsSL https://deb.nodesource.com/setup_22.x | bash - \
-    && apt-get install -y nodejs
-# Node's bundled CA store still trusts the compromised eMudhra intermediates and
-# no patched Node release exists yet. Use the system store, which ca-certificates
-# above already fixed. Drop this once Node ships its fix.
-ENV NODE_OPTIONS="--use-openssl-ca"
+    && apt-get install -y nodejs \
+    && node -e 'const [a,b,c]=process.versions.node.split(".").map(Number); process.exit(a>22||(a===22&&(b>23||(b===23&&c>=4)))?0:1)'
 ARG SOCKET_NPM_CLI_VERSION
 RUN --mount=type=cache,target=/root/.npm \
     npm install -g "socket@${SOCKET_NPM_CLI_VERSION}"
