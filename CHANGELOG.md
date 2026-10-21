@@ -19,7 +19,9 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   runs the Python CLI, gets a `certifi>=2026.10.19` floor). The bundled Trivy and
   TruffleHog, `curl`, `git`, and Python `requests` now reject those chains.
   The images also require Node 22.23.4 or newer, which rejects them for Node
-  and the Socket npm CLI. Container scanners may
+  and the Socket npm CLI, and pip 26.2.2 or newer, whose vendored CA bundle
+  rejects them too. Source installs (`pip install -e .`) now require
+  `certifi>=2026.10.19`. Container scanners may
   still report CVE-2026-111943 against the Trivy and TruffleHog binaries until
   they are rebuilt on Go 1.26.10 or 1.27.3.
 
