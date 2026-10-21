@@ -33,6 +33,29 @@ def test_ghcr_latest_ignores_floating_and_prerelease_tags(monkeypatch):
     assert check_core_tools._ghcr_latest("SocketDev", "trivy") == "0.73.0"
 
 
+def test_ghcr_latest_ranks_socket_rebuilds_above_their_base(monkeypatch):
+    monkeypatch.setenv("GITHUB_TOKEN", "test-token")
+    monkeypatch.setattr(
+        check_core_tools,
+        "_get_json",
+        lambda *_args: [
+            {"metadata": {"container": {"tags": ["0.73.0-socket.2"]}}},
+            {"metadata": {"container": {"tags": ["latest", "0.73.0-socket.10"]}}},
+            {"metadata": {"container": {"tags": ["0.73.0"]}}},
+            {"metadata": {"container": {"tags": ["v0.74.0-rc.1"]}}},
+        ],
+    )
+
+    assert check_core_tools._ghcr_latest("SocketDev", "trivy") == "0.73.0-socket.10"
+
+
+def test_trivy_purl_uses_the_upstream_version_for_socket_rebuilds():
+    trivy = next(tool for tool in check_core_tools.build_tools() if tool.key == "trivy")
+
+    assert trivy.purl("0.73.0-socket.1") == "pkg:golang/github.com/aquasecurity/trivy@v0.73.0"
+    assert trivy.purl("0.73.0") == "pkg:golang/github.com/aquasecurity/trivy@v0.73.0"
+
+
 def test_every_socket_tool_is_named_and_pinned_unambiguously():
     tools = {tool.key: tool for tool in check_core_tools.build_tools()}
 
@@ -67,7 +90,7 @@ def test_socket_cli_installs_are_version_pinned():
 def test_trivy_pin_comes_from_socket_image_tag():
     tools = {tool.key: tool for tool in check_core_tools.build_tools()}
 
-    assert tools["trivy"].read_pinned() == ["0.73.0"]
+    assert tools["trivy"].read_pinned() == ["0.73.0-socket.1"]
     assert all(
         "ARG TRIVY_IMAGE=ghcr.io/socketdev/trivy:" in dockerfile.read_text()
         for dockerfile in check_core_tools.DOCKERFILES

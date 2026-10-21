@@ -13,6 +13,9 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 ### Changed
 - Socket Python CLI 2.9.0 -> 2.11.2 in the heavy and app-tests images. 2.11.2
   carries the same eMudhra CA fix for its own image (SocketDev/socket-python-cli#415).
+- Trivy 0.73.0 -> 0.73.0-socket.1: the same upstream source, rebuilt on Go
+  1.26.10, which blocks the compromised eMudhra intermediates in Go itself and
+  clears container scanner findings against Trivy's Go version.
 
 ### Fixed
 

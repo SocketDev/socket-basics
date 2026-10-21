@@ -205,9 +205,10 @@ def _ghcr_latest(org: str, package: str) -> Optional[str]:
         ]
         stable_versions = []
         for tag in tags:
-            match = re.fullmatch(r"v?(\d+)\.(\d+)\.(\d+)", tag)
+            # X.Y.Z-socket.N is a trivy-dist toolchain rebuild of X.Y.Z and ranks above it.
+            match = re.fullmatch(r"v?(\d+)\.(\d+)\.(\d+)(?:-socket\.(\d+))?", tag)
             if match:
-                stable_versions.append((tuple(map(int, match.groups())), tag))
+                stable_versions.append((tuple(int(g or 0) for g in match.groups()), tag))
         return max(stable_versions)[1] if stable_versions else None
     except Exception as exc:  # noqa: BLE001
         print(f"  ! GHCR latest-version lookup failed for {org}/{package}: {exc}", file=sys.stderr)
@@ -287,6 +288,11 @@ def _ensure_v(v: str) -> str:
     return v if v.startswith("v") else f"v{v}"
 
 
+def _strip_socket_rebuild(v: str) -> str:
+    """Drop a trivy-dist -socket.N suffix; the upstream module has no such version."""
+    return re.sub(r"-socket\.\d+$", "", v)
+
+
 # ── tool registry ─────────────────────────────────────────────────────────────
 
 
@@ -327,7 +333,7 @@ def build_tools() -> list[Tool]:
             # The Socket distribution is rebuilt from unmodified upstream
             # source. Score that Go module while release discovery follows the
             # Socket-controlled artifact that Basics actually consumes.
-            purl=lambda v: f"pkg:golang/github.com/aquasecurity/trivy@{_ensure_v(v)}",
+            purl=lambda v: f"pkg:golang/github.com/aquasecurity/trivy@{_ensure_v(_strip_socket_rebuild(v))}",
             note="Release drift follows the Socket-built ghcr.io/socketdev/trivy package "
             "(produced by SocketDev/trivy-dist and mirrored privately to Docker Hub), not "
             "Aqua's release feed. Socket scoring uses the corresponding upstream Go module "
