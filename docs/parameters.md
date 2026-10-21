@@ -947,17 +947,26 @@ The output file name is a CLI-only option (`--output`); set
 Configuration is merged in the following order (later sources override earlier ones):
 
 1. Default values
-2. Environment variables
-3. Socket Basics API configuration (when available and no `--config` file is used)
+2. Environment variables, including GitHub Action inputs (the action passes each `with:` input as an `INPUT_*` variable)
+3. Socket Basics dashboard configuration (when the organization is on an Enterprise plan with Socket Basics enabled, the API key has the `socket-basics` scope, and no `--config` file is used)
 4. JSON configuration file (via `--config`)
 5. Command-line arguments
 
+Dashboard configuration overrides environment variables even for fields left
+blank in the dashboard: a blank field or a switched-off toggle replaces the
+environment value. Blank `<language>_enabled_rules` and
+`<language>_disabled_rules` fields are skipped, and blank notifier fields fall
+back to their environment variables. The GitHub Action passes no command-line
+arguments, so to override a dashboard value from a workflow, run the image
+directly with CLI flags. See
+[Dashboard Settings and Workflow Inputs](github-action.md#dashboard-settings-and-workflow-inputs).
+
 **Example:**
 ```bash
-# Environment sets python_sast_enabled=true
-# Dashboard/API sets python_sast_enabled=false
+# Environment sets python_sast_enabled=true and dockerfiles=Dockerfile
+# Dashboard sets python_sast_enabled=false and leaves the Dockerfiles field blank
 # CLI has --javascript
-# Result: JavaScript enabled, Python follows dashboard/API value, other settings from env/API
+# Result: JavaScript enabled, Python disabled, no Dockerfiles scanned
 socket-basics --javascript
 ```
 
