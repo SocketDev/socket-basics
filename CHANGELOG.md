@@ -8,6 +8,17 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Fixed
+
+- **The images no longer trust certificates from the compromised eMudhra
+  intermediate CAs** (keys disclosed 2026-10-20). Both images now require
+  `ca-certificates` `20250419+deb13u1`, Node 22.23.4, pip 26.2.2 and `certifi`
+  2026.10.19 or newer, and source installs (`pip install -e .`) require the same
+  `certifi`. curl, git, Python `requests`, pip, Node, and the bundled Trivy and
+  TruffleHog now reject those chains. Container scanners may still report
+  CVE-2026-111943 against the Trivy and TruffleHog binaries until they are
+  rebuilt on Go 1.26.10 or 1.27.3.
+
 ## [3.4.0] - 2026-09-18
 
 Findings for the hardcoded-credential rules now report where a credential is
