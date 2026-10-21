@@ -49,7 +49,7 @@ inspect exactly what's inside:
 docker inspect ghcr.io/socketdev/socket-basics:3.4.1 \
   | jq '.[0].Config.Labels'
 # {
-#   "com.socket.trivy-version": "0.73.0",
+#   "com.socket.trivy-version": "0.76.1",
 #   "com.socket.trufflehog-version": "3.96.0",
 #   "com.socket.opengrep-version": "v1.26.0",
 #   "org.opencontainers.image.version": "3.4.1",

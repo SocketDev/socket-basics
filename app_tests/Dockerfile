@@ -17,8 +17,8 @@ ARG SOCKET_PYTHON_CLI_VERSION=2.11.2
 #
 # NOT Dependabot-trackable — Socket-built Trivy, pinned by digest; updated by
 # Socket's trivy-dist release process. See the note in the root ./Dockerfile.
-# TODO(release 3.4.1): placeholder digest until trivy-dist publishes 0.73.0-socket.1.
-ARG TRIVY_IMAGE=ghcr.io/socketdev/trivy:0.73.0-socket.1@sha256:0000000000000000000000000000000000000000000000000000000000000000
+# TODO(release 3.4.1): placeholder digest until trivy-dist publishes 0.76.1.
+ARG TRIVY_IMAGE=ghcr.io/socketdev/trivy:0.76.1@sha256:0000000000000000000000000000000000000000000000000000000000000000
 
 # ─── Stage: trivy (Socket-built redistribution) ───────────────────────────────
 FROM ${TRIVY_IMAGE} AS trivy

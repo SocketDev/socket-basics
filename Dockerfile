@@ -19,9 +19,9 @@ ARG SOCKET_NPM_CLI_VERSION=1.1.165
 # TRIVY_VERSION feeds the image label — keep it in sync with the TRIVY_IMAGE tag.
 # -socket.N is a trivy-dist toolchain rebuild: same upstream source, newer Go.
 # TODO(release 3.4.1): replace the placeholder digest once trivy-dist publishes
-# 0.73.0-socket.1 (SocketDev/trivy-dist#24), here and in the other two Dockerfiles.
-ARG TRIVY_VERSION=0.73.0-socket.1
-ARG TRIVY_IMAGE=ghcr.io/socketdev/trivy:0.73.0-socket.1@sha256:0000000000000000000000000000000000000000000000000000000000000000
+# 0.76.1 (SocketDev/trivy-dist#25), here and in the other two Dockerfiles.
+ARG TRIVY_VERSION=0.76.1
+ARG TRIVY_IMAGE=ghcr.io/socketdev/trivy:0.76.1@sha256:0000000000000000000000000000000000000000000000000000000000000000
 
 # ─── Stage: trivy (Socket-built redistribution) ───────────────────────────────
 FROM ${TRIVY_IMAGE} AS trivy

@@ -90,7 +90,7 @@ def test_socket_cli_installs_are_version_pinned():
 def test_trivy_pin_comes_from_socket_image_tag():
     tools = {tool.key: tool for tool in check_core_tools.build_tools()}
 
-    assert tools["trivy"].read_pinned() == ["0.73.0-socket.1"]
+    assert tools["trivy"].read_pinned() == ["0.76.1"]
     assert all(
         "ARG TRIVY_IMAGE=ghcr.io/socketdev/trivy:" in dockerfile.read_text()
         for dockerfile in check_core_tools.DOCKERFILES

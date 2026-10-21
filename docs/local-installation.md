@@ -232,7 +232,7 @@ EOF
 sudo yum -y install trivy
 
 # Using Docker (alternative; always pin an explicit version, ideally by digest):
-docker pull aquasec/trivy:0.73.0
+docker pull aquasec/trivy:0.76.1
 
 # Verify installation
 trivy --version
