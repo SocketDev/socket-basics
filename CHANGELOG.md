@@ -8,7 +8,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
-## [3.4.1] - 2026-10-20
+## [3.4.1] - 2026-10-21
 
 ### Changed
 - Socket Python CLI 2.9.0 -> 2.11.3 in the heavy and app-tests images. 2.11.3
