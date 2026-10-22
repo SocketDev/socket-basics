@@ -18,10 +18,8 @@ ARG SOCKET_NPM_CLI_VERSION=1.1.165
 # override, e.g.: docker build --build-arg TRIVY_IMAGE=aquasec/trivy:0.73.0 .
 # TRIVY_VERSION feeds the image label — keep it in sync with the TRIVY_IMAGE tag.
 # -socket.N is a trivy-dist toolchain rebuild: same upstream source, newer Go.
-# TODO(release 3.4.1): replace the placeholder digest once trivy-dist publishes
-# 0.76.1 (SocketDev/trivy-dist#25), here and in the other two Dockerfiles.
 ARG TRIVY_VERSION=0.76.1
-ARG TRIVY_IMAGE=ghcr.io/socketdev/trivy:0.76.1@sha256:0000000000000000000000000000000000000000000000000000000000000000
+ARG TRIVY_IMAGE=ghcr.io/socketdev/trivy:0.76.1@sha256:883da3593a60e311b2ed87c3a55241051b27bba15ffc3ce041ae570cd0f00915
 
 # ─── Stage: trivy (Socket-built redistribution) ───────────────────────────────
 FROM ${TRIVY_IMAGE} AS trivy
