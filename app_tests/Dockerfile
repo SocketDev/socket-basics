@@ -13,11 +13,11 @@ ARG UV_VERSION=0.12.1
 ARG GOSEC_VERSION=v2.28.0
 ARG OPENGREP_VERSION=v1.26.0
 ARG SOCKET_NPM_CLI_VERSION=1.1.165
-ARG SOCKET_PYTHON_CLI_VERSION=2.9.0
+ARG SOCKET_PYTHON_CLI_VERSION=2.11.3
 #
 # NOT Dependabot-trackable — Socket-built Trivy, pinned by digest; updated by
 # Socket's trivy-dist release process. See the note in the root ./Dockerfile.
-ARG TRIVY_IMAGE=ghcr.io/socketdev/trivy:0.73.0@sha256:e3d9d5f10250cb73b0ea9446ae1191c0f2da2f5e6173eac08a840b1812f02e0b
+ARG TRIVY_IMAGE=ghcr.io/socketdev/trivy:0.76.1@sha256:883da3593a60e311b2ed87c3a55241051b27bba15ffc3ce041ae570cd0f00915
 
 # ─── Stage: trivy (Socket-built redistribution) ───────────────────────────────
 FROM ${TRIVY_IMAGE} AS trivy
@@ -89,7 +89,13 @@ ARG SOCKET_NPM_CLI_VERSION
 RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
     --mount=type=cache,target=/var/lib/apt,sharing=locked \
     apt-get update && apt-get install -y --no-install-recommends \
-      curl git wget ca-certificates libatomic1
+      curl git wget ca-certificates libatomic1 \
+    && dpkg --compare-versions "$(dpkg-query -W -f='${Version}' ca-certificates)" ge 20250419+deb13u1
+# pip checks certificates against its own vendored CA bundle, not the system
+# store, and the base image's pip trusts the compromised intermediates. 26.2.2
+# vendors certifi 2026.10.19. Upgrade it against the system store fixed above.
+RUN python -m pip install --no-cache-dir --cert /etc/ssl/certs/ca-certificates.crt --upgrade "pip>=26.2.2" \
+    && python -c 'import sys, pip; sys.exit(tuple(map(int, pip.__version__.split(".")[:3])) < (26, 2, 2))'
 RUN --mount=type=cache,target=/root/.npm \
     npm install -g eslint eslint-plugin-security \
       @typescript-eslint/parser @typescript-eslint/eslint-plugin \
