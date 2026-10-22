@@ -15,7 +15,7 @@ ARG SOCKET_NPM_CLI_VERSION=1.1.165
 # source and published by Socket's own release pipeline. Pinned by digest; both
 # ARGs are updated together by that release process, never bumped independently.
 # Building requires pull access to the registry; contributors without it can
-# override, e.g.: docker build --build-arg TRIVY_IMAGE=aquasec/trivy:0.73.0 .
+# override, e.g.: docker build --build-arg TRIVY_IMAGE=aquasec/trivy:0.76.1 .
 # TRIVY_VERSION feeds the image label — keep it in sync with the TRIVY_IMAGE tag.
 # -socket.N is a trivy-dist toolchain rebuild: same upstream source, newer Go.
 ARG TRIVY_VERSION=0.76.1
