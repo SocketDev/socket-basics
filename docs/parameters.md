@@ -716,11 +716,35 @@ socket-basics --socket-tier1
 ```
 
 ### `--socket-additional-params SOCKET_ADDITIONAL_PARAMS`
-Additional CLI params for 'socket scan reach' (comma or space separated).
+Additional CLI params for `socket scan reach`. Separate options with spaces.
+For list-valued CLI options, repeat the flag so each value stays attached to
+that option. A legacy comma before another option is also accepted. Commas
+inside an argument value stay literal, except an unquoted comma followed by a
+hyphen is treated as the legacy separator before another option. Quote the
+complete value to pass that sequence literally, such as `"value, --text"`.
 
 **Example:**
 ```bash
 socket-basics --socket-tier1 --socket-additional-params "--view=full,--all"
+```
+
+To exclude directories from Socket Tier 1 manifest discovery and reachability,
+use repeated `--exclude-paths` flags. Paths are relative to the Socket scan
+working directory, which defaults to the Basics workspace. `tests` matches only
+the `tests` directory at that root; use `**/tests` to match it at any depth. This
+option affects the Socket Tier 1 CLI scan. It does not configure other Basics
+connectors.
+
+```bash
+socket-basics --socket-tier1 --socket-additional-params="--exclude-paths=tests --exclude-paths=fixtures"
+```
+
+The same value can be set with `SOCKET_ADDITIONAL_PARAMS` or the GitHub Action's
+`socket_additional_params` input:
+
+```yaml
+socket_tier_1_enabled: 'true'
+socket_additional_params: '--exclude-paths=tests --exclude-paths=fixtures'
 ```
 
 ## Notification Options

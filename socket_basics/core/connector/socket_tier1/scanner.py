@@ -28,6 +28,43 @@ from ...formatters import get_all_formatters
 logger = logging.getLogger(__name__)
 
 
+def _split_legacy_parameter_separators(raw: str) -> List[str]:
+    separated: List[str] = []
+    quote: Optional[str] = None
+    escaped: bool = False
+    index: int = 0
+
+    while index < len(raw):
+        char = raw[index]
+        if escaped:
+            separated.append(char)
+            escaped = False
+        elif char == "\\" and quote != "'":
+            separated.append(char)
+            escaped = True
+        elif quote:
+            separated.append(char)
+            if char == quote:
+                quote = None
+        elif char in ("'", '"'):
+            separated.append(char)
+            quote = char
+        elif char == ",":
+            next_index = index + 1
+            while next_index < len(raw) and raw[next_index].isspace():
+                next_index += 1
+            if next_index < len(raw) and raw[next_index] == "-":
+                separated.append(" ")
+                index = next_index - 1
+            else:
+                separated.append(char)
+        else:
+            separated.append(char)
+        index += 1
+
+    return shlex.split("".join(separated))
+
+
 class SocketTier1Scanner(BaseConnector):
     """Runs the Socket CLI reachability analysis and returns the generated .socket.facts.json
 
@@ -89,15 +126,12 @@ class SocketTier1Scanner(BaseConnector):
         )
         if not raw:
             return []
-        # Allow comma-separated or regular shell splitting
-        if ',' in raw:
-            parts = [p.strip() for p in raw.split(',') if p.strip()]
-            # further split any parts that contain spaces
-            out: List[str] = []
-            for p in parts:
-                out.extend(shlex.split(p))
-            return out
-        return shlex.split(raw)
+        try:
+            return _split_legacy_parameter_separators(raw)
+        except ValueError as error:
+            raise ConnectorExecutionError(
+                f"Invalid socket_additional_params: {error}"
+            ) from error
 
     def scan(self) -> Dict[str, Any]:
         # Check if Socket Tier 1 reachability scan should be skipped (for Node.js Socket CLI integration).
