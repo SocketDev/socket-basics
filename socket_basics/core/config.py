@@ -13,6 +13,8 @@ import logging
 from pathlib import Path
 from typing import Dict, Any, List, Optional
 
+from ..user_agent import USER_AGENT
+
 logger = logging.getLogger(__name__)
 
 TRUE_STRINGS = ('true', '1', 'yes', 'on')
@@ -1017,7 +1019,7 @@ def load_socket_basics_config(org_slug_override: str | None = None) -> Dict[str,
         from socketdev import socketdev
         
         # Initialize SDK
-        sdk = socketdev(token=api_key, timeout=100)
+        sdk = socketdev(token=api_key, timeout=100, user_agent=USER_AGENT)
         
         # Get organizations and find the right one or auto-discover
         orgs = sdk.org.get()

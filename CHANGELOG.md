@@ -8,6 +8,11 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Changed
+
+- Identify Socket API configuration requests and scan uploads as
+  `socket-basics/<version>` using the Basics version.
+
 ## [3.4.1] - 2026-10-21
 
 ### Changed
