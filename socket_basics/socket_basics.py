@@ -44,11 +44,13 @@ try:
     from .core.config import Config, parse_cli_args, create_config_from_args
     from .core.connector import ConnectorManager
     from .core.notification.manager import NotificationManager
+    from .user_agent import USER_AGENT
 except ImportError:
     # Absolute imports for when run as a script (best-effort fallback)
     from socket_basics.core.config import Config, parse_cli_args, create_config_from_args
     from socket_basics.core.connector import ConnectorManager
     from socket_basics.core.notification.manager import NotificationManager
+    from socket_basics.user_agent import USER_AGENT
 
 # Configure logger (basicConfig will be applied in main)
 logger = logging.getLogger(__name__)
@@ -272,7 +274,7 @@ class SecurityScanner:
                 
             # Initialize SDK
             logger.debug("Initializing socketdev SDK")
-            sdk = socketdev(token=socket_api_key, timeout=100)
+            sdk = socketdev(token=socket_api_key, timeout=100, user_agent=USER_AGENT)
             logger.debug("✓ socketdev SDK initialized")
             
             # Prepare full scan parameters with proper defaults
