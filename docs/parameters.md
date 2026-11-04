@@ -717,17 +717,32 @@ socket-basics --socket-tier1
 
 #### Network access for Tier 1
 
-Tier 1 runs `socket scan reach`, which downloads the Coana reachability engine
-on first use. Socket CLI 1.9.0 and later (Socket Basics 3.5.0 bundles 1.13.1)
-download it from Socket rather than npm:
+Tier 1 runs `socket scan reach`, which needs network access to three kinds of
+host:
 
-- The CLI asks the Socket API (`api.socket.dev`) for a signed download URL, then
-  fetches the engine from Google Cloud Storage (`storage.googleapis.com`). Both
-  hosts must be reachable from wherever the scan runs. An npm registry or npm
-  mirror is no longer used for the engine, and there is no npm fallback.
+| Host | Used for | If blocked |
+|---|---|---|
+| `api.socket.dev` | Socket API calls, and signed URLs for the engine download | Tier 1 fails |
+| `storage.googleapis.com` | Downloading the Coana reachability engine and its analyzers (about 120 MB) | Tier 1 fails: `Failed to get the Coana CLI <version>: getaddrinfo ENOTFOUND storage.googleapis.com` |
+| The package registry of each scanned ecosystem, for example `registry.npmjs.org` | Installing the project's dependencies so the engine can analyze them | Tier 1 still reports success, but the affected vulnerabilities come back as `INSTALL ERROR` with no reachability verdict |
+
+Socket CLI 1.9.0 and later (Socket Basics 3.5.0 bundles 1.13.1) download the
+engine from Socket rather than npm, with no npm fallback, so an npm mirror does
+not cover the second row. The registry row does not apply when the workspace
+already has its dependencies installed (for example a `node_modules` directory
+from an earlier `npm ci` step).
+
+Allow these hosts at the network level. The Socket CLI does not send its
+requests through `HTTPS_PROXY` or `SOCKET_CLI_API_PROXY`: with only a proxy
+available, it fails to resolve `api.socket.dev`.
+
+A Tier 1 failure is logged as `Error running connector socket_tier1` and does
+not fail the overall scan, so check the log rather than the exit code.
+
 - The engine is cached in `$XDG_CACHE_HOME/socket/coana`
   (`~/.cache/socket/coana` by default). A fresh container downloads it on every
-  run unless that directory is persisted.
+  run unless that directory is persisted. With a warm cache, Tier 1 does not
+  contact `storage.googleapis.com` at all.
 - `SOCKET_CLI_COANA_LAUNCHER` no longer has any effect.
   `SOCKET_CLI_COANA_LOCAL_PATH` still runs a local copy of the engine instead.
 - `--reach-version` in `socket_additional_params` can only select engine

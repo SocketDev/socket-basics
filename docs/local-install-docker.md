@@ -100,9 +100,16 @@ convenience. Pin an exact version (or digest) in anything automated.
 > [!NOTE]
 > With `--socket-tier1`, both images download the Coana reachability engine at
 > run time from Socket (`api.socket.dev`, then `storage.googleapis.com`), not
-> from npm. The container needs outbound access to both hosts. To avoid a
-> download on every run, mount a volume at `/root/.cache/socket/coana`. See
-> [Network access for Tier 1](parameters.md#network-access-for-tier-1).
+> from npm. The container also needs each scanned ecosystem's package registry
+> unless the workspace already has its dependencies installed. Mount a volume at
+> `/root/.cache/socket/coana` to keep the engine (about 120 MB) between runs:
+>
+> ```bash
+> docker run --rm -v "$PWD:/workspace" -v socket-coana-cache:/root/.cache/socket/coana \
+>   ghcr.io/socketdev/socket-basics:3.4.1 --workspace /workspace --socket-tier1
+> ```
+>
+> See [Network access for Tier 1](parameters.md#network-access-for-tier-1).
 
 ### Pinning in CI/CD
 

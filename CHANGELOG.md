@@ -12,8 +12,9 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - **Socket Tier 1 needs outbound access to `api.socket.dev` and
   `storage.googleapis.com`.** Socket npm CLI 1.9.0 and later download the
   Coana reachability engine from Socket instead of npm, with no npm fallback.
-  An npm mirror no longer covers it, `SOCKET_CLI_COANA_LAUNCHER` has no
-  effect, and a `--reach-version` older than the move fails. The heavy image's
+  An npm mirror no longer covers it, the CLI does not use `HTTPS_PROXY` for
+  it, `SOCKET_CLI_COANA_LAUNCHER` has no effect, and a `--reach-version` older
+  than the move fails. The heavy image's
   Python CLI made the same change in 2.11.0, which shipped in 3.4.1. See
   [Network access for Tier 1](docs/parameters.md#network-access-for-tier-1).
 

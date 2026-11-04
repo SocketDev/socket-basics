@@ -181,7 +181,8 @@ socket --version
 Socket CLI 1.9.0 and later download the reachability engine from Socket
 (`api.socket.dev`, then `storage.googleapis.com`) instead of npm. The machine
 running the scan needs outbound access to both hosts, even if npm itself goes
-through a mirror. The engine is cached in `~/.cache/socket/coana`. See
+through a mirror, and the CLI does not use `HTTPS_PROXY` for them. The engine
+is cached in `~/.cache/socket/coana`. See
 [Network access for Tier 1](parameters.md#network-access-for-tier-1).
 
 **Configuration:**
