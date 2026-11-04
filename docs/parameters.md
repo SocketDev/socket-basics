@@ -732,9 +732,17 @@ not cover the second row. The registry row does not apply when the workspace
 already has its dependencies installed (for example a `node_modules` directory
 from an earlier `npm ci` step).
 
-Allow these hosts at the network level. The Socket CLI does not send its
-requests through `HTTPS_PROXY` or `SOCKET_CLI_API_PROXY`: with only a proxy
-available, it fails to resolve `api.socket.dev`.
+**Behind an HTTP(S) proxy**, also set `NODE_USE_ENV_PROXY=1` next to
+`HTTPS_PROXY`. The Socket npm CLI that Tier 1 runs does not apply
+`HTTPS_PROXY` or `SOCKET_CLI_API_PROXY` to its own requests and fails with
+`getaddrinfo EAI_AGAIN api.socket.dev`. `NODE_USE_ENV_PROXY=1` makes Node route
+them through the proxy (Node 22.21 or later; the images ship 22.23):
+
+```bash
+docker run --rm -e HTTPS_PROXY=http://proxy.internal:3128 -e NODE_USE_ENV_PROXY=1 ...
+```
+
+The heavy image's Python CLI (`socketcli`) honors `HTTPS_PROXY` without it.
 
 A Tier 1 failure is logged as `Error running connector socket_tier1` and does
 not fail the overall scan, so check the log rather than the exit code.
@@ -749,8 +757,10 @@ not fail the overall scan, so check the log rather than the exit code.
   versions published since the move. An older version fails with an API error
   saying it needs an older Socket CLI.
 
-The Socket Python CLI (`socketcli`) in the heavy image made the same change in
-2.11.0, which shipped with Socket Basics 3.4.1.
+The Socket Python CLI (`socketcli`) in the heavy image made the same change
+in 2.11.1, so the heavy image has fetched the engine from Socket since Socket
+Basics 3.4.1 (`socketcli` 2.11.3). It needs the same hosts, and with the
+engine host blocked `socketcli --reach` exits 3.
 
 ### `--socket-additional-params SOCKET_ADDITIONAL_PARAMS`
 Additional CLI params for `socket scan reach`, parsed with shell-style quoting.
