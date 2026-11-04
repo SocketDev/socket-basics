@@ -209,6 +209,10 @@ The API key is read from the environment (`SOCKET_SECURITY_API_KEY`; there is de
 
 **For GitHub Actions & Docker:** No local installation needed for the supported bundled scanners.
 
+**Network access:** Socket Tier 1 downloads its reachability engine at run time
+from `api.socket.dev` and `storage.googleapis.com`, not from npm. Allow both
+hosts on restricted networks. See [Network access for Tier 1](docs/parameters.md#network-access-for-tier-1).
+
 **For Local Installation:**
 - Python 3.10+
 - [Socket CLI](https://docs.socket.dev/docs/cli) (for dependency analysis)
@@ -272,6 +276,10 @@ Add new connectors by:
 
 **Workflow inputs have no effect, or Dockerfile and image scanning finds nothing:**
 - If the log shows `Loaded Socket Basics API configuration (overrides environment defaults)`, the dashboard configuration took precedence over your inputs, blank fields included (see [Dashboard Settings and Workflow Inputs](docs/github-action.md#dashboard-settings-and-workflow-inputs))
+
+**Socket Tier 1 fails to download or start the reachability engine:**
+- Check outbound access to `api.socket.dev` and `storage.googleapis.com`; an npm registry or mirror is no longer used (see [Network access for Tier 1](docs/parameters.md#network-access-for-tier-1))
+- Remove `--reach-version` from `socket_additional_params` if it pins an engine version older than the Socket CLI supports
 
 **Notifier errors:**
 - Check that notification credentials (Slack webhook, Jira token, etc.) are properly configured

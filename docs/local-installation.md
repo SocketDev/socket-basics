@@ -165,6 +165,9 @@ to use, and prefer exact version pins whenever your package manager supports the
 
 **Required for:** Socket Tier 1 reachability analysis
 
+**Requires:** Node.js 22.13 or later. On an older Node, the reachability engine
+fails to start and Tier 1 fails.
+
 **Installation:**
 
 ```bash
@@ -174,6 +177,12 @@ npm install -g socket
 # Verify installation
 socket --version
 ```
+
+Socket CLI 1.9.0 and later download the reachability engine from Socket
+(`api.socket.dev`, then `storage.googleapis.com`) instead of npm. The machine
+running the scan needs outbound access to both hosts, even if npm itself goes
+through a mirror. The engine is cached in `~/.cache/socket/coana`. See
+[Network access for Tier 1](parameters.md#network-access-for-tier-1).
 
 **Configuration:**
 

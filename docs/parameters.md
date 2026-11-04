@@ -715,6 +715,28 @@ Enable Socket Tier 1 reachability analysis for dependency scanning.
 socket-basics --socket-tier1
 ```
 
+#### Network access for Tier 1
+
+Tier 1 runs `socket scan reach`, which downloads the Coana reachability engine
+on first use. Socket CLI 1.9.0 and later (Socket Basics 3.5.0 bundles 1.13.1)
+download it from Socket rather than npm:
+
+- The CLI asks the Socket API (`api.socket.dev`) for a signed download URL, then
+  fetches the engine from Google Cloud Storage (`storage.googleapis.com`). Both
+  hosts must be reachable from wherever the scan runs. An npm registry or npm
+  mirror is no longer used for the engine, and there is no npm fallback.
+- The engine is cached in `$XDG_CACHE_HOME/socket/coana`
+  (`~/.cache/socket/coana` by default). A fresh container downloads it on every
+  run unless that directory is persisted.
+- `SOCKET_CLI_COANA_LAUNCHER` no longer has any effect.
+  `SOCKET_CLI_COANA_LOCAL_PATH` still runs a local copy of the engine instead.
+- `--reach-version` in `socket_additional_params` can only select engine
+  versions published since the move. An older version fails with an API error
+  saying it needs an older Socket CLI.
+
+The Socket Python CLI (`socketcli`) in the heavy image made the same change in
+2.11.0, which shipped with Socket Basics 3.4.1.
+
 ### `--socket-additional-params SOCKET_ADDITIONAL_PARAMS`
 Additional CLI params for `socket scan reach`, parsed with shell-style quoting.
 

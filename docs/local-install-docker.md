@@ -97,6 +97,13 @@ docker run --rm -v "$PWD:/workspace" ghcr.io/socketdev/socket-basics:3.4.1-heavy
 `latest` and `latest-heavy` are floating aliases published for onboarding
 convenience. Pin an exact version (or digest) in anything automated.
 
+> [!NOTE]
+> With `--socket-tier1`, both images download the Coana reachability engine at
+> run time from Socket (`api.socket.dev`, then `storage.googleapis.com`), not
+> from npm. The container needs outbound access to both hosts. To avoid a
+> download on every run, mount a volume at `/root/.cache/socket/coana`. See
+> [Network access for Tier 1](parameters.md#network-access-for-tier-1).
+
 ### Pinning in CI/CD
 
 **GitHub Actions** — prefer the [action itself](github-action.md), which adds PR

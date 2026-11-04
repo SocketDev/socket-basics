@@ -286,6 +286,11 @@ path that does not exist is skipped with a `Dockerfile not found` warning.
     socket_tier_1_enabled: 'true'
 ```
 
+> **Tier 1 downloads its reachability engine at run time and requires network
+> egress.** The runner must reach `api.socket.dev` and `storage.googleapis.com`.
+> The engine no longer comes from npm, so an npm mirror does not satisfy this.
+> See [Network access for Tier 1](parameters.md#network-access-for-tier-1).
+
 ### Output Configuration
 
 ```yaml
