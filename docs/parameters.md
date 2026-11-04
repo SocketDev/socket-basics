@@ -716,24 +716,25 @@ socket-basics --socket-tier1
 ```
 
 ### `--socket-additional-params SOCKET_ADDITIONAL_PARAMS`
-Additional CLI params for `socket scan reach`. Separate options with spaces.
-For list-valued CLI options, repeat the flag so each value stays attached to
-that option. A legacy comma before another option is also accepted. Commas
-inside an argument value stay literal, except an unquoted comma followed by a
-hyphen is treated as the legacy separator before another option. Quote the
-complete value to pass that sequence literally, such as `"value, --text"`.
+Additional CLI params for `socket scan reach`, parsed with shell-style quoting.
+
+**Behavior change:** Commas no longer act as general argument separators. Use
+spaces or `=` between an option and its value (`--view full` or `--view=full`,
+not `--view,full`). Commas inside values stay literal. For compatibility, an
+unquoted comma followed by another option still separates arguments, as in
+`--view=full,--all`. Quote the complete argument to make that sequence literal,
+for example `--label="value, --text"`.
 
 **Example:**
 ```bash
-socket-basics --socket-tier1 --socket-additional-params "--view=full,--all"
+socket-basics --socket-tier1 --socket-additional-params "--view=full --all"
 ```
 
 To exclude directories from Socket Tier 1 manifest discovery and reachability,
-use repeated `--exclude-paths` flags. Paths are relative to the Socket scan
+repeat `--exclude-paths` for each value. Paths are relative to the Socket scan
 working directory, which defaults to the Basics workspace. `tests` matches only
-the `tests` directory at that root; use `**/tests` to match it at any depth. This
-option affects the Socket Tier 1 CLI scan. It does not configure other Basics
-connectors.
+the `tests` directory at that root; use `**/tests` to match it at any depth. The
+option affects only the Socket Tier 1 CLI scan.
 
 ```bash
 socket-basics --socket-tier1 --socket-additional-params="--exclude-paths=tests --exclude-paths=fixtures"

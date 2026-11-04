@@ -429,7 +429,7 @@ inputs:
     required: false
     default: ""
   socket_additional_params:
-    description: "Additional CLI params for 'socket scan reach'. Separate options with spaces; repeat list-valued flags. A comma before another option is also supported. Also reads SOCKET_ADDITIONAL_PARAMS."
+    description: "Additional CLI params for 'socket scan reach', using shell-style space separation. Commas in values are preserved; only an unquoted comma followed by a hyphen is a legacy separator. Repeat list-valued flags. Also reads SOCKET_ADDITIONAL_PARAMS."
     required: false
     default: ""
   socket_tier_1_enabled:
