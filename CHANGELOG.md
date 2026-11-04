@@ -8,6 +8,16 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Changed
+
+- **Behavior change:** `socket_additional_params` now uses shell-style,
+  space-separated arguments and preserves commas within argument values. A
+  comma acts as a legacy separator only when it is unquoted and followed by a
+  hyphen (normally another option). Configurations that used commas as general
+  separators (for example, `--view,full`) must use a space or `=` instead. Repeat
+  list-valued flags, such as
+  `--exclude-paths=tests --exclude-paths=fixtures`.
+
 ## [3.4.1] - 2026-10-21
 
 ### Changed
