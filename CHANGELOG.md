@@ -12,13 +12,17 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - **Socket Tier 1 needs outbound access to `api.socket.dev` and
   `storage.googleapis.com`.** Socket npm CLI 1.9.0 and later download the
   Coana reachability engine from Socket instead of npm, with no npm fallback.
-  An npm mirror no longer covers it, behind a proxy `NODE_USE_ENV_PROXY=1` is
-  needed next to `HTTPS_PROXY`, `SOCKET_CLI_COANA_LAUNCHER` has no effect, and
-  a `--reach-version` older than the move fails. The heavy image's Python CLI
-  made the same change in 2.11.1, which shipped in 3.4.1. See
+  An npm mirror no longer covers it, `SOCKET_CLI_COANA_LAUNCHER` has no
+  effect, and a `--reach-version` older than the move fails. The heavy image's
+  Python CLI made the same change in 2.11.1, which shipped in 3.4.1. See
   [Network access for Tier 1](docs/parameters.md#network-access-for-tier-1).
 
 ### Changed
+- The images set `NODE_USE_ENV_PROXY=1`, so Socket Tier 1 honors `HTTPS_PROXY`
+  and `NO_PROXY`. The Socket npm CLI does not apply `HTTPS_PROXY` to its own
+  requests, and Tier 1 behind a proxy failed with `getaddrinfo EAI_AGAIN
+  api.socket.dev`. Node only acts on it when a proxy variable is set. Native
+  installs need it set by hand.
 - **Behavior change:** `socket_additional_params` now uses shell-style,
   space-separated arguments and preserves commas within argument values. A
   comma acts as a legacy separator only when it is unquoted and followed by a

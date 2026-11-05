@@ -732,17 +732,18 @@ not cover the second row. The registry row does not apply when the workspace
 already has its dependencies installed (for example a `node_modules` directory
 from an earlier `npm ci` step).
 
-**Behind an HTTP(S) proxy**, also set `NODE_USE_ENV_PROXY=1` next to
-`HTTPS_PROXY`. The Socket npm CLI that Tier 1 runs does not apply
-`HTTPS_PROXY` or `SOCKET_CLI_API_PROXY` to its own requests and fails with
-`getaddrinfo EAI_AGAIN api.socket.dev`. `NODE_USE_ENV_PROXY=1` makes Node route
-them through the proxy (Node 22.21 or later; the images ship 22.23):
+**Behind an HTTP(S) proxy**, set `HTTPS_PROXY` (and `NO_PROXY` for anything
+that should bypass it). The Socket npm CLI that Tier 1 runs does not apply
+`HTTPS_PROXY` to its own requests, so the images set `NODE_USE_ENV_PROXY=1`,
+which makes Node route them through the proxy:
 
 ```bash
-docker run --rm -e HTTPS_PROXY=http://proxy.internal:3128 -e NODE_USE_ENV_PROXY=1 ...
+docker run --rm -e HTTPS_PROXY=http://proxy.internal:3128 ...
 ```
 
-The heavy image's Python CLI (`socketcli`) honors `HTTPS_PROXY` without it.
+Outside the images, set `NODE_USE_ENV_PROXY=1` yourself (Node 22.21 or later).
+Without it, Tier 1 fails with `getaddrinfo EAI_AGAIN api.socket.dev`. The heavy
+image's Python CLI (`socketcli`) honors `HTTPS_PROXY` without it.
 
 A Tier 1 failure is logged as `Error running connector socket_tier1` and does
 not fail the overall scan, so check the log rather than the exit code.
@@ -751,7 +752,7 @@ not fail the overall scan, so check the log rather than the exit code.
   (`~/.cache/socket/coana` by default). A fresh container downloads it on every
   run unless that directory is persisted. With a warm cache, Tier 1 does not
   contact `storage.googleapis.com` at all.
-- `SOCKET_CLI_COANA_LAUNCHER` no longer has any effect.
+- `SOCKET_CLI_COANA_LAUNCHER` has no effect.
   `SOCKET_CLI_COANA_LOCAL_PATH` still runs a local copy of the engine instead.
 - `--reach-version` in `socket_additional_params` can only select engine
   versions published since the move. An older version fails with an API error

@@ -27,8 +27,8 @@ FROM trufflesecurity/trufflehog:3.99.8 AS trufflehog
 FROM golang:1.27.3 AS golang
 
 # ─── Stage: node ──────────────────────────────────────────────────────────────
-# Named stage replaces the nodesource curl install, which put the Node version
-# out of reach of both Dependabot and the pin checkers.
+# Node comes from a named stage, not the nodesource install script, so its
+# version is a FROM tag that Dependabot and the pin checkers can read.
 FROM node:22-slim AS node
 
 # ─── Stage: uv ────────────────────────────────────────────────────────────────
@@ -97,6 +97,8 @@ RUN --mount=type=cache,target=/root/.npm \
     npm install -g eslint eslint-plugin-security \
       @typescript-eslint/parser @typescript-eslint/eslint-plugin \
       "socket@${SOCKET_NPM_CLI_VERSION}"
+# Routes the Socket CLI through HTTPS_PROXY; see the note in the root ./Dockerfile.
+ENV NODE_USE_ENV_PROXY=1
 
 # Bandit + socketsecurity via uv
 ENV UV_LINK_MODE=copy

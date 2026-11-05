@@ -50,6 +50,8 @@ RUN curl -fsSL https://deb.nodesource.com/setup_22.x | bash - \
 ARG SOCKET_NPM_CLI_VERSION
 RUN --mount=type=cache,target=/root/.npm \
     npm install -g "socket@${SOCKET_NPM_CLI_VERSION}"
+# Routes the Socket CLI through HTTPS_PROXY; see the note in ./Dockerfile.
+ENV NODE_USE_ENV_PROXY=1
 
 COPY socket_basics  /socket-basics/socket_basics
 COPY pyproject.toml README.md LICENSE uv.lock /socket-basics/

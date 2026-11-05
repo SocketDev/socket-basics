@@ -279,7 +279,7 @@ Add new connectors by:
 - If the log shows `Loaded Socket Basics API configuration (overrides environment defaults)`, the dashboard configuration took precedence over your inputs, blank fields included (see [Dashboard Settings and Workflow Inputs](docs/github-action.md#dashboard-settings-and-workflow-inputs))
 
 **Socket Tier 1 fails, or reports `INSTALL ERROR` instead of reachability results:**
-- `Failed to get the Coana CLI`: allow `api.socket.dev` and `storage.googleapis.com`; an npm mirror does not cover the engine download. `getaddrinfo EAI_AGAIN api.socket.dev` behind a proxy means `NODE_USE_ENV_PROXY=1` is missing next to `HTTPS_PROXY` (see [Network access for Tier 1](docs/parameters.md#network-access-for-tier-1))
+- `Failed to get the Coana CLI`: allow `api.socket.dev` and `storage.googleapis.com`; an npm mirror does not cover the engine download. `getaddrinfo EAI_AGAIN api.socket.dev` behind a proxy in a native install means `NODE_USE_ENV_PROXY=1` is missing next to `HTTPS_PROXY`; the images set it (see [Network access for Tier 1](docs/parameters.md#network-access-for-tier-1))
 - `INSTALL ERROR` on every vulnerability: allow the scanned ecosystem's package registry, or install dependencies in the workspace before scanning
 - A Tier 1 failure does not change the scan's exit code; look for `Error running connector socket_tier1` in the log
 - Remove `--reach-version` from `socket_additional_params` if it pins an engine version older than the Socket CLI supports

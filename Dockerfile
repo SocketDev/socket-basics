@@ -80,6 +80,10 @@ RUN curl -fsSL https://deb.nodesource.com/setup_22.x | bash - \
 ARG SOCKET_NPM_CLI_VERSION
 RUN --mount=type=cache,target=/root/.npm \
     npm install -g "socket@${SOCKET_NPM_CLI_VERSION}"
+# The Socket CLI does not send its requests through HTTPS_PROXY on its own.
+# This makes Node apply HTTPS_PROXY, HTTP_PROXY and NO_PROXY, and does nothing
+# when none of them is set.
+ENV NODE_USE_ENV_PROXY=1
 
 # Python project files
 COPY socket_basics  /socket-basics/socket_basics
