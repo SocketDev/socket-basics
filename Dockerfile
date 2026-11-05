@@ -13,7 +13,7 @@
 #    Dependabot to read, so they keep an ARG pin and are bumped by hand. These
 #    stay overridable: docker build --build-arg OPENGREP_VERSION=v1.33.1 .
 ARG OPENGREP_VERSION=v1.33.1
-ARG SOCKET_NPM_CLI_VERSION=1.13.1
+ARG SOCKET_NPM_CLI_VERSION=1.14.0
 #
 # 3. Socket-built Trivy, rebuilt from unmodified upstream source and published
 #    by Socket's own release pipeline. Deliberately kept out of Dependabot's

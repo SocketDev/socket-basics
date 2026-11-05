@@ -726,7 +726,7 @@ host:
 | `storage.googleapis.com` | Downloading the Coana reachability engine and its analyzers (about 120 MB) | Tier 1 fails: `Failed to get the Coana CLI <version>: getaddrinfo ENOTFOUND storage.googleapis.com` |
 | The package registry of each scanned ecosystem, for example `registry.npmjs.org` | Installing the project's dependencies so the engine can analyze them | Tier 1 still reports success, but the affected vulnerabilities come back as `INSTALL ERROR` with no reachability verdict |
 
-Socket CLI 1.9.0 and later (Socket Basics 3.5.0 bundles 1.13.1) download the
+Socket CLI 1.9.0 and later (Socket Basics 3.5.0 bundles 1.14.0) download the
 engine from Socket rather than npm, with no npm fallback, so an npm mirror does
 not cover the second row. The registry row does not apply when the workspace
 already has its dependencies installed (for example a `node_modules` directory

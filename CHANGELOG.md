@@ -31,7 +31,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   list-valued flags, such as
   `--exclude-paths=tests --exclude-paths=fixtures`.
 - Bundled tools: OpenGrep v1.26.0 -> v1.33.1, TruffleHog 3.96.0 -> 3.99.8,
-  Socket npm CLI 1.1.165 -> 1.13.1, Socket Python CLI 2.11.3 -> 2.11.11, uv
+  Socket npm CLI 1.1.165 -> 1.14.0, Socket Python CLI 2.11.3 -> 2.11.11, uv
   0.12.1 -> 0.13.7; in the app-tests image, gosec v2.28.0 -> v2.30.0 and Go
   1.26.5 -> 1.27.3. Java SAST benchmark results are unchanged on OpenGrep 1.33.1.
 - Socket Python SDK (`socketdev`) 3.6.1 -> 3.6.2, which Socket Python CLI

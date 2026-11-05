@@ -220,7 +220,7 @@ script or package manager are build args and can be overridden:
 ```bash
 docker build \
   --build-arg OPENGREP_VERSION=v1.33.1 \
-  --build-arg SOCKET_NPM_CLI_VERSION=1.13.1 \
+  --build-arg SOCKET_NPM_CLI_VERSION=1.14.0 \
   -t socket-basics:3.4.1 .
 ```
 
