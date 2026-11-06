@@ -10,7 +10,7 @@
 ARG GOSEC_VERSION=v2.30.0
 ARG OPENGREP_VERSION=v1.33.1
 ARG SOCKET_NPM_CLI_VERSION=1.14.0
-ARG SOCKET_PYTHON_CLI_VERSION=2.11.11
+ARG SOCKET_PYTHON_CLI_VERSION=2.11.13
 #
 # Socket-built Trivy, pinned by digest and deliberately kept out of Dependabot's
 # reach; updated by Socket's trivy-dist release process. See the root
