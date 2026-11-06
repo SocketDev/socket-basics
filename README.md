@@ -209,6 +209,11 @@ The API key is read from the environment (`SOCKET_SECURITY_API_KEY`; there is de
 
 **For GitHub Actions & Docker:** No local installation needed for the supported bundled scanners.
 
+**Network access:** Socket Tier 1 downloads its reachability engine at run time
+from `api.socket.dev` and `storage.googleapis.com`, not from npm, and installs
+dependencies from each scanned ecosystem's registry. Allow these hosts on
+restricted networks. See [Network access for Tier 1](docs/parameters.md#network-access-for-tier-1).
+
 **For Local Installation:**
 - Python 3.10+
 - [Socket CLI](https://docs.socket.dev/docs/cli) (for dependency analysis)
@@ -272,6 +277,12 @@ Add new connectors by:
 
 **Workflow inputs have no effect, or Dockerfile and image scanning finds nothing:**
 - If the log shows `Loaded Socket Basics API configuration (overrides environment defaults)`, the dashboard configuration took precedence over your inputs, blank fields included (see [Dashboard Settings and Workflow Inputs](docs/github-action.md#dashboard-settings-and-workflow-inputs))
+
+**Socket Tier 1 fails, or reports `INSTALL ERROR` instead of reachability results:**
+- `Failed to get the Coana CLI`: allow `api.socket.dev` and `storage.googleapis.com`; an npm mirror does not cover the engine download. `getaddrinfo EAI_AGAIN api.socket.dev` behind a proxy in a native install means `NODE_USE_ENV_PROXY=1` is missing next to `HTTPS_PROXY`; the images set it (see [Network access for Tier 1](docs/parameters.md#network-access-for-tier-1))
+- `INSTALL ERROR` on every vulnerability: allow the scanned ecosystem's package registry, or install dependencies in the workspace before scanning
+- A Tier 1 failure does not change the scan's exit code; look for `Error running connector socket_tier1` in the log
+- Remove `--reach-version` from `socket_additional_params` if it pins an engine version older than the Socket CLI supports
 
 **Notifier errors:**
 - Check that notification credentials (Slack webhook, Jira token, etc.) are properly configured

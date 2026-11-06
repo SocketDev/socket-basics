@@ -165,6 +165,9 @@ to use, and prefer exact version pins whenever your package manager supports the
 
 **Required for:** Socket Tier 1 reachability analysis
 
+**Requires:** Node.js 22.13 or later. On an older Node, the reachability engine
+fails to start and Tier 1 fails.
+
 **Installation:**
 
 ```bash
@@ -174,6 +177,14 @@ npm install -g socket
 # Verify installation
 socket --version
 ```
+
+Socket CLI 1.9.0 and later download the reachability engine from Socket
+(`api.socket.dev`, then `storage.googleapis.com`) instead of npm. The machine
+running the scan needs outbound access to both hosts, even if npm itself goes
+through a mirror. Behind a proxy, set `NODE_USE_ENV_PROXY=1` along with
+`HTTPS_PROXY`, because the CLI does not apply `HTTPS_PROXY` to these requests on
+its own. The engine is cached in `~/.cache/socket/coana`. See
+[Network access for Tier 1](parameters.md#network-access-for-tier-1).
 
 **Configuration:**
 
@@ -278,16 +289,16 @@ OpenGrep works with the bundled Socket Basics SAST rules. No additional configur
 brew install trufflehog
 
 # Using Docker (alternative; pin explicitly — Docker Hub tags have no "v" prefix):
-docker pull trufflesecurity/trufflehog:3.96.0
+docker pull trufflesecurity/trufflehog:3.99.8
 
 # Manual installation (Linux):
-wget https://github.com/trufflesecurity/trufflehog/releases/download/v3.96.0/trufflehog_3.96.0_linux_amd64.tar.gz
-tar -xzf trufflehog_3.96.0_linux_amd64.tar.gz
+wget https://github.com/trufflesecurity/trufflehog/releases/download/v3.99.8/trufflehog_3.99.8_linux_amd64.tar.gz
+tar -xzf trufflehog_3.99.8_linux_amd64.tar.gz
 sudo mv trufflehog /usr/local/bin/
 
 # Manual installation (macOS):
-wget https://github.com/trufflesecurity/trufflehog/releases/download/v3.96.0/trufflehog_3.96.0_darwin_arm64.tar.gz
-tar -xzf trufflehog_3.96.0_darwin_arm64.tar.gz
+wget https://github.com/trufflesecurity/trufflehog/releases/download/v3.99.8/trufflehog_3.99.8_darwin_arm64.tar.gz
+tar -xzf trufflehog_3.99.8_darwin_arm64.tar.gz
 sudo mv trufflehog /usr/local/bin/
 
 # Verify installation
@@ -295,7 +306,7 @@ trufflehog --version
 ```
 
 The versions above match the TruffleHog pinned in the Socket Basics image
-(`TRUFFLEHOG_VERSION` in the [Dockerfile](../Dockerfile)).
+(the `trufflesecurity/trufflehog` `FROM` tag in the [Dockerfile](../Dockerfile)).
 
 **Documentation:** https://github.com/trufflesecurity/trufflehog
 

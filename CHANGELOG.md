@@ -8,8 +8,21 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
-### Changed
+### Upgrade notes
+- **Socket Tier 1 needs outbound access to `api.socket.dev` and
+  `storage.googleapis.com`.** Socket npm CLI 1.9.0 and later download the
+  Coana reachability engine from Socket instead of npm, with no npm fallback.
+  An npm mirror no longer covers it, `SOCKET_CLI_COANA_LAUNCHER` has no
+  effect, and a `--reach-version` older than the move fails. The heavy image's
+  Python CLI made the same change in 2.11.1, which shipped in 3.4.1. See
+  [Network access for Tier 1](docs/parameters.md#network-access-for-tier-1).
 
+### Changed
+- The images set `NODE_USE_ENV_PROXY=1`, so Socket Tier 1 honors `HTTPS_PROXY`
+  and `NO_PROXY`. The Socket npm CLI does not apply `HTTPS_PROXY` to its own
+  requests, and Tier 1 behind a proxy failed with `getaddrinfo EAI_AGAIN
+  api.socket.dev`. Node only acts on it when a proxy variable is set. Native
+  installs need it set by hand.
 - **Behavior change:** `socket_additional_params` now uses shell-style,
   space-separated arguments and preserves commas within argument values. A
   comma acts as a legacy separator only when it is unquoted and followed by a
@@ -17,6 +30,20 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   separators (for example, `--view,full`) must use a space or `=` instead. Repeat
   list-valued flags, such as
   `--exclude-paths=tests --exclude-paths=fixtures`.
+- Bundled tools: OpenGrep v1.26.0 -> v1.33.1, TruffleHog 3.96.0 -> 3.99.8,
+  Socket npm CLI 1.1.165 -> 1.14.0, Socket Python CLI 2.11.3 -> 2.11.11, uv
+  0.12.1 -> 0.13.7; in the app-tests image, gosec v2.28.0 -> v2.30.0 and Go
+  1.26.5 -> 1.27.3. Java SAST benchmark results are unchanged on OpenGrep 1.33.1.
+- Socket Python SDK (`socketdev`) 3.6.1 -> 3.6.2, which Socket Python CLI
+  2.11.11 pins exactly. Source installs now require `socketdev>=3.6.2`.
+- TruffleHog no longer reports AppOptics or Bing Subscription Key credentials;
+  upstream retired both detectors in 3.97.0.
+- Base and tool images are pinned as literal `FROM` tags so Dependabot can
+  update them. `--build-arg TRUFFLEHOG_VERSION` no longer has any effect.
+
+### Fixed
+- TruffleHog 3.99.8 is built on Go 1.27.3, clearing the CVE-2026-111943
+  finding noted in 3.4.1.
 
 ## [3.4.1] - 2026-10-21
 

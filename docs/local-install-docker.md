@@ -50,8 +50,8 @@ docker inspect ghcr.io/socketdev/socket-basics:3.4.1 \
   | jq '.[0].Config.Labels'
 # {
 #   "com.socket.trivy-version": "0.76.1",
-#   "com.socket.trufflehog-version": "3.96.0",
-#   "com.socket.opengrep-version": "v1.26.0",
+#   "com.socket.trufflehog-version": "3.99.8",
+#   "com.socket.opengrep-version": "v1.33.1",
 #   "org.opencontainers.image.version": "3.4.1",
 #   ...
 # }
@@ -96,6 +96,20 @@ docker run --rm -v "$PWD:/workspace" ghcr.io/socketdev/socket-basics:3.4.1-heavy
 
 `latest` and `latest-heavy` are floating aliases published for onboarding
 convenience. Pin an exact version (or digest) in anything automated.
+
+> [!NOTE]
+> With `--socket-tier1`, both images download the Coana reachability engine at
+> run time from Socket (`api.socket.dev`, then `storage.googleapis.com`), not
+> from npm. The container also needs each scanned ecosystem's package registry
+> unless the workspace already has its dependencies installed. Mount a volume at
+> `/root/.cache/socket/coana` to keep the engine (about 120 MB) between runs:
+>
+> ```bash
+> docker run --rm -v "$PWD:/workspace" -v socket-coana-cache:/root/.cache/socket/coana \
+>   ghcr.io/socketdev/socket-basics:3.4.1 --workspace /workspace --socket-tier1
+> ```
+>
+> See [Network access for Tier 1](parameters.md#network-access-for-tier-1).
 
 ### Pinning in CI/CD
 
@@ -200,14 +214,20 @@ docker build --platform linux/amd64 -t socket-basics:3.4.1 .
 
 ### Build with Custom Tool Versions
 
-The image pins the bundled tools to specific versions. You can override them at build time:
+The image pins the bundled tools to specific versions. Tools installed by a
+script or package manager are build args and can be overridden:
 
 ```bash
 docker build \
-  --build-arg TRUFFLEHOG_VERSION=3.96.0 \
-  --build-arg OPENGREP_VERSION=v1.26.0 \
+  --build-arg OPENGREP_VERSION=v1.33.1 \
+  --build-arg SOCKET_NPM_CLI_VERSION=1.14.0 \
   -t socket-basics:3.4.1 .
 ```
+
+Base and tool *images* — python, trufflehog, uv — are pinned as literal tags on
+their `FROM` lines instead, because that is the only form Dependabot reads; it
+does not expand ARGs, so an interpolated `FROM` is skipped and the pin silently
+rots. To use a different image tag locally, edit the `FROM` line.
 
 Trivy comes from a Socket-built image pinned by digest via the `TRIVY_IMAGE`
 build arg (`TRIVY_VERSION` feeds the image label and must match its tag).

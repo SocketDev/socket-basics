@@ -715,6 +715,54 @@ Enable Socket Tier 1 reachability analysis for dependency scanning.
 socket-basics --socket-tier1
 ```
 
+#### Network access for Tier 1
+
+Tier 1 runs `socket scan reach`, which needs network access to three kinds of
+host:
+
+| Host | Used for | If blocked |
+|---|---|---|
+| `api.socket.dev` | Socket API calls, and signed URLs for the engine download | Tier 1 fails |
+| `storage.googleapis.com` | Downloading the Coana reachability engine and its analyzers (about 120 MB) | Tier 1 fails: `Failed to get the Coana CLI <version>: getaddrinfo ENOTFOUND storage.googleapis.com` |
+| The package registry of each scanned ecosystem, for example `registry.npmjs.org` | Installing the project's dependencies so the engine can analyze them | Tier 1 still reports success, but the affected vulnerabilities come back as `INSTALL ERROR` with no reachability verdict |
+
+Socket CLI 1.9.0 and later (Socket Basics 3.5.0 bundles 1.14.0) download the
+engine from Socket rather than npm, with no npm fallback, so an npm mirror does
+not cover the second row. The registry row does not apply when the workspace
+already has its dependencies installed (for example a `node_modules` directory
+from an earlier `npm ci` step).
+
+**Behind an HTTP(S) proxy**, set `HTTPS_PROXY` (and `NO_PROXY` for anything
+that should bypass it). The Socket npm CLI that Tier 1 runs does not apply
+`HTTPS_PROXY` to its own requests, so the images set `NODE_USE_ENV_PROXY=1`,
+which makes Node route them through the proxy:
+
+```bash
+docker run --rm -e HTTPS_PROXY=http://proxy.internal:3128 ...
+```
+
+Outside the images, set `NODE_USE_ENV_PROXY=1` yourself (Node 22.21 or later).
+Without it, Tier 1 fails with `getaddrinfo EAI_AGAIN api.socket.dev`. The heavy
+image's Python CLI (`socketcli`) honors `HTTPS_PROXY` without it.
+
+A Tier 1 failure is logged as `Error running connector socket_tier1` and does
+not fail the overall scan, so check the log rather than the exit code.
+
+- The engine is cached in `$XDG_CACHE_HOME/socket/coana`
+  (`~/.cache/socket/coana` by default). A fresh container downloads it on every
+  run unless that directory is persisted. With a warm cache, Tier 1 does not
+  contact `storage.googleapis.com` at all.
+- `SOCKET_CLI_COANA_LAUNCHER` has no effect.
+  `SOCKET_CLI_COANA_LOCAL_PATH` still runs a local copy of the engine instead.
+- `--reach-version` in `socket_additional_params` can only select engine
+  versions published since the move. An older version fails with an API error
+  saying it needs an older Socket CLI.
+
+The Socket Python CLI (`socketcli`) in the heavy image made the same change
+in 2.11.1, so the heavy image has fetched the engine from Socket since Socket
+Basics 3.4.1 (`socketcli` 2.11.3). It needs the same hosts, and with the
+engine host blocked `socketcli --reach` exits 3.
+
 ### `--socket-additional-params SOCKET_ADDITIONAL_PARAMS`
 Additional CLI params for `socket scan reach`, parsed with shell-style quoting.
 

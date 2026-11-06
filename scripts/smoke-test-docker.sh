@@ -105,7 +105,6 @@ build_args_for_tag() {
   BUILD_ARGS=(--progress "$BUILD_PROGRESS" -t "$tag")
   [[ -n "${TRIVY_IMAGE:-}" ]] && BUILD_ARGS+=(--build-arg "TRIVY_IMAGE=$TRIVY_IMAGE")
   [[ -n "${TRIVY_VERSION:-}" ]] && BUILD_ARGS+=(--build-arg "TRIVY_VERSION=$TRIVY_VERSION")
-  [[ -n "${TRUFFLEHOG_VERSION:-}" ]] && BUILD_ARGS+=(--build-arg "TRUFFLEHOG_VERSION=$TRUFFLEHOG_VERSION")
   [[ -n "${OPENGREP_VERSION:-}" ]] && BUILD_ARGS+=(--build-arg "OPENGREP_VERSION=$OPENGREP_VERSION")
   return 0
 }
