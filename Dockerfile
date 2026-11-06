@@ -60,7 +60,7 @@ COPY --from=trivy      /usr/local/bin/trivy       /usr/local/bin/trivy
 COPY --from=trufflehog /usr/bin/trufflehog        /usr/local/bin/trufflehog
 COPY --from=opengrep-installer /root/.opengrep    /root/.opengrep
 
-# System deps + Node.js 22.x + Socket CLI
+# System deps + Node.js 24.x + Socket CLI
 # ca-certificates must be 20250419+deb13u1 or newer, which drops the roots the
 # compromised eMudhra intermediates chain to.
 RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
@@ -73,10 +73,10 @@ RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
 # vendors certifi 2026.10.19. Upgrade it against the system store fixed above.
 RUN python -m pip install --no-cache-dir --cert /etc/ssl/certs/ca-certificates.crt --upgrade "pip>=26.2.2" \
     && python -c 'import sys, pip; sys.exit(tuple(map(int, pip.__version__.split(".")[:3])) < (26, 2, 2))'
-# Node rejects the compromised eMudhra intermediates from 22.23.4.
-RUN curl -fsSL https://deb.nodesource.com/setup_22.x | bash - \
+# Node rejects the compromised eMudhra intermediates from 24.22.1.
+RUN curl -fsSL https://deb.nodesource.com/setup_24.x | bash - \
     && apt-get install -y nodejs \
-    && node -e 'const [a,b,c]=process.versions.node.split(".").map(Number); process.exit(a>22||(a===22&&(b>23||(b===23&&c>=4)))?0:1)'
+    && node -e 'const [a,b,c]=process.versions.node.split(".").map(Number); process.exit(a>24||(a===24&&(b>22||(b===22&&c>=1)))?0:1)'
 ARG SOCKET_NPM_CLI_VERSION
 RUN --mount=type=cache,target=/root/.npm \
     npm install -g "socket@${SOCKET_NPM_CLI_VERSION}"

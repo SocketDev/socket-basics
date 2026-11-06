@@ -47,6 +47,8 @@ existing setup.
 - Pass multiple exclusions as repeated `--exclude-paths` flags. (#125)
 
 ### Changed
+- The images ship Node.js 24 (LTS, supported until April 2028) instead of
+  Node.js 22.
 - The images set `NODE_USE_ENV_PROXY=1`, so Socket Tier 1 honors `HTTPS_PROXY`
   and `NO_PROXY`. The Socket npm CLI does not apply `HTTPS_PROXY` to its own
   requests, and Tier 1 behind a proxy failed with `getaddrinfo EAI_AGAIN
