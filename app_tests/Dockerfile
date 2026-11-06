@@ -29,7 +29,7 @@ FROM golang:1.27.3 AS golang
 # ─── Stage: node ──────────────────────────────────────────────────────────────
 # Node comes from a named stage, not the nodesource install script, so its
 # version is a FROM tag that Dependabot and the pin checkers can read.
-FROM node:25-slim AS node
+FROM node:24-slim AS node
 
 # ─── Stage: uv ────────────────────────────────────────────────────────────────
 # Named stage required — COPY --from does not support ARG variable expansion.
