@@ -5,7 +5,7 @@
 # hand. See the note at the top of ./Dockerfile for why.
 ARG OPENGREP_VERSION=v1.33.1
 ARG SOCKET_NPM_CLI_VERSION=1.14.0
-ARG SOCKET_PYTHON_CLI_VERSION=2.11.11
+ARG SOCKET_PYTHON_CLI_VERSION=2.11.13
 # Socket-built Trivy, pinned by digest — see the note in ./Dockerfile.
 ARG TRIVY_IMAGE=ghcr.io/socketdev/trivy:0.76.1@sha256:883da3593a60e311b2ed87c3a55241051b27bba15ffc3ce041ae570cd0f00915
 
