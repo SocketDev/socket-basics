@@ -9,8 +9,8 @@
 #   docker build --build-arg OPENGREP_VERSION=v1.33.1 -f app_tests/Dockerfile app_tests
 ARG GOSEC_VERSION=v2.30.0
 ARG OPENGREP_VERSION=v1.33.1
-ARG SOCKET_NPM_CLI_VERSION=1.14.0
-ARG SOCKET_PYTHON_CLI_VERSION=2.11.13
+ARG SOCKET_NPM_CLI_VERSION=1.15.0
+ARG SOCKET_PYTHON_CLI_VERSION=2.12.0
 #
 # Socket-built Trivy, pinned by digest and deliberately kept out of Dependabot's
 # reach; updated by Socket's trivy-dist release process. See the root
