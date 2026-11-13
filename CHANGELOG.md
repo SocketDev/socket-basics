@@ -8,7 +8,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
-## [3.5.0] - 2026-11-06
+## [3.5.0] - 2026-11-13
 
 Minor rather than patch: Socket Tier 1 parses `socket_additional_params`
 differently (#125) and needs new network access (#118), and either can break an
@@ -37,6 +37,8 @@ existing setup.
   Socket npm CLI 1.1.165 -> 1.15.0, Socket Python CLI 2.11.3 -> 2.12.0, uv
   0.12.1 -> 0.13.7; in the app-tests image, gosec v2.28.0 -> v2.30.0 and Go
   1.26.5 -> 1.27.3. Java SAST benchmark results are unchanged on OpenGrep 1.33.1.
+- Socket Tier 1 runs the Coana reachability engine 15.15.0, the version both
+  bundled Socket CLIs now pin.
 - Socket Python SDK (`socketdev`) 3.6.1 -> 3.6.2, which Socket Python CLI
   2.12.0 pins exactly. Source installs now require `socketdev>=3.6.2`.
 - TruffleHog no longer reports AppOptics or Bing Subscription Key credentials;
