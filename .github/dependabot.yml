@@ -101,6 +101,14 @@ updates:
       - dependency-name: "node"
       - dependency-name: "ghcr.io/astral-sh/uv"
       - dependency-name: "trufflesecurity/trufflehog"
+    # Node majors move by hand: the Dockerfile and Dockerfile.heavy install
+    # Node through nodesource, which Dependabot can't see, so all three must
+    # change together. Dependabot also doesn't know Node's release schedule,
+    # and would propose odd-numbered majors, which never get LTS. The floating
+    # node:<major>-slim tag picks up minor and patch releases on every build.
+    ignore:
+      - dependency-name: "node"
+        update-types: ["version-update:semver-major"]
     groups:
       docker-app-tests-minor-patch:
         patterns:
