@@ -16,7 +16,7 @@ import subprocess
 import tempfile
 import yaml
 from pathlib import Path
-from typing import Dict, Any, List, Optional
+from typing import Dict, Any, List
 
 from ..base import BaseConnector
 from ...config import UNSUPPORTED_OPENGREP_RULE_FILES
@@ -44,13 +44,43 @@ class OpenGrepScanner(BaseConnector):
 		super().__init__(config)
 
 	def scan(self) -> Dict[str, Any]:
-		# Temporary rule directories written during the scan, removed once it ends.
-		self._temp_rule_dirs: List[Path] = []
+		# Temporary rule files and directories written during the scan, removed
+		# once it ends.
+		self._temp_rule_paths: List[Path] = []
 		try:
 			return self._scan()
 		finally:
-			for temp_dir in self._temp_rule_dirs:
-				shutil.rmtree(temp_dir, ignore_errors=True)
+			for path in self._temp_rule_paths:
+				if path.is_dir():
+					shutil.rmtree(path, ignore_errors=True)
+				else:
+					path.unlink(missing_ok=True)
+
+	def _write_filtered_rule_file(self, source: Path, data: Dict[str, Any], kept: List[Dict[str, Any]]) -> Path:
+		"""Write a copy of ``source`` that holds only the ``kept`` rules.
+
+		The copy goes in the same directory as ``source``. OpenGrep prefixes each
+		rule ID with the directories of its rules file, not the file name, and
+		computes finding fingerprints from that ID. Socket includes the
+		fingerprint in the alert key that triage is stored against, so a copy in
+		another directory would give every kept finding a new key. The hidden
+		``.yaml`` name keeps the copy out of the ``*.yml`` rule-file globs.
+		"""
+		try:
+			fd, name = tempfile.mkstemp(dir=source.parent, prefix='.socket-filtered-', suffix='.yaml')
+		except OSError:
+			logger.warning(
+				'Cannot write next to %s; using a temporary directory, so fingerprints of its findings will differ from an unfiltered scan',
+				source,
+			)
+			temp_dir = Path(tempfile.mkdtemp(prefix='socket_filtered_rules_'))
+			self._temp_rule_paths.append(temp_dir)
+			fd, name = tempfile.mkstemp(dir=temp_dir, prefix='.socket-filtered-', suffix='.yaml')
+		path = Path(name)
+		self._temp_rule_paths.append(path)
+		with os.fdopen(fd, 'w', encoding='utf-8') as fh:
+			yaml.safe_dump({**data, 'rules': kept}, fh, sort_keys=False, allow_unicode=True)
+		return path
 
 	def _scan(self) -> Dict[str, Any]:
 		# Determine enabled rule files
@@ -117,7 +147,7 @@ class OpenGrepScanner(BaseConnector):
 					custom_rule_files = builder.build_rule_files(rule_files)
 				finally:
 					if builder.temp_dir is not None:
-						self._temp_rule_dirs.append(builder.temp_dir)
+						self._temp_rule_paths.append(builder.temp_dir)
 			except Exception as e:
 				logger.error(f"Failed to build custom rule files: {e}", exc_info=True)
 				custom_rule_files = {}
@@ -144,7 +174,6 @@ class OpenGrepScanner(BaseConnector):
 			filtered = {}
 
 		config_args: List[str] = []
-		filtered_rules_dir: Optional[Path] = None
 
 		# Build config_args using custom rules where available, falling back to bundled rules
 		# Process all enabled languages - use filtered rules if specified, otherwise use all rules
@@ -187,14 +216,9 @@ class OpenGrepScanner(BaseConnector):
 							rf, p, ', '.join(unknown_ids),
 						)
 					# Pass a copy of the file that holds only the enabled rules.
-					# --exclude-rule is not used: it applies to every loaded file, so
-					# it would also drop a same-named rule from another language.
-					if filtered_rules_dir is None:
-						filtered_rules_dir = Path(tempfile.mkdtemp(prefix='socket_filtered_rules_'))
-						self._temp_rule_dirs.append(filtered_rules_dir)
-					filtered_path = filtered_rules_dir / rf
-					with open(filtered_path, 'w', encoding='utf-8') as fh:
-						yaml.safe_dump({**data, 'rules': kept}, fh, sort_keys=False, allow_unicode=True)
+					# --exclude-rule does not work here: OpenGrep matches it against
+					# rule IDs prefixed with the rules file's directories.
+					filtered_path = self._write_filtered_rule_file(p, data, kept)
 					logger.info("Enabled %d of %d rules for %s", len(kept), len(rules), rf)
 					config_args.extend(['--config', str(filtered_path)])
 				except Exception:
@@ -245,11 +269,7 @@ class OpenGrepScanner(BaseConnector):
 		with tempfile.NamedTemporaryFile(mode='w', suffix='.json', delete=False) as tf:
 			out_file = tf.name
 
-		# By default OpenGrep prefixes each rule ID with the directories of its
-		# --config path, and the finding fingerprint is computed from that ID.
-		# Rule files can live in per-run temporary directories, so keep the IDs
-		# bare to give the same finding the same fingerprint on every run.
-		cmd = ['opengrep', '--json', '--dataflow-traces', '--no-rewrite-rule-ids', '--output', out_file]
+		cmd = ['opengrep', '--json', '--dataflow-traces', '--output', out_file]
 		verbose = self.config.get('verbose', False)
 		cmd.append('--verbose' if verbose else '--quiet')
 

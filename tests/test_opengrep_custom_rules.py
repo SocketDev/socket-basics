@@ -235,7 +235,9 @@ def test_custom_rules_apply_allowlist_when_custom_ids_match(tmp_path, monkeypatc
 
     assert "--exclude-rule" not in captured_cmd
     [(path, ids)] = configs.items()
-    assert "socket_filtered_rules_" in path
+    # The filtered copy sits next to the custom rules file it was made from.
+    assert "socket_custom_rules_" in path
+    assert Path(path).name.startswith(".socket-filtered-")
     assert ids == ["org.no-eval"]
 
 
@@ -275,8 +277,11 @@ def test_bundled_allowlist_passes_only_enabled_rules(tmp_path, monkeypatch):
     assert str(bundled_file) not in captured_cmd
     [(path, ids)] = configs.items()
     assert ids == ["js-a", "js-c"]
-    # The filtered copy is removed once OpenGrep has run.
-    assert not Path(path).parent.exists()
+    # The copy sits next to the original, so OpenGrep gives its rules the same
+    # ID prefix, and is removed once OpenGrep has run.
+    assert Path(path).parent == bundled_file.parent
+    assert Path(path).name.startswith(".socket-filtered-") and path.endswith(".yaml")
+    assert [p.name for p in bundled_file.parent.iterdir()] == [bundled_file.name]
 
 
 def test_bundled_allowlist_warns_about_unknown_ids(tmp_path, monkeypatch, caplog):
@@ -383,33 +388,43 @@ def test_all_rules_and_languages_skip_rule_files_opengrep_cannot_load():
     assert not {"erlang.yml", "objective-c.yml"} & set(rule_files)
 
 
-def _record_temp_dirs(monkeypatch) -> list[Path]:
-    """Record every directory ``tempfile.mkdtemp`` creates during the test."""
+def _record_temp_paths(monkeypatch) -> list[Path]:
+    """Record every directory and file ``tempfile`` creates during the test."""
     created: list[Path] = []
-    real_mkdtemp = tempfile.mkdtemp
+    real_mkdtemp, real_mkstemp = tempfile.mkdtemp, tempfile.mkstemp
 
     def _mkdtemp(*args, **kwargs):
         path = real_mkdtemp(*args, **kwargs)
         created.append(Path(path))
         return path
 
+    def _mkstemp(*args, **kwargs):
+        fd, path = real_mkstemp(*args, **kwargs)
+        created.append(Path(path))
+        return fd, path
+
     monkeypatch.setattr(tempfile, "mkdtemp", _mkdtemp)
+    monkeypatch.setattr(tempfile, "mkstemp", _mkstemp)
     return created
 
 
-def _custom_and_filtered_scanner(tmp_path) -> OpenGrepScanner:
-    """Scanner that writes both a custom-rule and a filtered-rule directory."""
+def _custom_and_filtered_scanner(tmp_path) -> tuple[OpenGrepScanner, Path]:
+    """Scanner that writes a custom-rule directory, a filtered copy inside it
+    (JavaScript) and a filtered copy next to a bundled rules file (Python)."""
     workspace = tmp_path / "workspace"
     workspace.mkdir(parents=True, exist_ok=True)
     _write_custom_rules_file(workspace / ".socket" / "rules" / "org-rules.yml", ["org.no-eval", "org.no-innerhtml"])
     bundled_rules_dir = tmp_path / "bundled-rules"
     _write_rule_file(bundled_rules_dir / "javascript_typescript.yml", ["js-default-rule"])
+    _write_rule_file(bundled_rules_dir / "python.yml", ["py-a", "py-b"])
     config = Config(
         {
             "workspace": str(workspace),
             "output_dir": str(workspace),
             "javascript_sast_enabled": True,
             "javascript_enabled_rules": "org.no-eval",
+            "python_sast_enabled": True,
+            "python_enabled_rules": "py-a",
             "use_custom_sast_rules": True,
             "custom_sast_rule_path": ".socket/rules",
             "opengrep_rules_dir": str(bundled_rules_dir),
@@ -421,12 +436,18 @@ def _custom_and_filtered_scanner(tmp_path) -> OpenGrepScanner:
     scanner = OpenGrepScanner(config)
     scanner._convert_to_socket_facts = lambda _: {"components": []}
     scanner.generate_notifications = lambda _: {}
-    return scanner
+    return scanner, bundled_rules_dir
 
 
-def test_temp_rule_dirs_are_removed_when_opengrep_is_missing(tmp_path, monkeypatch):
-    created = _record_temp_dirs(monkeypatch)
-    scanner = _custom_and_filtered_scanner(tmp_path)
+def _assert_all_removed(created: list[Path], bundled_rules_dir: Path) -> None:
+    assert created
+    assert not any(p.exists() for p in created)
+    assert sorted(p.name for p in bundled_rules_dir.iterdir()) == ["javascript_typescript.yml", "python.yml"]
+
+
+def test_temp_rule_paths_are_removed_when_opengrep_is_missing(tmp_path, monkeypatch):
+    created = _record_temp_paths(monkeypatch)
+    scanner, bundled_rules_dir = _custom_and_filtered_scanner(tmp_path)
 
     def _missing(cmd, capture_output, text):
         raise FileNotFoundError("opengrep")
@@ -434,14 +455,16 @@ def test_temp_rule_dirs_are_removed_when_opengrep_is_missing(tmp_path, monkeypat
     monkeypatch.setattr("socket_basics.core.connector.opengrep.subprocess.run", _missing)
     assert scanner.scan() == {}
 
-    names = sorted(p.name.split("_rules_")[0] for p in created)
-    assert names == ["socket_custom", "socket_filtered"]
-    assert not any(p.exists() for p in created)
+    # The custom-rule directory, plus one filtered copy inside it and one
+    # next to the bundled python.yml.
+    assert sum(p.name.startswith("socket_custom_rules_") for p in created) == 1
+    assert sorted(p.parent == bundled_rules_dir for p in created if p.name.startswith(".socket-filtered-")) == [False, True]
+    _assert_all_removed(created, bundled_rules_dir)
 
 
-def test_temp_rule_dirs_are_removed_when_the_scan_raises(tmp_path, monkeypatch):
-    created = _record_temp_dirs(monkeypatch)
-    scanner = _custom_and_filtered_scanner(tmp_path)
+def test_temp_rule_paths_are_removed_when_the_scan_raises(tmp_path, monkeypatch):
+    created = _record_temp_paths(monkeypatch)
+    scanner, bundled_rules_dir = _custom_and_filtered_scanner(tmp_path)
 
     def _crash(cmd, capture_output, text):
         raise RuntimeError("opengrep crashed")
@@ -450,13 +473,12 @@ def test_temp_rule_dirs_are_removed_when_the_scan_raises(tmp_path, monkeypatch):
     with pytest.raises(RuntimeError, match="opengrep crashed"):
         scanner.scan()
 
-    assert len(created) == 2
-    assert not any(p.exists() for p in created)
+    _assert_all_removed(created, bundled_rules_dir)
 
 
 def test_custom_rule_dir_is_removed_when_building_custom_rules_fails(tmp_path, monkeypatch):
-    created = _record_temp_dirs(monkeypatch)
-    scanner = _custom_and_filtered_scanner(tmp_path)
+    created = _record_temp_paths(monkeypatch)
+    scanner, bundled_rules_dir = _custom_and_filtered_scanner(tmp_path)
 
     def _fail(self, rules_by_file):
         raise OSError("disk full")
@@ -467,5 +489,65 @@ def test_custom_rule_dir_is_removed_when_building_custom_rules_fails(tmp_path, m
     _mock_subprocess_run(monkeypatch, [])
     scanner.scan()
 
-    assert [p.name.split("_rules_")[0] for p in created][:1] == ["socket_custom"]
-    assert not any(p.exists() for p in created)
+    assert any(p.name.startswith("socket_custom_rules_") for p in created)
+    _assert_all_removed(created, bundled_rules_dir)
+
+
+def test_filtered_copy_falls_back_to_a_temp_dir_when_rules_dir_is_read_only(tmp_path, monkeypatch, caplog):
+    scanner, bundled_file = _bundled_js_scanner(tmp_path, ["js-a", "js-b"], "js-a")
+    created = _record_temp_paths(monkeypatch)
+    record_mkstemp = tempfile.mkstemp
+
+    def _mkstemp(*args, **kwargs):
+        if Path(kwargs.get("dir", "")) == bundled_file.parent:
+            raise PermissionError("read-only")
+        return record_mkstemp(*args, **kwargs)
+
+    monkeypatch.setattr(tempfile, "mkstemp", _mkstemp)
+    configs: dict = {}
+    _mock_subprocess_run(monkeypatch, [], configs)
+    with caplog.at_level("WARNING"):
+        scanner.scan()
+
+    [(path, ids)] = configs.items()
+    assert ids == ["js-a"]
+    assert "socket_filtered_rules_" in path
+    assert "fingerprints" in caplog.text
+    assert created and not any(p.exists() for p in created)
+
+
+@pytest.mark.parametrize(
+    ("first", "second", "rule_file"),
+    [("c", "cpp", "c_cpp.yml"), ("csharp", "dotnet", "dotnet.yml")],
+)
+def test_shared_rule_file_stays_unfiltered_when_one_language_has_no_list(first, second, rule_file):
+    config = Config(
+        {
+            f"{first}_sast_enabled": True,
+            f"{second}_sast_enabled": True,
+            f"{first}_enabled_rules": "rule-x",
+            f"{second}_enabled_rules": " ",
+        }
+    )
+    assert rule_file not in config.build_filtered_opengrep_rules()
+
+
+@pytest.mark.parametrize(
+    ("first", "second", "rule_file"),
+    [("c", "cpp", "c_cpp.yml"), ("csharp", "dotnet", "dotnet.yml")],
+)
+def test_shared_rule_file_combines_both_lists(first, second, rule_file):
+    config = Config(
+        {
+            f"{first}_sast_enabled": True,
+            f"{second}_sast_enabled": True,
+            f"{first}_enabled_rules": "rule-x",
+            f"{second}_enabled_rules": "rule-y,rule-x",
+        }
+    )
+    assert sorted(config.build_filtered_opengrep_rules()[rule_file]) == ["rule-x", "rule-y"]
+
+
+def test_shared_rule_file_ignores_a_disabled_languages_empty_list():
+    config = Config({"c_sast_enabled": True, "c_enabled_rules": "rule-x", "cpp_enabled_rules": ""})
+    assert config.build_filtered_opengrep_rules() == {"c_cpp.yml": ["rule-x"]}

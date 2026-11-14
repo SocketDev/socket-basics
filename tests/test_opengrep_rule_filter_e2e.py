@@ -114,10 +114,13 @@ def test_all_rules_enabled_overrides_the_allowlist(tmp_path, monkeypatch):
     assert "js-debugger-statement" in reported
 
 
-def test_filtered_scans_give_stable_fingerprints(tmp_path, monkeypatch):
-    """Each filtered scan writes its rules to a new temporary directory; the
-    fingerprints of unchanged findings must not depend on that directory."""
+def test_filtered_findings_keep_their_unfiltered_fingerprints(tmp_path, monkeypatch):
+    """Socket keys a SAST alert on its props, fingerprint included, and stores
+    triage against that key. A finding the allowlist keeps must report the same
+    fingerprint as an unfiltered scan, and on every run, or its triage is lost."""
     enabled = "js-code-injection-eval,js-weak-hash-md5"
+    unfiltered = _scan_findings(tmp_path, monkeypatch, javascript_enabled_rules="")
     first = _scan_findings(tmp_path, monkeypatch, javascript_enabled_rules=enabled)
     second = _scan_findings(tmp_path, monkeypatch, javascript_enabled_rules=enabled)
-    assert first and first == second
+    kept = {(rule, fp) for rule, fp in unfiltered if rule in enabled.split(",")}
+    assert kept and first == kept and second == kept

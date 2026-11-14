@@ -620,23 +620,24 @@ class Config:
         }
 
         rule_file_filters: Dict[str, set] = {}
+        # C and C++ share c_cpp.yml, and C# and .NET share dotnet.yml. An enabled
+        # language with an empty list runs every rule, so the shared file must
+        # stay unfiltered even when the other language sets a list.
+        unfiltered_rule_files: set = set()
 
         for flag, (rule_file, rules_param) in language_rule_mapping.items():
             if not self.get(flag, False):
                 continue
 
             # rules_param is the exact parameter name defined in connectors.yaml
-            enabled_rules = self.get(rules_param, "")
+            enabled_rules = [s.strip() for s in (self.get(rules_param, "") or "").split(',') if s.strip()]
             if not enabled_rules:
+                unfiltered_rule_files.add(rule_file)
                 continue
 
-            for r in [s.strip() for s in enabled_rules.split(',') if s.strip()]:
-                if rule_file not in rule_file_filters:
-                    rule_file_filters[rule_file] = set()
-                rule_file_filters[rule_file].add(r)
+            rule_file_filters.setdefault(rule_file, set()).update(enabled_rules)
 
-        # Convert sets to lists for output
-        return {k: list(v) for k, v in rule_file_filters.items()}
+        return {k: list(v) for k, v in rule_file_filters.items() if k not in unfiltered_rule_files}
 
     def get_custom_rules_path(self) -> Optional[Path]:
         """Get the absolute path to custom SAST rules directory.
