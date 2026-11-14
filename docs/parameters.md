@@ -37,7 +37,7 @@ GitHub Action input is delivered to the container as the environment variable
 | `--console-tabular-enabled` | `console_tabular_enabled` | `INPUT_CONSOLE_TABULAR_ENABLED` | `console_tabular_enabled` | Print consolidated findings as tables. |
 | `--console-json-enabled` | `console_json_enabled` | `INPUT_CONSOLE_JSON_ENABLED` | `console_json_enabled` | Print consolidated findings as JSON. |
 | `--socket-org` | `socket_org` | `SOCKET_ORG` (also `SOCKET_ORG_SLUG`, `INPUT_SOCKET_ORG`) | `socket_org` | Socket organization slug. Not the same thing as `--repo`. |
-| —<sup>2</sup> | `socket_security_api_key` | `SOCKET_SECURITY_API_KEY` (also `SOCKET_SECURITY_API_TOKEN`, `SOCKET_API_KEY`, `INPUT_SOCKET_SECURITY_API_KEY`) | `socket_api_key`<sup>3</sup> | Socket API key (`full-scans` scope to upload, `socket-basics` scope to load dashboard config). |
+| —<sup>2</sup> | `socket_security_api_key` | `SOCKET_SECURITY_API_KEY` (also `SOCKET_SECURITY_API_TOKEN`, `SOCKET_API_KEY`, `INPUT_SOCKET_SECURITY_API_KEY`) | `socket_api_key`<sup>3</sup> | Socket API key (`full-scans:create` scope to upload, `socket-basics:read` scope to load dashboard config; see [API token scopes](#api-token-scopes)). |
 | `--repo` | — | `GITHUB_REPOSITORY` | `repo` | `owner/repo` recorded on the scan and used to find the PR. Discovered from git when omitted. |
 | `--branch` | — | `GITHUB_HEAD_REF`, `GITHUB_REF_NAME` | `branch` | Branch recorded on the scan. Discovered from git when omitted. |
 | `--pull-request` | — | `GITHUB_PR_NUMBER` (also `INPUT_PR_NUMBER`) | — | PR number. The PR notifier reads the environment variable. |
@@ -701,11 +701,109 @@ export SOCKET_SECURITY_API_KEY="scrt_..."
 socket-basics --socket-org your-org-slug --python --secrets
 ```
 
-The key needs the `full-scans` scope to upload results and the `socket-basics`
-scope to load dashboard configuration. With the latter the organization is
-discovered from the key; otherwise set `SOCKET_ORG` explicitly or the run logs
+The key needs `full-scans:create` to upload results and `socket-basics:read`
+to load dashboard configuration; see [API token scopes](#api-token-scopes).
+When `SOCKET_ORG` is not set, the organization is discovered from the key. On
+an Enterprise organization that discovery is lost if the key lacks
+`socket-basics:read`, so set `SOCKET_ORG` explicitly or the run logs
 `No Socket organization configured` and uploads nothing. `--repo` names the
 repository, not the organization.
+
+### API token scopes
+
+Socket Basics authenticates with a single Socket organization API token. A
+token missing a scope does **not** fail the run. Each Socket API call that is
+denied logs an error or a warning and the scan continues, so check the log
+rather than the exit code.
+
+#### Scopes to grant
+
+For a least-privilege token, grant these:
+
+| Scope | Needed for |
+|:---|:---|
+| `full-scans:create` | Uploading results to the Socket dashboard. Socket Tier 1 also needs it to upload manifests and record the reachability scan |
+| `socket-basics:read` | Loading scanner configuration from the Socket dashboard, on Enterprise organizations. Without it on an Enterprise organization, the organization is also not discovered from the key |
+
+The scopes each endpoint checks are listed in the
+[API reference](https://docs.socket.dev/reference). A few calls check no scope
+and work with any valid token for the organization: `GET organizations` and
+`GET orgs/{org}/supported-files`.
+
+Socket Basics does not use the `repo:*`, `full-scans:list`, `diff-scans:*`,
+`packages:list`, `security-policy:read` or `triage:*` scopes. It never looks up
+or creates the repository with a separate call. The repository name travels as
+a parameter of the scan upload.
+
+The [CI/CD token setup guide](https://docs.socket.dev/docs/create-socket-api-key-for-cicd)
+is written for the Socket CLIs. Its list includes `full-scans:create`, so a
+token made from it can upload results, but it does not include
+`socket-basics:read`. Add that scope to load dashboard configuration.
+
+#### API calls by run type
+
+**Dashboard configuration**, at startup on every run where the key is set and
+no `--config` file is given:
+
+| API call | Scope | Purpose |
+|:---|:---|:---|
+| `GET organizations` | none | Find the organization (the one named by `SOCKET_ORG`, or the first one the key belongs to) and its plan |
+| `GET orgs/{org}/settings/socket-basics` | `socket-basics:read` | Load the dashboard configuration. **Only called when the plan is Enterprise** |
+
+This step reads the key from `SOCKET_SECURITY_API_KEY`,
+`SOCKET_SECURITY_API_TOKEN` or `INPUT_SOCKET_SECURITY_API_KEY` only. A key set
+only as `SOCKET_API_KEY` or `INPUT_SOCKET_API_KEY` is used for uploads and
+Tier 1 but skips this step.
+
+If either call fails, the log shows `Error loading Socket Basics config` and
+the run continues with the environment and workflow inputs alone. Nothing from
+this step is kept, including the discovered organization, so set `SOCKET_ORG`
+when the key lacks `socket-basics:read`. When the settings call is denied for a
+missing scope, the error logged just before it starts with
+`Insufficient permissions`.
+
+**Result upload**, after the scanners finish:
+
+| API call | Scope | Purpose |
+|:---|:---|:---|
+| `POST orgs/{org}/full-scans` | `full-scans:create` | Upload `.socket.facts.json` as a full scan |
+
+The upload is skipped, without calling the API, when the facts file has no
+components, when no key or organization is configured, or when
+`SKIP_SOCKET_SUBMISSION=1`. If the repository does not exist in Socket yet, the
+upload creates it, and an organization API token needs no scope beyond
+`full-scans:create` for that. A denied upload logs
+`Failed to submit socket facts file` and does not change the exit code.
+
+**Socket Tier 1** (`--socket-tier1`), unless `SKIP_SOCKET_REACH=1`. Socket
+Basics runs the Socket npm CLI (`socket scan reach --org <org>`), which makes
+these calls with the same token:
+
+| API call | Scope | Purpose |
+|:---|:---|:---|
+| `GET organizations` | none | Check that the organization is on an Enterprise plan |
+| `GET orgs/{org}/supported-files` | none | Fetch the supported manifest file patterns |
+| `POST orgs/{org}/coana-cli/artifacts` | none | Find the reachability engine download. Only called when the engine is not cached, which is every run in a fresh container (see [Network access for Tier 1](#network-access-for-tier-1)) |
+| `POST orgs/{org}/upload-manifest-files` | `full-scans:create` | Upload the manifests for analysis |
+| `POST tier1-reachability-scan/finalize` | `full-scans:create` | Mark the reachability scan done. A failure here only logs a warning |
+
+The reachability engine (Coana) runs with the same token, and its calls check
+`full-scans:create`. The `coana-cli/artifacts`, `upload-manifest-files` and
+`tier1-reachability-scan/finalize` endpoints are not in the public API
+reference. Options passed through
+`socket_additional_params` can make further calls that this table does not
+cover.
+
+A Tier 1 failure logs `Error running connector socket_tier1` and does not
+change the exit code. Tier 1 passes the key to the Socket npm CLI as
+`SOCKET_SECURITY_API_KEY`, but that CLI prefers `SOCKET_CLI_API_TOKEN`,
+`SOCKET_CLI_API_KEY` or `SOCKET_SECURITY_API_TOKEN` when one of them is set in
+the environment. If you set more than one of these, give them the same token.
+
+The heavy image's Python CLI (`socketcli`) is a separate tool that Socket
+Basics does not run. For the scopes it needs, see
+[API token permissions](https://github.com/SocketDev/socket-python-cli/blob/main/docs/troubleshooting.md#api-token-permissions)
+in its documentation.
 
 ### `--socket-tier1`
 Enable Socket Tier 1 reachability analysis for dependency scanning.
@@ -1021,7 +1119,7 @@ Configuration is merged in the following order (later sources override earlier o
 
 1. Default values
 2. Environment variables, including GitHub Action inputs (the action passes each `with:` input as an `INPUT_*` variable)
-3. Socket Basics dashboard configuration (when the organization is on an Enterprise plan with Socket Basics enabled, the API key has the `socket-basics` scope, and no `--config` file is used)
+3. Socket Basics dashboard configuration (when the organization is on an Enterprise plan with Socket Basics enabled, the API key has the `socket-basics:read` scope, and no `--config` file is used)
 4. JSON configuration file (via `--config`)
 5. Command-line arguments
 
