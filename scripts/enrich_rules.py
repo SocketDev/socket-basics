@@ -18,6 +18,7 @@ Usage:
 import os
 import re
 import sys
+
 import yaml
 
 # ---------------------------------------------------------------------------
@@ -26,48 +27,89 @@ import yaml
 
 CWE_TO_SUBCATEGORY = {
     # injection
-    "CWE-78": "injection", "CWE-79": "xss", "CWE-89": "injection",
-    "CWE-90": "injection", "CWE-91": "injection", "CWE-94": "injection",
-    "CWE-95": "injection", "CWE-98": "injection", "CWE-74": "injection",
-    "CWE-88": "injection", "CWE-134": "injection", "CWE-943": "injection",
-    "CWE-915": "injection", "CWE-1321": "injection", "CWE-1336": "injection",
-    "CWE-470": "injection", "CWE-611": "injection", "CWE-117": "injection",
+    "CWE-78": "injection",
+    "CWE-79": "xss",
+    "CWE-89": "injection",
+    "CWE-90": "injection",
+    "CWE-91": "injection",
+    "CWE-94": "injection",
+    "CWE-95": "injection",
+    "CWE-98": "injection",
+    "CWE-74": "injection",
+    "CWE-88": "injection",
+    "CWE-134": "injection",
+    "CWE-943": "injection",
+    "CWE-1321": "injection",
+    "CWE-1336": "injection",
+    "CWE-470": "injection",
+    "CWE-611": "injection",
+    "CWE-117": "injection",
     # crypto
-    "CWE-208": "crypto", "CWE-295": "crypto", "CWE-310": "crypto",
-    "CWE-319": "crypto", "CWE-322": "crypto", "CWE-326": "crypto",
-    "CWE-327": "crypto", "CWE-330": "crypto", "CWE-338": "crypto",
+    "CWE-208": "crypto",
+    "CWE-295": "crypto",
+    "CWE-310": "crypto",
+    "CWE-319": "crypto",
+    "CWE-322": "crypto",
+    "CWE-326": "crypto",
+    "CWE-327": "crypto",
+    "CWE-330": "crypto",
+    "CWE-338": "crypto",
     "CWE-347": "crypto",
     # authentication
-    "CWE-259": "authentication", "CWE-287": "authentication",
-    "CWE-384": "authentication", "CWE-521": "authentication",
-    "CWE-798": "authentication", "CWE-916": "authentication",
+    "CWE-259": "authentication",
+    "CWE-287": "authentication",
+    "CWE-384": "authentication",
+    "CWE-521": "authentication",
+    "CWE-798": "authentication",
+    "CWE-916": "authentication",
     # access-control
-    "CWE-22": "access-control", "CWE-73": "access-control",
-    "CWE-601": "access-control", "CWE-639": "access-control",
-    "CWE-862": "access-control", "CWE-863": "access-control",
+    "CWE-22": "access-control",
+    "CWE-73": "access-control",
+    "CWE-601": "access-control",
+    "CWE-639": "access-control",
+    "CWE-862": "access-control",
+    "CWE-863": "access-control",
     "CWE-915": "access-control",  # mass assignment could go here too
     # configuration
-    "CWE-16": "configuration", "CWE-200": "configuration",
-    "CWE-209": "configuration", "CWE-250": "configuration",
-    "CWE-276": "configuration", "CWE-489": "configuration",
-    "CWE-614": "configuration", "CWE-693": "configuration",
-    "CWE-732": "configuration", "CWE-926": "configuration",
-    "CWE-942": "configuration", "CWE-477": "configuration",
-    "CWE-1104": "configuration", "CWE-1059": "configuration",
+    "CWE-16": "configuration",
+    "CWE-200": "configuration",
+    "CWE-209": "configuration",
+    "CWE-250": "configuration",
+    "CWE-276": "configuration",
+    "CWE-489": "configuration",
+    "CWE-614": "configuration",
+    "CWE-693": "configuration",
+    "CWE-732": "configuration",
+    "CWE-926": "configuration",
+    "CWE-942": "configuration",
+    "CWE-477": "configuration",
+    "CWE-1104": "configuration",
+    "CWE-1059": "configuration",
     # integrity
-    "CWE-345": "integrity", "CWE-353": "integrity",
-    "CWE-494": "integrity", "CWE-502": "integrity",
+    "CWE-345": "integrity",
+    "CWE-353": "integrity",
+    "CWE-494": "integrity",
+    "CWE-502": "integrity",
     # logging
-    "CWE-532": "logging", "CWE-778": "logging",
+    "CWE-532": "logging",
+    "CWE-778": "logging",
     # error-handling
-    "CWE-248": "error-handling", "CWE-396": "error-handling",
-    "CWE-703": "error-handling", "CWE-755": "error-handling",
+    "CWE-248": "error-handling",
+    "CWE-396": "error-handling",
+    "CWE-703": "error-handling",
+    "CWE-755": "error-handling",
     # design
-    "CWE-20": "design", "CWE-307": "design", "CWE-362": "design",
-    "CWE-367": "design", "CWE-667": "design", "CWE-697": "design",
+    "CWE-20": "design",
+    "CWE-307": "design",
+    "CWE-362": "design",
+    "CWE-367": "design",
+    "CWE-667": "design",
+    "CWE-697": "design",
     "CWE-704": "design",
     # dos
-    "CWE-400": "dos", "CWE-409": "dos", "CWE-1333": "dos",
+    "CWE-400": "dos",
+    "CWE-409": "dos",
+    "CWE-1333": "dos",
     # file-operations
     "CWE-377": "file-operations",
     # upload
@@ -75,12 +117,19 @@ CWE_TO_SUBCATEGORY = {
     # ssrf
     "CWE-918": "ssrf",
     # deprecated (memory safety for C/C++)
-    "CWE-119": "deprecated", "CWE-120": "deprecated", "CWE-131": "deprecated",
-    "CWE-190": "deprecated", "CWE-242": "deprecated", "CWE-401": "deprecated",
-    "CWE-415": "deprecated", "CWE-416": "deprecated", "CWE-476": "deprecated",
+    "CWE-119": "deprecated",
+    "CWE-120": "deprecated",
+    "CWE-131": "deprecated",
+    "CWE-190": "deprecated",
+    "CWE-242": "deprecated",
+    "CWE-401": "deprecated",
+    "CWE-415": "deprecated",
+    "CWE-416": "deprecated",
+    "CWE-476": "deprecated",
     "CWE-479": "deprecated",
     # misc
-    "CWE-312": "crypto", "CWE-522": "crypto",
+    "CWE-312": "crypto",
+    "CWE-522": "crypto",
     "CWE-352": "access-control",
 }
 
@@ -109,19 +158,230 @@ SUBCATEGORY_TO_VULN_CLASS = {
 
 CWE_TO_OWASP = {
     # A01:2021 — Broken Access Control
-    **{f"CWE-{n}": "A01:2021" for n in [22, 23, 35, 59, 200, 219, 264, 275, 276, 284, 285, 352, 359, 377, 402, 425, 441, 497, 538, 540, 548, 552, 566, 601, 639, 651, 668, 706, 862, 863, 913, 922, 1275]},
+    **{
+        f"CWE-{n}": "A01:2021"
+        for n in [
+            22,
+            23,
+            35,
+            59,
+            200,
+            219,
+            264,
+            275,
+            276,
+            284,
+            285,
+            352,
+            359,
+            377,
+            402,
+            425,
+            441,
+            497,
+            538,
+            540,
+            548,
+            552,
+            566,
+            601,
+            639,
+            651,
+            668,
+            706,
+            862,
+            863,
+            913,
+            922,
+            1275,
+        ]
+    },
     # A02:2021 — Cryptographic Failures
-    **{f"CWE-{n}": "A02:2021" for n in [261, 296, 310, 319, 321, 322, 323, 324, 325, 326, 327, 328, 329, 330, 331, 335, 336, 337, 338, 340, 347, 523, 720, 757, 759, 760, 780, 798, 916]},
+    **{
+        f"CWE-{n}": "A02:2021"
+        for n in [
+            261,
+            296,
+            310,
+            319,
+            321,
+            322,
+            323,
+            324,
+            325,
+            326,
+            327,
+            328,
+            329,
+            330,
+            331,
+            335,
+            336,
+            337,
+            338,
+            340,
+            347,
+            523,
+            720,
+            757,
+            759,
+            760,
+            780,
+            798,
+            916,
+        ]
+    },
     # A03:2021 — Injection
-    **{f"CWE-{n}": "A03:2021" for n in [20, 74, 75, 77, 78, 79, 80, 83, 87, 88, 89, 90, 91, 93, 94, 95, 96, 97, 98, 99, 100, 113, 116, 117, 134, 138, 184, 470, 471, 564, 610, 643, 644, 652, 917, 943, 1236, 1321, 1336]},
+    **{
+        f"CWE-{n}": "A03:2021"
+        for n in [
+            20,
+            74,
+            75,
+            77,
+            78,
+            79,
+            80,
+            83,
+            87,
+            88,
+            89,
+            90,
+            91,
+            93,
+            94,
+            95,
+            96,
+            97,
+            98,
+            99,
+            100,
+            113,
+            116,
+            117,
+            134,
+            138,
+            184,
+            470,
+            471,
+            564,
+            610,
+            643,
+            644,
+            652,
+            917,
+            943,
+            1236,
+            1321,
+            1336,
+        ]
+    },
     # A04:2021 — Insecure Design
-    **{f"CWE-{n}": "A04:2021" for n in [73, 183, 209, 213, 235, 256, 257, 266, 269, 280, 311, 312, 313, 316, 419, 430, 434, 444, 451, 472, 501, 522, 525, 539, 579, 598, 602, 642, 646, 650, 653, 656, 657, 799, 807, 840, 841, 927, 1021, 1173]},
+    **{
+        f"CWE-{n}": "A04:2021"
+        for n in [
+            73,
+            183,
+            209,
+            213,
+            235,
+            256,
+            257,
+            266,
+            269,
+            280,
+            311,
+            312,
+            313,
+            316,
+            419,
+            430,
+            434,
+            444,
+            451,
+            472,
+            501,
+            522,
+            525,
+            539,
+            579,
+            598,
+            602,
+            642,
+            646,
+            650,
+            653,
+            656,
+            657,
+            799,
+            807,
+            840,
+            841,
+            927,
+            1021,
+            1173,
+        ]
+    },
     # A05:2021 — Security Misconfiguration
-    **{f"CWE-{n}": "A05:2021" for n in [2, 11, 13, 15, 16, 260, 315, 489, 497, 520, 526, 537, 541, 547, 611, 614, 693, 732, 756, 776, 942, 1004, 1032, 1174]},
+    **{
+        f"CWE-{n}": "A05:2021"
+        for n in [
+            2,
+            11,
+            13,
+            15,
+            16,
+            260,
+            315,
+            489,
+            497,
+            520,
+            526,
+            537,
+            541,
+            547,
+            611,
+            614,
+            693,
+            732,
+            756,
+            776,
+            942,
+            1004,
+            1032,
+            1174,
+        ]
+    },
     # A06:2021 — Vulnerable and Outdated Components
     **{f"CWE-{n}": "A06:2021" for n in [477, 1104, 1059]},
     # A07:2021 — Auth Failures
-    **{f"CWE-{n}": "A07:2021" for n in [255, 259, 287, 288, 290, 294, 295, 297, 300, 302, 304, 306, 307, 346, 384, 521, 613, 620, 640, 798, 940, 1216]},
+    **{
+        f"CWE-{n}": "A07:2021"
+        for n in [
+            255,
+            259,
+            287,
+            288,
+            290,
+            294,
+            295,
+            297,
+            300,
+            302,
+            304,
+            306,
+            307,
+            346,
+            384,
+            521,
+            613,
+            620,
+            640,
+            798,
+            940,
+            1216,
+        ]
+    },
     # A08:2021 — Data Integrity Failures
     **{f"CWE-{n}": "A08:2021" for n in [345, 353, 426, 494, 502, 565, 784, 829, 830, 915]},
     # A09:2021 — Logging Failures
@@ -164,10 +424,12 @@ def parse_metadata_from_yaml(filepath):
     rules = []
     for rule in data.get("rules", []):
         meta = rule.get("metadata", {})
-        rules.append({
-            "id": rule.get("id", ""),
-            "metadata": meta,
-        })
+        rules.append(
+            {
+                "id": rule.get("id", ""),
+                "metadata": meta,
+            }
+        )
     return rules
 
 
@@ -220,9 +482,8 @@ def find_metadata_blocks(content):
                         else:
                             break
                     continue
-                else:
-                    # Line doesn't match field pattern -- end of metadata block
-                    break
+                # Line doesn't match field pattern -- end of metadata block
+                break
             blocks.append((start_line, j, meta_indent, fields))
             i = j
         else:
@@ -242,25 +503,27 @@ def enrich_file(filepath, stats):
     blocks = find_metadata_blocks(content)
 
     if len(blocks) != len(rules_meta):
-        print(f"WARNING: {filepath}: found {len(blocks)} metadata blocks but "
-              f"{len(rules_meta)} rules. Skipping file.")
+        print(
+            f"WARNING: {filepath}: found {len(blocks)} metadata blocks but "
+            f"{len(rules_meta)} rules. Skipping file."
+        )
         return content
 
     lines = content.split("\n")
     insertions = []  # (line_number, lines_to_insert)
 
-    for idx, (start_line, end_line, meta_indent, existing_fields) in enumerate(blocks):
+    for idx, (_start_line, end_line, meta_indent, existing_fields) in enumerate(blocks):
         rule = rules_meta[idx]
         meta = rule["metadata"]
-        rule_id = rule["id"]
+        rule["id"]
         field_indent = meta_indent + "  "
         new_lines = []
 
         cwe = str(meta.get("cwe", ""))
         existing_subcategory = meta.get("subcategory")
-        existing_owasp = meta.get("owasp")
-        existing_vuln_class = meta.get("vulnerability_class")
-        existing_references = meta.get("references")
+        meta.get("owasp")
+        meta.get("vulnerability_class")
+        meta.get("references")
         existing_framework = meta.get("framework")
 
         # 1. Add subcategory if missing
@@ -276,18 +539,21 @@ def enrich_file(filepath, stats):
             sc = subcategory or existing_subcategory
             if sc and sc in SUBCATEGORY_TO_VULN_CLASS:
                 vc = SUBCATEGORY_TO_VULN_CLASS[sc]
-                new_lines.append(f"{field_indent}vulnerability_class: \"{vc}\"")
+                new_lines.append(f'{field_indent}vulnerability_class: "{vc}"')
                 stats["vulnerability_class_added"] += 1
 
         # 3. Add owasp if missing
         if "owasp" not in existing_fields and cwe in CWE_TO_OWASP:
             owasp = CWE_TO_OWASP[cwe]
-            new_lines.append(f"{field_indent}owasp: \"{owasp}\"")
+            new_lines.append(f'{field_indent}owasp: "{owasp}"')
             stats["owasp_added"] += 1
 
         # 4. Add references for framework rules if missing
-        if ("references" not in existing_fields and existing_framework
-                and str(existing_framework) in FRAMEWORK_REFS):
+        if (
+            "references" not in existing_fields
+            and existing_framework
+            and str(existing_framework) in FRAMEWORK_REFS
+        ):
             refs = FRAMEWORK_REFS[str(existing_framework)]
             new_lines.append(f"{field_indent}references:")
             for ref in refs:
@@ -310,8 +576,9 @@ def enrich_file(filepath, stats):
 
 
 def main():
-    rules_dir = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
-                             "socket_basics", "rules")
+    rules_dir = os.path.join(
+        os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "socket_basics", "rules"
+    )
 
     if not os.path.isdir(rules_dir):
         print(f"ERROR: Rules directory not found: {rules_dir}")
@@ -340,9 +607,9 @@ def main():
         stats["files_processed"] += 1
         print(f"  Processed {fname} ({len(rules_meta)} rules)")
 
-    print(f"\n{'='*60}")
-    print(f"Enrichment complete!")
-    print(f"{'='*60}")
+    print(f"\n{'=' * 60}")
+    print("Enrichment complete!")
+    print(f"{'=' * 60}")
     print(f"Files processed:          {stats['files_processed']}")
     print(f"Rules processed:          {stats['rules_processed']}")
     print(f"subcategory added:        {stats['subcategory_added']}")
@@ -351,7 +618,7 @@ def main():
     print(f"references added:         {stats['references_added']}")
 
     # Verify all files still parse
-    print(f"\nVerifying YAML syntax...")
+    print("\nVerifying YAML syntax...")
     errors = 0
     for fname in yml_files:
         filepath = os.path.join(rules_dir, fname)
@@ -372,7 +639,7 @@ def main():
         print(f"All {len(yml_files)} files parse successfully.")
 
     # Count final field coverage
-    print(f"\nFinal field coverage:")
+    print("\nFinal field coverage:")
     total_rules = 0
     field_counts = {
         "subcategory": 0,
@@ -393,7 +660,7 @@ def main():
 
     print(f"  Total rules: {total_rules}")
     for field, count in field_counts.items():
-        print(f"  {field}: {count}/{total_rules} ({count*100//total_rules}%)")
+        print(f"  {field}: {count}/{total_rules} ({count * 100 // total_rules}%)")
 
 
 if __name__ == "__main__":

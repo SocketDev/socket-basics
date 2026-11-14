@@ -26,8 +26,16 @@ def _base_cfg():
                 "module_path": "socket_basics.core.notification.ms_sentinel_notifier",
                 "class": "MSSentinelNotifier",
                 "parameters": [
-                    {"name": "ms_sentinel_workspace_id", "env_variable": "INPUT_MS_SENTINEL_WORKSPACE_ID", "type": "str"},
-                    {"name": "ms_sentinel_key", "env_variable": "INPUT_MS_SENTINEL_KEY", "type": "str"},
+                    {
+                        "name": "ms_sentinel_workspace_id",
+                        "env_variable": "INPUT_MS_SENTINEL_WORKSPACE_ID",
+                        "type": "str",
+                    },
+                    {
+                        "name": "ms_sentinel_key",
+                        "env_variable": "INPUT_MS_SENTINEL_KEY",
+                        "type": "str",
+                    },
                 ],
             }
         }
@@ -42,7 +50,9 @@ def test_sentinel_reads_notifications_yaml_param_names(clean_env):
 
 
 def test_sentinel_accepts_shared_key_alias(clean_env):
-    n = MSSentinelNotifier({"ms_sentinel_workspace_id": "ws-123", "ms_sentinel_shared_key": "shared"})
+    n = MSSentinelNotifier(
+        {"ms_sentinel_workspace_id": "ws-123", "ms_sentinel_shared_key": "shared"}
+    )
     assert n.shared_key == "shared"
 
 

@@ -394,6 +394,7 @@ socket-basics --workspace app_tests/pygoat \
 import pytest
 from socket_basics.module import new_function
 
+
 def test_new_feature():
     result = new_function(input_data)
     assert result == expected_output

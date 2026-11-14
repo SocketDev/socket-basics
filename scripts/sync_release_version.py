@@ -10,9 +10,12 @@ from __future__ import annotations
 import argparse
 import re
 import sys
-import tomllib
 from pathlib import Path
 
+try:
+    import tomllib
+except ModuleNotFoundError:
+    import tomli as tomllib
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 PYPROJECT_PATH = REPO_ROOT / "pyproject.toml"
@@ -55,7 +58,7 @@ def build_expected_files(version: str) -> dict[Path, str]:
     action_yml = ACTION_YML_PATH.read_text()
     expected[ACTION_YML_PATH] = replace_first(
         r'^(  image: "docker://ghcr\.io/socketdev/socket-basics:)[^"]+(")$',
-        rf'\g<1>{version}\2',
+        rf"\g<1>{version}\2",
         action_yml,
         ACTION_YML_PATH,
     )

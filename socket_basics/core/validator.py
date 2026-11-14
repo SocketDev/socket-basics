@@ -1,4 +1,3 @@
-#!/usr/bin/env python3
 """
 Validator for connector-produced socket facts (components).
 
@@ -6,17 +5,19 @@ Provides SocketFactsValidator.validate_data(data) -> List[str]
 which returns an empty list when valid, otherwise human-readable errors.
 This is a trimmed/adapted copy of scripts/validator.py for in-package use.
 """
+
 from __future__ import annotations
 
-from typing import Any, Iterable, List
 import logging
+from collections.abc import Iterable
+from typing import Any
 
 try:
     from jsonschema import Draft7Validator
     from jsonschema.exceptions import SchemaError
 except Exception:
-    Draft7Validator = None  # type: ignore
-    SchemaError = Exception  # type: ignore
+    Draft7Validator = None  # type: ignore[assignment,misc]
+    SchemaError = Exception  # type: ignore[assignment,misc]
 
 logger = logging.getLogger(__name__)
 
@@ -74,8 +75,8 @@ class SocketFactsValidator:
         self.schema = schema or JSON_SCHEMA
         self._validator = Draft7Validator(self.schema)
 
-    def validate_data(self, data: Any) -> List[str]:
-        errors: List[str] = []
+    def validate_data(self, data: Any) -> list[str]:
+        errors: list[str] = []
         for err in sorted(self._validator.iter_errors(data), key=_error_sort_key):
             path = _format_path(err.path)
             msg = f"{path}: {err.message}" if path else err.message
@@ -84,7 +85,7 @@ class SocketFactsValidator:
 
 
 def _format_path(path_iter: Iterable[Any]) -> str:
-    parts: List[str] = []
+    parts: list[str] = []
     for p in path_iter:
         if isinstance(p, int):
             if not parts:

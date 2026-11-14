@@ -1,20 +1,20 @@
 """Webhook notifier formatting for Socket Tier1 reachability analysis."""
 
-from typing import Dict, Any, List
+from typing import Any
 
 
-def _make_purl(comp: Dict[str, Any]) -> str:
+def _make_purl(comp: dict[str, Any]) -> str:
     """Construct a best-effort purl from a component entry."""
-    typ = comp.get('type')
-    namespace = comp.get('namespace')
-    name = comp.get('name') or comp.get('id')
-    version = comp.get('version')
+    typ = comp.get("type")
+    namespace = comp.get("namespace")
+    name = comp.get("name") or comp.get("id")
+    version = comp.get("version")
     if not name:
-        return ''
+        return ""
     # Basic purl: pkg:type/namespace/name@version (percent-encode @ in namespace if needed)
     if namespace:
         # If namespace already contains @ (scoped npm), percent-encode
-        ns = namespace.replace('@', '%40')
+        ns = namespace.replace("@", "%40")
         p = f"pkg:{typ}/{ns}/{name}"
     else:
         p = f"pkg:{typ}/{name}"
@@ -23,56 +23,71 @@ def _make_purl(comp: Dict[str, Any]) -> str:
     return p
 
 
-def format_notifications(components_list: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+def format_notifications(components_list: list[dict[str, Any]]) -> list[dict[str, Any]]:
     """Format for generic webhook - flexible structured format with findings."""
     rows = []
-    findings: List[Dict[str, Any]] = []
+    findings: list[dict[str, Any]] = []
     for comp in components_list:
-        comp_name = str(comp.get('name') or comp.get('id') or '-')
+        comp_name = str(comp.get("name") or comp.get("id") or "-")
 
-        for a in comp.get('alerts', []):
-            props = a.get('props', {}) or {}
-            purl = str(props.get('purl') or _make_purl(comp) or comp_name)
-            cve_id = str(props.get('ghsaId') or props.get('cveId') or a.get('title') or '')
-            severity = str(a.get('severity') or props.get('severity') or '')
-            reachability = str(props.get('reachability') or '')
+        for a in comp.get("alerts", []):
+            props = a.get("props", {}) or {}
+            purl = str(props.get("purl") or _make_purl(comp) or comp_name)
+            cve_id = str(props.get("ghsaId") or props.get("cveId") or a.get("title") or "")
+            severity = str(a.get("severity") or props.get("severity") or "")
+            reachability = str(props.get("reachability") or "")
 
-            rows.append([
-                cve_id,
-                severity,
-                reachability,
-                purl,
-                comp_name,
-                str(comp.get('version', '')),
-                str(props.get('ghsaId', '')),
-                'socket-tier1'
-            ])
+            rows.append(
+                [
+                    cve_id,
+                    severity,
+                    reachability,
+                    purl,
+                    comp_name,
+                    str(comp.get("version", "")),
+                    str(props.get("ghsaId", "")),
+                    "socket-tier1",
+                ]
+            )
 
-            findings.append({
-                'package': comp_name,
-                'version': str(comp.get('version', '')),
-                'purl': purl,
-                'cves': [cve_id] if cve_id else [],
-                'severity': severity,
-                'reachability': reachability,
-                'scanner': 'socket-tier1',
-            })
-    
+            findings.append(
+                {
+                    "package": comp_name,
+                    "version": str(comp.get("version", "")),
+                    "purl": purl,
+                    "cves": [cve_id] if cve_id else [],
+                    "severity": severity,
+                    "reachability": reachability,
+                    "scanner": "socket-tier1",
+                }
+            )
+
     # Format as structured data for webhook
     if not rows:
         content = "No Socket Tier1 vulnerabilities found."
     else:
-        headers = ['ID', 'Severity', 'Reachability', 'PURL', 'Component', 'Version', 'GHSA', 'Scanner']
-        header_row = ' | '.join(headers)
-        separator_row = ' | '.join(['---'] * len(headers))
+        headers = [
+            "ID",
+            "Severity",
+            "Reachability",
+            "PURL",
+            "Component",
+            "Version",
+            "GHSA",
+            "Scanner",
+        ]
+        header_row = " | ".join(headers)
+        separator_row = " | ".join(["---"] * len(headers))
         content_rows = []
         for row in rows:
-            content_rows.append(' | '.join(str(cell) for cell in row))
-        
-        content = '\n'.join([header_row, separator_row] + content_rows)
-    
-    return [{
-        'title': 'Socket Tier1 Reachability Analysis',
-        'content': content,
-        'findings': findings,
-    }]
+            content_rows.append(" | ".join(str(cell) for cell in row))
+
+        content = "\n".join([header_row, separator_row, *content_rows])
+
+    return [
+        {
+            "title": "Socket Tier1 Reachability Analysis",
+            "content": content,
+            "findings": findings,
+        }
+    ]

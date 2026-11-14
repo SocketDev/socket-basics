@@ -1,9 +1,9 @@
-#!/usr/bin/env python3
 """Base Connector Interface for Socket Security Basics"""
 
 import abc
 import logging
-from typing import Dict, Any, List, Optional
+from typing import Any
+
 from ..validator import SocketFactsValidator
 
 logger = logging.getLogger(__name__)
@@ -11,38 +11,40 @@ logger = logging.getLogger(__name__)
 
 class BaseConnector(abc.ABC):
     """Abstract base class for security scanning connectors"""
-    
+
     def __init__(self, config):
         """Initialize the connector with configuration
-        
+
         Args:
             config: Configuration object containing all settings
         """
         self.config = config
         # allowed severities may be provided by the manager; default to critical/high
         try:
-            self.allowed_severities = getattr(self, 'allowed_severities', None) or {"critical", "high"}
+            self.allowed_severities = getattr(self, "allowed_severities", None) or {
+                "critical",
+                "high",
+            }
         except Exception:
             self.allowed_severities = {"critical", "high"}
-    
+
     @abc.abstractmethod
-    def scan(self) -> Dict[str, Any]:
+    def scan(self) -> dict[str, Any]:
         """Run the security scan
-        
+
         Returns:
             Dict containing scan results in the connector's native format
         """
-        pass
-    
-    def _process_results(self, raw_results: Any) -> Dict[str, Any]:
+
+    def _process_results(self, raw_results: Any) -> dict[str, Any]:  # noqa: C901
         """Process raw scan results into Socket facts format
-        
+
         This is the standard method name that will be called by the connector manager
         to convert native tool output into Socket facts format.
-        
+
         Args:
             raw_results: Raw output from the security scanning tool
-            
+
         Returns:
             Dict containing processed results in Socket facts format
         """
@@ -56,7 +58,7 @@ class BaseConnector(abc.ABC):
         # connector conversion function and perform minimal book-keeping.
         try:
             # Connectors must return canonical shapes (dict with 'components' list)
-            if isinstance(raw_results, dict) and isinstance(raw_results.get('components'), list):
+            if isinstance(raw_results, dict) and isinstance(raw_results.get("components"), list):
                 processed = raw_results
             else:
                 processed = self._convert_to_socket_facts(raw_results)
@@ -79,12 +81,14 @@ class BaseConnector(abc.ABC):
 
         # Helper to iterate component list; connectors must supply a canonical wrapper
         components = []
-        if isinstance(processed, dict) and isinstance(processed.get('components'), list):
-            components = processed['components']
+        if isinstance(processed, dict) and isinstance(processed.get("components"), list):
+            components = processed["components"]
         elif isinstance(processed, list):
             components = processed
         else:
-            logger.error(f"{self.get_name()}: connector returned non-canonical shape; expected {'components': [...]}")
+            logger.error(
+                f"{self.get_name()}: connector returned non-canonical shape; expected {'components': [...]}"
+            )
             return {}
 
         # Validate components with in-package validator; if validation fails,
@@ -92,13 +96,13 @@ class BaseConnector(abc.ABC):
         try:
             try:
                 validator = SocketFactsValidator()
-                errs = validator.validate_data({'components': components})
+                errs = validator.validate_data({"components": components})
                 if errs:
                     logger.error(f"{self.get_name()}: validation errors: %s", errs)
                     return {}
             except ImportError:
                 # jsonschema not available; skip validation but log
-                logger.warning('jsonschema not available; skipping connector-level validation')
+                logger.warning("jsonschema not available; skipping connector-level validation")
         except Exception:
             logger.exception(f"{self.get_name()}: failed while validating components")
 
@@ -108,31 +112,37 @@ class BaseConnector(abc.ABC):
             # treated as external third-party components.
             try:
                 # Only set if not explicitly provided by the connector
-                if 'internal' not in comp:
-                    comp['internal'] = True
+                if "internal" not in comp:
+                    comp["internal"] = True
             except Exception:
                 logger.exception(f"{self.get_name()}: failed to set 'internal' flag on component")
 
-            comp_name = comp.get('name') or comp.get('id') or '<unknown>'
-            alerts = comp.get('alerts') or []
+            comp_name = comp.get("name") or comp.get("id") or "<unknown>"
+            alerts = comp.get("alerts") or []
             for a in alerts:
                 # Normalize common lowercase keys to canonical top-level names
                 # Accept 'subtype' or 'subType' but canonicalize to 'subType'
-                if 'subType' not in a:
+                if "subType" not in a:
                     # Check common alternate locations
-                    if 'subtype' in a:
-                        a['subType'] = a.pop('subtype')
-                        logger.warning(f"{self.get_name()}: normalized alert 'subtype'->'subType' for alert in component '{comp_name}'")
-                    elif isinstance(a.get('props'), dict) and 'subtype' in a.get('props'):
-                        a['subType'] = a['props'].get('subtype')
-                        logger.warning(f"{self.get_name()}: found 'subtype' in props; moved to top-level 'subType' for alert in component '{comp_name}'")
+                    if "subtype" in a:
+                        a["subType"] = a.pop("subtype")
+                        logger.warning(
+                            f"{self.get_name()}: normalized alert 'subtype'->'subType' for alert in component '{comp_name}'"
+                        )
+                    elif isinstance(a.get("props"), dict) and "subtype" in a.get("props"):
+                        a["subType"] = a["props"].get("subtype")
+                        logger.warning(
+                            f"{self.get_name()}: found 'subtype' in props; moved to top-level 'subType' for alert in component '{comp_name}'"
+                        )
 
                 # Category: prefer top-level, but check props before failing so we can report helpful message
-                category = a.get('category')
+                category = a.get("category")
                 if not category:
-                    if isinstance(a.get('props'), dict) and 'category' in a.get('props'):
-                        a['category'] = a['props'].get('category')
-                        logger.warning(f"{self.get_name()}: found 'category' in props; moved to top-level for alert in component '{comp_name}'")
+                    if isinstance(a.get("props"), dict) and "category" in a.get("props"):
+                        a["category"] = a["props"].get("category")
+                        logger.warning(
+                            f"{self.get_name()}: found 'category' in props; moved to top-level for alert in component '{comp_name}'"
+                        )
                     else:
                         # Missing required category - log and continue without deriving
                         logger.error(
@@ -142,29 +152,29 @@ class BaseConnector(abc.ABC):
                         continue
 
                 # Validate category value
-                if a.get('category') not in ALLOWED_CATEGORIES:
+                if a.get("category") not in ALLOWED_CATEGORIES:
                     logger.error(
                         f"{self.get_name()}: alert has invalid category '{a.get('category')}' in component '{comp_name}'; must be one of {sorted(ALLOWED_CATEGORIES)}"
                     )
 
                 # Ensure subType exists (after normalization)
-                if not a.get('subType'):
+                if not a.get("subType"):
                     logger.error(
                         f"{self.get_name()}: alert missing required top-level 'subType' in component '{comp_name}'. Connector must provide a connector-specific subtype like 'sast-python', 'secrets', etc."
                     )
 
         return processed
-    
+
     @abc.abstractmethod
-    def _convert_to_socket_facts(self, raw_results: Any) -> Dict[str, Any]:
+    def _convert_to_socket_facts(self, raw_results: Any) -> dict[str, Any]:
         """Convert raw scan results to Socket facts format
-        
+
         This method should be implemented by each connector to transform
         the tool's native output into the standardized Socket facts format.
-        
+
         Args:
             raw_results: Raw output from the security scanning tool
-            
+
         Returns:
             Dict in Socket facts format with structure:
             {
@@ -174,7 +184,7 @@ class BaseConnector(abc.ABC):
                     "alerts": [
                         {
                             "title": "alert_title",
-                            "description": "alert_description", 
+                            "description": "alert_description",
                             "severity": "low|medium|high|critical",
                             "type": "alert_type",
                             "file": "path/to/file",
@@ -187,24 +197,23 @@ class BaseConnector(abc.ABC):
                 }
             }
         """
-        pass
-    
+
     def is_enabled(self) -> bool:
         """Check if this connector should be enabled based on configuration
-        
+
         Returns:
             bool: True if connector should run, False otherwise
         """
         # Default implementation - can be overridden by subclasses
         return True
-    
-    def get_scan_targets(self) -> List[str]:
+
+    def get_scan_targets(self) -> list[str]:
         """Get list of targets to scan
 
         Returns:
             List of file paths or directories to scan
         """
-        return self.config.get_scan_targets() if hasattr(self.config, 'get_scan_targets') else []
+        return self.config.get_scan_targets() if hasattr(self.config, "get_scan_targets") else []
 
     def _changed_files_scope_requested(self) -> bool:
         """Did the user explicitly ask for a changed-files scope?
@@ -215,38 +224,48 @@ class BaseConnector(abc.ABC):
         and ``scan_all`` explicitly opted into the full-scan fallback.
         """
         try:
-            return bool(self.config.get('changed_files_scope_requested', False))
+            return bool(self.config.get("changed_files_scope_requested", False))
         except Exception:
             return False
 
     def get_name(self) -> str:
         """Get the connector name
-        
+
         Returns:
             String name of the connector (usually the class name in lowercase)
         """
-        return self.__class__.__name__.lower().replace('scanner', '')
+        return self.__class__.__name__.lower().replace("scanner", "")
 
-    def notification_rows(self, processed_results: Dict[str, Any]) -> List[List[str]]:
+    def notification_rows(self, processed_results: dict[str, Any]) -> list[list[str]]:
         """Default notification row generator.
 
         Returns list of rows [file, severity, message, location]. Connectors should override
         this to provide richer columns (language, rule, snippet, etc.).
         """
-        rows: List[List[str]] = []
+        rows: list[list[str]] = []
         for comp in processed_results.values():
-            comp_name = comp.get('name') or comp.get('id') or '-'
-            for a in comp.get('alerts', []):
-                path = comp_name or a.get('props', {}).get('filePath', '-') or a.get('location', {}).get('path', '-')
-                sev = a.get('severity', '')
-                msg = a.get('title') or a.get('description') or ''
-                loc = a.get('props', {}).get('filePath', '')
-                line = a.get('props', {}).get('startLine') or a.get('props', {}).get('lineNumber') or ''
-                loc_str = f"{loc}:{line}" if line else (loc or '-')
+            comp_name = comp.get("name") or comp.get("id") or "-"
+            for a in comp.get("alerts", []):
+                path = (
+                    comp_name
+                    or a.get("props", {}).get("filePath", "-")
+                    or a.get("location", {}).get("path", "-")
+                )
+                sev = a.get("severity", "")
+                msg = a.get("title") or a.get("description") or ""
+                loc = a.get("props", {}).get("filePath", "")
+                line = (
+                    a.get("props", {}).get("startLine")
+                    or a.get("props", {}).get("lineNumber")
+                    or ""
+                )
+                loc_str = f"{loc}:{line}" if line else (loc or "-")
                 rows.append([path, sev, msg, loc_str])
         return rows
 
-    def filter_components_by_severity(self, components: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    def filter_components_by_severity(
+        self, components: list[dict[str, Any]]
+    ) -> list[dict[str, Any]]:
         """Filter component alerts by self.allowed_severities. Returns a new list of components where alerts not matching
         allowed severities are removed. Components with no remaining alerts are omitted.
         """
@@ -255,22 +274,24 @@ class BaseConnector(abc.ABC):
             try:
                 new_comp = dict(comp)
                 alerts = []
-                for a in comp.get('alerts', []):
+                for a in comp.get("alerts", []):
                     try:
-                        sev = (a.get('severity') or '').strip().lower()
+                        sev = (a.get("severity") or "").strip().lower()
                         if not sev or sev in self.allowed_severities:
                             alerts.append(a)
                     except Exception:
                         # keep alert if anything goes wrong determining severity
                         alerts.append(a)
                 if alerts:
-                    new_comp['alerts'] = alerts
+                    new_comp["alerts"] = alerts
                     out.append(new_comp)
             except Exception:
                 continue
         return out
 
-    def filter_notification_rows_by_severity(self, rows: List[List[Any]], headers: Optional[List[str]] = None) -> List[List[Any]]:
+    def filter_notification_rows_by_severity(  # noqa: C901
+        self, rows: list[list[Any]], headers: list[str] | None = None
+    ) -> list[list[Any]]:
         """Filter table rows (list-of-lists) by severity column.
 
         If `headers` is provided and contains a 'Severity' (case-insensitive) column,
@@ -283,7 +304,7 @@ class BaseConnector(abc.ABC):
         if headers:
             for i, h in enumerate(headers):
                 try:
-                    if isinstance(h, str) and h.strip().lower() == 'severity':
+                    if isinstance(h, str) and h.strip().lower() == "severity":
                         sev_index = i
                         break
                 except Exception:
@@ -294,15 +315,18 @@ class BaseConnector(abc.ABC):
             try:
                 sev_found = None
                 if sev_index is not None and isinstance(r, (list, tuple)) and sev_index < len(r):
-                    sev_found = str(r[sev_index] or '').strip().lower()
+                    sev_found = str(r[sev_index] or "").strip().lower()
                 else:
                     # heuristic: common severity location is index 1
                     if isinstance(r, (list, tuple)) and len(r) > 1:
-                        sev_found = str(r[1] or '').strip().lower()
+                        sev_found = str(r[1] or "").strip().lower()
                     if not sev_found:
                         for cell in r:
                             try:
-                                if isinstance(cell, str) and cell.strip().lower() in self.allowed_severities:
+                                if (
+                                    isinstance(cell, str)
+                                    and cell.strip().lower() in self.allowed_severities
+                                ):
                                     sev_found = cell.strip().lower()
                                     break
                             except Exception:
@@ -319,14 +343,11 @@ class BaseConnector(abc.ABC):
 
 class ConnectorError(Exception):
     """Exception raised by connectors"""
-    pass
 
 
 class ConnectorConfigError(ConnectorError):
     """Exception raised when connector configuration is invalid"""
-    pass
 
 
 class ConnectorExecutionError(ConnectorError):
     """Exception raised when connector execution fails"""
-    pass

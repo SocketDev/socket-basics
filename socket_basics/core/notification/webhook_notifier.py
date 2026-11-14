@@ -1,20 +1,26 @@
-from datetime import datetime, timezone
-from typing import Any, Dict, List
 import logging
+from datetime import datetime, timezone
+from typing import Any
 
 import requests
 
-from socket_basics.core.notification.base import BaseNotifier
 from socket_basics.core.config import get_webhook_url
+from socket_basics.core.notification.base import BaseNotifier
 
 logger = logging.getLogger(__name__)
 
 
-def _compute_summary(findings: List[Dict[str, Any]]) -> Dict[str, int]:
+def _compute_summary(findings: list[dict[str, Any]]) -> dict[str, int]:
     """Compute severity counts from a findings list."""
-    counts: Dict[str, int] = {'total': len(findings), 'critical': 0, 'high': 0, 'medium': 0, 'low': 0}
+    counts: dict[str, int] = {
+        "total": len(findings),
+        "critical": 0,
+        "high": 0,
+        "medium": 0,
+        "low": 0,
+    }
     for f in findings:
-        sev = str(f.get('severity', '')).lower()
+        sev = str(f.get("severity", "")).lower()
         if sev in counts:
             counts[sev] += 1
     return counts
@@ -22,39 +28,40 @@ def _compute_summary(findings: List[Dict[str, Any]]) -> Dict[str, int]:
 
 class WebhookNotifier(BaseNotifier):
     """Webhook notifier: sends security findings to HTTP webhook endpoints.
-    
+
     Simplified version that works with pre-formatted content from connectors.
     """
 
     name = "webhook"
 
-    def __init__(self, params: Dict[str, Any] | None = None):
+    def __init__(self, params: dict[str, Any] | None = None):
         super().__init__(params or {})
         # Webhook URL from params, env variable, or app config
-        self.url = (
-            self.config.get('webhook_url') or
-            get_webhook_url()
-        )
+        self.url = self.config.get("webhook_url") or get_webhook_url()
 
-    def notify(self, facts: Dict[str, Any]) -> None:
-        notifications = facts.get('notifications', []) or []
-        
+    def notify(self, facts: dict[str, Any]) -> None:
+        notifications = facts.get("notifications", []) or []
+
         if not isinstance(notifications, list):
-            logger.error('WebhookNotifier: only supports new format - list of dicts with title/content')
+            logger.error(
+                "WebhookNotifier: only supports new format - list of dicts with title/content"
+            )
             return
-            
+
         if not notifications:
-            logger.info('WebhookNotifier: no notifications present; skipping')
+            logger.info("WebhookNotifier: no notifications present; skipping")
             return
 
         # Validate format
         valid_notifications = []
         for item in notifications:
-            if isinstance(item, dict) and 'title' in item and 'content' in item:
+            if isinstance(item, dict) and "title" in item and "content" in item:
                 valid_notifications.append(item)
             else:
-                logger.warning('WebhookNotifier: skipping invalid notification item: %s', type(item))
-        
+                logger.warning(
+                    "WebhookNotifier: skipping invalid notification item: %s", type(item)
+                )
+
         if not valid_notifications:
             return
 
@@ -62,40 +69,42 @@ class WebhookNotifier(BaseNotifier):
         for item in valid_notifications:
             self._send_webhook(facts, item)
 
-    def _send_webhook(self, facts: Dict[str, Any], item: Dict[str, Any]) -> None:
+    def _send_webhook(self, facts: dict[str, Any], item: dict[str, Any]) -> None:
         """Send a single webhook with structured payload."""
         if not self.url:
-            logger.warning('WebhookNotifier: no webhook URL configured')
+            logger.warning("WebhookNotifier: no webhook URL configured")
             return
 
         # Get repository and branch info from facts (populated by NotificationManager)
-        repo = facts.get('repository', 'Unknown')
-        branch = facts.get('branch', 'Unknown')
+        repo = facts.get("repository", "Unknown")
+        branch = facts.get("branch", "Unknown")
 
-        title = item['title']
-        content = item['content']
-        findings = item.get('findings', [])
+        title = item["title"]
+        content = item["content"]
+        findings = item.get("findings", [])
 
         payload = {
-            'repository': repo,
-            'branch': branch,
-            'scanner': 'socket-security',
-            'timestamp': datetime.now(timezone.utc).strftime('%Y-%m-%dT%H:%M:%SZ'),
-            'scan_type': title,
-            'summary': _compute_summary(findings),
-            'findings': findings,
-            'notification': {
-                'title': title,
-                'content': content,
-            }
+            "repository": repo,
+            "branch": branch,
+            "scanner": "socket-security",
+            "timestamp": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
+            "scan_type": title,
+            "summary": _compute_summary(findings),
+            "findings": findings,
+            "notification": {
+                "title": title,
+                "content": content,
+            },
         }
 
         try:
             resp = requests.post(self.url, json=payload, timeout=10)
             if resp.status_code >= 400:
-                logger.warning('WebhookNotifier: HTTP error %s: %s', resp.status_code, resp.text[:200])
+                logger.warning(
+                    "WebhookNotifier: HTTP error %s: %s", resp.status_code, resp.text[:200]
+                )
             else:
                 logger.info('WebhookNotifier: sent webhook for "%s"', title)
 
         except Exception as e:
-            logger.error('WebhookNotifier: exception sending webhook: %s', e)
+            logger.error("WebhookNotifier: exception sending webhook: %s", e)

@@ -21,7 +21,6 @@ import pytest
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 from scripts.preview_pr_comments import make_mock_config
-
 from socket_basics.core.connector.normalizer import _normalize_alert
 from socket_basics.core.connector.opengrep import OpenGrepScanner
 
@@ -73,17 +72,20 @@ def config():
 
 def test_suppressed_alert_excluded_from_pr_notifications(config):
     scanner = _make_scanner(config)
-    components = _normalize(scanner, [
-        {
-            "id": "GetActionablePlanStatusesUseCase.kt",
-            "name": "GetActionablePlanStatusesUseCase.kt",
-            "type": "generic",
-            "alerts": [
-                _alert("kotlin-sql-injection", "critical", "SUPPRESSED_SNIPPET_XYZ", 66),
-                _alert("kotlin-weak-hash", "critical", "ACTIVE_SNIPPET_ABC", 70),
-            ],
-        }
-    ])
+    components = _normalize(
+        scanner,
+        [
+            {
+                "id": "GetActionablePlanStatusesUseCase.kt",
+                "name": "GetActionablePlanStatusesUseCase.kt",
+                "type": "generic",
+                "alerts": [
+                    _alert("kotlin-sql-injection", "critical", "SUPPRESSED_SNIPPET_XYZ", 66),
+                    _alert("kotlin-weak-hash", "critical", "ACTIVE_SNIPPET_ABC", 70),
+                ],
+            }
+        ],
+    )
 
     # The normalizer flagged only the disabled rule as suppressed.
     alerts = components[0]["alerts"]
@@ -108,14 +110,17 @@ def test_suppressed_alert_excluded_from_pr_notifications(config):
 
 def test_all_suppressed_yields_no_notifications(config):
     scanner = _make_scanner(config)
-    components = _normalize(scanner, [
-        {
-            "id": "f.kt",
-            "name": "f.kt",
-            "type": "generic",
-            "alerts": [_alert("kotlin-sql-injection", "critical", "X", 66)],
-        }
-    ])
+    components = _normalize(
+        scanner,
+        [
+            {
+                "id": "f.kt",
+                "name": "f.kt",
+                "type": "generic",
+                "alerts": [_alert("kotlin-sql-injection", "critical", "X", 66)],
+            }
+        ],
+    )
 
     # Every alert suppressed -> no groups -> empty per-notifier mapping.
     assert scanner.generate_notifications(components) == {}
@@ -127,14 +132,17 @@ def test_low_severity_not_suppressed_still_notifies(config):
     # still see those findings in the PR comment. Regression guard against gating
     # notifications on action == 'ignore' instead of the explicit actionReason.
     scanner = _make_scanner(config, allowed_severities=("critical", "high", "low"))
-    components = _normalize(scanner, [
-        {
-            "id": "f.kt",
-            "name": "f.kt",
-            "type": "generic",
-            "alerts": [_alert("kotlin-style-nit", "low", "LOW_SNIPPET_LMN", 12)],
-        }
-    ])
+    components = _normalize(
+        scanner,
+        [
+            {
+                "id": "f.kt",
+                "name": "f.kt",
+                "type": "generic",
+                "alerts": [_alert("kotlin-style-nit", "low", "LOW_SNIPPET_LMN", 12)],
+            }
+        ],
+    )
 
     # Low maps to action 'ignore' but carries no actionReason (not suppressed).
     low = components[0]["alerts"][0]

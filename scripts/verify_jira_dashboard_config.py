@@ -40,7 +40,7 @@ def _load_dotenv(dotenv_path: Path) -> None:
             if not line or line.startswith("#"):
                 continue
             if line.startswith("export "):
-                line = line[len("export "):].strip()
+                line = line[len("export ") :].strip()
             if "=" not in line:
                 continue
             key, val = line.split("=", 1)
@@ -72,7 +72,7 @@ def main() -> int:
         cfg_path = repo_root / "socket_basics" / "notifications.yaml"
         notif_cfg = None
         if cfg_path.exists():
-            with open(cfg_path, "r") as f:
+            with open(cfg_path) as f:
                 notif_cfg = yaml.safe_load(f)
     except Exception as exc:
         print(f"ERROR: failed to load notifications.yaml: {exc}")
@@ -83,7 +83,9 @@ def main() -> int:
 
     jira_notifiers = [n for n in nm.notifiers if getattr(n, "name", "").lower() == "jira"]
     if not jira_notifiers:
-        print("Jira notifier not enabled. Check that dashboard config includes jira_url or env provides JIRA_URL.")
+        print(
+            "Jira notifier not enabled. Check that dashboard config includes jira_url or env provides JIRA_URL."
+        )
         return 1
 
     # Print details for first Jira notifier

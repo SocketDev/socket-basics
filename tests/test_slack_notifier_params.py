@@ -1,7 +1,5 @@
-import os
-
-from socket_basics.core.notification.slack_notifier import SlackNotifier
 from socket_basics.core.notification.manager import NotificationManager
+from socket_basics.core.notification.slack_notifier import SlackNotifier
 
 
 def _base_cfg():
@@ -11,7 +9,11 @@ def _base_cfg():
                 "module_path": "socket_basics.core.notification.slack_notifier",
                 "class": "SlackNotifier",
                 "parameters": [
-                    {"name": "slack_webhook_url", "env_variable": "INPUT_SLACK_WEBHOOK_URL", "type": "str"},
+                    {
+                        "name": "slack_webhook_url",
+                        "env_variable": "INPUT_SLACK_WEBHOOK_URL",
+                        "type": "str",
+                    },
                 ],
             }
         }
@@ -52,7 +54,9 @@ def test_slack_enabled_via_app_config(monkeypatch):
     monkeypatch.delenv("INPUT_SLACK_WEBHOOK_URL", raising=False)
 
     cfg = _base_cfg()
-    nm = NotificationManager(cfg, app_config={"slack_webhook_url": "https://hooks.slack.com/dashboard"})
+    nm = NotificationManager(
+        cfg, app_config={"slack_webhook_url": "https://hooks.slack.com/dashboard"}
+    )
     nm.load_from_config()
 
     slack = next(n for n in nm.notifiers if getattr(n, "name", "") == "slack")
@@ -76,7 +80,9 @@ def test_slack_app_config_precedence_over_env(monkeypatch):
     monkeypatch.setenv("INPUT_SLACK_WEBHOOK_URL", "https://hooks.slack.com/env")
 
     cfg = _base_cfg()
-    nm = NotificationManager(cfg, app_config={"slack_webhook_url": "https://hooks.slack.com/dashboard"})
+    nm = NotificationManager(
+        cfg, app_config={"slack_webhook_url": "https://hooks.slack.com/dashboard"}
+    )
     nm.load_from_config()
 
     slack = next(n for n in nm.notifiers if getattr(n, "name", "") == "slack")
