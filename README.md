@@ -154,7 +154,7 @@ Socket Enterprise customers can configure Socket Basics directly from the [Socke
 
 ![Socket Basics Settings](docs/screenshots/socket_basics_settings.png)
 
-Configure scanning policies, notification channels, and rule sets for your entire organization in one place. Socket Basics loads these settings on every run when its API key has the `socket-basics` scope, and they take precedence over the matching workflow inputs, including fields you leave blank. See [Dashboard Settings and Workflow Inputs](docs/github-action.md#dashboard-settings-and-workflow-inputs) for the exceptions and for setting values per repository.
+Configure scanning policies, notification channels, and rule sets for your entire organization in one place. Socket Basics loads these settings on every run when its API key has the `socket-basics:read` scope, and they take precedence over the matching workflow inputs, including fields you leave blank. See [Dashboard Settings and Workflow Inputs](docs/github-action.md#dashboard-settings-and-workflow-inputs) for the exceptions and for setting values per repository.
 
 ![Socket Basics Section Config](docs/screenshots/socket_basics_section_config.png)
 
@@ -164,12 +164,14 @@ Create your `SOCKET_SECURITY_API_KEY` in the [Socket Dashboard](https://socket.d
 
 | Scope | Required for |
 |-------|--------------|
-| `full-scans` | Submitting scan results to your organization |
-| `socket-basics` | Loading scanner configuration from the Socket Dashboard |
+| `full-scans:create` | Submitting scan results to your organization, and running Socket Tier 1 reachability |
+| `socket-basics:read` | Loading scanner configuration from the Socket Dashboard (Enterprise organizations) |
 
-If Socket Basics is configured from the Socket Dashboard, the `socket-basics` scope is required. If it is missing, you will see `Insufficient permissions` when Socket Basics loads dashboard configuration.
+If Socket Basics is configured from the Socket Dashboard, `socket-basics:read` is required. If it is missing, the log shows `Insufficient permissions` and `Error loading Socket Basics config`, and the scan runs with the workflow inputs alone. On an Enterprise organization the organization is then not discovered from the key either, so results are not uploaded unless `SOCKET_ORG` is set.
 
-If Socket Basics is configured with CLI arguments, environment variables, or a JSON config file, only `full-scans` permissions are required for result submission. Set `SOCKET_ORG` explicitly in your workflow when using this mode.
+If Socket Basics is configured with CLI arguments, environment variables, or a JSON config file, only `full-scans:create` is required. Set `SOCKET_ORG` explicitly in your workflow when using this mode.
+
+A missing scope does not change the exit code. See [API token scopes](docs/parameters.md#api-token-scopes) for every Socket API call Socket Basics makes and the scope each one checks.
 
 ## 💻 Other Usage Methods
 
@@ -270,7 +272,7 @@ Add new connectors by:
 
 **Socket API errors / results missing from the dashboard:**
 - Ensure `SOCKET_SECURITY_API_KEY` and `SOCKET_ORG` are set correctly
-- `No Socket organization configured` in the log means nothing was uploaded: set `SOCKET_ORG`, or use a key with the `socket-basics` scope so the organization can be discovered
+- `No Socket organization configured` in the log means nothing was uploaded: set `SOCKET_ORG`, or use a key with the `socket-basics:read` scope so the organization can be discovered
 - `Need at least one file to be uploaded` means the facts file was written outside the scanned workspace; keep `--output` inside it (see [Save Results to File](docs/local-install-docker.md#save-results-to-file))
 - Verify your Socket Enterprise subscription is active
 - If you see `Insufficient permissions`, confirm your API token has the scopes required for your configuration mode (see [Required API Token Scopes](#required-api-token-scopes))
