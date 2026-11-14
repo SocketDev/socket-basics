@@ -18,6 +18,10 @@ logger = logging.getLogger(__name__)
 TRUE_STRINGS = ('true', '1', 'yes', 'on')
 FALSE_STRINGS = ('false', '0', 'no', 'off')
 
+# Bundled rule files for languages OpenGrep cannot parse. Loading one makes
+# OpenGrep report an UnknownLanguageError, so an all-languages scan skips them.
+UNSUPPORTED_OPENGREP_RULE_FILES = frozenset({'erlang.yml', 'objective-c.yml'})
+
 
 def coerce_bool(value: Any, default: bool) -> bool:
     """Coerce a config value to a bool, tolerating the string forms.
@@ -525,7 +529,7 @@ class Config:
     def build_opengrep_rules(self) -> List[str]:
         """Build list of rule files based on enabled languages"""
         # Explicit mapping from connector boolean flags to bundled rule filenames.
-        # Exclude languages for which we don't ship rule files (objective-c, erlang).
+        # Erlang and Objective-C are left out: see UNSUPPORTED_OPENGREP_RULE_FILES.
         language_rules = {
             'python_sast_enabled': 'python.yml',
             'go_sast_enabled': 'go.yml',
@@ -565,8 +569,7 @@ class Config:
                         base_dir = Path(__file__).parent.parent
                         rules_dir = base_dir / 'rules'
                         found = [p.name for p in rules_dir.glob('*.yml') if p.is_file()]
-                        excluded = {'objective-c.yml', 'erlang.yml'}
-                        return [f for f in found if f not in excluded]
+                        return [f for f in found if f not in UNSUPPORTED_OPENGREP_RULE_FILES]
                     except Exception:
                         return list({v for v in language_rules.values()})
                 # No languages enabled -> nothing to run
@@ -617,23 +620,24 @@ class Config:
         }
 
         rule_file_filters: Dict[str, set] = {}
+        # C and C++ share c_cpp.yml, and C# and .NET share dotnet.yml. An enabled
+        # language with an empty list runs every rule, so the shared file must
+        # stay unfiltered even when the other language sets a list.
+        unfiltered_rule_files: set = set()
 
         for flag, (rule_file, rules_param) in language_rule_mapping.items():
             if not self.get(flag, False):
                 continue
 
             # rules_param is the exact parameter name defined in connectors.yaml
-            enabled_rules = self.get(rules_param, "")
+            enabled_rules = [s.strip() for s in (self.get(rules_param, "") or "").split(',') if s.strip()]
             if not enabled_rules:
+                unfiltered_rule_files.add(rule_file)
                 continue
 
-            for r in [s.strip() for s in enabled_rules.split(',') if s.strip()]:
-                if rule_file not in rule_file_filters:
-                    rule_file_filters[rule_file] = set()
-                rule_file_filters[rule_file].add(r)
+            rule_file_filters.setdefault(rule_file, set()).update(enabled_rules)
 
-        # Convert sets to lists for output
-        return {k: list(v) for k, v in rule_file_filters.items()}
+        return {k: list(v) for k, v in rule_file_filters.items() if k not in unfiltered_rule_files}
 
     def get_custom_rules_path(self) -> Optional[Path]:
         """Get the absolute path to custom SAST rules directory.

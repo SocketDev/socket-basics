@@ -177,9 +177,9 @@ inputs:
     required: false
     default: ""
   c_enabled_rules:
-    description: "Comma-separated list of C SAST rules to enable (default: high-confidence rules)"
+    description: "Comma-separated IDs of the C SAST rules to run (default: empty, which runs every bundled C rule)"
     required: false
-    default: "c-buffer-overflow,c-format-string-vulnerability,c-command-injection,c-sql-injection,c-use-after-free,c-hardcoded-secrets,c-weak-crypto,c-ssl-issues"
+    default: ""
   c_sast_enabled:
     description: "Enable C SAST scanning"
     required: false
@@ -197,9 +197,9 @@ inputs:
     required: false
     default: ""
   cpp_enabled_rules:
-    description: "Comma-separated list of C++ SAST rules to enable (default: high-confidence rules)"
+    description: "Comma-separated IDs of the C++ SAST rules to run (default: empty, which runs every bundled C++ rule)"
     required: false
-    default: "c-buffer-overflow,c-format-string-vulnerability,c-command-injection,c-sql-injection,c-use-after-free,c-hardcoded-secrets,c-weak-crypto,c-ssl-issues,cpp-unsafe-cast,cpp-memory-management"
+    default: ""
   cpp_sast_enabled:
     description: "Enable C++ SAST scanning"
     required: false
@@ -209,9 +209,9 @@ inputs:
     required: false
     default: ""
   csharp_enabled_rules:
-    description: "Comma-separated list of C# SAST rules to enable (default: high-confidence rules)"
+    description: "Comma-separated IDs of the C# SAST rules to run (default: empty, which runs every bundled C# rule)"
     required: false
-    default: "dotnet-sql-injection,dotnet-command-injection,dotnet-code-injection,dotnet-unsafe-deserialization,dotnet-ldap-injection,dotnet-hardcoded-credentials,dotnet-ssl-bypass,dotnet-xxe-vulnerability,dotnet-xpath-injection"
+    default: ""
   csharp_sast_enabled:
     description: "Enable C# SAST scanning"
     required: false
@@ -229,9 +229,9 @@ inputs:
     required: false
     default: ""
   dotnet_enabled_rules:
-    description: "Comma-separated list of .NET SAST rules to enable (default: high-confidence rules)"
+    description: "Comma-separated IDs of the .NET SAST rules to run (default: empty, which runs every bundled .NET rule)"
     required: false
-    default: "dotnet-sql-injection,dotnet-command-injection,dotnet-code-injection,dotnet-unsafe-deserialization,dotnet-ldap-injection,dotnet-hardcoded-credentials,dotnet-ssl-bypass,dotnet-xxe-vulnerability,dotnet-xpath-injection"
+    default: ""
   dotnet_sast_enabled:
     description: "Enable .NET SAST scanning"
     required: false
@@ -241,9 +241,9 @@ inputs:
     required: false
     default: ""
   elixir_enabled_rules:
-    description: "Comma-separated list of Elixir SAST rules to enable (default: high-confidence rules)"
+    description: "Comma-separated IDs of the Elixir SAST rules to run (default: empty, which runs every bundled Elixir rule)"
     required: false
-    default: "elixir-code-injection,elixir-sql-injection,elixir-command-injection,elixir-unsafe-deserialization,elixir-hardcoded-secrets,elixir-phoenix-ecto-injection"
+    default: ""
   elixir_sast_enabled:
     description: "Enable Elixir SAST scanning"
     required: false
@@ -257,9 +257,9 @@ inputs:
     required: false
     default: ""
   go_enabled_rules:
-    description: "Comma-separated list of Go SAST rules to enable (default: high-confidence rules)"
+    description: "Comma-separated IDs of the Go SAST rules to run (default: empty, which runs every bundled Go rule)"
     required: false
-    default: "go-hardcoded-credentials,go-bind-all-interfaces,go-unsafe-usage,go-ssh-insecure-ignore-host-key,go-profiling-endpoint-exposed,go-decompression-bomb,go-sql-format-string"
+    default: ""
   go_sast_enabled:
     description: "Enable Go SAST scanning"
     required: false
@@ -273,9 +273,9 @@ inputs:
     required: false
     default: ""
   java_enabled_rules:
-    description: "Comma-separated list of Java SAST rules to enable (default: high-confidence rules)"
+    description: "Comma-separated IDs of the Java SAST rules to run (default: empty, which runs every bundled Java rule)"
     required: false
-    default: "java-sql-injection,java-unsafe-deserialization,java-command-injection,java-ldap-injection,java-hardcoded-credentials,java-weak-crypto-md5,java-weak-crypto-sha1,java-xxe-vulnerability,java-ssl-bypass,java-weak-ssl-version,java-jndi-injection,java-el-injection"
+    default: ""
   java_sast_enabled:
     description: "Enable Java SAST scanning"
     required: false
@@ -285,9 +285,9 @@ inputs:
     required: false
     default: ""
   javascript_enabled_rules:
-    description: "Comma-separated list of JavaScript/TypeScript SAST rules to enable (default: high-confidence rules)"
+    description: "Comma-separated IDs of the JavaScript/TypeScript SAST rules to run (default: empty, which runs every bundled JavaScript/TypeScript rule)"
     required: false
-    default: "js-eval-usage,js-sql-injection,js-command-injection,js-prototype-pollution,js-xss-innerhtml,js-path-traversal,js-tls-reject-unauthorized-false,js-weak-crypto-md5"
+    default: ""
   javascript_sast_enabled:
     description: "Enable JavaScript/TypeScript SAST scanning"
     required: false
@@ -317,9 +317,9 @@ inputs:
     required: false
     default: ""
   kotlin_enabled_rules:
-    description: "Comma-separated list of Kotlin SAST rules to enable (default: high-confidence rules)"
+    description: "Comma-separated IDs of the Kotlin SAST rules to run (default: empty, which runs every bundled Kotlin rule)"
     required: false
-    default: "kotlin-sql-injection,kotlin-command-injection,kotlin-code-injection,kotlin-unsafe-deserialization,kotlin-hardcoded-secrets,kotlin-ssl-bypass,kotlin-xxe-vulnerability,kotlin-ldap-injection"
+    default: ""
   kotlin_sast_enabled:
     description: "Enable Kotlin SAST scanning"
     required: false
@@ -357,9 +357,9 @@ inputs:
     required: false
     default: ""
   php_enabled_rules:
-    description: "Comma-separated list of PHP SAST rules to enable (default: high-confidence rules)"
+    description: "Comma-separated IDs of the PHP SAST rules to run (default: empty, which runs every bundled PHP rule)"
     required: false
-    default: "php-code-injection,php-sql-injection,php-command-injection,php-unsafe-deserialization,php-ldap-injection,php-file-inclusion,php-xxe-vulnerability,php-hardcoded-secrets,php-path-traversal"
+    default: ""
   php_sast_enabled:
     description: "Enable PHP SAST scanning"
     required: false
@@ -373,9 +373,9 @@ inputs:
     required: false
     default: ""
   python_enabled_rules:
-    description: "Comma-separated list of Python SAST rules to enable (default: high-confidence rules)"
+    description: "Comma-separated IDs of the Python SAST rules to run (default: empty, which runs every bundled Python rule)"
     required: false
-    default: "python-exec-used,python-bad-file-permissions,python-hardcoded-password-string,python-eval-usage,python-request-without-cert-validation,python-ssl-bad-version,python-subprocess-shell-true,python-start-process-with-shell,python-sql-injection-format,python-flask-debug-true,python-jinja2-autoescape-false"
+    default: ""
   python_sast_enabled:
     description: "Enable Python SAST scanning"
     required: false
@@ -385,9 +385,9 @@ inputs:
     required: false
     default: ""
   ruby_enabled_rules:
-    description: "Comma-separated list of Ruby SAST rules to enable (default: high-confidence rules)"
+    description: "Comma-separated IDs of the Ruby SAST rules to run (default: empty, which runs every bundled Ruby rule)"
     required: false
-    default: "ruby-eval-injection,ruby-command-injection,ruby-sql-injection,ruby-unsafe-deserialization,ruby-hardcoded-secrets,ruby-ssl-verification-bypass,ruby-rails-find-by-sql-injection,ruby-rails-unsafe-constantize,ruby-xxe-vulnerability"
+    default: ""
   ruby_sast_enabled:
     description: "Enable Ruby SAST scanning"
     required: false
@@ -397,9 +397,9 @@ inputs:
     required: false
     default: ""
   rust_enabled_rules:
-    description: "Comma-separated list of Rust SAST rules to enable (default: high-confidence rules)"
+    description: "Comma-separated IDs of the Rust SAST rules to run (default: empty, which runs every bundled Rust rule)"
     required: false
-    default: "rust-command-injection,rust-unsafe-deserialization,rust-sql-injection,rust-hardcoded-secrets,rust-insecure-tls,rust-buffer-overflow-potential"
+    default: ""
   rust_sast_enabled:
     description: "Enable Rust SAST scanning"
     required: false
@@ -409,9 +409,9 @@ inputs:
     required: false
     default: ""
   scala_enabled_rules:
-    description: "Comma-separated list of Scala SAST rules to enable (default: high-confidence rules)"
+    description: "Comma-separated IDs of the Scala SAST rules to run (default: empty, which runs every bundled Scala rule)"
     required: false
-    default: "scala-sql-injection,scala-code-injection,scala-command-injection,scala-unsafe-deserialization,scala-hardcoded-secrets,scala-ssl-bypass,scala-slick-sql-injection"
+    default: ""
   scala_sast_enabled:
     description: "Enable Scala SAST scanning"
     required: false
@@ -445,9 +445,9 @@ inputs:
     required: false
     default: ""
   swift_enabled_rules:
-    description: "Comma-separated list of Swift SAST rules to enable (default: high-confidence rules)"
+    description: "Comma-separated IDs of the Swift SAST rules to run (default: empty, which runs every bundled Swift rule)"
     required: false
-    default: "swift-sql-injection,swift-command-injection,swift-unsafe-deserialization,swift-hardcoded-secrets,swift-ssl-bypass,swift-insecure-urlsession,swift-certificate-pinning-bypass"
+    default: ""
   swift_sast_enabled:
     description: "Enable Swift SAST scanning"
     required: false

@@ -2,14 +2,16 @@
 """
 OpenGrep SAST Scanner Connector
 
-This connector composes a single OpenGrep command that includes full
-language rule files and appends --exclude-rule flags for any rules that
-should be skipped. It intentionally does not attempt per-rule fallbacks.
+This connector composes a single OpenGrep command from the enabled language
+rule files. When a language has an enabled-rule allowlist, it passes a
+temporary copy of that rule file holding only the enabled rules. It
+intentionally does not attempt per-rule fallbacks.
 """
 
 import json
 import logging
 import os
+import shutil
 import subprocess
 import tempfile
 import yaml
@@ -17,6 +19,7 @@ from pathlib import Path
 from typing import Dict, Any, List
 
 from ..base import BaseConnector
+from ...config import UNSUPPORTED_OPENGREP_RULE_FILES
 # Opengrep produces canonical components/notifications directly
 
 # Import individual notifier modules
@@ -41,6 +44,45 @@ class OpenGrepScanner(BaseConnector):
 		super().__init__(config)
 
 	def scan(self) -> Dict[str, Any]:
+		# Temporary rule files and directories written during the scan, removed
+		# once it ends.
+		self._temp_rule_paths: List[Path] = []
+		try:
+			return self._scan()
+		finally:
+			for path in self._temp_rule_paths:
+				if path.is_dir():
+					shutil.rmtree(path, ignore_errors=True)
+				else:
+					path.unlink(missing_ok=True)
+
+	def _write_filtered_rule_file(self, source: Path, data: Dict[str, Any], kept: List[Dict[str, Any]]) -> Path:
+		"""Write a copy of ``source`` that holds only the ``kept`` rules.
+
+		The copy goes in the same directory as ``source``. OpenGrep prefixes each
+		rule ID with the directories of its rules file, not the file name, and
+		computes finding fingerprints from that ID. Socket includes the
+		fingerprint in the alert key that triage is stored against, so a copy in
+		another directory would give every kept finding a new key. The hidden
+		``.yaml`` name keeps the copy out of the ``*.yml`` rule-file globs.
+		"""
+		try:
+			fd, name = tempfile.mkstemp(dir=source.parent, prefix='.socket-filtered-', suffix='.yaml')
+		except OSError:
+			logger.warning(
+				'Cannot write next to %s; using a temporary directory, so fingerprints of its findings will differ from an unfiltered scan',
+				source,
+			)
+			temp_dir = Path(tempfile.mkdtemp(prefix='socket_filtered_rules_'))
+			self._temp_rule_paths.append(temp_dir)
+			fd, name = tempfile.mkstemp(dir=temp_dir, prefix='.socket-filtered-', suffix='.yaml')
+		path = Path(name)
+		self._temp_rule_paths.append(path)
+		with os.fdopen(fd, 'w', encoding='utf-8') as fh:
+			yaml.safe_dump({**data, 'rules': kept}, fh, sort_keys=False, allow_unicode=True)
+		return path
+
+	def _scan(self) -> Dict[str, Any]:
 		# Determine enabled rule files
 		try:
 			rule_files = self.config.build_opengrep_rules() or []
@@ -80,7 +122,7 @@ class OpenGrepScanner(BaseConnector):
 				rule_files = [
 					p.name
 					for p in Path(rules_dir).glob('*.yml')
-					if p.name != 'tests.yml'
+					if p.name != 'tests.yml' and p.name not in UNSUPPORTED_OPENGREP_RULE_FILES
 				]
 				logger.info("Expanded all-languages scan to rule files: %s", rule_files)
 			except Exception:
@@ -101,7 +143,11 @@ class OpenGrepScanner(BaseConnector):
 			logger.info(f"Custom SAST rules enabled, loading from: {custom_rules_path}")
 			try:
 				builder = CustomRulesBuilder(custom_rules_path)
-				custom_rule_files = builder.build_rule_files(rule_files)
+				try:
+					custom_rule_files = builder.build_rule_files(rule_files)
+				finally:
+					if builder.temp_dir is not None:
+						self._temp_rule_paths.append(builder.temp_dir)
 			except Exception as e:
 				logger.error(f"Failed to build custom rule files: {e}", exc_info=True)
 				custom_rule_files = {}
@@ -128,12 +174,11 @@ class OpenGrepScanner(BaseConnector):
 			filtered = {}
 
 		config_args: List[str] = []
-		
+
 		# Build config_args using custom rules where available, falling back to bundled rules
 		# Process all enabled languages - use filtered rules if specified, otherwise use all rules
 		for rf in rule_files:
 			# Check if we have a custom rule file for this language
-			using_custom_rules = bool(custom_rule_files and rf in custom_rule_files)
 			if custom_rule_files and rf in custom_rule_files:
 				p = custom_rule_files[rf]
 				logger.info("Using custom rules for %s from %s", rf, p)
@@ -147,33 +192,38 @@ class OpenGrepScanner(BaseConnector):
 			
 			# Check if this language has specific rules enabled (filtered mode)
 			if filtered and rf in filtered:
-				enabled_ids = filtered[rf]
+				enabled_ids = set(filtered[rf] or [])
 				logger.info("Filtering rules for %s: %d enabled IDs configured", rf, len(enabled_ids))
 				try:
 					with open(p, 'r') as fh:
 						data = yaml.safe_load(fh) or {}
-					all_ids = [r.get('id') for r in (data.get('rules') or []) if r.get('id')]
-					# Custom-rule mode can coexist with legacy bundled allowlists.
-					# If none of the configured enabled IDs match custom IDs, keep all
-					# custom IDs active to avoid silently disabling user-authored rules.
-					if using_custom_rules:
-						matched_enabled_ids = [rid for rid in all_ids if rid in (enabled_ids or [])]
-						if enabled_ids and not matched_enabled_ids:
-							logger.warning(
-								"No configured enabled-rule IDs matched custom rules for %s; using all custom rules from %s",
-								rf,
-								p,
-							)
-							config_args.extend(['--config', str(p)])
-							continue
-						to_exclude = [rid for rid in all_ids if rid not in matched_enabled_ids]
-					else:
-						to_exclude = [rid for rid in all_ids if rid not in (enabled_ids or [])]
-					config_args.extend(['--config', str(p)])
-					for ex in to_exclude:
-						config_args.extend(['--exclude-rule', ex])
+					rules = [r for r in (data.get('rules') or []) if isinstance(r, dict)]
+					kept = [r for r in rules if r.get('id') in enabled_ids]
+					unknown_ids = sorted(enabled_ids - {r.get('id') for r in rules})
+					if not kept:
+						# An allowlist that matches nothing is almost always stale or
+						# misspelled IDs. Running every rule keeps coverage instead of
+						# silently scanning nothing for this language.
+						logger.warning(
+							"None of the %d enabled-rule IDs configured for %s match a rule in %s; running all %d rules. Unmatched IDs: %s",
+							len(enabled_ids), rf, p, len(rules), ', '.join(unknown_ids),
+						)
+						config_args.extend(['--config', str(p)])
+						continue
+					if unknown_ids:
+						logger.warning(
+							"Enabled-rule IDs for %s that match no rule in %s and will be ignored: %s",
+							rf, p, ', '.join(unknown_ids),
+						)
+					# Pass a copy of the file that holds only the enabled rules.
+					# --exclude-rule does not work here: OpenGrep matches it against
+					# rule IDs prefixed with the rules file's directories.
+					filtered_path = self._write_filtered_rule_file(p, data, kept)
+					logger.info("Enabled %d of %d rules for %s", len(kept), len(rules), rf)
+					config_args.extend(['--config', str(filtered_path)])
 				except Exception:
-					logger.debug('Failed reading/parsing rule file %s', p, exc_info=True)
+					logger.warning('Failed applying enabled-rule filter to %s; running all rules from it', p, exc_info=True)
+					config_args.extend(['--config', str(p)])
 			else:
 				# No specific rules configured - use all rules from this file
 				logger.debug(f"Using all rules for {rf}")
@@ -201,7 +251,7 @@ class OpenGrepScanner(BaseConnector):
 				try:
 					for p in Path(rules_dir).glob('*.yml'):
 						# Skip tests.yml from community rules
-						if p.name == 'tests.yml':
+						if p.name == 'tests.yml' or p.name in UNSUPPORTED_OPENGREP_RULE_FILES:
 							continue
 						config_args.extend(['--config', str(p)])
 				except Exception:
