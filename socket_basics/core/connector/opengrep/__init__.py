@@ -187,8 +187,8 @@ class OpenGrepScanner(BaseConnector):
 							rf, p, ', '.join(unknown_ids),
 						)
 					# Pass a copy of the file that holds only the enabled rules.
-					# OpenGrep prefixes rule IDs from a --config path with the path's
-					# directories, so --exclude-rule never matches a bare rule ID.
+					# --exclude-rule is not used: it applies to every loaded file, so
+					# it would also drop a same-named rule from another language.
 					if filtered_rules_dir is None:
 						filtered_rules_dir = Path(tempfile.mkdtemp(prefix='socket_filtered_rules_'))
 						self._temp_rule_dirs.append(filtered_rules_dir)
@@ -245,7 +245,11 @@ class OpenGrepScanner(BaseConnector):
 		with tempfile.NamedTemporaryFile(mode='w', suffix='.json', delete=False) as tf:
 			out_file = tf.name
 
-		cmd = ['opengrep', '--json', '--dataflow-traces', '--output', out_file]
+		# By default OpenGrep prefixes each rule ID with the directories of its
+		# --config path, and the finding fingerprint is computed from that ID.
+		# Rule files can live in per-run temporary directories, so keep the IDs
+		# bare to give the same finding the same fingerprint on every run.
+		cmd = ['opengrep', '--json', '--dataflow-traces', '--no-rewrite-rule-ids', '--output', out_file]
 		verbose = self.config.get('verbose', False)
 		cmd.append('--verbose' if verbose else '--quiet')
 

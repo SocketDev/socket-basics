@@ -15,6 +15,13 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   so expect fewer SAST findings. Clear the list or set
   `all_rules_enabled: 'true'` to keep running every rule. The step log warns
   about listed IDs that match no rule. See the Fixed entry below.
+- **SAST finding fingerprints change once.** OpenGrep computed each finding's
+  `fingerprint` from a rule ID that included the rules file's directory path,
+  so it depended on where the rules were installed, and custom-rule findings
+  got a new fingerprint on every run. Fingerprints now depend only on the rule
+  and the code, so every SAST finding gets a new fingerprint on the first scan
+  after upgrading. Tools that deduplicate on the fingerprint, such as Microsoft
+  Sentinel or JSON output consumers, will see each finding as new once.
 - **Socket Tier 1 needs outbound access to `api.socket.dev` and
   `storage.googleapis.com`.** Socket npm CLI 1.9.0 and later download the
   Coana reachability engine from Socket instead of npm, with no npm fallback.

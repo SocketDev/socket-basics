@@ -1,7 +1,9 @@
 import json
+import tempfile
 from pathlib import Path
 from types import SimpleNamespace
 
+import pytest
 import yaml
 
 from socket_basics.core.config import Config
@@ -379,3 +381,91 @@ def test_all_rules_and_languages_skip_rule_files_opengrep_cannot_load():
     rule_files = Config({"all_rules_enabled": True, "all_languages_enabled": True}).build_opengrep_rules()
     assert "python.yml" in rule_files
     assert not {"erlang.yml", "objective-c.yml"} & set(rule_files)
+
+
+def _record_temp_dirs(monkeypatch) -> list[Path]:
+    """Record every directory ``tempfile.mkdtemp`` creates during the test."""
+    created: list[Path] = []
+    real_mkdtemp = tempfile.mkdtemp
+
+    def _mkdtemp(*args, **kwargs):
+        path = real_mkdtemp(*args, **kwargs)
+        created.append(Path(path))
+        return path
+
+    monkeypatch.setattr(tempfile, "mkdtemp", _mkdtemp)
+    return created
+
+
+def _custom_and_filtered_scanner(tmp_path) -> OpenGrepScanner:
+    """Scanner that writes both a custom-rule and a filtered-rule directory."""
+    workspace = tmp_path / "workspace"
+    workspace.mkdir(parents=True, exist_ok=True)
+    _write_custom_rules_file(workspace / ".socket" / "rules" / "org-rules.yml", ["org.no-eval", "org.no-innerhtml"])
+    bundled_rules_dir = tmp_path / "bundled-rules"
+    _write_rule_file(bundled_rules_dir / "javascript_typescript.yml", ["js-default-rule"])
+    config = Config(
+        {
+            "workspace": str(workspace),
+            "output_dir": str(workspace),
+            "javascript_sast_enabled": True,
+            "javascript_enabled_rules": "org.no-eval",
+            "use_custom_sast_rules": True,
+            "custom_sast_rule_path": ".socket/rules",
+            "opengrep_rules_dir": str(bundled_rules_dir),
+            "all_languages_enabled": False,
+            "all_rules_enabled": False,
+            "verbose": False,
+        }
+    )
+    scanner = OpenGrepScanner(config)
+    scanner._convert_to_socket_facts = lambda _: {"components": []}
+    scanner.generate_notifications = lambda _: {}
+    return scanner
+
+
+def test_temp_rule_dirs_are_removed_when_opengrep_is_missing(tmp_path, monkeypatch):
+    created = _record_temp_dirs(monkeypatch)
+    scanner = _custom_and_filtered_scanner(tmp_path)
+
+    def _missing(cmd, capture_output, text):
+        raise FileNotFoundError("opengrep")
+
+    monkeypatch.setattr("socket_basics.core.connector.opengrep.subprocess.run", _missing)
+    assert scanner.scan() == {}
+
+    names = sorted(p.name.split("_rules_")[0] for p in created)
+    assert names == ["socket_custom", "socket_filtered"]
+    assert not any(p.exists() for p in created)
+
+
+def test_temp_rule_dirs_are_removed_when_the_scan_raises(tmp_path, monkeypatch):
+    created = _record_temp_dirs(monkeypatch)
+    scanner = _custom_and_filtered_scanner(tmp_path)
+
+    def _crash(cmd, capture_output, text):
+        raise RuntimeError("opengrep crashed")
+
+    monkeypatch.setattr("socket_basics.core.connector.opengrep.subprocess.run", _crash)
+    with pytest.raises(RuntimeError, match="opengrep crashed"):
+        scanner.scan()
+
+    assert len(created) == 2
+    assert not any(p.exists() for p in created)
+
+
+def test_custom_rule_dir_is_removed_when_building_custom_rules_fails(tmp_path, monkeypatch):
+    created = _record_temp_dirs(monkeypatch)
+    scanner = _custom_and_filtered_scanner(tmp_path)
+
+    def _fail(self, rules_by_file):
+        raise OSError("disk full")
+
+    monkeypatch.setattr(
+        "socket_basics.core.connector.opengrep.custom_rules.CustomRulesBuilder._write_rule_files", _fail
+    )
+    _mock_subprocess_run(monkeypatch, [])
+    scanner.scan()
+
+    assert [p.name.split("_rules_")[0] for p in created][:1] == ["socket_custom"]
+    assert not any(p.exists() for p in created)

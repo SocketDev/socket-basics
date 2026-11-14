@@ -1,9 +1,9 @@
 """End-to-end check that ``<language>_enabled_rules`` narrows a real OpenGrep run.
 
-Asserting on the command line is not enough here: OpenGrep prefixes the ID of
-every rule it loads from a ``--config`` path with that path's directories, so a
-command that looks right can still run every rule. These tests run the real
-binary on the bundled JavaScript rules and check which rules report findings.
+Asserting on the command line is not enough here: how OpenGrep matches and
+reports rule IDs depends on how it loads the rule files, so a command that looks
+right can still run every rule. These tests run the real binary on the bundled
+JavaScript rules and check which rules report findings and their fingerprints.
 
 Skipped when ``opengrep`` is not on PATH, unless CI requires it.
 """
@@ -48,19 +48,19 @@ debugger;
 _real_run = subprocess.run
 
 
-def _scan(tmp_path: Path, monkeypatch, **overrides) -> set[str]:
-    """Run the OpenGrep connector over APP_JS and return the reported rule IDs."""
+def _scan_findings(tmp_path: Path, monkeypatch, **overrides) -> set[tuple[str, str]]:
+    """Run the OpenGrep connector over APP_JS; return (rule ID, fingerprint) pairs."""
     workspace = tmp_path / "workspace"
-    workspace.mkdir()
+    workspace.mkdir(exist_ok=True)
     (workspace / "app.js").write_text(APP_JS, encoding="utf-8")
 
-    reported: set[str] = set()
+    reported: set[tuple[str, str]] = set()
 
     def _run_and_record(cmd, **kwargs):
         result = _real_run(cmd, **kwargs)
         out_file = Path(cmd[cmd.index("--output") + 1])
         for r in json.loads(out_file.read_text() or "{}").get("results", []):
-            reported.add(r["check_id"].rsplit(".", 1)[-1])
+            reported.add((r["check_id"].rsplit(".", 1)[-1], r["extra"]["fingerprint"]))
         return result
 
     monkeypatch.setattr(
@@ -85,6 +85,11 @@ def _scan(tmp_path: Path, monkeypatch, **overrides) -> set[str]:
     return reported
 
 
+def _scan(tmp_path: Path, monkeypatch, **overrides) -> set[str]:
+    """Run the OpenGrep connector over APP_JS and return the reported rule IDs."""
+    return {rule for rule, _ in _scan_findings(tmp_path, monkeypatch, **overrides)}
+
+
 def test_without_an_allowlist_every_matching_rule_reports(tmp_path, monkeypatch):
     reported = _scan(tmp_path, monkeypatch, javascript_enabled_rules="")
     assert {"js-code-injection-eval", "js-weak-hash-md5", "js-debugger-statement"} <= reported
@@ -107,3 +112,12 @@ def test_all_rules_enabled_overrides_the_allowlist(tmp_path, monkeypatch):
         all_rules_enabled=True,
     )
     assert "js-debugger-statement" in reported
+
+
+def test_filtered_scans_give_stable_fingerprints(tmp_path, monkeypatch):
+    """Each filtered scan writes its rules to a new temporary directory; the
+    fingerprints of unchanged findings must not depend on that directory."""
+    enabled = "js-code-injection-eval,js-weak-hash-md5"
+    first = _scan_findings(tmp_path, monkeypatch, javascript_enabled_rules=enabled)
+    second = _scan_findings(tmp_path, monkeypatch, javascript_enabled_rules=enabled)
+    assert first and first == second
