@@ -28,8 +28,8 @@ class MockConfig(dict):
     def __getattr__(self, key):
         try:
             return self[key]
-        except KeyError:
-            raise AttributeError(key)
+        except KeyError as error:
+            raise AttributeError(key) from error
 
 
 def make_mock_config(
@@ -131,7 +131,7 @@ OPENGREP_FIXTURES = {
                     "ruleId": "sql-injection-extra",
                     "startLine": 31,
                     "endLine": 33,
-                    "codeSnippet": 'query = f"SELECT * FROM users WHERE name = \'{request.GET[\'name\']}\'"  \ncursor.execute(query)',
+                    "codeSnippet": "query = f\"SELECT * FROM users WHERE name = '{request.GET['name']}'\"  \ncursor.execute(query)",
                 },
             },
         },
@@ -340,26 +340,35 @@ SCANNERS = {
 
 def run_opengrep(config):
     from socket_basics.core.connector.opengrep.github_pr import format_notifications
+
     return format_notifications(OPENGREP_FIXTURES, config=config)
 
 
 def run_trivy_image(config):
     from socket_basics.core.connector.trivy.github_pr import format_notifications
-    return format_notifications(_trivy_image_fixture(), item_name="example-app:latest", scan_type="image", config=config)
+
+    return format_notifications(
+        _trivy_image_fixture(), item_name="example-app:latest", scan_type="image", config=config
+    )
 
 
 def run_trivy_dockerfile(config):
     from socket_basics.core.connector.trivy.github_pr import format_notifications
-    return format_notifications(_trivy_dockerfile_fixture(), item_name="Dockerfile", scan_type="dockerfile", config=config)
+
+    return format_notifications(
+        _trivy_dockerfile_fixture(), item_name="Dockerfile", scan_type="dockerfile", config=config
+    )
 
 
 def run_trufflehog(config):
     from socket_basics.core.connector.trufflehog.github_pr import format_notifications
+
     return format_notifications(TRUFFLEHOG_FIXTURES, config=config)
 
 
 def run_tier1(config):
     from socket_basics.core.connector.socket_tier1.github_pr import format_notifications
+
     return format_notifications(TIER1_FIXTURES, config=config)
 
 
@@ -382,7 +391,7 @@ def main():
     parser.add_argument(
         "--scanner",
         default="all",
-        choices=list(SCANNERS.keys()) + ["all"],
+        choices=[*list(SCANNERS.keys()), "all"],
         help="Which scanner to preview (default: all)",
     )
     args = parser.parse_args()

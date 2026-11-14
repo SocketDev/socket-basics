@@ -1,4 +1,4 @@
-from typing import Any, Dict
+from typing import Any
 
 
 class BaseNotifier:
@@ -9,12 +9,12 @@ class BaseNotifier:
 
     name = "base"
 
-    def __init__(self, config: Dict[str, Any] | None = None) -> None:
+    def __init__(self, config: dict[str, Any] | None = None) -> None:
         self.config = config or {}
 
-    def notify(self, facts: Dict[str, Any]) -> None:
+    def notify(self, facts: dict[str, Any]) -> None:
         """Emit notifications for provided Socket facts.
 
         facts: full aggregated socket facts structure.
         """
-        raise NotImplementedError()
+        raise NotImplementedError

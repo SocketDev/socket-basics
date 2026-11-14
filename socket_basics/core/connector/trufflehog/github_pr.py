@@ -1,40 +1,40 @@
-#!/usr/bin/env python3
 """
 GitHub PR notifier for TruffleHog results.
 Formats results with markdown for better GitHub display of secret detection findings.
 """
 
-from typing import Dict, Any, List
+from typing import Any
+
 from socket_basics.core.notification import github_pr_helpers as helpers
 
 
-def format_notifications(mapping: Dict[str, Any], config=None) -> List[Dict[str, Any]]:
+def format_notifications(mapping: dict[str, Any], config=None) -> list[dict[str, Any]]:
     """Format for GitHub PR comments - detailed with markdown formatting."""
     # Get feature flags from config (using shared helper)
     flags = helpers.get_feature_flags(config)
-    enable_links = flags['enable_links']
-    repository = flags['repository']
-    commit_hash = flags['commit_hash']
-    full_scan_url = flags['full_scan_url']
+    enable_links = flags["enable_links"]
+    repository = flags["repository"]
+    commit_hash = flags["commit_hash"]
+    full_scan_url = flags["full_scan_url"]
 
     # Use shared severity constants
     severity_order = helpers.SEVERITY_ORDER
     severity_emoji = helpers.SEVERITY_EMOJI
 
     rows = []
-    
+
     for comp in mapping.values():
-        for a in comp.get('alerts', []):
-            props = a.get('props', {}) or {}
-            detector = str(props.get('detectorName', '') or a.get('title') or '')
-            severity = str(a.get('severity', '')).lower()
-            file_path = str(props.get('filePath', '-'))
-            line = str(props.get('lineNumber', ''))
-            redacted = str(props.get('redactedValue', ''))
-            verified = props.get('verified', False)
-            
+        for a in comp.get("alerts", []):
+            props = a.get("props", {}) or {}
+            detector = str(props.get("detectorName", "") or a.get("title") or "")
+            severity = str(a.get("severity", "")).lower()
+            file_path = str(props.get("filePath", "-"))
+            line = str(props.get("lineNumber", ""))
+            redacted = str(props.get("redactedValue", ""))
+            verified = props.get("verified", False)
+
             # Format with markdown for better GitHub display
-            status = '✅ **VERIFIED**' if verified else '⚠️ *Unverified*'
+            status = "✅ **VERIFIED**" if verified else "⚠️ *Unverified*"
 
             # Create clickable file location link
             line_num = int(line) if line and line.isdigit() else None
@@ -43,40 +43,42 @@ def format_notifications(mapping: Dict[str, Any], config=None) -> List[Dict[str,
                 line_start=line_num,
                 repository=repository,
                 commit_hash=commit_hash,
-                enable_links=enable_links
+                enable_links=enable_links,
             )
 
             # Add severity emoji
-            emoji = severity_emoji.get(severity, '⚪')
+            emoji = severity_emoji.get(severity, "⚪")
 
-            rows.append((
-                severity_order.get(severity, 4),
-                [
-                    f"**{detector}**",
-                    f"{emoji} *{severity.upper()}*",
-                    status,
-                    file_display,
-                    f"`{redacted}`" if redacted else '-'
-                ]
-            ))
-    
+            rows.append(
+                (
+                    severity_order.get(severity, 4),
+                    [
+                        f"**{detector}**",
+                        f"{emoji} *{severity.upper()}*",
+                        status,
+                        file_display,
+                        f"`{redacted}`" if redacted else "-",
+                    ],
+                )
+            )
+
     # Sort by severity (critical first)
     rows.sort(key=lambda x: x[0])
     rows = [row[1] for row in rows]
-    
+
     # Create markdown table
     if not rows:
         content = "No secrets detected."
     else:
-        headers = ['Detector', 'Severity', 'Status', 'Location', 'Secret']
-        header_row = '| ' + ' | '.join(headers) + ' |'
-        separator_row = '| ' + ' | '.join(['---'] * len(headers)) + ' |'
+        headers = ["Detector", "Severity", "Status", "Location", "Secret"]
+        header_row = "| " + " | ".join(headers) + " |"
+        separator_row = "| " + " | ".join(["---"] * len(headers)) + " |"
         content_rows = []
         for row in rows:
-            content_rows.append('| ' + ' | '.join(str(cell) for cell in row) + ' |')
-        
-        content = '\n'.join([header_row, separator_row] + content_rows)
-    
+            content_rows.append("| " + " | ".join(str(cell) for cell in row) + " |")
+
+        content = "\n".join([header_row, separator_row, *content_rows])
+
     # Build title - just scanner name (repo/branch context already visible in PR)
     title = "Socket Secret Scanning"
 
@@ -96,10 +98,7 @@ def format_notifications(mapping: Dict[str, Any], config=None) -> List[Dict[str,
 
     # Wrap in standard PR comment section
     wrapped_content = helpers.wrap_pr_comment_section(
-        'trufflehog-secrets', title, summary_content, full_scan_url
+        "trufflehog-secrets", title, summary_content, full_scan_url
     )
-    
-    return [{
-        'title': title,
-        'content': wrapped_content
-    }]
+
+    return [{"title": title, "content": wrapped_content}]

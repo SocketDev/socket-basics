@@ -1,0 +1,18 @@
+repos:
+  - repo: local
+    hooks:
+
+      # Use the project's locked Ruff version, shared with CI and make lint.
+      - id: ruff-check
+        name: ruff check
+        entry: uv run --locked --extra dev ruff check --force-exclude --fix
+        language: system
+        types_or: [python, pyi]
+        require_serial: true
+
+      - id: ruff-format
+        name: ruff format
+        entry: uv run --locked --extra dev ruff format --force-exclude
+        language: system
+        types_or: [python, pyi]
+        require_serial: true

@@ -1,7 +1,7 @@
-from pathlib import Path
 import hashlib
 import logging
 import re
+from pathlib import Path
 from types import SimpleNamespace
 
 import pytest
@@ -30,7 +30,7 @@ def _scanner(tmp_path, exclude_dirs):
         "trufflehog_show_unverified": False,
     }.get(key, default)
     config.get_action_for_severity = lambda severity: "error"
-    config.get_scan_targets = lambda: []
+    config.get_scan_targets = list
     scanner = TruffleHogScanner.__new__(TruffleHogScanner)
     scanner.config = config
     return scanner
@@ -453,7 +453,7 @@ def test_scan_cleans_filter_when_all_explicit_targets_are_excluded(tmp_path, mon
 def test_scan_skips_when_no_targets_are_available(tmp_path, monkeypatch, caplog):
     scanner = _scanner(tmp_path, "")
     scanner.is_enabled = lambda: True
-    scanner.config.get_scan_targets = lambda: []
+    scanner.config.get_scan_targets = list
 
     def unexpected_run(command, **kwargs):
         raise AssertionError("TruffleHog should not run without scan targets")

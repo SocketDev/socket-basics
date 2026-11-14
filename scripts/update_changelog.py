@@ -16,6 +16,7 @@ Usage:
     # Dry run (print result without writing):
     python scripts/update_changelog.py --version 2.0.1 --date 2024-06-01 --dry-run
 """
+
 from __future__ import annotations
 
 import argparse
@@ -25,6 +26,7 @@ from pathlib import Path
 
 REPO = "SocketDev/socket-basics"
 CHANGELOG = Path(__file__).parent.parent / "CHANGELOG.md"
+
 
 # Tags from v2.0.0 onward use a v prefix; older tags don't.
 # The script always adds the v prefix for new releases.
@@ -68,8 +70,8 @@ def _insert_release_section(content: str, version: str, date: str, notes: str) -
     # or end of headings (handles a clean changelog with no prior version entries).
     unreleased_pattern = re.compile(
         r"(## \[Unreleased\][^\n]*\n)"  # the heading line
-        r"(.*?)"                          # any existing [Unreleased] content
-        r"(?=## \[|\Z)",                  # stop before next ## [ section or end of string
+        r"(.*?)"  # any existing [Unreleased] content
+        r"(?=## \[|\Z)",  # stop before next ## [ section or end of string
         re.IGNORECASE | re.DOTALL,
     )
     match = unreleased_pattern.search(content)
@@ -103,22 +105,26 @@ def _update_links(content: str, version: str, prev_tag: str) -> str:
 
     # Insert the new version link immediately after [Unreleased]
     new_link = f"[{version}]:      {_compare_url(prev_tag, new_tag)}"
-    content = re.sub(
+    return re.sub(
         r"(\[Unreleased\]:.*\n)",
         rf"\1{new_link}\n",
         content,
         flags=re.MULTILINE,
     )
 
-    return content
-
 
 def main() -> None:
-    parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
+    parser = argparse.ArgumentParser(
+        description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter
+    )
     parser.add_argument("--version", required=True, help="New version without v prefix, e.g. 2.0.1")
     parser.add_argument("--date", required=True, help="Release date in YYYY-MM-DD format")
-    parser.add_argument("--notes-file", help="Path to file containing release notes (default: read stdin)")
-    parser.add_argument("--dry-run", action="store_true", help="Print result without writing to disk")
+    parser.add_argument(
+        "--notes-file", help="Path to file containing release notes (default: read stdin)"
+    )
+    parser.add_argument(
+        "--dry-run", action="store_true", help="Print result without writing to disk"
+    )
     args = parser.parse_args()
 
     # Read release notes

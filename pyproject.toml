@@ -39,8 +39,8 @@ dependencies = [
 dev = [
     "pytest>=9.1.1",
     "pytest-cov>=7.1.0",
-    "black>=26.5.1",
-    "flake8>=5.0.0",
+    "ruff==0.17.4",
+    "pre-commit==4.6.2",
 ]
 
 [project.urls]
@@ -69,12 +69,180 @@ include = [
 [dependency-groups]
 dev = []
 
-[tool.black]
-line-length = 100
-target-version = ["py39"]
-
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 python_files = ["test_*.py"]
 python_classes = ["Test*"]
 python_functions = ["test_*"]
+
+[tool.ruff]
+# The formatter owns physical layout. E501 and W291/W293 are unselected:
+# whitespace inside help text, log messages, and Markdown strings is content.
+target-version = "py310"
+line-length = 100
+# Scanner targets intentionally contain vulnerable code; the CWE table is generated.
+extend-exclude = ["app_tests", "tests/fixtures", "socket_basics/core/connector/opengrep/cwe_catalog.py"]
+exclude = [
+    ".bzr",
+    ".direnv",
+    ".eggs",
+    ".git",
+    ".git-rewrite",
+    ".hg",
+    ".ipynb_checkpoints",
+    ".mypy_cache",
+    ".nox",
+    ".pants.d",
+    ".pyenv",
+    ".pytest_cache",
+    ".pytype",
+    ".ruff_cache",
+    ".svn",
+    ".tox",
+    ".venv",
+    ".vscode",
+    "__pypackages__",
+    "_build",
+    "buck-out",
+    "build",
+    "dist",
+    "node_modules",
+    "site-packages",
+    "venv",
+]
+
+[tool.ruff.lint]
+select = [
+    # --- Baseline correctness -------------------------------------------
+    "E4",      # pycodestyle: import formatting
+    "E7",      # pycodestyle: statement-level errors
+    "E9",      # pycodestyle: syntax/IO errors
+    "W605",    # invalid escape sequence in a string literal
+    "F",       # Pyflakes: undefined names, unused imports, star imports
+    "I",       # isort: deterministic import order
+    "PLE",     # Pylint errors: unambiguous bugs, never style
+
+    # --- Complexity guardrails ------------------------------------------
+    "C901",    # McCabe cyclomatic complexity
+    "PLR0913", # too many arguments in a function definition
+
+    # --- Bug classes that matter for a CLI shipped to other people -------
+    "ASYNC",   # blocking calls inside async functions
+    "B",       # bugbear: loop-variable capture, missing `raise ... from`
+    "C4",      # comprehension misuse
+    "DTZ",     # naive datetimes: scan timestamps must be tz-aware
+    "EXE",     # shebang / executable-bit mismatches in a packaged wheel
+    "FLY",     # static str.join() that should be an f-string
+    "FURB",    # modern-Python refactors
+    "ICN",     # conventional import aliases
+    "INT",     # gettext f-string traps
+    "LOG",     # logging misuse
+    "PERF",    # avoidable per-iteration work
+    "PIE",     # dead code and redundant constructs
+    "PLW",     # Pylint warnings: unchecked subprocess, loop-var rebinding
+    "RET",     # unreachable or redundant return flow
+    "RSE",     # raise Exception() -- not raise Exception
+    "RUF",     # Ruff-native checks (incl. RUF100, see below)
+    "S",       # bandit: request timeouts, unsafe subprocess, weak randomness
+    "SIM",     # simplifiable branches and context managers
+    "SLOT",    # __slots__ on subclasses of str/tuple/namedtuple
+    "T10",     # leftover breakpoint()/pdb.set_trace() reaching a release
+    "T20",     # stray print(): stdout is a contract for a CLI, not a debug log
+    "TID",     # relative imports
+    "UP",      # pyupgrade: the floor is Python 3.11
+    "YTT",     # incorrect sys.version comparisons
+
+    # Individually selected because their siblings are style opinions
+    # (PLR2004 magic values, PLC0415 deliberate lazy imports, TRY003
+    # message length) that would cost more than they catch here.
+    "PLR1714", # repeated equality comparison -> `in`
+    "PLR1722", # `exit()` -> `sys.exit()`: `exit` only exists when `site` ran
+    "PLR1730", # if-statement that should be min()/max()
+    "PLR5501", # else-if that should be elif
+    "TRY201",  # `raise` instead of re-raising the bound name
+
+    # --- Keeping the suppressions honest --------------------------------
+    "PGH",     # no blanket `# noqa` / `# type: ignore` -- codes required
+    "RUF100",  # unused `# noqa` -- makes the grandfather list self-cleaning
+]
+
+ignore = [
+    # Keep expected failures readable without requiring tracebacks.
+    "TRY400",
+    "TRY401",
+    "SIM108",  # retain comments on if/else branches
+    "PERF401", # retain readable loops for multi-line dictionary construction
+    "S603",    # external tools use argument lists; shell=True remains checked
+    "S607",    # external tools intentionally resolve through PATH
+    "TID252",  # package-local relative imports are intentional
+    "S110",    # optional finding metadata may be malformed; skip without logging payloads
+    "S112",    # skip unsupported or malformed findings during best-effort parsing
+    "PERF203", # recover from individual finding parse errors inside scanning loops
+]
+
+# Allow fix for all enabled rules (when `--fix`) is provided.
+fixable = ["ALL"]
+unfixable = []
+
+# The information glyph is deliberate UI in the PR-comment markup.
+allowed-confusables = ["ℹ"]
+
+# Allow unused variables when underscore-prefixed.
+dummy-variable-rgx = "^(_+|(_+[a-zA-Z0-9_]*[a-zA-Z0-9]+?))$"
+
+[tool.ruff.lint.mccabe]
+# Existing over-limit functions have explicit suppressions. Split new functions
+# that exceed the limit; RUF100 rejects suppressions that become unnecessary.
+max-complexity = 12
+
+[tool.ruff.lint.pylint]
+# Allow ordinary CLI constructors while bounding argument-heavy interfaces.
+max-args = 8
+
+[tool.ruff.lint.per-file-ignores]
+# Tests use assertions, placeholder credentials, and fixed fixture paths.
+"tests/**" = [
+    "S101",    # asserts are the point
+    "S105",    # throwaway credentials in fixtures
+    "S106",
+    "S108",    # fixed temp paths in fixtures
+    "T201",    # diagnostic prints; pytest captures stdout anyway
+    "RUF012",  # ClassVar annotations on test-local constants are noise
+    "S311",    # deterministic fuzz seeds are not credentials
+]
+
+# Developer tooling, not shipped in the wheel. stdout is their entire interface.
+".hooks/**" = ["T201", "S310"]  # fetches a hardcoded PyPI JSON endpoint
+"scripts/**" = ["T201"]
+"socket_basics/core/notification/console.py" = ["T201"]
+"socket_basics/core/notification/json_notifier.py" = ["T201"]
+
+[tool.ruff.lint.isort]
+known-first-party = ["socket_basics"]
+
+[tool.ruff.format]
+# Like Black, use double quotes for strings.
+quote-style = "double"
+
+# Like Black, indent with spaces, rather than tabs.
+indent-style = "space"
+
+# Like Black, respect magic trailing commas.
+skip-magic-trailing-comma = false
+
+# Like Black, automatically detect the appropriate line ending.
+line-ending = "auto"
+
+# Enable auto-formatting of code examples in docstrings. Markdown,
+# reStructuredText code/literal blocks and doctests are all supported.
+#
+# This is currently disabled by default, but it is planned for this
+# to be opt-out in the future.
+docstring-code-format = false
+
+# Set the line length limit used when formatting code snippets in
+# docstrings.
+#
+# This only has an effect when the `docstring-code-format` setting is
+# enabled.
+docstring-code-line-length = "dynamic"

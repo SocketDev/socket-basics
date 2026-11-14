@@ -20,7 +20,7 @@ def _write_custom_rules_file(path: Path, rule_ids: list[str]) -> None:
                 f"  - id: {rid}",
                 "    pattern: eval(...)",
                 "    languages: [javascript, typescript]",
-                f'    message: Rule {rid}',
+                f"    message: Rule {rid}",
                 "    severity: ERROR",
             ]
         )
@@ -29,7 +29,8 @@ def _write_custom_rules_file(path: Path, rule_ids: list[str]) -> None:
 
 
 def _mock_subprocess_run(monkeypatch, captured_cmd: list[str]):
-    def _runner(cmd, capture_output, text):
+    def _runner(cmd, capture_output, text, check):
+        assert check is False
         captured_cmd.extend(cmd)
         out_file = cmd[cmd.index("--output") + 1]
         Path(out_file).write_text(json.dumps({"results": []}), encoding="utf-8")

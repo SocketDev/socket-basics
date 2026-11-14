@@ -25,7 +25,11 @@ def _base_cfg():
                 "module_path": "socket_basics.core.notification.sumologic_notifier",
                 "class": "SumoLogicNotifier",
                 "parameters": [
-                    {"name": "sumologic_endpoint", "env_variable": "INPUT_SUMOLOGIC_ENDPOINT", "type": "str"},
+                    {
+                        "name": "sumologic_endpoint",
+                        "env_variable": "INPUT_SUMOLOGIC_ENDPOINT",
+                        "type": "str",
+                    },
                 ],
             }
         }
@@ -34,7 +38,9 @@ def _base_cfg():
 
 def test_sumologic_reads_notifications_yaml_param_name(clean_env):
     """--sumologic-endpoint and the sumologic_endpoint action input deliver this name."""
-    n = SumoLogicNotifier({"sumologic_endpoint": "https://endpoint.sumologic.com/receiver/v1/http/abc"})
+    n = SumoLogicNotifier(
+        {"sumologic_endpoint": "https://endpoint.sumologic.com/receiver/v1/http/abc"}
+    )
     assert n.http_source_url == "https://endpoint.sumologic.com/receiver/v1/http/abc"
 
 
@@ -58,7 +64,9 @@ def test_sumologic_enabled_via_action_env_var(clean_env):
 
 
 def test_sumologic_enabled_via_app_config(clean_env):
-    nm = NotificationManager(_base_cfg(), app_config={"sumologic_endpoint": "https://endpoint.sumologic.com/cli"})
+    nm = NotificationManager(
+        _base_cfg(), app_config={"sumologic_endpoint": "https://endpoint.sumologic.com/cli"}
+    )
     nm.load_from_config()
 
     sumo = next(n for n in nm.notifiers if getattr(n, "name", "") == "sumologic")

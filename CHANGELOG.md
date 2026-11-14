@@ -18,6 +18,16 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   [Network access for Tier 1](docs/parameters.md#network-access-for-tier-1).
 
 ### Changed
+- Ruff replaces Black and Flake8 for development. Linting and formatting are
+  enforced on every pull request and push to `main`, with matching pre-commit
+  hooks and `make lint` / `make format` commands using the locked tool version.
+- Functions are limited to complexity 12 and eight arguments. Existing exceptions
+  are marked individually and obsolete suppressions fail lint checks. Vulnerable
+  scanner fixtures and the generated CWE catalog are excluded from lint cleanup.
+- Release-validation scripts and tests also support Python 3.10 through the
+  existing TOML compatibility dependency.
+- Notification formatters use timezone-aware UTC timestamps while preserving
+  their trailing-`Z` JSON representation.
 - The images set `NODE_USE_ENV_PROXY=1`, so Socket Tier 1 honors `HTTPS_PROXY`
   and `NO_PROXY`. The Socket npm CLI does not apply `HTTPS_PROXY` to its own
   requests, and Tier 1 behind a proxy failed with `getaddrinfo EAI_AGAIN

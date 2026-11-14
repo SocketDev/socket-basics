@@ -7,7 +7,6 @@ secret as unverified/low and nothing ever blocks. Unknown results remain visible
 by default because they indicate that verification could not complete.
 """
 
-from pathlib import Path
 from types import SimpleNamespace
 
 import pytest
@@ -47,9 +46,7 @@ def _captured_cmd(tmp_path, monkeypatch, show_unverified):
         invocations.append(cmd)
         return SimpleNamespace(returncode=0, stdout="", stderr="")
 
-    monkeypatch.setattr(
-        "socket_basics.core.connector.trufflehog.subprocess.run", record_run
-    )
+    monkeypatch.setattr("socket_basics.core.connector.trufflehog.subprocess.run", record_run)
     _scanner(tmp_path, show_unverified).scan()
 
     assert len(invocations) == 1
@@ -76,9 +73,7 @@ def test_trufflehog_scan_errors_are_fatal(tmp_path, monkeypatch):
     assert "--fail-on-scan-errors" in cmd
 
 
-def test_string_false_from_a_dashboard_config_excludes_unverified(
-    tmp_path, monkeypatch
-):
+def test_string_false_from_a_dashboard_config_excludes_unverified(tmp_path, monkeypatch):
     """A dashboard config is passed through verbatim, so "false" arrives as a string.
 
     Only the environment loader coerces bool params, and dashboard config
@@ -90,9 +85,7 @@ def test_string_false_from_a_dashboard_config_excludes_unverified(
         assert "--results=verified,unknown" in cmd, raw
 
 
-def test_string_true_from_a_dashboard_config_widens_result_types(
-    tmp_path, monkeypatch
-):
+def test_string_true_from_a_dashboard_config_widens_result_types(tmp_path, monkeypatch):
     for raw in ("true", "True", "1", "yes"):
         cmd = _captured_cmd(tmp_path, monkeypatch, show_unverified=raw)
         assert "--results=verified,unverified,unknown" in cmd, raw
@@ -109,16 +102,17 @@ def test_string_false_disables_secret_scanning(tmp_path, monkeypatch):
     def unexpected_run(*args, **kwargs):
         raise AssertionError("TruffleHog should not run when scanning is disabled")
 
-    monkeypatch.setattr(
-        "socket_basics.core.connector.trufflehog.subprocess.run", unexpected_run
-    )
+    monkeypatch.setattr("socket_basics.core.connector.trufflehog.subprocess.run", unexpected_run)
 
     for raw in ("false", "False", "0", "no"):
-        assert _scanner(
-            tmp_path,
-            show_unverified=False,
-            secret_scanning_enabled=raw,
-        ).scan() == {}
+        assert (
+            _scanner(
+                tmp_path,
+                show_unverified=False,
+                secret_scanning_enabled=raw,
+            ).scan()
+            == {}
+        )
 
 
 def test_string_false_scan_all_uses_staged_file_fallback(tmp_path, monkeypatch):
@@ -133,8 +127,7 @@ def test_string_false_scan_all_uses_staged_file_fallback(tmp_path, monkeypatch):
     monkeypatch.setattr(
         "socket_basics.core.connector.trufflehog.subprocess.run",
         lambda cmd, *args, **kwargs: (
-            invocations.append(cmd)
-            or SimpleNamespace(returncode=0, stdout="", stderr="")
+            invocations.append(cmd) or SimpleNamespace(returncode=0, stdout="", stderr="")
         ),
     )
 
@@ -160,9 +153,7 @@ def _finding(verified, verification_error=None):
         "DetectorName": "AWS",
         "Verified": verified,
         "Raw": "AKIAIOSFODNN7EXAMPLE",
-        "SourceMetadata": {
-            "Data": {"Filesystem": {"file": "config/secrets.py", "line": 12}}
-        },
+        "SourceMetadata": {"Data": {"Filesystem": {"file": "config/secrets.py", "line": 12}}},
     }
     if verification_error:
         finding["VerificationError"] = verification_error
@@ -208,6 +199,7 @@ def test_a_failed_trufflehog_run_fails_the_scan(tmp_path, monkeypatch):
     exclude pattern or a broken install silently zeroes out every secret
     finding for the run (CE-347).
     """
+
     def failing_run(cmd, *args, **kwargs):
         return SimpleNamespace(
             returncode=1,
@@ -215,9 +207,7 @@ def test_a_failed_trufflehog_run_fails_the_scan(tmp_path, monkeypatch):
             stderr="trufflehog: error: flag 'exclude-paths' cannot be repeated",
         )
 
-    monkeypatch.setattr(
-        "socket_basics.core.connector.trufflehog.subprocess.run", failing_run
-    )
+    monkeypatch.setattr("socket_basics.core.connector.trufflehog.subprocess.run", failing_run)
 
     with pytest.raises(SystemExit) as excinfo:
         _scanner(tmp_path, show_unverified=False).scan()
@@ -231,9 +221,7 @@ def test_a_missing_trufflehog_binary_fails_the_scan(tmp_path, monkeypatch):
     def missing_binary(cmd, *args, **kwargs):
         raise FileNotFoundError(2, "No such file or directory", "trufflehog")
 
-    monkeypatch.setattr(
-        "socket_basics.core.connector.trufflehog.subprocess.run", missing_binary
-    )
+    monkeypatch.setattr("socket_basics.core.connector.trufflehog.subprocess.run", missing_binary)
 
     with pytest.raises(SystemExit) as excinfo:
         _scanner(tmp_path, show_unverified=False).scan()

@@ -556,32 +556,37 @@ Socket Basics is designed to support **any security scanner**. To add enhancemen
 ```python
 from socket_basics.core.notification import github_pr_helpers as helpers
 
+
 def format_notifications(data, config=None):
     # 1. Get feature flags (handles all config sources automatically)
     flags = helpers.get_feature_flags(config)
 
     # 2. Use shared utilities to build your content
     file_link = helpers.format_file_location_link(
-        filepath, line_start=line_num, repository=flags['repository'],
-        commit_hash=flags['commit_hash'], enable_links=flags['enable_links']
+        filepath,
+        line_start=line_num,
+        repository=flags["repository"],
+        commit_hash=flags["commit_hash"],
+        enable_links=flags["enable_links"],
     )
 
     code_block = helpers.format_code_block(
-        code_snippet, filepath=filepath,
-        enable_fencing=flags['enable_code_fencing']
+        code_snippet, filepath=filepath, enable_fencing=flags["enable_code_fencing"]
     )
 
     collapsible = helpers.create_collapsible_section(
-        title, content, severity_counts,
-        auto_expand=(critical and not flags['collapse_non_critical'])
+        title,
+        content,
+        severity_counts,
+        auto_expand=(critical and not flags["collapse_non_critical"]),
     )
 
     # 3. Wrap in the standard PR comment section (logo, scan link, markers)
     wrapped = helpers.wrap_pr_comment_section(
-        'my-scanner', title, body_content, flags['full_scan_url']
+        "my-scanner", title, body_content, flags["full_scan_url"]
     )
 
-    return [{'title': title, 'content': wrapped}]
+    return [{"title": title, "content": wrapped}]
 ```
 
 **That's it!** Your tool instantly gets:

@@ -7,6 +7,7 @@ Two scores are produced:
   2. Raw finding volume: everything the tool emitted, which is what a customer
      actually has to triage.
 """
+
 import csv
 import json
 import re
@@ -42,12 +43,17 @@ def load_expected(csv_path):
         for row in csv.reader(fh):
             if not row or row[0].startswith("#"):
                 continue
-            name, category, real, cwe = row[0].strip(), row[1].strip(), row[2].strip(), row[3].strip()
+            name, category, real, cwe = (
+                row[0].strip(),
+                row[1].strip(),
+                row[2].strip(),
+                row[3].strip(),
+            )
             expected[name] = {"category": category, "real": real.lower() == "true", "cwe": cwe}
     return expected
 
 
-def main(results_json, expected_csv):
+def main(results_json, expected_csv):  # noqa: C901
     expected = load_expected(expected_csv)
     data = json.loads(Path(results_json).read_text())
     findings = data.get("results", [])
@@ -110,7 +116,9 @@ def main(results_json, expected_csv):
     print(f"Findings outside benchmark test files: {off_benchmark}\n")
 
     print("--- Per-category (OWASP Benchmark scoring: CWE-matched) ---")
-    print(f"{'category':14} {'TP':>5} {'FP':>5} {'FN':>5} {'TN':>5} {'prec':>7} {'recall':>7} {'FP rate':>8} {'score':>7}")
+    print(
+        f"{'category':14} {'TP':>5} {'FP':>5} {'FN':>5} {'TN':>5} {'prec':>7} {'recall':>7} {'FP rate':>8} {'score':>7}"
+    )
     tot = {"tp": 0, "fp": 0, "fn": 0, "tn": 0}
     for cat in sorted(cat_stats):
         s = cat_stats[cat]
@@ -118,27 +126,32 @@ def main(results_json, expected_csv):
             tot[k] += s[k]
         tpr = s["tp"] / (s["tp"] + s["fn"]) if (s["tp"] + s["fn"]) else 0
         fpr = s["fp"] / (s["fp"] + s["tn"]) if (s["fp"] + s["tn"]) else 0
-        print(f"{cat:14} {s['tp']:5} {s['fp']:5} {s['fn']:5} {s['tn']:5} "
-              f"{pct(s['tp'], s['tp'] + s['fp'])} {pct(s['tp'], s['tp'] + s['fn'])} "
-              f"{pct(s['fp'], s['fp'] + s['tn'])} {100 * (tpr - fpr):6.1f}")
+        print(
+            f"{cat:14} {s['tp']:5} {s['fp']:5} {s['fn']:5} {s['tn']:5} "
+            f"{pct(s['tp'], s['tp'] + s['fp'])} {pct(s['tp'], s['tp'] + s['fn'])} "
+            f"{pct(s['fp'], s['fp'] + s['tn'])} {100 * (tpr - fpr):6.1f}"
+        )
     tpr = tot["tp"] / (tot["tp"] + tot["fn"]) if (tot["tp"] + tot["fn"]) else 0
     fpr = tot["fp"] / (tot["fp"] + tot["tn"]) if (tot["fp"] + tot["tn"]) else 0
-    print(f"{'TOTAL':14} {tot['tp']:5} {tot['fp']:5} {tot['fn']:5} {tot['tn']:5} "
-          f"{pct(tot['tp'], tot['tp'] + tot['fp'])} {pct(tot['tp'], tot['tp'] + tot['fn'])} "
-          f"{pct(tot['fp'], tot['fp'] + tot['tn'])} {100 * (tpr - fpr):6.1f}")
+    print(
+        f"{'TOTAL':14} {tot['tp']:5} {tot['fp']:5} {tot['fn']:5} {tot['tn']:5} "
+        f"{pct(tot['tp'], tot['tp'] + tot['fp'])} {pct(tot['tp'], tot['tp'] + tot['fn'])} "
+        f"{pct(tot['fp'], tot['fp'] + tot['tn'])} {100 * (tpr - fpr):6.1f}"
+    )
 
     print("\n--- Per-rule (CWE-matched TP/FP) ---")
     print(f"{'rule':38} {'TP':>5} {'FP':>5} {'prec':>7} {'raw findings':>13}")
     for rule in sorted(per_rule_total, key=lambda r: -per_rule_total[r]):
         s = rule_stats.get(rule, {"tp": 0, "fp": 0})
-        print(f"{rule:38} {s['tp']:5} {s['fp']:5} {pct(s['tp'], s['tp'] + s['fp'])} {per_rule_total[rule]:13}")
+        print(
+            f"{rule:38} {s['tp']:5} {s['fp']:5} {pct(s['tp'], s['tp'] + s['fp'])} {per_rule_total[rule]:13}"
+        )
 
 
 if __name__ == "__main__":
     if len(sys.argv) != 3:
         print(
-            "usage: score_owasp_benchmark.py <opengrep-results.json> "
-            "<expectedresults-1.2.csv>",
+            "usage: score_owasp_benchmark.py <opengrep-results.json> <expectedresults-1.2.csv>",
             file=sys.stderr,
         )
         sys.exit(2)

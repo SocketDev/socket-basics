@@ -11,31 +11,27 @@ These utilities are designed to work with any security scanner (SAST, SCA, secre
 """
 
 import re
-from typing import Dict, Any, Optional, List, Tuple
 from pathlib import Path
+from typing import Any
 
 # coerce_bool lives in the config layer so the environment loader, a Socket
 # dashboard config and these flags all read a string the same way.
 from socket_basics.core.config import coerce_bool
 
-
 # ============================================================================
 # Severity Constants (shared across all scanners)
 # ============================================================================
 
-SEVERITY_ORDER = {'critical': 0, 'high': 1, 'medium': 2, 'low': 3}
+SEVERITY_ORDER = {"critical": 0, "high": 1, "medium": 2, "low": 3}
 
-SEVERITY_EMOJI = {
-    'critical': '🔴',
-    'high': '🟠',
-    'medium': '🟡',
-    'low': '⚪'
-}
+SEVERITY_EMOJI = {"critical": "🔴", "high": "🟠", "medium": "🟡", "low": "⚪"}
 
 # 32px logo for PR comment headers (PNG file stored in assets/)
 # TODO: Switch back to main branch URL once assets/socket-logo.png before merging.
 # Using feature branch URL for now so the logo renders during PR testing.
-SOCKET_LOGO_URL = 'https://raw.githubusercontent.com/SocketDev/socket-basics/main/assets/socket-logo.png'
+SOCKET_LOGO_URL = (
+    "https://raw.githubusercontent.com/SocketDev/socket-basics/main/assets/socket-logo.png"
+)
 SOCKET_LOGO_IMG = f'<img src="{SOCKET_LOGO_URL}" alt="" width="24" height="24">'
 
 
@@ -52,10 +48,7 @@ def format_title_with_logo(title: str) -> str:
 
 
 def wrap_pr_comment_section(
-    section_id: str,
-    title: str,
-    body: str,
-    full_scan_url: Optional[str] = None
+    section_id: str, title: str, body: str, full_scan_url: str | None = None
 ) -> str:
     """Wrap scanner output in the standard PR comment structure.
 
@@ -89,7 +82,8 @@ def wrap_pr_comment_section(
 # Configuration Helper
 # ============================================================================
 
-def get_feature_flags(config) -> Dict[str, Any]:
+
+def get_feature_flags(config) -> dict[str, Any]:
     """Extract PR comment feature flags from config object.
 
     Args:
@@ -100,33 +94,34 @@ def get_feature_flags(config) -> Dict[str, Any]:
     """
     if not config:
         return {
-            'enable_links': True,
-            'enable_collapse': True,
-            'collapse_non_critical': True,
-            'collapse_all': False,
-            'enable_code_fencing': True,
-            'show_rule_names': True,
-            'repository': '',
-            'commit_hash': '',
-            'full_scan_url': None
+            "enable_links": True,
+            "enable_collapse": True,
+            "collapse_non_critical": True,
+            "collapse_all": False,
+            "enable_code_fencing": True,
+            "show_rule_names": True,
+            "repository": "",
+            "commit_hash": "",
+            "full_scan_url": None,
         }
 
     return {
-        'enable_links': coerce_bool(config.get('pr_comment_links_enabled'), True),
-        'enable_collapse': coerce_bool(config.get('pr_comment_collapse_enabled'), True),
-        'collapse_non_critical': coerce_bool(config.get('pr_comment_collapse_non_critical'), True),
-        'collapse_all': coerce_bool(config.get('pr_comment_collapse_all'), False),
-        'enable_code_fencing': coerce_bool(config.get('pr_comment_code_fencing_enabled'), True),
-        'show_rule_names': coerce_bool(config.get('pr_comment_show_rule_names'), True),
-        'repository': config.repo if hasattr(config, 'repo') else '',
-        'commit_hash': config.commit_hash if hasattr(config, 'commit_hash') else '',
-        'full_scan_url': config.get('full_scan_html_url') if config else None
+        "enable_links": coerce_bool(config.get("pr_comment_links_enabled"), True),
+        "enable_collapse": coerce_bool(config.get("pr_comment_collapse_enabled"), True),
+        "collapse_non_critical": coerce_bool(config.get("pr_comment_collapse_non_critical"), True),
+        "collapse_all": coerce_bool(config.get("pr_comment_collapse_all"), False),
+        "enable_code_fencing": coerce_bool(config.get("pr_comment_code_fencing_enabled"), True),
+        "show_rule_names": coerce_bool(config.get("pr_comment_show_rule_names"), True),
+        "repository": config.repo if hasattr(config, "repo") else "",
+        "commit_hash": config.commit_hash if hasattr(config, "commit_hash") else "",
+        "full_scan_url": config.get("full_scan_html_url") if config else None,
     }
 
 
 # ============================================================================
 # Language Detection
 # ============================================================================
+
 
 def detect_language_from_filename(filename: str) -> str:
     """Detect programming language from file extension.
@@ -138,51 +133,52 @@ def detect_language_from_filename(filename: str) -> str:
         Markdown language identifier for code fencing
     """
     ext_map = {
-        '.js': 'javascript',
-        '.jsx': 'javascript',
-        '.ts': 'typescript',
-        '.tsx': 'typescript',
-        '.py': 'python',
-        '.go': 'go',
-        '.java': 'java',
-        '.kt': 'kotlin',
-        '.scala': 'scala',
-        '.rb': 'ruby',
-        '.php': 'php',
-        '.cs': 'csharp',
-        '.cpp': 'cpp',
-        '.c': 'c',
-        '.h': 'c',
-        '.hpp': 'cpp',
-        '.swift': 'swift',
-        '.rs': 'rust',
-        '.ex': 'elixir',
-        '.exs': 'elixir',
-        '.erl': 'erlang',
-        '.sh': 'bash',
-        '.yaml': 'yaml',
-        '.yml': 'yaml',
-        '.json': 'json',
-        '.xml': 'xml',
-        '.html': 'html',
-        '.css': 'css',
-        '.sql': 'sql',
-        '.dockerfile': 'dockerfile',
-        '.Dockerfile': 'dockerfile',
+        ".js": "javascript",
+        ".jsx": "javascript",
+        ".ts": "typescript",
+        ".tsx": "typescript",
+        ".py": "python",
+        ".go": "go",
+        ".java": "java",
+        ".kt": "kotlin",
+        ".scala": "scala",
+        ".rb": "ruby",
+        ".php": "php",
+        ".cs": "csharp",
+        ".cpp": "cpp",
+        ".c": "c",
+        ".h": "c",
+        ".hpp": "cpp",
+        ".swift": "swift",
+        ".rs": "rust",
+        ".ex": "elixir",
+        ".exs": "elixir",
+        ".erl": "erlang",
+        ".sh": "bash",
+        ".yaml": "yaml",
+        ".yml": "yaml",
+        ".json": "json",
+        ".xml": "xml",
+        ".html": "html",
+        ".css": "css",
+        ".sql": "sql",
+        ".dockerfile": "dockerfile",
+        ".Dockerfile": "dockerfile",
     }
 
     ext = Path(filename).suffix.lower()
 
     # Special case for Dockerfile (no extension)
-    if Path(filename).name.lower() in ['dockerfile', 'dockerfile.dev', 'dockerfile.prod']:
-        return 'dockerfile'
+    if Path(filename).name.lower() in ["dockerfile", "dockerfile.dev", "dockerfile.prod"]:
+        return "dockerfile"
 
-    return ext_map.get(ext, '')
+    return ext_map.get(ext, "")
 
 
 # ============================================================================
 # GitHub URL Building
 # ============================================================================
+
 
 def clean_filepath(filepath: str) -> str:
     """Strip CI workspace prefixes from a filepath for display and URL building.
@@ -200,34 +196,32 @@ def clean_filepath(filepath: str) -> str:
     clean_path = filepath
 
     workspace_prefixes = [
-        '/github/workspace/',
-        'github/workspace/',
-        '/home/runner/work/',
+        "/github/workspace/",
+        "github/workspace/",
+        "/home/runner/work/",
     ]
 
     for prefix in workspace_prefixes:
         if clean_path.startswith(prefix):
-            clean_path = clean_path[len(prefix):]
+            clean_path = clean_path[len(prefix) :]
             break
 
     # For /home/runner/work/{owner}/{repo}/ pattern, strip the repo path
-    if clean_path.startswith('/home/runner/work/') or clean_path.startswith('home/runner/work/'):
-        parts = clean_path.split('/')
+    if clean_path.startswith(("/home/runner/work/", "home/runner/work/")):
+        parts = clean_path.split("/")
         if len(parts) > 4:
-            clean_path = '/'.join(parts[6:]) if parts[0] == '' else '/'.join(parts[5:])
+            clean_path = "/".join(parts[6:]) if parts[0] == "" else "/".join(parts[5:])
 
     # Remove leading ./ or /
-    clean_path = clean_path.lstrip('./')
-
-    return clean_path
+    return clean_path.lstrip("./")
 
 
 def build_github_file_url(
     repository: str,
     commit_hash: str,
     filepath: str,
-    line_start: Optional[int] = None,
-    line_end: Optional[int] = None
+    line_start: int | None = None,
+    line_end: int | None = None,
 ) -> str:
     """Build a GitHub URL to a specific file and line range.
 
@@ -242,7 +236,7 @@ def build_github_file_url(
         GitHub URL string (empty if repository/commit missing)
     """
     if not repository or not commit_hash:
-        return ''
+        return ""
 
     clean_path = clean_filepath(filepath)
 
@@ -271,11 +265,11 @@ def build_github_file_url(
 
 def format_file_location_link(
     filepath: str,
-    line_start: Optional[int] = None,
-    line_end: Optional[int] = None,
-    repository: str = '',
-    commit_hash: str = '',
-    enable_links: bool = True
+    line_start: int | None = None,
+    line_end: int | None = None,
+    repository: str = "",
+    commit_hash: str = "",
+    enable_links: bool = True,
 ) -> str:
     """Format a file location as plain text or clickable markdown link.
 
@@ -322,10 +316,8 @@ def format_file_location_link(
             if line_start is not None:
                 if line_end is not None and line_end != line_start:
                     return f"[{display_path}:{line_start}-{line_end}]({url})"
-                else:
-                    return f"[{display_path}:{line_start}]({url})"
-            else:
-                return f"[{display_path}]({url})"
+                return f"[{display_path}:{line_start}]({url})"
+            return f"[{display_path}]({url})"
 
     return location_text
 
@@ -334,11 +326,9 @@ def format_file_location_link(
 # Trace Formatting (for Socket Tier 1 reachability)
 # ============================================================================
 
+
 def format_trace_with_links(
-    trace_lines: List[str],
-    repository: str,
-    commit_hash: str,
-    enable_links: bool = True
+    trace_lines: list[str], repository: str, commit_hash: str, enable_links: bool = True
 ) -> str:
     """Format trace lines with clickable GitHub links.
 
@@ -352,7 +342,7 @@ def format_trace_with_links(
         Formatted trace string with optional links
     """
     if not trace_lines:
-        return ''
+        return ""
 
     formatted_lines = []
 
@@ -366,17 +356,11 @@ def format_trace_with_links(
         # Note: package names can contain dashes, so we look for " - " (space-dash-space) as separator
 
         # Try format with " - " separator first
-        match = re.match(
-            r'^(\s*)(.+?)\s+-\s+([^\s]+)\s+(\d+):(\d+)(?:-(\d+):(\d+))?$',
-            line
-        )
+        match = re.match(r"^(\s*)(.+?)\s+-\s+([^\s]+)\s+(\d+):(\d+)(?:-(\d+):(\d+))?$", line)
 
         if not match:
             # Try format with "-> " prefix (no " - " separator)
-            match = re.match(
-                r'^(\s+->)\s+(.+?)\s+([^\s]+)\s+(\d+):(\d+)(?:-(\d+):(\d+))?$',
-                line
-            )
+            match = re.match(r"^(\s+->)\s+(.+?)\s+([^\s]+)\s+(\d+):(\d+)(?:-(\d+):(\d+))?$", line)
 
         if match:
             prefix = match.group(1)
@@ -402,9 +386,9 @@ def format_trace_with_links(
                     location += f"-{line_end}:{col_end}"
 
                 # Format based on whether it has the " - " separator or "-> " prefix
-                if ' - ' in line or line.strip().startswith('->'):
+                if " - " in line or line.strip().startswith("->"):
                     # Preserve original structure
-                    if '-> ' in prefix:
+                    if "-> " in prefix:
                         formatted = f"{prefix} {package} [{display_name} {location}]({github_url})"
                     else:
                         formatted = f"{prefix}{package} - [{display_name} {location}]({github_url})"
@@ -418,14 +402,15 @@ def format_trace_with_links(
             # Couldn't parse, keep original
             formatted_lines.append(line)
 
-    return '\n'.join(formatted_lines)
+    return "\n".join(formatted_lines)
 
 
 # ============================================================================
 # Collapsible Sections
 # ============================================================================
 
-def build_severity_summary(severity_counts: Dict[str, int]) -> str:
+
+def build_severity_summary(severity_counts: dict[str, int]) -> str:
     """Build a severity summary string with emojis.
 
     Args:
@@ -435,10 +420,10 @@ def build_severity_summary(severity_counts: Dict[str, int]) -> str:
         Formatted severity summary (e.g., "🔴 Critical: 3 | 🟠 High: 14")
     """
     parts = []
-    for severity in ['critical', 'high', 'medium', 'low']:
+    for severity in ["critical", "high", "medium", "low"]:
         count = severity_counts.get(severity, 0)
         if count > 0:
-            emoji = SEVERITY_EMOJI.get(severity, '⚪')
+            emoji = SEVERITY_EMOJI.get(severity, "⚪")
             parts.append(f"{emoji} {severity.capitalize()}: {count}")
 
     return " | ".join(parts) if parts else "No issues"
@@ -447,8 +432,8 @@ def build_severity_summary(severity_counts: Dict[str, int]) -> str:
 def create_collapsible_section(
     title: str,
     content: str,
-    severity_counts: Optional[Dict[str, int]] = None,
-    auto_expand: bool = False
+    severity_counts: dict[str, int] | None = None,
+    auto_expand: bool = False,
 ) -> str:
     """Create a collapsible <details> section with optional severity summary.
 
@@ -467,7 +452,7 @@ def create_collapsible_section(
         severity_summary = build_severity_summary(severity_counts)
         summary_line += f" ({severity_summary})"
 
-    open_attr = ' open' if auto_expand else ''
+    open_attr = " open" if auto_expand else ""
 
     return f"""<details{open_attr}>
 <summary>{summary_line}</summary>
@@ -483,11 +468,9 @@ def create_collapsible_section(
 # Code Fencing
 # ============================================================================
 
+
 def format_code_block(
-    code: str,
-    filepath: Optional[str] = None,
-    language: Optional[str] = None,
-    enable_fencing: bool = True
+    code: str, filepath: str | None = None, language: str | None = None, enable_fencing: bool = True
 ) -> str:
     """Format code in a language-aware fenced code block.
 
@@ -501,13 +484,13 @@ def format_code_block(
         Formatted code block
     """
     if not code or not code.strip():
-        return ''
+        return ""
 
     if not enable_fencing:
         return code
 
     # Determine language
-    lang = language or ''
+    lang = language or ""
     if not lang and filepath:
         lang = detect_language_from_filename(filepath)
 
@@ -518,7 +501,8 @@ def format_code_block(
 # Rule Name Extraction
 # ============================================================================
 
-def extract_rule_name(alert_data: Dict[str, Any]) -> str:
+
+def extract_rule_name(alert_data: dict[str, Any]) -> str:
     """Extract rule name from alert data.
 
     Args:
@@ -528,28 +512,29 @@ def extract_rule_name(alert_data: Dict[str, Any]) -> str:
         Rule name or empty string
     """
     # Check various possible sources
-    props = alert_data.get('props', {}) or {}
+    props = alert_data.get("props", {}) or {}
 
     # Priority order for rule names
     rule_name = (
-        props.get('rule') or
-        props.get('rule_name') or
-        props.get('ruleName') or
-        props.get('ruleId') or
-        alert_data.get('rule') or
-        alert_data.get('type') or
-        alert_data.get('title') or
-        ''
+        props.get("rule")
+        or props.get("rule_name")
+        or props.get("ruleName")
+        or props.get("ruleId")
+        or alert_data.get("rule")
+        or alert_data.get("type")
+        or alert_data.get("title")
+        or ""
     )
 
-    return str(rule_name) if rule_name else ''
+    return str(rule_name) if rule_name else ""
 
 
 # ============================================================================
 # Scan Link Formatting
 # ============================================================================
 
-def format_scan_link_section(full_scan_url: Optional[str]) -> str:
+
+def format_scan_link_section(full_scan_url: str | None) -> str:
     """Format the full scan report link section.
 
     Args:
@@ -559,7 +544,7 @@ def format_scan_link_section(full_scan_url: Optional[str]) -> str:
         Formatted markdown section (empty if no URL)
     """
     if not full_scan_url:
-        return ''
+        return ""
 
     return f"\n\n🔗 **[View Full Socket Scan Report]({full_scan_url})**\n\n---\n"
 
@@ -567,6 +552,7 @@ def format_scan_link_section(full_scan_url: Optional[str]) -> str:
 # ============================================================================
 # CVE/Vulnerability Formatting
 # ============================================================================
+
 
 def format_cve_link(cve_id: str, html: bool = False) -> str:
     """Format a CVE ID as a clickable link to NVD.
@@ -581,10 +567,10 @@ def format_cve_link(cve_id: str, html: bool = False) -> str:
         Markdown or HTML link to NVD, or plain text if not a valid CVE ID
     """
     if not cve_id:
-        return ''
+        return ""
 
     # Check if it's a CVE ID (format: CVE-YYYY-NNNNN)
-    if cve_id.upper().startswith('CVE-'):
+    if cve_id.upper().startswith("CVE-"):
         url = f"https://nvd.nist.gov/vuln/detail/{cve_id}"
         if html:
             return f'<a href="{url}">{cve_id}</a>'
@@ -597,9 +583,9 @@ def format_cve_link(cve_id: str, html: bool = False) -> str:
 def format_vulnerability_header(
     vuln_id: str,
     severity: str,
-    cvss_score: Optional[float] = None,
-    emoji: Optional[str] = None,
-    html: bool = False
+    cvss_score: float | None = None,
+    emoji: str | None = None,
+    html: bool = False,
 ) -> str:
     """Format a vulnerability header with severity and optional CVSS score.
 
@@ -617,10 +603,10 @@ def format_vulnerability_header(
     """
     # Get emoji if not provided
     if not emoji:
-        emoji = SEVERITY_EMOJI.get(severity.lower(), '⚪')
+        emoji = SEVERITY_EMOJI.get(severity.lower(), "⚪")
 
     # Format CVE as link if applicable
-    vuln_display = format_cve_link(vuln_id, html=html) if vuln_id else 'Unknown'
+    vuln_display = format_cve_link(vuln_id, html=html) if vuln_id else "Unknown"
 
     # Build header
     if html:
