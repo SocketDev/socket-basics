@@ -202,13 +202,3 @@ class CustomRulesBuilder:
                 continue
         
         return custom_rule_paths
-    
-    def cleanup(self) -> None:
-        """Clean up temporary rule files (optional, as temp files are typically auto-cleaned)."""
-        if self.temp_dir and self.temp_dir.exists():
-            try:
-                import shutil
-                shutil.rmtree(self.temp_dir)
-                logger.debug(f"Cleaned up temporary rule directory: {self.temp_dir}")
-            except Exception as e:
-                logger.warning(f"Failed to clean up temporary rule directory {self.temp_dir}: {e}")

@@ -511,7 +511,8 @@ Dockerfiles.
 The exceptions:
 
 - A blank `<language>_enabled_rules` or `<language>_disabled_rules` field is
-  skipped, so the workflow's value or the action's default list applies.
+  skipped, so the workflow's value applies. If the workflow sets none, every
+  bundled rule for the language runs.
 - A blank notification field (Slack, Jira, Microsoft Teams, generic webhook,
   Microsoft Sentinel, Sumo Logic) falls back to the workflow's value, and so does
   a blank GitHub token. A filled-in dashboard field still wins.
@@ -556,17 +557,11 @@ directly as a step:
 ```
 
 Only the flags you pass take precedence. Every other setting still comes from
-the dashboard. Running the image directly differs from the action in two ways:
-
-- The action's default rule lists (`<language>_enabled_rules` in
-  [`action.yml`](../action.yml)) don't apply. Where the dashboard's rule-list
-  fields are blank, SAST uses the image's own defaults from
-  [`connectors.yaml`](../socket_basics/connectors.yaml), which include more rules
-  for some languages.
-- The step isn't tied to an action version, so update the image tag yourself
-  when you upgrade. To pin by digest, append `@sha256:<digest>` to the image.
-  `docker buildx imagetools inspect ghcr.io/socketdev/socket-basics:3.4.1`
-  prints the digest.
+the dashboard. Running the image directly differs from the action in one way:
+the step isn't tied to an action version, so update the image tag yourself
+when you upgrade. To pin by digest, append `@sha256:<digest>` to the image.
+`docker buildx imagetools inspect ghcr.io/socketdev/socket-basics:3.4.1`
+prints the digest.
 
 See the [Parameters Reference](parameters.md) for every CLI flag.
 
@@ -929,7 +924,7 @@ jobs:
           all_rules_enabled: 'true'
 
           # Optional: enable specific bundled or custom rule IDs.
-          javascript_enabled_rules: 'eval-usage,prototype-pollution'
+          javascript_enabled_rules: 'js-code-injection-eval,js-prototype-pollution'
 
           # Ignore one or more SAST rules globally or for exact repo-relative files
           sast_ignore_overrides: 'js-sql-injection:index.js'
@@ -942,7 +937,9 @@ Important behavior:
   `use_custom_sast_rules`, `custom_sast_rule_path` and `sast_ignore_overrides`
   have no dashboard field and come from the workflow. See
   [Dashboard Settings and Workflow Inputs](#dashboard-settings-and-workflow-inputs).
-- `<language>_enabled_rules` is an allowlist and can suppress custom rule IDs.
+- `<language>_enabled_rules` is an allowlist: only the listed rule IDs run, and it
+  can suppress custom rule IDs. When it is empty (the default), every rule runs.
+  IDs that match no rule are ignored with a warning in the step log.
 - `all_rules_enabled: 'true'` disables allowlist filtering for enabled languages.
 
 `sast_ignore_overrides` supports:
@@ -1000,7 +997,7 @@ Every input has a CLI flag and environment-variable equivalent; the
 - `opengrep_notification_method` — Route SAST findings to one notifier (e.g. `console`, `slack`)
 
 **Rule Configuration (per language):**
-- `<language>_enabled_rules` — Comma-separated rules to enable
+- `<language>_enabled_rules` — Comma-separated rule IDs to run (default: empty, which runs every bundled rule)
 - `<language>_disabled_rules` — Comma-separated rules to disable
 - `use_custom_sast_rules` — Enable custom SAST rule discovery from repo files
 - `custom_sast_rule_path` — Relative path to custom SAST rule directory

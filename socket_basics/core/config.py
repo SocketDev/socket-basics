@@ -18,6 +18,10 @@ logger = logging.getLogger(__name__)
 TRUE_STRINGS = ('true', '1', 'yes', 'on')
 FALSE_STRINGS = ('false', '0', 'no', 'off')
 
+# Bundled rule files for languages OpenGrep cannot parse. Loading one makes
+# OpenGrep report an UnknownLanguageError, so an all-languages scan skips them.
+UNSUPPORTED_OPENGREP_RULE_FILES = frozenset({'erlang.yml', 'objective-c.yml'})
+
 
 def coerce_bool(value: Any, default: bool) -> bool:
     """Coerce a config value to a bool, tolerating the string forms.
@@ -525,7 +529,7 @@ class Config:
     def build_opengrep_rules(self) -> List[str]:
         """Build list of rule files based on enabled languages"""
         # Explicit mapping from connector boolean flags to bundled rule filenames.
-        # Exclude languages for which we don't ship rule files (objective-c, erlang).
+        # Erlang and Objective-C are left out: see UNSUPPORTED_OPENGREP_RULE_FILES.
         language_rules = {
             'python_sast_enabled': 'python.yml',
             'go_sast_enabled': 'go.yml',
@@ -565,8 +569,7 @@ class Config:
                         base_dir = Path(__file__).parent.parent
                         rules_dir = base_dir / 'rules'
                         found = [p.name for p in rules_dir.glob('*.yml') if p.is_file()]
-                        excluded = {'objective-c.yml', 'erlang.yml'}
-                        return [f for f in found if f not in excluded]
+                        return [f for f in found if f not in UNSUPPORTED_OPENGREP_RULE_FILES]
                     except Exception:
                         return list({v for v in language_rules.values()})
                 # No languages enabled -> nothing to run
