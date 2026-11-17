@@ -78,7 +78,6 @@ python_functions = ["test_*"]
 [tool.ruff]
 # The formatter owns physical layout. E501 and W291/W293 are unselected:
 # whitespace inside help text, log messages, and Markdown strings is content.
-target-version = "py310"
 line-length = 100
 # Scanner targets intentionally contain vulnerable code; the CWE table is generated.
 extend-exclude = ["app_tests", "tests/fixtures", "socket_basics/core/connector/opengrep/cwe_catalog.py"]
