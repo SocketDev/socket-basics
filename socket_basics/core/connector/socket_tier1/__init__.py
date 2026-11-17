@@ -1,1 +1,1 @@
-from .scanner import SocketTier1Scanner
+from .scanner import SocketTier1Scanner as SocketTier1Scanner

@@ -16,6 +16,7 @@ Usage:
 import os
 import re
 import sys
+
 import yaml
 
 # ---------------------------------------------------------------------------
@@ -122,292 +123,870 @@ CWE_MESSAGES = {
 
 FIX_BY_CWE_LANG = {
     # SQL Injection (CWE-89)
-    ("CWE-89", "python"): "Use parameterized queries: cursor.execute('SELECT * FROM t WHERE id = %s', (user_id,)). For Django, use the ORM or QuerySet API. For SQLAlchemy, use bound parameters.",
-    ("CWE-89", "java"): "Use PreparedStatement with parameter binding: ps = conn.prepareStatement('SELECT * FROM t WHERE id = ?'); ps.setString(1, userId);",
-    ("CWE-89", "javascript_typescript"): "Use parameterized queries with your database driver, e.g., db.query('SELECT * FROM t WHERE id = $1', [userId]) for pg, or use an ORM like Prisma or Sequelize.",
-    ("CWE-89", "go"): "Use parameterized queries: db.Query('SELECT * FROM t WHERE id = ?', userId). Never concatenate user input into SQL strings.",
-    ("CWE-89", "php"): "Use PDO prepared statements: $stmt = $pdo->prepare('SELECT * FROM t WHERE id = ?'); $stmt->execute([$userId]);",
-    ("CWE-89", "ruby"): "Use parameterized queries with ActiveRecord: User.where('id = ?', user_id) or use the ORM query interface.",
-    ("CWE-89", "dotnet"): "Use parameterized queries with SqlCommand: cmd.Parameters.AddWithValue(\"@id\", userId); or use Entity Framework LINQ queries.",
-    ("CWE-89", "kotlin"): "Use PreparedStatement with parameter binding or use an ORM like Exposed or Room with parameterized queries.",
-    ("CWE-89", "scala"): "Use Slick's type-safe query DSL or JDBC PreparedStatement with parameter binding.",
-    ("CWE-89", "elixir"): "Use Ecto parameterized queries: Repo.all(from u in User, where: u.id == ^user_id). Never interpolate user input into raw SQL.",
-    ("CWE-89", "erlang"): "Use parameterized queries with your database driver, e.g., epgsql:equery(C, \"SELECT * FROM t WHERE id = $1\", [UserId]).",
-    ("CWE-89", "rust"): "Use parameterized queries with sqlx: sqlx::query('SELECT * FROM t WHERE id = $1').bind(user_id). Never format user input into SQL strings.",
-    ("CWE-89", "c_cpp"): "Use parameterized queries with your database API (e.g., sqlite3_bind_text for SQLite, PQexecParams for PostgreSQL). Never use sprintf to build SQL.",
-    ("CWE-89", "objective-c"): "Use parameterized queries with sqlite3_bind_text() or NSPredicate with substitution variables. Never concatenate user input into SQL strings.",
-    ("CWE-89", "swift"): "Use parameterized queries with sqlite3_bind_text() or a Swift ORM like GRDB with parameterized statements.",
-
+    (
+        "CWE-89",
+        "python",
+    ): "Use parameterized queries: cursor.execute('SELECT * FROM t WHERE id = %s', (user_id,)). For Django, use the ORM or QuerySet API. For SQLAlchemy, use bound parameters.",
+    (
+        "CWE-89",
+        "java",
+    ): "Use PreparedStatement with parameter binding: ps = conn.prepareStatement('SELECT * FROM t WHERE id = ?'); ps.setString(1, userId);",
+    (
+        "CWE-89",
+        "javascript_typescript",
+    ): "Use parameterized queries with your database driver, e.g., db.query('SELECT * FROM t WHERE id = $1', [userId]) for pg, or use an ORM like Prisma or Sequelize.",
+    (
+        "CWE-89",
+        "go",
+    ): "Use parameterized queries: db.Query('SELECT * FROM t WHERE id = ?', userId). Never concatenate user input into SQL strings.",
+    (
+        "CWE-89",
+        "php",
+    ): "Use PDO prepared statements: $stmt = $pdo->prepare('SELECT * FROM t WHERE id = ?'); $stmt->execute([$userId]);",
+    (
+        "CWE-89",
+        "ruby",
+    ): "Use parameterized queries with ActiveRecord: User.where('id = ?', user_id) or use the ORM query interface.",
+    (
+        "CWE-89",
+        "dotnet",
+    ): 'Use parameterized queries with SqlCommand: cmd.Parameters.AddWithValue("@id", userId); or use Entity Framework LINQ queries.',
+    (
+        "CWE-89",
+        "kotlin",
+    ): "Use PreparedStatement with parameter binding or use an ORM like Exposed or Room with parameterized queries.",
+    (
+        "CWE-89",
+        "scala",
+    ): "Use Slick's type-safe query DSL or JDBC PreparedStatement with parameter binding.",
+    (
+        "CWE-89",
+        "elixir",
+    ): "Use Ecto parameterized queries: Repo.all(from u in User, where: u.id == ^user_id). Never interpolate user input into raw SQL.",
+    (
+        "CWE-89",
+        "erlang",
+    ): 'Use parameterized queries with your database driver, e.g., epgsql:equery(C, "SELECT * FROM t WHERE id = $1", [UserId]).',
+    (
+        "CWE-89",
+        "rust",
+    ): "Use parameterized queries with sqlx: sqlx::query('SELECT * FROM t WHERE id = $1').bind(user_id). Never format user input into SQL strings.",
+    (
+        "CWE-89",
+        "c_cpp",
+    ): "Use parameterized queries with your database API (e.g., sqlite3_bind_text for SQLite, PQexecParams for PostgreSQL). Never use sprintf to build SQL.",
+    (
+        "CWE-89",
+        "objective-c",
+    ): "Use parameterized queries with sqlite3_bind_text() or NSPredicate with substitution variables. Never concatenate user input into SQL strings.",
+    (
+        "CWE-89",
+        "swift",
+    ): "Use parameterized queries with sqlite3_bind_text() or a Swift ORM like GRDB with parameterized statements.",
     # Command Injection (CWE-78)
-    ("CWE-78", "python"): "Use subprocess.run() with a list of arguments instead of shell=True: subprocess.run(['cmd', arg1, arg2]). Never pass user input to os.system() or shell commands.",
-    ("CWE-78", "java"): "Use ProcessBuilder with separate arguments: new ProcessBuilder('cmd', arg1, arg2). Never concatenate user input into Runtime.exec() strings.",
-    ("CWE-78", "javascript_typescript"): "Use child_process.execFile() or spawn() with argument arrays instead of exec(). Never interpolate user input into shell commands.",
-    ("CWE-78", "go"): "Use exec.Command() with separate arguments: exec.Command('cmd', arg1, arg2). Never pass user input to exec.Command('sh', '-c', userInput).",
-    ("CWE-78", "ruby"): "Use system() with separate arguments: system('cmd', arg1, arg2). Avoid backticks or %x{} with user input.",
-    ("CWE-78", "php"): "Use escapeshellarg() for arguments and escapeshellcmd() for commands. Prefer language-level APIs over shell execution.",
-    ("CWE-78", "dotnet"): "Use Process.Start() with Arguments set separately. Never concatenate user input into process arguments.",
-    ("CWE-78", "kotlin"): "Use ProcessBuilder with separate arguments: ProcessBuilder('cmd', arg1, arg2). Never concatenate user input into command strings.",
-    ("CWE-78", "scala"): "Use ProcessBuilder or scala.sys.process with separate arguments. Never interpolate user input into shell command strings.",
-    ("CWE-78", "elixir"): "Use System.cmd/2 with separate arguments: System.cmd(\"cmd\", [arg1, arg2]). Never pass user input to :os.cmd/1.",
-    ("CWE-78", "erlang"): "Use erlang:open_port with {spawn_executable, Cmd} and {args, Args} instead of os:cmd/1. Never interpolate user input into commands.",
-    ("CWE-78", "rust"): "Use std::process::Command with separate arguments: Command::new('cmd').arg(arg1).arg(arg2). Never pass user input to shell commands.",
-    ("CWE-78", "c_cpp"): "Use execve() or posix_spawn() with separate argument arrays. Never pass user input to system() or popen().",
-    ("CWE-78", "objective-c"): "Use NSTask with launchPath and arguments array. Never pass user input to system() or popen().",
-    ("CWE-78", "swift"): "Use Process (NSTask) with separate arguments array. Never pass user input to system() or shell commands.",
-
+    (
+        "CWE-78",
+        "python",
+    ): "Use subprocess.run() with a list of arguments instead of shell=True: subprocess.run(['cmd', arg1, arg2]). Never pass user input to os.system() or shell commands.",
+    (
+        "CWE-78",
+        "java",
+    ): "Use ProcessBuilder with separate arguments: new ProcessBuilder('cmd', arg1, arg2). Never concatenate user input into Runtime.exec() strings.",
+    (
+        "CWE-78",
+        "javascript_typescript",
+    ): "Use child_process.execFile() or spawn() with argument arrays instead of exec(). Never interpolate user input into shell commands.",
+    (
+        "CWE-78",
+        "go",
+    ): "Use exec.Command() with separate arguments: exec.Command('cmd', arg1, arg2). Never pass user input to exec.Command('sh', '-c', userInput).",
+    (
+        "CWE-78",
+        "ruby",
+    ): "Use system() with separate arguments: system('cmd', arg1, arg2). Avoid backticks or %x{} with user input.",
+    (
+        "CWE-78",
+        "php",
+    ): "Use escapeshellarg() for arguments and escapeshellcmd() for commands. Prefer language-level APIs over shell execution.",
+    (
+        "CWE-78",
+        "dotnet",
+    ): "Use Process.Start() with Arguments set separately. Never concatenate user input into process arguments.",
+    (
+        "CWE-78",
+        "kotlin",
+    ): "Use ProcessBuilder with separate arguments: ProcessBuilder('cmd', arg1, arg2). Never concatenate user input into command strings.",
+    (
+        "CWE-78",
+        "scala",
+    ): "Use ProcessBuilder or scala.sys.process with separate arguments. Never interpolate user input into shell command strings.",
+    (
+        "CWE-78",
+        "elixir",
+    ): 'Use System.cmd/2 with separate arguments: System.cmd("cmd", [arg1, arg2]). Never pass user input to :os.cmd/1.',
+    (
+        "CWE-78",
+        "erlang",
+    ): "Use erlang:open_port with {spawn_executable, Cmd} and {args, Args} instead of os:cmd/1. Never interpolate user input into commands.",
+    (
+        "CWE-78",
+        "rust",
+    ): "Use std::process::Command with separate arguments: Command::new('cmd').arg(arg1).arg(arg2). Never pass user input to shell commands.",
+    (
+        "CWE-78",
+        "c_cpp",
+    ): "Use execve() or posix_spawn() with separate argument arrays. Never pass user input to system() or popen().",
+    (
+        "CWE-78",
+        "objective-c",
+    ): "Use NSTask with launchPath and arguments array. Never pass user input to system() or popen().",
+    (
+        "CWE-78",
+        "swift",
+    ): "Use Process (NSTask) with separate arguments array. Never pass user input to system() or shell commands.",
     # XSS (CWE-79)
-    ("CWE-79", "python"): "Use template engine auto-escaping (Jinja2 autoescape=True, Django default). Use markupsafe.escape() for manual escaping. Never render raw user input with |safe or Markup().",
-    ("CWE-79", "java"): "Use context-aware output encoding (OWASP Java Encoder: Encode.forHtml()). Enable auto-escaping in templates (Thymeleaf, JSP with JSTL).",
-    ("CWE-79", "javascript_typescript"): "Use textContent instead of innerHTML. Use DOMPurify.sanitize() if HTML must be rendered. Enable auto-escaping in template engines (React JSX, Handlebars).",
-    ("CWE-79", "php"): "Use htmlspecialchars($input, ENT_QUOTES, 'UTF-8') for output. Enable auto-escaping in Twig/Blade templates. Never echo raw user input.",
-    ("CWE-79", "ruby"): "Use ERB auto-escaping (<%= %>) or sanitize helper. Never use raw() or html_safe on user input without sanitization.",
-    ("CWE-79", "dotnet"): "Use Razor auto-encoding or HtmlEncoder.Default.Encode(). Never use Html.Raw() with user input. Validate input on both client and server.",
-    ("CWE-79", "kotlin"): "Use context-aware output encoding. Enable auto-escaping in template engines. Use OWASP Java Encoder for manual escaping.",
-    ("CWE-79", "scala"): "Use Play framework's Twirl templates (auto-escaped by default). Use Html() only for trusted content. Sanitize user input before rendering.",
-    ("CWE-79", "elixir"): "Phoenix templates auto-escape by default. Never use raw/1 or {:safe, ...} with user input. Use Phoenix.HTML.html_escape/1 for manual escaping.",
-    ("CWE-79", "erlang"): "Escape all user input before inserting into HTML output. Use a templating library with auto-escaping enabled.",
-    ("CWE-79", "objective-c"): "Escape user input before rendering in web views. Use NSString methods to encode HTML entities. Avoid loading untrusted HTML in WKWebView.",
-    ("CWE-79", "swift"): "Escape user input before rendering in web views. Use String extension to encode HTML entities. Set WKWebView configuration to restrict JavaScript.",
-
+    (
+        "CWE-79",
+        "python",
+    ): "Use template engine auto-escaping (Jinja2 autoescape=True, Django default). Use markupsafe.escape() for manual escaping. Never render raw user input with |safe or Markup().",
+    (
+        "CWE-79",
+        "java",
+    ): "Use context-aware output encoding (OWASP Java Encoder: Encode.forHtml()). Enable auto-escaping in templates (Thymeleaf, JSP with JSTL).",
+    (
+        "CWE-79",
+        "javascript_typescript",
+    ): "Use textContent instead of innerHTML. Use DOMPurify.sanitize() if HTML must be rendered. Enable auto-escaping in template engines (React JSX, Handlebars).",
+    (
+        "CWE-79",
+        "php",
+    ): "Use htmlspecialchars($input, ENT_QUOTES, 'UTF-8') for output. Enable auto-escaping in Twig/Blade templates. Never echo raw user input.",
+    (
+        "CWE-79",
+        "ruby",
+    ): "Use ERB auto-escaping (<%= %>) or sanitize helper. Never use raw() or html_safe on user input without sanitization.",
+    (
+        "CWE-79",
+        "dotnet",
+    ): "Use Razor auto-encoding or HtmlEncoder.Default.Encode(). Never use Html.Raw() with user input. Validate input on both client and server.",
+    (
+        "CWE-79",
+        "kotlin",
+    ): "Use context-aware output encoding. Enable auto-escaping in template engines. Use OWASP Java Encoder for manual escaping.",
+    (
+        "CWE-79",
+        "scala",
+    ): "Use Play framework's Twirl templates (auto-escaped by default). Use Html() only for trusted content. Sanitize user input before rendering.",
+    (
+        "CWE-79",
+        "elixir",
+    ): "Phoenix templates auto-escape by default. Never use raw/1 or {:safe, ...} with user input. Use Phoenix.HTML.html_escape/1 for manual escaping.",
+    (
+        "CWE-79",
+        "erlang",
+    ): "Escape all user input before inserting into HTML output. Use a templating library with auto-escaping enabled.",
+    (
+        "CWE-79",
+        "objective-c",
+    ): "Escape user input before rendering in web views. Use NSString methods to encode HTML entities. Avoid loading untrusted HTML in WKWebView.",
+    (
+        "CWE-79",
+        "swift",
+    ): "Escape user input before rendering in web views. Use String extension to encode HTML entities. Set WKWebView configuration to restrict JavaScript.",
     # Path Traversal (CWE-22)
-    ("CWE-22", "python"): "Use os.path.abspath() and verify the result starts with your allowed base directory. Use pathlib.Path.resolve() for canonicalization.",
-    ("CWE-22", "java"): "Use File.getCanonicalPath() and verify the result starts with the allowed base directory. Use java.nio.file.Path.normalize() and resolve().",
-    ("CWE-22", "javascript_typescript"): "Use path.resolve() and verify the result starts with the allowed base directory using path.relative() to check for '..' traversal.",
-    ("CWE-22", "go"): "Use filepath.Clean() and filepath.Abs(), then verify the result is within the allowed base directory with strings.HasPrefix().",
-    ("CWE-22", "php"): "Use realpath() and verify the result starts with the allowed base directory. Reject paths containing '..' sequences.",
-    ("CWE-22", "ruby"): "Use File.expand_path() and verify the result starts with the allowed base directory. Use Pathname#cleanpath for normalization.",
-    ("CWE-22", "dotnet"): "Use Path.GetFullPath() and verify the result starts with the allowed base directory. Use Path.Combine() instead of string concatenation.",
-    ("CWE-22", "kotlin"): "Use File.canonicalPath and verify it starts with the allowed base directory. Use java.nio.file.Path.normalize().",
-    ("CWE-22", "scala"): "Use java.io.File.getCanonicalPath() and verify it starts with the allowed base directory. Use java.nio.file.Path.normalize().",
-    ("CWE-22", "elixir"): "Use Path.expand/1 and verify the result starts with the allowed base directory. Reject paths containing '..' components.",
-    ("CWE-22", "erlang"): "Use filename:absname/1 and verify the result starts with the allowed base directory. Reject paths containing '..' components.",
-    ("CWE-22", "rust"): "Use std::fs::canonicalize() and verify the result starts with the allowed base directory. Use Path::starts_with() for validation.",
-    ("CWE-22", "objective-c"): "Use -[NSString stringByStandardizingPath] and verify the result starts with the allowed base directory. Reject '..' path components.",
-    ("CWE-22", "swift"): "Use URL.standardizedFileURL or (path as NSString).standardizingPath and verify the result is within the allowed base directory.",
-
+    (
+        "CWE-22",
+        "python",
+    ): "Use os.path.abspath() and verify the result starts with your allowed base directory. Use pathlib.Path.resolve() for canonicalization.",
+    (
+        "CWE-22",
+        "java",
+    ): "Use File.getCanonicalPath() and verify the result starts with the allowed base directory. Use java.nio.file.Path.normalize() and resolve().",
+    (
+        "CWE-22",
+        "javascript_typescript",
+    ): "Use path.resolve() and verify the result starts with the allowed base directory using path.relative() to check for '..' traversal.",
+    (
+        "CWE-22",
+        "go",
+    ): "Use filepath.Clean() and filepath.Abs(), then verify the result is within the allowed base directory with strings.HasPrefix().",
+    (
+        "CWE-22",
+        "php",
+    ): "Use realpath() and verify the result starts with the allowed base directory. Reject paths containing '..' sequences.",
+    (
+        "CWE-22",
+        "ruby",
+    ): "Use File.expand_path() and verify the result starts with the allowed base directory. Use Pathname#cleanpath for normalization.",
+    (
+        "CWE-22",
+        "dotnet",
+    ): "Use Path.GetFullPath() and verify the result starts with the allowed base directory. Use Path.Combine() instead of string concatenation.",
+    (
+        "CWE-22",
+        "kotlin",
+    ): "Use File.canonicalPath and verify it starts with the allowed base directory. Use java.nio.file.Path.normalize().",
+    (
+        "CWE-22",
+        "scala",
+    ): "Use java.io.File.getCanonicalPath() and verify it starts with the allowed base directory. Use java.nio.file.Path.normalize().",
+    (
+        "CWE-22",
+        "elixir",
+    ): "Use Path.expand/1 and verify the result starts with the allowed base directory. Reject paths containing '..' components.",
+    (
+        "CWE-22",
+        "erlang",
+    ): "Use filename:absname/1 and verify the result starts with the allowed base directory. Reject paths containing '..' components.",
+    (
+        "CWE-22",
+        "rust",
+    ): "Use std::fs::canonicalize() and verify the result starts with the allowed base directory. Use Path::starts_with() for validation.",
+    (
+        "CWE-22",
+        "objective-c",
+    ): "Use -[NSString stringByStandardizingPath] and verify the result starts with the allowed base directory. Reject '..' path components.",
+    (
+        "CWE-22",
+        "swift",
+    ): "Use URL.standardizedFileURL or (path as NSString).standardizingPath and verify the result is within the allowed base directory.",
     # Unsafe Deserialization (CWE-502)
-    ("CWE-502", "python"): "Replace pickle/shelve with json.loads() for data interchange. If pickle is required, use hmac to verify data integrity before deserializing.",
-    ("CWE-502", "java"): "Use ObjectInputFilter (JEP 290) to restrict deserializable classes. Prefer JSON (Jackson/Gson) or Protocol Buffers for data interchange.",
-    ("CWE-502", "javascript_typescript"): "Avoid eval() or Function() for deserialization. Use JSON.parse() with a reviver function to validate types.",
-    ("CWE-502", "php"): "Replace unserialize() with json_decode(). If unserialize() is required, use the allowed_classes option to restrict types.",
-    ("CWE-502", "ruby"): "Replace Marshal.load/YAML.load with JSON.parse or YAML.safe_load. Never deserialize untrusted data with Marshal.",
-    ("CWE-502", "dotnet"): "Use System.Text.Json or Newtonsoft.Json instead of BinaryFormatter/SoapFormatter. Set TypeNameHandling.None in Newtonsoft.Json.",
-    ("CWE-502", "kotlin"): "Use kotlinx.serialization with JSON format. Avoid Java ObjectInputStream for untrusted data. Use ObjectInputFilter if needed.",
-    ("CWE-502", "scala"): "Use circe, play-json, or upickle for JSON deserialization. Avoid Java ObjectInputStream for untrusted data.",
-    ("CWE-502", "elixir"): "Use Jason.decode/1 or :erlang.binary_to_term/2 with [:safe] option. Never use :erlang.binary_to_term/1 on untrusted data.",
-    ("CWE-502", "erlang"): "Use binary_to_term/2 with [safe] option. Use jsx or jiffy for JSON deserialization. Never use binary_to_term/1 on untrusted data.",
-    ("CWE-502", "rust"): "Use serde with JSON/MessagePack instead of bincode for untrusted data. Validate deserialized data before use.",
-    ("CWE-502", "objective-c"): "Use NSJSONSerialization instead of NSKeyedUnarchiver for untrusted data. Use NSSecureCoding with allowedClasses for type validation.",
-    ("CWE-502", "swift"): "Use JSONDecoder with Codable instead of NSKeyedUnarchiver. Use NSSecureCoding with unarchivedObject(ofClass:from:) for type-safe unarchiving.",
-
+    (
+        "CWE-502",
+        "python",
+    ): "Replace pickle/shelve with json.loads() for data interchange. If pickle is required, use hmac to verify data integrity before deserializing.",
+    (
+        "CWE-502",
+        "java",
+    ): "Use ObjectInputFilter (JEP 290) to restrict deserializable classes. Prefer JSON (Jackson/Gson) or Protocol Buffers for data interchange.",
+    (
+        "CWE-502",
+        "javascript_typescript",
+    ): "Avoid eval() or Function() for deserialization. Use JSON.parse() with a reviver function to validate types.",
+    (
+        "CWE-502",
+        "php",
+    ): "Replace unserialize() with json_decode(). If unserialize() is required, use the allowed_classes option to restrict types.",
+    (
+        "CWE-502",
+        "ruby",
+    ): "Replace Marshal.load/YAML.load with JSON.parse or YAML.safe_load. Never deserialize untrusted data with Marshal.",
+    (
+        "CWE-502",
+        "dotnet",
+    ): "Use System.Text.Json or Newtonsoft.Json instead of BinaryFormatter/SoapFormatter. Set TypeNameHandling.None in Newtonsoft.Json.",
+    (
+        "CWE-502",
+        "kotlin",
+    ): "Use kotlinx.serialization with JSON format. Avoid Java ObjectInputStream for untrusted data. Use ObjectInputFilter if needed.",
+    (
+        "CWE-502",
+        "scala",
+    ): "Use circe, play-json, or upickle for JSON deserialization. Avoid Java ObjectInputStream for untrusted data.",
+    (
+        "CWE-502",
+        "elixir",
+    ): "Use Jason.decode/1 or :erlang.binary_to_term/2 with [:safe] option. Never use :erlang.binary_to_term/1 on untrusted data.",
+    (
+        "CWE-502",
+        "erlang",
+    ): "Use binary_to_term/2 with [safe] option. Use jsx or jiffy for JSON deserialization. Never use binary_to_term/1 on untrusted data.",
+    (
+        "CWE-502",
+        "rust",
+    ): "Use serde with JSON/MessagePack instead of bincode for untrusted data. Validate deserialized data before use.",
+    (
+        "CWE-502",
+        "objective-c",
+    ): "Use NSJSONSerialization instead of NSKeyedUnarchiver for untrusted data. Use NSSecureCoding with allowedClasses for type validation.",
+    (
+        "CWE-502",
+        "swift",
+    ): "Use JSONDecoder with Codable instead of NSKeyedUnarchiver. Use NSSecureCoding with unarchivedObject(ofClass:from:) for type-safe unarchiving.",
     # Hard-coded credentials (CWE-798)
-    ("CWE-798", "python"): "Store secrets in environment variables (os.environ['KEY']) or use a secrets manager (AWS Secrets Manager, HashiCorp Vault, python-dotenv).",
-    ("CWE-798", "java"): "Store secrets in environment variables (System.getenv('KEY')), a secrets manager, or externalized configuration (Spring Vault, AWS Secrets Manager).",
-    ("CWE-798", "javascript_typescript"): "Store secrets in environment variables (process.env.KEY) or use a secrets manager. Use dotenv for local development.",
-    ("CWE-798", "go"): "Store secrets in environment variables (os.Getenv('KEY')) or use a secrets manager (HashiCorp Vault, AWS Secrets Manager).",
-    ("CWE-798", "php"): "Store secrets in environment variables (getenv('KEY')) or use a secrets manager. Use vlucas/phpdotenv for local development.",
-    ("CWE-798", "ruby"): "Store secrets in environment variables (ENV['KEY']) or use Rails credentials (config/credentials.yml.enc) or a secrets manager.",
-    ("CWE-798", "dotnet"): "Store secrets in environment variables, Azure Key Vault, or user-secrets for development. Use IConfiguration to access secrets.",
-    ("CWE-798", "kotlin"): "Store secrets in environment variables (System.getenv('KEY')) or use Android Keystore / a secrets manager. Never commit secrets to source control.",
-    ("CWE-798", "scala"): "Store secrets in environment variables or use a secrets manager. Use Typesafe Config with environment variable substitution.",
-    ("CWE-798", "elixir"): "Store secrets in environment variables (System.get_env/1) or use runtime configuration. Use config/runtime.exs for production secrets.",
-    ("CWE-798", "erlang"): "Store secrets in environment variables (os:getenv/1) or use a secrets manager. Load secrets from configuration files excluded from version control.",
-    ("CWE-798", "rust"): "Store secrets in environment variables (std::env::var('KEY')) or use a secrets manager. Use dotenvy for local development.",
-    ("CWE-798", "c_cpp"): "Store secrets in environment variables (getenv('KEY')) or read from a protected configuration file. Never embed secrets in source code.",
-    ("CWE-798", "objective-c"): "Store secrets in the iOS Keychain or environment variables. Never embed secrets in source code or property lists.",
-    ("CWE-798", "swift"): "Store secrets in the iOS Keychain or environment variables. Use a secrets manager for server-side Swift. Never embed secrets in source code.",
-
+    (
+        "CWE-798",
+        "python",
+    ): "Store secrets in environment variables (os.environ['KEY']) or use a secrets manager (AWS Secrets Manager, HashiCorp Vault, python-dotenv).",
+    (
+        "CWE-798",
+        "java",
+    ): "Store secrets in environment variables (System.getenv('KEY')), a secrets manager, or externalized configuration (Spring Vault, AWS Secrets Manager).",
+    (
+        "CWE-798",
+        "javascript_typescript",
+    ): "Store secrets in environment variables (process.env.KEY) or use a secrets manager. Use dotenv for local development.",
+    (
+        "CWE-798",
+        "go",
+    ): "Store secrets in environment variables (os.Getenv('KEY')) or use a secrets manager (HashiCorp Vault, AWS Secrets Manager).",
+    (
+        "CWE-798",
+        "php",
+    ): "Store secrets in environment variables (getenv('KEY')) or use a secrets manager. Use vlucas/phpdotenv for local development.",
+    (
+        "CWE-798",
+        "ruby",
+    ): "Store secrets in environment variables (ENV['KEY']) or use Rails credentials (config/credentials.yml.enc) or a secrets manager.",
+    (
+        "CWE-798",
+        "dotnet",
+    ): "Store secrets in environment variables, Azure Key Vault, or user-secrets for development. Use IConfiguration to access secrets.",
+    (
+        "CWE-798",
+        "kotlin",
+    ): "Store secrets in environment variables (System.getenv('KEY')) or use Android Keystore / a secrets manager. Never commit secrets to source control.",
+    (
+        "CWE-798",
+        "scala",
+    ): "Store secrets in environment variables or use a secrets manager. Use Typesafe Config with environment variable substitution.",
+    (
+        "CWE-798",
+        "elixir",
+    ): "Store secrets in environment variables (System.get_env/1) or use runtime configuration. Use config/runtime.exs for production secrets.",
+    (
+        "CWE-798",
+        "erlang",
+    ): "Store secrets in environment variables (os:getenv/1) or use a secrets manager. Load secrets from configuration files excluded from version control.",
+    (
+        "CWE-798",
+        "rust",
+    ): "Store secrets in environment variables (std::env::var('KEY')) or use a secrets manager. Use dotenvy for local development.",
+    (
+        "CWE-798",
+        "c_cpp",
+    ): "Store secrets in environment variables (getenv('KEY')) or read from a protected configuration file. Never embed secrets in source code.",
+    (
+        "CWE-798",
+        "objective-c",
+    ): "Store secrets in the iOS Keychain or environment variables. Never embed secrets in source code or property lists.",
+    (
+        "CWE-798",
+        "swift",
+    ): "Store secrets in the iOS Keychain or environment variables. Use a secrets manager for server-side Swift. Never embed secrets in source code.",
     # Weak crypto (CWE-327)
-    ("CWE-327", "python"): "Use hashlib.sha256() or hashlib.sha3_256() instead of md5/sha1. Use cryptography library with AES-GCM or ChaCha20-Poly1305 for encryption.",
-    ("CWE-327", "java"): "Use MessageDigest.getInstance('SHA-256') instead of MD5/SHA1. Use AES/GCM/NoPadding for encryption. Use Cipher from javax.crypto with strong algorithms.",
-    ("CWE-327", "javascript_typescript"): "Use crypto.createHash('sha256') instead of md5/sha1. Use crypto.createCipheriv('aes-256-gcm', ...) for encryption.",
-    ("CWE-327", "go"): "Use crypto/sha256 instead of crypto/md5 or crypto/sha1. Use crypto/aes with GCM mode for encryption.",
-    ("CWE-327", "ruby"): "Use OpenSSL::Digest::SHA256 instead of MD5/SHA1. Use OpenSSL::Cipher.new('aes-256-gcm') for encryption.",
-    ("CWE-327", "dotnet"): "Use SHA256.Create() instead of MD5/SHA1. Use Aes.Create() with CipherMode.CBC or AesGcm for encryption.",
-    ("CWE-327", "kotlin"): "Use MessageDigest.getInstance('SHA-256') instead of MD5/SHA1. Use Cipher with 'AES/GCM/NoPadding' for encryption.",
-    ("CWE-327", "scala"): "Use MessageDigest.getInstance('SHA-256') instead of MD5/SHA1. Use javax.crypto.Cipher with AES-GCM for encryption.",
-    ("CWE-327", "elixir"): "Use :crypto.hash(:sha256, data) instead of :md5/:sha. Use :crypto.crypto_one_time_aead for AES-GCM encryption.",
-    ("CWE-327", "erlang"): "Use crypto:hash(sha256, Data) instead of md5/sha. Use crypto:crypto_one_time_aead for AES-GCM encryption.",
-    ("CWE-327", "rust"): "Use sha2 crate (Sha256::digest) instead of md5. Use aes-gcm crate for authenticated encryption.",
-    ("CWE-327", "c_cpp"): "Use SHA-256 (e.g., EVP_sha256() from OpenSSL) instead of MD5/SHA-1. Use AES-GCM for authenticated encryption.",
-    ("CWE-327", "objective-c"): "Use CC_SHA256 from CommonCrypto instead of CC_MD5/CC_SHA1. Use CCCrypt with kCCAlgorithmAES for encryption.",
-    ("CWE-327", "swift"): "Use SHA256 from CryptoKit instead of Insecure.MD5/SHA1. Use AES.GCM.seal() for authenticated encryption.",
-
+    (
+        "CWE-327",
+        "python",
+    ): "Use hashlib.sha256() or hashlib.sha3_256() instead of md5/sha1. Use cryptography library with AES-GCM or ChaCha20-Poly1305 for encryption.",
+    (
+        "CWE-327",
+        "java",
+    ): "Use MessageDigest.getInstance('SHA-256') instead of MD5/SHA1. Use AES/GCM/NoPadding for encryption. Use Cipher from javax.crypto with strong algorithms.",
+    (
+        "CWE-327",
+        "javascript_typescript",
+    ): "Use crypto.createHash('sha256') instead of md5/sha1. Use crypto.createCipheriv('aes-256-gcm', ...) for encryption.",
+    (
+        "CWE-327",
+        "go",
+    ): "Use crypto/sha256 instead of crypto/md5 or crypto/sha1. Use crypto/aes with GCM mode for encryption.",
+    (
+        "CWE-327",
+        "ruby",
+    ): "Use OpenSSL::Digest::SHA256 instead of MD5/SHA1. Use OpenSSL::Cipher.new('aes-256-gcm') for encryption.",
+    (
+        "CWE-327",
+        "dotnet",
+    ): "Use SHA256.Create() instead of MD5/SHA1. Use Aes.Create() with CipherMode.CBC or AesGcm for encryption.",
+    (
+        "CWE-327",
+        "kotlin",
+    ): "Use MessageDigest.getInstance('SHA-256') instead of MD5/SHA1. Use Cipher with 'AES/GCM/NoPadding' for encryption.",
+    (
+        "CWE-327",
+        "scala",
+    ): "Use MessageDigest.getInstance('SHA-256') instead of MD5/SHA1. Use javax.crypto.Cipher with AES-GCM for encryption.",
+    (
+        "CWE-327",
+        "elixir",
+    ): "Use :crypto.hash(:sha256, data) instead of :md5/:sha. Use :crypto.crypto_one_time_aead for AES-GCM encryption.",
+    (
+        "CWE-327",
+        "erlang",
+    ): "Use crypto:hash(sha256, Data) instead of md5/sha. Use crypto:crypto_one_time_aead for AES-GCM encryption.",
+    (
+        "CWE-327",
+        "rust",
+    ): "Use sha2 crate (Sha256::digest) instead of md5. Use aes-gcm crate for authenticated encryption.",
+    (
+        "CWE-327",
+        "c_cpp",
+    ): "Use SHA-256 (e.g., EVP_sha256() from OpenSSL) instead of MD5/SHA-1. Use AES-GCM for authenticated encryption.",
+    (
+        "CWE-327",
+        "objective-c",
+    ): "Use CC_SHA256 from CommonCrypto instead of CC_MD5/CC_SHA1. Use CCCrypt with kCCAlgorithmAES for encryption.",
+    (
+        "CWE-327",
+        "swift",
+    ): "Use SHA256 from CryptoKit instead of Insecure.MD5/SHA1. Use AES.GCM.seal() for authenticated encryption.",
     # TLS/SSL bypass (CWE-295)
-    ("CWE-295", "python"): "Always use verify=True (the default) in requests. Set ssl_context properly. Never set CERT_NONE or disable hostname checking.",
-    ("CWE-295", "java"): "Never override TrustManager to accept all certificates. Use the default SSLContext or configure with trusted CA certificates only.",
-    ("CWE-295", "javascript_typescript"): "Never set rejectUnauthorized: false or NODE_TLS_REJECT_UNAUTHORIZED=0. Configure proper CA certificates for custom TLS needs.",
-    ("CWE-295", "go"): "Never set InsecureSkipVerify: true in tls.Config. Use the default TLS configuration which validates certificates properly.",
-    ("CWE-295", "ruby"): "Never set verify_mode = OpenSSL::SSL::VERIFY_NONE. Use the default certificate validation in Net::HTTP and OpenSSL.",
-    ("CWE-295", "dotnet"): "Never return true from ServerCertificateCustomValidationCallback. Use the default certificate validation from ServicePointManager.",
-    ("CWE-295", "kotlin"): "Never override TrustManager to accept all certificates. Use the default SSLContext or OkHttp's CertificatePinner for pinning.",
-    ("CWE-295", "scala"): "Never override TrustManager to accept all certificates. Use the default SSLContext or configure trusted CA certificates.",
-    ("CWE-295", "rust"): "Never use danger_accept_invalid_certs(true) in reqwest or rustls. Use the default TLS verification with proper CA certificates.",
-    ("CWE-295", "c_cpp"): "Always call SSL_CTX_set_verify with SSL_VERIFY_PEER. Never skip certificate or hostname verification in OpenSSL/BoringSSL.",
-    ("CWE-295", "objective-c"): "Never override NSURLSession delegate to accept invalid certificates. Use App Transport Security (ATS) defaults.",
-    ("CWE-295", "swift"): "Never override URLSession delegate to accept invalid certificates. Use App Transport Security (ATS) defaults.",
-
+    (
+        "CWE-295",
+        "python",
+    ): "Always use verify=True (the default) in requests. Set ssl_context properly. Never set CERT_NONE or disable hostname checking.",
+    (
+        "CWE-295",
+        "java",
+    ): "Never override TrustManager to accept all certificates. Use the default SSLContext or configure with trusted CA certificates only.",
+    (
+        "CWE-295",
+        "javascript_typescript",
+    ): "Never set rejectUnauthorized: false or NODE_TLS_REJECT_UNAUTHORIZED=0. Configure proper CA certificates for custom TLS needs.",
+    (
+        "CWE-295",
+        "go",
+    ): "Never set InsecureSkipVerify: true in tls.Config. Use the default TLS configuration which validates certificates properly.",
+    (
+        "CWE-295",
+        "ruby",
+    ): "Never set verify_mode = OpenSSL::SSL::VERIFY_NONE. Use the default certificate validation in Net::HTTP and OpenSSL.",
+    (
+        "CWE-295",
+        "dotnet",
+    ): "Never return true from ServerCertificateCustomValidationCallback. Use the default certificate validation from ServicePointManager.",
+    (
+        "CWE-295",
+        "kotlin",
+    ): "Never override TrustManager to accept all certificates. Use the default SSLContext or OkHttp's CertificatePinner for pinning.",
+    (
+        "CWE-295",
+        "scala",
+    ): "Never override TrustManager to accept all certificates. Use the default SSLContext or configure trusted CA certificates.",
+    (
+        "CWE-295",
+        "rust",
+    ): "Never use danger_accept_invalid_certs(true) in reqwest or rustls. Use the default TLS verification with proper CA certificates.",
+    (
+        "CWE-295",
+        "c_cpp",
+    ): "Always call SSL_CTX_set_verify with SSL_VERIFY_PEER. Never skip certificate or hostname verification in OpenSSL/BoringSSL.",
+    (
+        "CWE-295",
+        "objective-c",
+    ): "Never override NSURLSession delegate to accept invalid certificates. Use App Transport Security (ATS) defaults.",
+    (
+        "CWE-295",
+        "swift",
+    ): "Never override URLSession delegate to accept invalid certificates. Use App Transport Security (ATS) defaults.",
     # Code injection (CWE-94)
-    ("CWE-94", "python"): "Remove eval()/exec() calls with user input. Use ast.literal_eval() for safe parsing of Python literals. Use a sandboxed environment if dynamic execution is required.",
-    ("CWE-94", "java"): "Avoid ScriptEngine.eval() with user input. Use a sandboxed interpreter or template engine. Restrict class loading with a SecurityManager.",
-    ("CWE-94", "javascript_typescript"): "Remove eval(), Function(), and setTimeout/setInterval with string arguments. Use JSON.parse() for data parsing. Use a sandboxed environment (vm2) if dynamic execution is needed.",
-    ("CWE-94", "php"): "Remove eval(), assert(), and preg_replace with /e flag. Use proper parsing functions for data. Never include user-controlled file paths.",
-    ("CWE-94", "ruby"): "Remove eval(), instance_eval(), and send() with user input. Use safe parsing methods. Use a sandboxed environment if dynamic execution is required.",
-    ("CWE-94", "dotnet"): "Avoid CSharpScript.EvaluateAsync() or Roslyn compilation with user input. Use expression parsers or sandboxed environments.",
-    ("CWE-94", "kotlin"): "Avoid ScriptEngine.eval() or javax.tools.JavaCompiler with user input. Use a sandboxed interpreter or expression parser.",
-    ("CWE-94", "scala"): "Avoid scala.tools.reflect.ToolBox.eval() with user input. Use a sandboxed interpreter or safe expression parser.",
-    ("CWE-94", "elixir"): "Remove Code.eval_string/1 calls with user input. Use pattern matching and safe parsing instead. Never evaluate untrusted Elixir code.",
-    ("CWE-94", "erlang"): "Avoid erl_eval:expr/2 and erl_scan with user input. Use pattern matching and safe parsing instead. Never evaluate untrusted Erlang terms.",
-
+    (
+        "CWE-94",
+        "python",
+    ): "Remove eval()/exec() calls with user input. Use ast.literal_eval() for safe parsing of Python literals. Use a sandboxed environment if dynamic execution is required.",
+    (
+        "CWE-94",
+        "java",
+    ): "Avoid ScriptEngine.eval() with user input. Use a sandboxed interpreter or template engine. Restrict class loading with a SecurityManager.",
+    (
+        "CWE-94",
+        "javascript_typescript",
+    ): "Remove eval(), Function(), and setTimeout/setInterval with string arguments. Use JSON.parse() for data parsing. Use a sandboxed environment (vm2) if dynamic execution is needed.",
+    (
+        "CWE-94",
+        "php",
+    ): "Remove eval(), assert(), and preg_replace with /e flag. Use proper parsing functions for data. Never include user-controlled file paths.",
+    (
+        "CWE-94",
+        "ruby",
+    ): "Remove eval(), instance_eval(), and send() with user input. Use safe parsing methods. Use a sandboxed environment if dynamic execution is required.",
+    (
+        "CWE-94",
+        "dotnet",
+    ): "Avoid CSharpScript.EvaluateAsync() or Roslyn compilation with user input. Use expression parsers or sandboxed environments.",
+    (
+        "CWE-94",
+        "kotlin",
+    ): "Avoid ScriptEngine.eval() or javax.tools.JavaCompiler with user input. Use a sandboxed interpreter or expression parser.",
+    (
+        "CWE-94",
+        "scala",
+    ): "Avoid scala.tools.reflect.ToolBox.eval() with user input. Use a sandboxed interpreter or safe expression parser.",
+    (
+        "CWE-94",
+        "elixir",
+    ): "Remove Code.eval_string/1 calls with user input. Use pattern matching and safe parsing instead. Never evaluate untrusted Elixir code.",
+    (
+        "CWE-94",
+        "erlang",
+    ): "Avoid erl_eval:expr/2 and erl_scan with user input. Use pattern matching and safe parsing instead. Never evaluate untrusted Erlang terms.",
     # XXE (CWE-611)
-    ("CWE-611", "python"): "Use defusedxml instead of xml.etree or lxml. Set resolve_entities=False and no_network=True in lxml parsers.",
-    ("CWE-611", "java"): "Set XMLConstants.FEATURE_SECURE_PROCESSING and disable DOCTYPE declarations: factory.setFeature('http://apache.org/xml/features/disallow-doctype-decl', true).",
-    ("CWE-611", "javascript_typescript"): "Use a safe XML parser. In libxmljs, set noent: false and nonet: true. In xml2js, external entities are disabled by default.",
-    ("CWE-611", "php"): "Call libxml_disable_entity_loader(true) before parsing XML. Use LIBXML_NOENT flag carefully. Use json_decode() if possible.",
-    ("CWE-611", "dotnet"): "Set XmlReaderSettings.DtdProcessing = DtdProcessing.Prohibit and XmlReaderSettings.XmlResolver = null.",
-    ("CWE-611", "kotlin"): "Set XMLConstants.FEATURE_SECURE_PROCESSING and disable DOCTYPE: factory.setFeature('http://apache.org/xml/features/disallow-doctype-decl', true).",
-
+    (
+        "CWE-611",
+        "python",
+    ): "Use defusedxml instead of xml.etree or lxml. Set resolve_entities=False and no_network=True in lxml parsers.",
+    (
+        "CWE-611",
+        "java",
+    ): "Set XMLConstants.FEATURE_SECURE_PROCESSING and disable DOCTYPE declarations: factory.setFeature('http://apache.org/xml/features/disallow-doctype-decl', true).",
+    (
+        "CWE-611",
+        "javascript_typescript",
+    ): "Use a safe XML parser. In libxmljs, set noent: false and nonet: true. In xml2js, external entities are disabled by default.",
+    (
+        "CWE-611",
+        "php",
+    ): "Call libxml_disable_entity_loader(true) before parsing XML. Use LIBXML_NOENT flag carefully. Use json_decode() if possible.",
+    (
+        "CWE-611",
+        "dotnet",
+    ): "Set XmlReaderSettings.DtdProcessing = DtdProcessing.Prohibit and XmlReaderSettings.XmlResolver = null.",
+    (
+        "CWE-611",
+        "kotlin",
+    ): "Set XMLConstants.FEATURE_SECURE_PROCESSING and disable DOCTYPE: factory.setFeature('http://apache.org/xml/features/disallow-doctype-decl', true).",
     # SSRF (CWE-918)
-    ("CWE-918", "python"): "Validate URLs against an allowlist of permitted hosts and schemes. Block private IP ranges (10.x, 172.16-31.x, 192.168.x, 127.x). Use urllib.parse to validate before fetching.",
-    ("CWE-918", "javascript_typescript"): "Validate URLs against an allowlist of permitted hosts. Block private IP ranges and localhost. Use the URL constructor to parse and validate before fetching.",
-    ("CWE-918", "dotnet"): "Validate URLs against an allowlist of permitted hosts. Block private IP ranges and localhost. Resolve DNS and check the IP before making requests.",
-
+    (
+        "CWE-918",
+        "python",
+    ): "Validate URLs against an allowlist of permitted hosts and schemes. Block private IP ranges (10.x, 172.16-31.x, 192.168.x, 127.x). Use urllib.parse to validate before fetching.",
+    (
+        "CWE-918",
+        "javascript_typescript",
+    ): "Validate URLs against an allowlist of permitted hosts. Block private IP ranges and localhost. Use the URL constructor to parse and validate before fetching.",
+    (
+        "CWE-918",
+        "dotnet",
+    ): "Validate URLs against an allowlist of permitted hosts. Block private IP ranges and localhost. Resolve DNS and check the IP before making requests.",
     # File upload (CWE-434)
-    ("CWE-434", "python"): "Validate file extension, MIME type, and content. Use werkzeug.utils.secure_filename(). Store uploads outside the web root with randomized names.",
-    ("CWE-434", "java"): "Validate file extension, MIME type, and content. Store uploads outside the web root. Use Apache Tika for content-type detection.",
-    ("CWE-434", "javascript_typescript"): "Validate file extension, MIME type, and content. Use multer with file filter. Store uploads outside the web root with randomized names.",
-    ("CWE-434", "php"): "Validate file extension, MIME type with finfo_file(), and content. Store uploads outside the web root. Never trust $_FILES['type'].",
-    ("CWE-434", "kotlin"): "Validate file extension, MIME type, and content. Store uploads outside the web root. Use Apache Tika for content-type detection.",
-    ("CWE-434", "scala"): "Validate file extension, MIME type, and content. Store uploads outside the web root with randomized names.",
-    ("CWE-434", "elixir"): "Validate file extension, MIME type, and content. Store uploads outside the web root. Use Plug.Upload metadata for validation.",
-    ("CWE-434", "erlang"): "Validate file extension, MIME type, and content. Store uploads outside the web root with randomized filenames.",
-
+    (
+        "CWE-434",
+        "python",
+    ): "Validate file extension, MIME type, and content. Use werkzeug.utils.secure_filename(). Store uploads outside the web root with randomized names.",
+    (
+        "CWE-434",
+        "java",
+    ): "Validate file extension, MIME type, and content. Store uploads outside the web root. Use Apache Tika for content-type detection.",
+    (
+        "CWE-434",
+        "javascript_typescript",
+    ): "Validate file extension, MIME type, and content. Use multer with file filter. Store uploads outside the web root with randomized names.",
+    (
+        "CWE-434",
+        "php",
+    ): "Validate file extension, MIME type with finfo_file(), and content. Store uploads outside the web root. Never trust $_FILES['type'].",
+    (
+        "CWE-434",
+        "kotlin",
+    ): "Validate file extension, MIME type, and content. Store uploads outside the web root. Use Apache Tika for content-type detection.",
+    (
+        "CWE-434",
+        "scala",
+    ): "Validate file extension, MIME type, and content. Store uploads outside the web root with randomized names.",
+    (
+        "CWE-434",
+        "elixir",
+    ): "Validate file extension, MIME type, and content. Store uploads outside the web root. Use Plug.Upload metadata for validation.",
+    (
+        "CWE-434",
+        "erlang",
+    ): "Validate file extension, MIME type, and content. Store uploads outside the web root with randomized filenames.",
     # LDAP injection (CWE-90)
-    ("CWE-90", "python"): "Use ldap3 library with safe filter escaping: ldap3.utils.conv.escape_filter_chars(user_input). Never concatenate user input into LDAP filters.",
-    ("CWE-90", "java"): "Use javax.naming.ldap with properly escaped filter values. Use LdapEncoder.filterEncode() from Spring LDAP for escaping.",
-    ("CWE-90", "javascript_typescript"): "Use ldapjs with properly escaped filter values. Use ldapEscape.filter() to escape special characters in LDAP filters.",
-    ("CWE-90", "php"): "Use ldap_escape() to sanitize filter values: ldap_escape($input, '', LDAP_ESCAPE_FILTER). Never concatenate user input into LDAP filters.",
-    ("CWE-90", "dotnet"): "Use System.DirectoryServices with parameterized searches. Escape special LDAP characters before inserting into filters.",
-    ("CWE-90", "kotlin"): "Use javax.naming.ldap with properly escaped filter values. Use Spring LDAP's LdapEncoder.filterEncode() for escaping.",
-
+    (
+        "CWE-90",
+        "python",
+    ): "Use ldap3 library with safe filter escaping: ldap3.utils.conv.escape_filter_chars(user_input). Never concatenate user input into LDAP filters.",
+    (
+        "CWE-90",
+        "java",
+    ): "Use javax.naming.ldap with properly escaped filter values. Use LdapEncoder.filterEncode() from Spring LDAP for escaping.",
+    (
+        "CWE-90",
+        "javascript_typescript",
+    ): "Use ldapjs with properly escaped filter values. Use ldapEscape.filter() to escape special characters in LDAP filters.",
+    (
+        "CWE-90",
+        "php",
+    ): "Use ldap_escape() to sanitize filter values: ldap_escape($input, '', LDAP_ESCAPE_FILTER). Never concatenate user input into LDAP filters.",
+    (
+        "CWE-90",
+        "dotnet",
+    ): "Use System.DirectoryServices with parameterized searches. Escape special LDAP characters before inserting into filters.",
+    (
+        "CWE-90",
+        "kotlin",
+    ): "Use javax.naming.ldap with properly escaped filter values. Use Spring LDAP's LdapEncoder.filterEncode() for escaping.",
     # Insecure random (CWE-338)
-    ("CWE-338", "python"): "Use secrets.token_bytes(), secrets.token_hex(), or secrets.choice() for security-sensitive operations.",
-    ("CWE-338", "java"): "Use java.security.SecureRandom instead of java.util.Random for security-sensitive operations.",
-    ("CWE-338", "javascript_typescript"): "Use crypto.randomBytes() or crypto.getRandomValues() for security-sensitive operations.",
-    ("CWE-338", "dotnet"): "Use System.Security.Cryptography.RandomNumberGenerator instead of System.Random for security-sensitive operations.",
-    ("CWE-338", "kotlin"): "Use java.security.SecureRandom instead of kotlin.random.Random or java.util.Random for security-sensitive operations.",
-
+    (
+        "CWE-338",
+        "python",
+    ): "Use secrets.token_bytes(), secrets.token_hex(), or secrets.choice() for security-sensitive operations.",
+    (
+        "CWE-338",
+        "java",
+    ): "Use java.security.SecureRandom instead of java.util.Random for security-sensitive operations.",
+    (
+        "CWE-338",
+        "javascript_typescript",
+    ): "Use crypto.randomBytes() or crypto.getRandomValues() for security-sensitive operations.",
+    (
+        "CWE-338",
+        "dotnet",
+    ): "Use System.Security.Cryptography.RandomNumberGenerator instead of System.Random for security-sensitive operations.",
+    (
+        "CWE-338",
+        "kotlin",
+    ): "Use java.security.SecureRandom instead of kotlin.random.Random or java.util.Random for security-sensitive operations.",
     # CSRF (CWE-352)
-    ("CWE-352", "java"): "Enable Spring Security CSRF protection or use a custom CSRF token filter. Include CSRF tokens in all HTML forms and AJAX requests.",
-    ("CWE-352", "kotlin"): "Enable Spring Security CSRF protection or use a framework-provided CSRF middleware. Include CSRF tokens in all state-changing requests.",
-
+    (
+        "CWE-352",
+        "java",
+    ): "Enable Spring Security CSRF protection or use a custom CSRF token filter. Include CSRF tokens in all HTML forms and AJAX requests.",
+    (
+        "CWE-352",
+        "kotlin",
+    ): "Enable Spring Security CSRF protection or use a framework-provided CSRF middleware. Include CSRF tokens in all state-changing requests.",
     # JWT/signature verification (CWE-347)
-    ("CWE-347", "python"): "Always verify JWT signatures: jwt.decode(token, key, algorithms=['HS256']). Never use options={'verify_signature': False}.",
-    ("CWE-347", "javascript_typescript"): "Always verify JWT signatures with jsonwebtoken: jwt.verify(token, secret). Never use jwt.decode() without verification for authorization.",
-    ("CWE-347", "objective-c"): "Always verify cryptographic signatures before trusting signed data. Use Security.framework's SecKeyVerifySignature for RSA/EC verification.",
-    ("CWE-347", "swift"): "Always verify cryptographic signatures before trusting signed data. Use CryptoKit's isValidSignature or Security.framework's SecKeyVerifySignature.",
-
+    (
+        "CWE-347",
+        "python",
+    ): "Always verify JWT signatures: jwt.decode(token, key, algorithms=['HS256']). Never use options={'verify_signature': False}.",
+    (
+        "CWE-347",
+        "javascript_typescript",
+    ): "Always verify JWT signatures with jsonwebtoken: jwt.verify(token, secret). Never use jwt.decode() without verification for authorization.",
+    (
+        "CWE-347",
+        "objective-c",
+    ): "Always verify cryptographic signatures before trusting signed data. Use Security.framework's SecKeyVerifySignature for RSA/EC verification.",
+    (
+        "CWE-347",
+        "swift",
+    ): "Always verify cryptographic signatures before trusting signed data. Use CryptoKit's isValidSignature or Security.framework's SecKeyVerifySignature.",
     # NoSQL injection (CWE-943)
-    ("CWE-943", "python"): "Use parameterized queries with PyMongo. Validate input types (reject dicts/lists where strings expected). Never pass raw request data to MongoDB queries.",
-    ("CWE-943", "javascript_typescript"): "Validate input types before MongoDB queries. Use mongoose schema validation. Replace $where with aggregation pipeline. Sanitize with mongo-sanitize.",
-    ("CWE-943", "objective-c"): "Validate all user input before including in NoSQL queries. Use parameterized queries and type-check inputs to reject injection payloads.",
-    ("CWE-943", "swift"): "Validate all user input before including in NoSQL queries. Use parameterized queries and type-check inputs to reject injection payloads.",
-
+    (
+        "CWE-943",
+        "python",
+    ): "Use parameterized queries with PyMongo. Validate input types (reject dicts/lists where strings expected). Never pass raw request data to MongoDB queries.",
+    (
+        "CWE-943",
+        "javascript_typescript",
+    ): "Validate input types before MongoDB queries. Use mongoose schema validation. Replace $where with aggregation pipeline. Sanitize with mongo-sanitize.",
+    (
+        "CWE-943",
+        "objective-c",
+    ): "Validate all user input before including in NoSQL queries. Use parameterized queries and type-check inputs to reject injection payloads.",
+    (
+        "CWE-943",
+        "swift",
+    ): "Validate all user input before including in NoSQL queries. Use parameterized queries and type-check inputs to reject injection payloads.",
     # Prototype pollution (CWE-1321)
-    ("CWE-1321", "javascript_typescript"): "Use Object.create(null) for lookup objects. Validate keys against a denylist (__proto__, constructor, prototype). Use Map instead of plain objects.",
-
+    (
+        "CWE-1321",
+        "javascript_typescript",
+    ): "Use Object.create(null) for lookup objects. Validate keys against a denylist (__proto__, constructor, prototype). Use Map instead of plain objects.",
     # Template injection (CWE-1336)
-    ("CWE-1336", "python"): "Never pass user input to Jinja2 Template() or Mako Template(). Use render_template() with variables. Enable sandboxed environment for dynamic templates.",
-    ("CWE-1336", "javascript_typescript"): "Never pass user input to template compilation functions. Use pre-compiled templates with data binding. Enable strict mode in template engines.",
-
+    (
+        "CWE-1336",
+        "python",
+    ): "Never pass user input to Jinja2 Template() or Mako Template(). Use render_template() with variables. Enable sandboxed environment for dynamic templates.",
+    (
+        "CWE-1336",
+        "javascript_typescript",
+    ): "Never pass user input to template compilation functions. Use pre-compiled templates with data binding. Enable strict mode in template engines.",
     # Debug mode (CWE-489)
-    ("CWE-489", "python"): "Set DEBUG=False in production. Use environment variables to control debug mode: DEBUG = os.environ.get('DEBUG', 'False').lower() == 'true'.",
-    ("CWE-489", "javascript_typescript"): "Set NODE_ENV=production in deployment. Remove console.log/debug statements. Use a logging library with configurable log levels.",
-
+    (
+        "CWE-489",
+        "python",
+    ): "Set DEBUG=False in production. Use environment variables to control debug mode: DEBUG = os.environ.get('DEBUG', 'False').lower() == 'true'.",
+    (
+        "CWE-489",
+        "javascript_typescript",
+    ): "Set NODE_ENV=production in deployment. Remove console.log/debug statements. Use a logging library with configurable log levels.",
     # Code integrity (CWE-494)
-    ("CWE-494", "javascript_typescript"): "Use Subresource Integrity (SRI) for CDN scripts: <script src='...' integrity='sha384-...' crossorigin='anonymous'>. Verify npm package checksums.",
-    ("CWE-494", "dotnet"): "Verify assembly signatures using strong naming. Validate checksums of downloaded assemblies before loading.",
-
+    (
+        "CWE-494",
+        "javascript_typescript",
+    ): "Use Subresource Integrity (SRI) for CDN scripts: <script src='...' integrity='sha384-...' crossorigin='anonymous'>. Verify npm package checksums.",
+    (
+        "CWE-494",
+        "dotnet",
+    ): "Verify assembly signatures using strong naming. Validate checksums of downloaded assemblies before loading.",
     # CORS (CWE-942)
-    ("CWE-942", "javascript_typescript"): "Set specific allowed origins instead of '*'. Use the cors middleware with a whitelist: cors({ origin: ['https://trusted.example.com'] }).",
-
+    (
+        "CWE-942",
+        "javascript_typescript",
+    ): "Set specific allowed origins instead of '*'. Use the cors middleware with a whitelist: cors({ origin: ['https://trusted.example.com'] }).",
     # File path control (CWE-73)
-    ("CWE-73", "javascript_typescript"): "Validate file paths against an allowlist. Use path.resolve() and verify the result is within the allowed directory. Reject paths with '..' components.",
-
+    (
+        "CWE-73",
+        "javascript_typescript",
+    ): "Validate file paths against an allowlist. Use path.resolve() and verify the result is within the allowed directory. Reject paths with '..' components.",
     # Android exported components (CWE-926)
-    ("CWE-926", "kotlin"): "Set android:exported='false' in AndroidManifest.xml for internal components. Add permission checks for exported components.",
-
+    (
+        "CWE-926",
+        "kotlin",
+    ): "Set android:exported='false' in AndroidManifest.xml for internal components. Add permission checks for exported components.",
     # Weak password hashing (CWE-916)
-    ("CWE-916", "python"): "Use bcrypt (bcrypt.hashpw), argon2 (argon2-cffi), or scrypt (hashlib.scrypt) instead of MD5/SHA for password hashing.",
-
+    (
+        "CWE-916",
+        "python",
+    ): "Use bcrypt (bcrypt.hashpw), argon2 (argon2-cffi), or scrypt (hashlib.scrypt) instead of MD5/SHA for password hashing.",
     # Eval injection (CWE-95)
-    ("CWE-95", "python"): "Remove eval()/exec() with user input. Use ast.literal_eval() for safe Python literal parsing. Use a sandboxed environment if dynamic code execution is needed.",
-
+    (
+        "CWE-95",
+        "python",
+    ): "Remove eval()/exec() with user input. Use ast.literal_eval() for safe Python literal parsing. Use a sandboxed environment if dynamic code execution is needed.",
     # Remote file inclusion (CWE-98)
-    ("CWE-98", "php"): "Set allow_url_include=Off in php.ini. Validate file paths against an allowlist. Use basename() to strip directory components from user input.",
-
+    (
+        "CWE-98",
+        "php",
+    ): "Set allow_url_include=Off in php.ini. Validate file paths against an allowlist. Use basename() to strip directory components from user input.",
     # IDOR (CWE-639)
-    ("CWE-639", "python"): "Verify user authorization before accessing resources. Use the authenticated user's ID from the session, not from request parameters.",
-    ("CWE-639", "javascript_typescript"): "Verify user authorization before accessing resources. Use the authenticated user's ID from the session, not from request parameters.",
-    ("CWE-639", "php"): "Verify user authorization before accessing resources. Use the authenticated user's session ID, not user-supplied IDs for resource access.",
-
+    (
+        "CWE-639",
+        "python",
+    ): "Verify user authorization before accessing resources. Use the authenticated user's ID from the session, not from request parameters.",
+    (
+        "CWE-639",
+        "javascript_typescript",
+    ): "Verify user authorization before accessing resources. Use the authenticated user's ID from the session, not from request parameters.",
+    (
+        "CWE-639",
+        "php",
+    ): "Verify user authorization before accessing resources. Use the authenticated user's session ID, not user-supplied IDs for resource access.",
     # Cookie security (CWE-614)
-    ("CWE-614", "python"): "Set cookie flags: response.set_cookie(key, value, secure=True, httponly=True, samesite='Lax'). Use SESSION_COOKIE_SECURE=True in Django.",
-    ("CWE-614", "javascript_typescript"): "Set cookie flags: res.cookie(name, value, { secure: true, httpOnly: true, sameSite: 'lax' }). Use helmet for Express security headers.",
-
+    (
+        "CWE-614",
+        "python",
+    ): "Set cookie flags: response.set_cookie(key, value, secure=True, httponly=True, samesite='Lax'). Use SESSION_COOKIE_SECURE=True in Django.",
+    (
+        "CWE-614",
+        "javascript_typescript",
+    ): "Set cookie flags: res.cookie(name, value, { secure: true, httpOnly: true, sameSite: 'lax' }). Use helmet for Express security headers.",
     # Missing auth (CWE-862)
-    ("CWE-862", "python"): "Add authorization decorators or middleware to protected endpoints. Use @login_required (Django) or @jwt_required (Flask-JWT) on all protected routes.",
-    ("CWE-862", "javascript_typescript"): "Add authentication middleware to protected routes. Use passport.authenticate() or a custom auth middleware before route handlers.",
-    ("CWE-862", "dotnet"): "Add [Authorize] attribute to controller actions. Configure authorization policies in Startup.cs. Use role-based or policy-based authorization.",
-
+    (
+        "CWE-862",
+        "python",
+    ): "Add authorization decorators or middleware to protected endpoints. Use @login_required (Django) or @jwt_required (Flask-JWT) on all protected routes.",
+    (
+        "CWE-862",
+        "javascript_typescript",
+    ): "Add authentication middleware to protected routes. Use passport.authenticate() or a custom auth middleware before route handlers.",
+    (
+        "CWE-862",
+        "dotnet",
+    ): "Add [Authorize] attribute to controller actions. Configure authorization policies in Startup.cs. Use role-based or policy-based authorization.",
     # File permissions (CWE-732)
-    ("CWE-732", "python"): "Set restrictive permissions with os.chmod(path, 0o600) for sensitive files. Use os.umask(0o077) to restrict default permissions.",
-
+    (
+        "CWE-732",
+        "python",
+    ): "Set restrictive permissions with os.chmod(path, 0o600) for sensitive files. Use os.umask(0o077) to restrict default permissions.",
     # Cleartext storage (CWE-312)
-    ("CWE-312", "objective-c"): "Use Keychain Services (SecItemAdd) for storing secrets instead of NSUserDefaults or plist files. Encrypt sensitive data with CommonCrypto.",
-    ("CWE-312", "swift"): "Use Keychain Services or SwiftKeychainWrapper for storing secrets. Never store sensitive data in UserDefaults or plist files.",
-
+    (
+        "CWE-312",
+        "objective-c",
+    ): "Use Keychain Services (SecItemAdd) for storing secrets instead of NSUserDefaults or plist files. Encrypt sensitive data with CommonCrypto.",
+    (
+        "CWE-312",
+        "swift",
+    ): "Use Keychain Services or SwiftKeychainWrapper for storing secrets. Never store sensitive data in UserDefaults or plist files.",
     # Privilege escalation (CWE-250)
-    ("CWE-250", "objective-c"): "Drop elevated privileges as soon as possible. Use the principle of least privilege. Avoid running with root/admin unless absolutely necessary.",
-    ("CWE-250", "swift"): "Drop elevated privileges as soon as possible. Use the principle of least privilege. Use Authorization Services for privileged operations.",
-
+    (
+        "CWE-250",
+        "objective-c",
+    ): "Drop elevated privileges as soon as possible. Use the principle of least privilege. Avoid running with root/admin unless absolutely necessary.",
+    (
+        "CWE-250",
+        "swift",
+    ): "Drop elevated privileges as soon as possible. Use the principle of least privilege. Use Authorization Services for privileged operations.",
     # Authorization issues (CWE-863)
-    ("CWE-863", "dotnet"): "Review authorization logic for bypass conditions. Use policy-based authorization with IAuthorizationHandler. Test authorization with different user roles.",
-
+    (
+        "CWE-863",
+        "dotnet",
+    ): "Review authorization logic for bypass conditions. Use policy-based authorization with IAuthorizationHandler. Test authorization with different user roles.",
     # Authentication issues (CWE-287)
-    ("CWE-287", "dotnet"): "Use ASP.NET Core Identity or a proven authentication library. Implement multi-factor authentication. Use strong password hashing (BCrypt/Argon2).",
-
+    (
+        "CWE-287",
+        "dotnet",
+    ): "Use ASP.NET Core Identity or a proven authentication library. Implement multi-factor authentication. Use strong password hashing (BCrypt/Argon2).",
     # Key exchange (CWE-322)
-    ("CWE-322", "go"): "Use authenticated key exchange protocols (TLS 1.3, SSH with host key verification). Never skip host key verification in SSH connections.",
-
+    (
+        "CWE-322",
+        "go",
+    ): "Use authenticated key exchange protocols (TLS 1.3, SSH with host key verification). Never skip host key verification in SSH connections.",
     # Password requirements (CWE-521)
-    ("CWE-521", "go"): "Enforce minimum password length of 12 characters. Require complexity rules. Check passwords against breached password lists (Have I Been Pwned API).",
-
+    (
+        "CWE-521",
+        "go",
+    ): "Enforce minimum password length of 12 characters. Require complexity rules. Check passwords against breached password lists (Have I Been Pwned API).",
     # XPath injection (CWE-91)
-    ("CWE-91", "dotnet"): "Use parameterized XPath queries with XPathNavigator.Compile(). Escape special characters in user input before XPath queries.",
-
+    (
+        "CWE-91",
+        "dotnet",
+    ): "Use parameterized XPath queries with XPathNavigator.Compile(). Escape special characters in user input before XPath queries.",
     # Memory safety
-    ("CWE-120", "c_cpp"): "Use strncpy/strncat with explicit size limits instead of strcpy/strcat. Use snprintf instead of sprintf. Check input length before copying.",
-    ("CWE-120", "rust"): "Use safe Rust APIs that enforce bounds checking. Minimize unsafe blocks. Use Vec<u8> and slice methods instead of raw pointers.",
-    ("CWE-120", "objective-c"): "Use NSString and NSData instead of C string functions. If C buffers are required, always validate sizes. Use strlcpy/strlcat instead of strcpy/strcat.",
-    ("CWE-134", "c_cpp"): "Never pass user input as the format string. Use printf(\"%s\", user_input) instead of printf(user_input). Use -Wformat-security compiler flag.",
-    ("CWE-134", "erlang"): "Never use user input as the format string in io:format/2. Always use a static format string: io:format(\"~s\", [UserInput]).",
-    ("CWE-190", "c_cpp"): "Check for overflow before arithmetic: if (a > INT_MAX - b) { error; }. Use compiler built-ins like __builtin_add_overflow() or SafeInt library.",
-    ("CWE-415", "c_cpp"): "Set pointers to NULL after freeing. Use RAII in C++ (unique_ptr, shared_ptr). Check for double-free with AddressSanitizer (-fsanitize=address).",
-    ("CWE-416", "c_cpp"): "Set pointers to NULL after freeing. Use smart pointers (unique_ptr, shared_ptr) in C++. Enable AddressSanitizer for detection.",
-    ("CWE-416", "rust"): "Avoid unsafe blocks with raw pointers. Use Rust's ownership system and borrowing rules. If unsafe is required, ensure lifetimes are properly managed.",
-    ("CWE-476", "c_cpp"): "Always check pointers for NULL before dereferencing. Initialize pointers to NULL. Use static analysis tools to detect null dereference paths.",
-    ("CWE-704", "c_cpp"): "Use explicit casts with bounds checking. In C++, prefer static_cast over C-style casts. Validate value ranges before narrowing conversions.",
-
+    (
+        "CWE-120",
+        "c_cpp",
+    ): "Use strncpy/strncat with explicit size limits instead of strcpy/strcat. Use snprintf instead of sprintf. Check input length before copying.",
+    (
+        "CWE-120",
+        "rust",
+    ): "Use safe Rust APIs that enforce bounds checking. Minimize unsafe blocks. Use Vec<u8> and slice methods instead of raw pointers.",
+    (
+        "CWE-120",
+        "objective-c",
+    ): "Use NSString and NSData instead of C string functions. If C buffers are required, always validate sizes. Use strlcpy/strlcat instead of strcpy/strcat.",
+    (
+        "CWE-134",
+        "c_cpp",
+    ): 'Never pass user input as the format string. Use printf("%s", user_input) instead of printf(user_input). Use -Wformat-security compiler flag.',
+    (
+        "CWE-134",
+        "erlang",
+    ): 'Never use user input as the format string in io:format/2. Always use a static format string: io:format("~s", [UserInput]).',
+    (
+        "CWE-190",
+        "c_cpp",
+    ): "Check for overflow before arithmetic: if (a > INT_MAX - b) { error; }. Use compiler built-ins like __builtin_add_overflow() or SafeInt library.",
+    (
+        "CWE-415",
+        "c_cpp",
+    ): "Set pointers to NULL after freeing. Use RAII in C++ (unique_ptr, shared_ptr). Check for double-free with AddressSanitizer (-fsanitize=address).",
+    (
+        "CWE-416",
+        "c_cpp",
+    ): "Set pointers to NULL after freeing. Use smart pointers (unique_ptr, shared_ptr) in C++. Enable AddressSanitizer for detection.",
+    (
+        "CWE-416",
+        "rust",
+    ): "Avoid unsafe blocks with raw pointers. Use Rust's ownership system and borrowing rules. If unsafe is required, ensure lifetimes are properly managed.",
+    (
+        "CWE-476",
+        "c_cpp",
+    ): "Always check pointers for NULL before dereferencing. Initialize pointers to NULL. Use static analysis tools to detect null dereference paths.",
+    (
+        "CWE-704",
+        "c_cpp",
+    ): "Use explicit casts with bounds checking. In C++, prefer static_cast over C-style casts. Validate value ranges before narrowing conversions.",
     # Broken access control (CWE-119)
-    ("CWE-119", "rust"): "Minimize unsafe blocks. Use safe Rust APIs with bounds checking. If unsafe is required, carefully validate all buffer sizes and indices.",
-    ("CWE-119", "dotnet"): "Use safe managed code. Avoid Marshal.Copy and unsafe fixed buffers. Use Span<T> with bounds checking for performance-critical buffer operations.",
-
+    (
+        "CWE-119",
+        "rust",
+    ): "Minimize unsafe blocks. Use safe Rust APIs with bounds checking. If unsafe is required, carefully validate all buffer sizes and indices.",
+    (
+        "CWE-119",
+        "dotnet",
+    ): "Use safe managed code. Avoid Marshal.Copy and unsafe fixed buffers. Use Span<T> with bounds checking for performance-critical buffer operations.",
     # Open redirect (CWE-601)
-    ("CWE-601", "elixir"): "Validate redirect URLs against an allowlist of trusted paths or domains. Use relative paths for internal redirects. Reject external URLs.",
-    ("CWE-601", "erlang"): "Validate redirect URLs against an allowlist of trusted paths or domains. Use relative paths for internal redirects. Reject external URLs.",
-    ("CWE-601", "ruby"): "Validate redirect URLs against an allowlist. Use relative paths for internal redirects. Use URI.parse to check the host before redirecting.",
-    ("CWE-601", "php"): "Validate redirect URLs against an allowlist of trusted domains. Use relative paths for internal redirects. Parse URLs and check the host component.",
+    (
+        "CWE-601",
+        "elixir",
+    ): "Validate redirect URLs against an allowlist of trusted paths or domains. Use relative paths for internal redirects. Reject external URLs.",
+    (
+        "CWE-601",
+        "erlang",
+    ): "Validate redirect URLs against an allowlist of trusted paths or domains. Use relative paths for internal redirects. Reject external URLs.",
+    (
+        "CWE-601",
+        "ruby",
+    ): "Validate redirect URLs against an allowlist. Use relative paths for internal redirects. Use URI.parse to check the host before redirecting.",
+    (
+        "CWE-601",
+        "php",
+    ): "Validate redirect URLs against an allowlist of trusted domains. Use relative paths for internal redirects. Parse URLs and check the host component.",
 }
 
 # ---------------------------------------------------------------------------
@@ -528,11 +1107,10 @@ def escape_yaml_double_quoted(s):
     """Escape a string for use in YAML double-quoted context."""
     s = s.replace("\\", "\\\\")
     s = s.replace('"', '\\"')
-    s = s.replace("\n", "\\n")
-    return s
+    return s.replace("\n", "\\n")
 
 
-def rewrite_file(filepath, stats):
+def rewrite_file(filepath, stats):  # noqa: C901
     """Rewrite messages and add fix metadata in a single YAML file."""
     with open(filepath) as f:
         content = f.read()
@@ -552,13 +1130,15 @@ def rewrite_file(filepath, stats):
     rule_infos = []
     for rule in rules:
         meta = rule.get("metadata", {})
-        rule_infos.append({
-            "id": rule.get("id", ""),
-            "message": rule.get("message", ""),
-            "severity": rule.get("severity", ""),
-            "cwe": str(meta.get("cwe", "")),
-            "has_fix": "fix" in meta,
-        })
+        rule_infos.append(
+            {
+                "id": rule.get("id", ""),
+                "message": rule.get("message", ""),
+                "severity": rule.get("severity", ""),
+                "cwe": str(meta.get("cwe", "")),
+                "has_fix": "fix" in meta,
+            }
+        )
 
     # Find all message lines and metadata blocks
     # We process the file line by line to find:
@@ -572,8 +1152,10 @@ def rewrite_file(filepath, stats):
             rule_starts.append(i)
 
     if len(rule_starts) != len(rule_infos):
-        print(f"  WARNING: {filepath}: found {len(rule_starts)} rule starts but "
-              f"{len(rule_infos)} rules from YAML. Skipping file.")
+        print(
+            f"  WARNING: {filepath}: found {len(rule_starts)} rule starts but "
+            f"{len(rule_infos)} rules from YAML. Skipping file."
+        )
         return content
 
     # For each rule, find its message line and metadata block end
@@ -591,13 +1173,11 @@ def rewrite_file(filepath, stats):
                 break
 
         # Find metadata block within this rule
-        meta_start_idx = None
         meta_end_idx = None
         meta_indent = None
         for i in range(rule_start, rule_end):
             m = re.match(r"^(\s+)metadata:\s*$", lines[i])
             if m:
-                meta_start_idx = i
                 meta_indent = m.group(1)
                 field_indent = meta_indent + "  "
                 # Find end of metadata block
@@ -617,8 +1197,7 @@ def rewrite_file(filepath, stats):
                             else:
                                 break
                         continue
-                    else:
-                        break
+                    break
                 meta_end_idx = j
                 break
 
@@ -638,8 +1217,12 @@ def rewrite_file(filepath, stats):
             stats["messages_rewritten"] += 1
 
         # 2. Fix insertion: if CRITICAL/HIGH, no fix field, and we have fix text
-        if (severity in ("CRITICAL", "HIGH") and not rule_info["has_fix"]
-                and meta_end_idx is not None and meta_indent is not None):
+        if (
+            severity in ("CRITICAL", "HIGH")
+            and not rule_info["has_fix"]
+            and meta_end_idx is not None
+            and meta_indent is not None
+        ):
             fix_text = get_fix_text(cwe, lang_key)
             if fix_text:
                 field_indent = meta_indent + "  "
@@ -667,9 +1250,10 @@ def rewrite_file(filepath, stats):
     return "\n".join(lines)
 
 
-def main():
-    rules_dir = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
-                             "socket_basics", "rules")
+def main():  # noqa: C901
+    rules_dir = os.path.join(
+        os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "socket_basics", "rules"
+    )
 
     if not os.path.isdir(rules_dir):
         print(f"ERROR: Rules directory not found: {rules_dir}")
@@ -698,16 +1282,16 @@ def main():
         stats["files_processed"] += 1
         print(f"  Processed {fname} ({rule_count} rules)")
 
-    print(f"\n{'='*60}")
-    print(f"Phase 3 complete!")
-    print(f"{'='*60}")
+    print(f"\n{'=' * 60}")
+    print("Phase 3 complete!")
+    print(f"{'=' * 60}")
     print(f"Files processed:      {stats['files_processed']}")
     print(f"Rules processed:      {stats['rules_processed']}")
     print(f"Messages rewritten:   {stats['messages_rewritten']}")
     print(f"Fix fields added:     {stats['fixes_added']}")
 
     # Verify all files still parse
-    print(f"\nVerifying YAML syntax...")
+    print("\nVerifying YAML syntax...")
     errors = 0
     for fname in yml_files:
         filepath = os.path.join(rules_dir, fname)
@@ -728,7 +1312,7 @@ def main():
         print(f"All {len(yml_files)} files parse successfully.")
 
     # Check remaining short messages
-    print(f"\nRemaining short messages (<60 chars):")
+    print("\nRemaining short messages (<60 chars):")
     remaining = 0
     for fname in yml_files:
         filepath = os.path.join(rules_dir, fname)
@@ -746,7 +1330,7 @@ def main():
         print(f"  {remaining} rules still have short messages.")
 
     # Count fix fields
-    print(f"\nFix field coverage:")
+    print("\nFix field coverage:")
     total_rules = 0
     fix_count = 0
     crit_high_total = 0

@@ -56,9 +56,10 @@ import os
 import re
 import sys
 import urllib.request
+from collections.abc import Callable
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any, Callable, Optional
+from typing import Any
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 # The three published/test images pin core tools independently, so scoring must
@@ -122,14 +123,14 @@ class Tool:
     # Dockerfiles / uv.lock; no leading-v normalization -- as written).
     read_pinned: Callable[[], list[str]]
     # Returns the latest upstream version tag (as published).
-    discover_latest: Callable[[], Optional[str]]
+    discover_latest: Callable[[], str | None]
     # Builds a Socket PURL for a given version string.
     purl: Callable[[str], str]
     note: str = ""
     # Optional fallback coordinate scored when `purl` has no Socket coverage
     # (e.g. pkg:github). Returns a fully-formed PURL string (or None). Used for
     # reporting only -- a proxy is never build-failing.
-    proxy_purl: Callable[[], Optional[str]] | None = None
+    proxy_purl: Callable[[], str | None] | None = None
     proxy_label: str = ""
     # Whether Socket is expected to have data for this tool's primary PURL.
     # When True, a pinned version with no matching analysis row is treated as
@@ -139,51 +140,51 @@ class Tool:
     # and the proxy provides report-only signal instead.
     socket_coverage: bool = True
     pinned: list[str] = field(default_factory=list)
-    latest: Optional[str] = None
-    resolved_proxy_purl: Optional[str] = None
+    latest: str | None = None
+    resolved_proxy_purl: str | None = None
     analyses: dict[str, dict[str, Any]] = field(default_factory=dict)
 
 
 # ── HTTP helpers ──────────────────────────────────────────────────────────────
 
 
-def _get_json(url: str, token: Optional[str] = None) -> Any:
-    req = urllib.request.Request(url, headers={"User-Agent": "socket-basics-core-tool-watch"})
+def _get_json(url: str, token: str | None = None) -> Any:
+    req = urllib.request.Request(url, headers={"User-Agent": "socket-basics-core-tool-watch"})  # noqa: S310  # explicit metadata URL
     if token:
         req.add_header("Authorization", f"Bearer {token}")
-    with urllib.request.urlopen(req, timeout=30) as resp:  # noqa: S310 (trusted hosts)
+    with urllib.request.urlopen(req, timeout=30) as resp:  # noqa: S310  # explicit metadata source URL
         return json.loads(resp.read().decode("utf-8"))
 
 
-def _github_latest_release(repo: str) -> Optional[str]:
+def _github_latest_release(repo: str) -> str | None:
     token = os.environ.get("GITHUB_TOKEN") or os.environ.get("GH_TOKEN")
     try:
         data = _get_json(f"https://api.github.com/repos/{repo}/releases/latest", token)
         return data.get("tag_name")
-    except Exception as exc:  # noqa: BLE001
+    except Exception as exc:
         print(f"  ! GitHub latest-release lookup failed for {repo}: {exc}", file=sys.stderr)
         return None
 
 
-def _pypi_latest(package: str) -> Optional[str]:
+def _pypi_latest(package: str) -> str | None:
     try:
         data = _get_json(f"https://pypi.org/pypi/{package}/json")
         return data.get("info", {}).get("version")
-    except Exception as exc:  # noqa: BLE001
+    except Exception as exc:
         print(f"  ! PyPI latest lookup failed for {package}: {exc}", file=sys.stderr)
         return None
 
 
-def _npm_latest(package: str) -> Optional[str]:
+def _npm_latest(package: str) -> str | None:
     try:
         data = _get_json(f"https://registry.npmjs.org/{package}/latest")
         return data.get("version")
-    except Exception as exc:  # noqa: BLE001
+    except Exception as exc:
         print(f"  ! npm latest lookup failed for {package}: {exc}", file=sys.stderr)
         return None
 
 
-def _ghcr_latest(org: str, package: str) -> Optional[str]:
+def _ghcr_latest(org: str, package: str) -> str | None:
     """Newest stable semver tag on an organization-owned GHCR package."""
     token = os.environ.get("GITHUB_TOKEN") or os.environ.get("GH_TOKEN")
     if not token:
@@ -194,8 +195,7 @@ def _ghcr_latest(org: str, package: str) -> Optional[str]:
         return None
     try:
         versions = _get_json(
-            f"https://api.github.com/orgs/{org}/packages/container/{package}/versions"
-            "?per_page=100",
+            f"https://api.github.com/orgs/{org}/packages/container/{package}/versions?per_page=100",
             token,
         )
         tags = [
@@ -210,12 +210,12 @@ def _ghcr_latest(org: str, package: str) -> Optional[str]:
             if match:
                 stable_versions.append((tuple(int(g or 0) for g in match.groups()), tag))
         return max(stable_versions)[1] if stable_versions else None
-    except Exception as exc:  # noqa: BLE001
+    except Exception as exc:
         print(f"  ! GHCR latest-version lookup failed for {org}/{package}: {exc}", file=sys.stderr)
         return None
 
 
-def _pypi_purl(package: str) -> Optional[str]:
+def _pypi_purl(package: str) -> str | None:
     """Latest-version PyPI PURL for a package, or None if discovery fails."""
     v = _pypi_latest(package)
     return f"pkg:pypi/{package}@{v}" if v else None
@@ -304,7 +304,7 @@ def _read_locked_versions(package: str) -> list[str]:
 
 
 def _strip_v(v: str) -> str:
-    return v[1:] if v.startswith("v") else v
+    return v.removeprefix("v")
 
 
 def _ensure_v(v: str) -> str:
@@ -356,7 +356,9 @@ def build_tools() -> list[Tool]:
             # The Socket distribution is rebuilt from unmodified upstream
             # source. Score that Go module while release discovery follows the
             # Socket-controlled artifact that Basics actually consumes.
-            purl=lambda v: f"pkg:golang/github.com/aquasecurity/trivy@{_ensure_v(_strip_socket_rebuild(v))}",
+            purl=lambda v: (
+                f"pkg:golang/github.com/aquasecurity/trivy@{_ensure_v(_strip_socket_rebuild(v))}"
+            ),
             note="Release drift follows the Socket-built ghcr.io/socketdev/trivy package "
             "(produced by SocketDev/trivy-dist and mirrored privately to Docker Hub), not "
             "Aqua's release feed. Socket scoring uses the corresponding upstream Go module "
@@ -514,7 +516,7 @@ def _match_analysis(analyses: dict[str, dict[str, Any]], purl: str) -> dict[str,
 # ── report rendering ────────────────────────────────────────────────────────
 
 
-def render_markdown(tools: list[Tool], token_present: bool, discovery_complete: bool = True) -> str:
+def render_markdown(tools: list[Tool], token_present: bool, discovery_complete: bool = True) -> str:  # noqa: C901
     lines: list[str] = []
     lines.append("## Core tool supply-chain watch\n")
     if not discovery_complete:
@@ -536,17 +538,17 @@ def render_markdown(tools: list[Tool], token_present: bool, discovery_complete: 
             current = all(_strip_v(p) == _strip_v(t.latest) for p in t.pinned)
             drift = "✅ current" if current else f"⬆️ `{t.latest}`"
 
-        def verdict(version: Optional[str]) -> str:
+        def verdict(version: str | None, tool=t) -> str:
             if not version:
                 return "—"
             if not token_present:
                 return "skipped"
-            a = _match_analysis(t.analyses, t.purl(version))
+            a = _match_analysis(tool.analyses, tool.purl(version))
             suffix = ""
-            if not a and t.resolved_proxy_purl:
-                a = _match_analysis(t.analyses, t.resolved_proxy_purl)
+            if not a and tool.resolved_proxy_purl:
+                a = _match_analysis(tool.analyses, tool.resolved_proxy_purl)
                 if a:
-                    suffix = f" _(via {t.proxy_label})_"
+                    suffix = f" _(via {tool.proxy_label})_"
             if not a:
                 return "no data"
             if a.get("status") == "pending":
@@ -581,7 +583,7 @@ def render_markdown(tools: list[Tool], token_present: bool, discovery_complete: 
 # ── main ───────────────────────────────────────────────────────────────────────
 
 
-def main() -> int:
+def main() -> int:  # noqa: C901
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--mode", choices=["build", "watch"], default="watch")
     parser.add_argument(
@@ -636,7 +638,7 @@ def main() -> int:
         print(f"== Scoring {len(purls)} PURLs through Socket ==")
         try:
             analyses = analyze_purls(purls, token)
-        except Exception as exc:  # noqa: BLE001
+        except Exception as exc:
             print(f"! Socket analysis failed: {exc}", file=sys.stderr)
             scoring_error = True
     for t in tools:

@@ -13,22 +13,13 @@ Re-run anytime MITRE publishes new CWE entries to update the local table.
 import csv
 import io
 import re
-import sys
-import textwrap
 import urllib.request
 import zipfile
 from datetime import datetime, timezone
 from pathlib import Path
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
-OUTPUT_FILE = (
-    PROJECT_ROOT
-    / "socket_basics"
-    / "core"
-    / "connector"
-    / "opengrep"
-    / "cwe_catalog.py"
-)
+OUTPUT_FILE = PROJECT_ROOT / "socket_basics" / "core" / "connector" / "opengrep" / "cwe_catalog.py"
 
 # MITRE CWE Research Concepts view — covers all software weaknesses
 CWE_CSV_URL = "https://cwe.mitre.org/data/csv/1000.csv.zip"
@@ -41,41 +32,191 @@ _OWASP_MAPPING: dict[str, str] = {}
 
 # A01:2021 — Broken Access Control
 for _id in [
-    22, 23, 35, 59, 200, 219, 264, 275, 276, 284, 285, 352, 359, 377,
-    402, 425, 441, 497, 538, 540, 548, 552, 566, 601, 639, 651, 668,
-    706, 862, 863, 913, 922, 1275,
+    22,
+    23,
+    35,
+    59,
+    200,
+    219,
+    264,
+    275,
+    276,
+    284,
+    285,
+    352,
+    359,
+    377,
+    402,
+    425,
+    441,
+    497,
+    538,
+    540,
+    548,
+    552,
+    566,
+    601,
+    639,
+    651,
+    668,
+    706,
+    862,
+    863,
+    913,
+    922,
+    1275,
 ]:
     _OWASP_MAPPING[f"CWE-{_id}"] = "A01:2021"
 
 # A02:2021 — Cryptographic Failures
 for _id in [
-    261, 296, 310, 319, 321, 322, 323, 324, 325, 326, 327, 328, 329,
-    330, 331, 335, 336, 337, 338, 340, 347, 523, 720, 757, 759, 760,
-    780, 798, 916,
+    261,
+    296,
+    310,
+    319,
+    321,
+    322,
+    323,
+    324,
+    325,
+    326,
+    327,
+    328,
+    329,
+    330,
+    331,
+    335,
+    336,
+    337,
+    338,
+    340,
+    347,
+    523,
+    720,
+    757,
+    759,
+    760,
+    780,
+    798,
+    916,
 ]:
     _OWASP_MAPPING[f"CWE-{_id}"] = "A02:2021"
 
 # A03:2021 — Injection
 for _id in [
-    20, 74, 75, 77, 78, 79, 80, 83, 87, 88, 89, 90, 91, 93, 94, 95,
-    96, 97, 98, 99, 100, 113, 116, 117, 134, 138, 184, 470, 471, 564,
-    610, 643, 644, 652, 917, 943, 1236, 1321, 1336,
+    20,
+    74,
+    75,
+    77,
+    78,
+    79,
+    80,
+    83,
+    87,
+    88,
+    89,
+    90,
+    91,
+    93,
+    94,
+    95,
+    96,
+    97,
+    98,
+    99,
+    100,
+    113,
+    116,
+    117,
+    134,
+    138,
+    184,
+    470,
+    471,
+    564,
+    610,
+    643,
+    644,
+    652,
+    917,
+    943,
+    1236,
+    1321,
+    1336,
 ]:
     _OWASP_MAPPING[f"CWE-{_id}"] = "A03:2021"
 
 # A04:2021 — Insecure Design
 for _id in [
-    73, 183, 209, 213, 235, 256, 257, 266, 269, 280, 311, 312, 313,
-    316, 419, 430, 434, 444, 451, 472, 501, 522, 525, 539, 579, 598,
-    602, 642, 646, 650, 653, 656, 657, 799, 807, 840, 841, 927, 1021,
+    73,
+    183,
+    209,
+    213,
+    235,
+    256,
+    257,
+    266,
+    269,
+    280,
+    311,
+    312,
+    313,
+    316,
+    419,
+    430,
+    434,
+    444,
+    451,
+    472,
+    501,
+    522,
+    525,
+    539,
+    579,
+    598,
+    602,
+    642,
+    646,
+    650,
+    653,
+    656,
+    657,
+    799,
+    807,
+    840,
+    841,
+    927,
+    1021,
     1173,
 ]:
     _OWASP_MAPPING.setdefault(f"CWE-{_id}", "A04:2021")
 
 # A05:2021 — Security Misconfiguration
 for _id in [
-    2, 11, 13, 15, 16, 260, 315, 489, 497, 520, 526, 537, 541, 547,
-    611, 614, 693, 732, 756, 776, 942, 1004, 1032, 1174,
+    2,
+    11,
+    13,
+    15,
+    16,
+    260,
+    315,
+    489,
+    497,
+    520,
+    526,
+    537,
+    541,
+    547,
+    611,
+    614,
+    693,
+    732,
+    756,
+    776,
+    942,
+    1004,
+    1032,
+    1174,
 ]:
     _OWASP_MAPPING.setdefault(f"CWE-{_id}", "A05:2021")
 
@@ -85,8 +226,28 @@ for _id in [477, 1104, 1059]:
 
 # A07:2021 — Identification and Authentication Failures
 for _id in [
-    255, 259, 287, 288, 290, 294, 295, 297, 300, 302, 304, 306, 307,
-    346, 384, 521, 613, 620, 640, 798, 940, 1216,
+    255,
+    259,
+    287,
+    288,
+    290,
+    294,
+    295,
+    297,
+    300,
+    302,
+    304,
+    306,
+    307,
+    346,
+    384,
+    521,
+    613,
+    620,
+    640,
+    798,
+    940,
+    1216,
 ]:
     _OWASP_MAPPING.setdefault(f"CWE-{_id}", "A07:2021")
 
@@ -151,61 +312,173 @@ _CATEGORY_OVERRIDES: dict[str, str] = {
 
 # Ordered keyword rules — first match wins
 _CATEGORY_KEYWORDS: list[tuple[str, list[str]]] = [
-    ("Injection Vulnerability", [
-        "sql injection", "os command", "command injection", "code injection",
-        "eval injection", "ldap injection", "xpath injection", "injection",
-        "nosql", "format string", "argument delimiter",
-    ]),
-    ("Cross-Site Scripting (XSS)", [
-        "cross-site scripting", "xss",
-    ]),
-    ("Cryptographic Weakness", [
-        "cryptograph", "cipher", "hash", "random number", "prng", "rng",
-        "certificate", "tls", "ssl", "encrypt", "key exchange", "key manage",
-        "cleartext transmission", "password hash",
-    ]),
-    ("Authentication Weakness", [
-        "authenticat", "credential", "password", "session fixation", "brute force",
-        "login", "hard-coded password",
-    ]),
-    ("Access Control Violation", [
-        "access control", "authorization", "traversal", "path traversal",
-        "redirect", "permission", "privilege", "idor", "direct object",
-    ]),
-    ("Memory Safety Violation", [
-        "buffer overflow", "buffer over-read", "buffer underwrite", "buffer copy",
-        "heap-based", "stack-based", "out-of-bounds", "use after free",
-        "double free", "null pointer", "integer overflow", "integer underflow",
-        "memory", "free of pointer", "uninitialized",
-    ]),
-    ("Security Misconfiguration", [
-        "misconfigur", "debug", "default", "configuration", "verbose error",
-        "information exposure", "information leak", "error message",
-        "sensitive cookie", "cors",
-    ]),
-    ("Insecure Deserialization", [
-        "deserializ", "pickle", "unmarshall", "untrusted data",
-    ]),
-    ("Denial of Service", [
-        "denial of service", "resource consumption", "regular expression",
-        "redos", "decompression bomb", "amplification", "loop",
-    ]),
-    ("Sensitive Data Exposure", [
-        "sensitive information", "log file", "cleartext storage", "plaintext",
-        "insufficient logging",
-    ]),
-    ("Insecure File Operation", [
-        "temporary file", "file name", "file path", "symlink", "race condition",
-    ]),
-    ("Improper Error Handling", [
-        "exception", "error handling", "exceptional condition",
-    ]),
-    ("Insecure Design", [
-        "input validation", "improper validation", "missing validation",
-    ]),
-    ("Server-Side Request Forgery (SSRF)", [
-        "server-side request forgery", "ssrf",
-    ]),
+    (
+        "Injection Vulnerability",
+        [
+            "sql injection",
+            "os command",
+            "command injection",
+            "code injection",
+            "eval injection",
+            "ldap injection",
+            "xpath injection",
+            "injection",
+            "nosql",
+            "format string",
+            "argument delimiter",
+        ],
+    ),
+    (
+        "Cross-Site Scripting (XSS)",
+        [
+            "cross-site scripting",
+            "xss",
+        ],
+    ),
+    (
+        "Cryptographic Weakness",
+        [
+            "cryptograph",
+            "cipher",
+            "hash",
+            "random number",
+            "prng",
+            "rng",
+            "certificate",
+            "tls",
+            "ssl",
+            "encrypt",
+            "key exchange",
+            "key manage",
+            "cleartext transmission",
+            "password hash",
+        ],
+    ),
+    (
+        "Authentication Weakness",
+        [
+            "authenticat",
+            "credential",
+            "password",
+            "session fixation",
+            "brute force",
+            "login",
+            "hard-coded password",
+        ],
+    ),
+    (
+        "Access Control Violation",
+        [
+            "access control",
+            "authorization",
+            "traversal",
+            "path traversal",
+            "redirect",
+            "permission",
+            "privilege",
+            "idor",
+            "direct object",
+        ],
+    ),
+    (
+        "Memory Safety Violation",
+        [
+            "buffer overflow",
+            "buffer over-read",
+            "buffer underwrite",
+            "buffer copy",
+            "heap-based",
+            "stack-based",
+            "out-of-bounds",
+            "use after free",
+            "double free",
+            "null pointer",
+            "integer overflow",
+            "integer underflow",
+            "memory",
+            "free of pointer",
+            "uninitialized",
+        ],
+    ),
+    (
+        "Security Misconfiguration",
+        [
+            "misconfigur",
+            "debug",
+            "default",
+            "configuration",
+            "verbose error",
+            "information exposure",
+            "information leak",
+            "error message",
+            "sensitive cookie",
+            "cors",
+        ],
+    ),
+    (
+        "Insecure Deserialization",
+        [
+            "deserializ",
+            "pickle",
+            "unmarshall",
+            "untrusted data",
+        ],
+    ),
+    (
+        "Denial of Service",
+        [
+            "denial of service",
+            "resource consumption",
+            "regular expression",
+            "redos",
+            "decompression bomb",
+            "amplification",
+            "loop",
+        ],
+    ),
+    (
+        "Sensitive Data Exposure",
+        [
+            "sensitive information",
+            "log file",
+            "cleartext storage",
+            "plaintext",
+            "insufficient logging",
+        ],
+    ),
+    (
+        "Insecure File Operation",
+        [
+            "temporary file",
+            "file name",
+            "file path",
+            "symlink",
+            "race condition",
+        ],
+    ),
+    (
+        "Improper Error Handling",
+        [
+            "exception",
+            "error handling",
+            "exceptional condition",
+        ],
+    ),
+    (
+        "Insecure Design",
+        [
+            "input validation",
+            "improper validation",
+            "missing validation",
+        ],
+    ),
+    (
+        "Server-Side Request Forgery (SSRF)",
+        [
+            "server-side request forgery",
+            "ssrf",
+        ],
+    ),
 ]
 
 
@@ -238,7 +511,7 @@ def fetch_cwe_csv() -> list[dict]:
     """Download and parse the MITRE CWE CSV catalog."""
     print(f"Downloading CWE catalog from {CWE_CSV_URL} ...")
     req = urllib.request.Request(CWE_CSV_URL, headers={"User-Agent": "socket-basics/1.0"})
-    with urllib.request.urlopen(req, timeout=60) as resp:
+    with urllib.request.urlopen(req, timeout=60) as resp:  # noqa: S310  # explicit metadata source URL
         zip_data = resp.read()
 
     print(f"Downloaded {len(zip_data)} bytes, extracting ...")
@@ -318,7 +591,7 @@ def generate_python(entries: list[dict]) -> str:
     lines = [
         '"""CWE Catalog — auto-generated lookup table.',
         "",
-        f"Source: MITRE CWE Research Concepts (View 1000)",
+        "Source: MITRE CWE Research Concepts (View 1000)",
         f"URL: {CWE_CSV_URL}",
         f"Generated: {now}",
         f"Entries: {len(entries)}",

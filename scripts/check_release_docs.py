@@ -15,9 +15,13 @@ from __future__ import annotations
 import argparse
 import re
 import sys
-import tomllib
 from dataclasses import dataclass
 from pathlib import Path
+
+try:
+    import tomllib
+except ModuleNotFoundError:
+    import tomli as tomllib
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 PYPROJECT_PATH = REPO_ROOT / "pyproject.toml"
@@ -212,13 +216,17 @@ def main() -> int:
 
     mismatches = check_docs(version)
     if mismatches:
-        print(f"Documentation version references are out of sync (release {version}, Dockerfile tool pins):")
+        print(
+            f"Documentation version references are out of sync (release {version}, Dockerfile tool pins):"
+        )
         for mismatch in mismatches:
             print(f" - {mismatch}")
         print("Run: python3 scripts/check_release_docs.py --write")
         return 1
 
-    print(f"Documentation version references are in sync: release {version}, tool pins {read_tool_pins()}")
+    print(
+        f"Documentation version references are in sync: release {version}, tool pins {read_tool_pins()}"
+    )
     return 0
 
 

@@ -1,22 +1,23 @@
-#!/usr/bin/env python3
 """
 Configuration management for Socket Security Basics
 Handles CLI arguments, environment variables, and provides a unified config object
 """
 
 import argparse
+import contextlib
 import json
+import logging
 import os
 import re
-import yaml
-import logging
 from pathlib import Path
-from typing import Dict, Any, List, Optional
+from typing import Any
+
+import yaml
 
 logger = logging.getLogger(__name__)
 
-TRUE_STRINGS = ('true', '1', 'yes', 'on')
-FALSE_STRINGS = ('false', '0', 'no', 'off')
+TRUE_STRINGS = ("true", "1", "yes", "on")
+FALSE_STRINGS = ("false", "0", "no", "off")
 
 
 def coerce_bool(value: Any, default: bool) -> bool:
@@ -48,7 +49,7 @@ def coerce_bool(value: Any, default: bool) -> bool:
     return bool(value)
 
 
-def _normalize_path_parts(path_value: str | None) -> List[str] | None:
+def _normalize_path_parts(path_value: str | None) -> list[str] | None:
     """Normalize a path-like string into comparable POSIX-style path segments."""
     if path_value is None:
         return None
@@ -57,46 +58,44 @@ def _normalize_path_parts(path_value: str | None) -> List[str] | None:
     if not path_str:
         return None
 
-    path_str = path_str.replace('\\', '/')
-    while path_str.startswith('./'):
+    path_str = path_str.replace("\\", "/")
+    while path_str.startswith("./"):
         path_str = path_str[2:]
-    path_str = path_str.lstrip('/')
+    path_str = path_str.lstrip("/")
 
-    normalized_parts: List[str] = []
-    for part in path_str.split('/'):
-        if not part or part == '.':
+    normalized_parts: list[str] = []
+    for part in path_str.split("/"):
+        if not part or part == ".":
             continue
-        if part == '..':
+        if part == "..":
             return None
         normalized_parts.append(part)
 
     return normalized_parts or None
 
 
-def _get_workspace_prefix_candidates() -> List[List[str]]:
+def _get_workspace_prefix_candidates() -> list[list[str]]:
     """Return normalized workspace roots from common CI systems and local cwd."""
-    candidate_values: List[str] = []
+    candidate_values: list[str] = []
     for env_var in (
-        'BITBUCKET_CLONE_DIR',
-        'BUILD_SOURCESDIRECTORY',
-        'BUILDKITE_BUILD_CHECKOUT_PATH',
-        'CI_PROJECT_DIR',
-        'CIRCLE_WORKING_DIRECTORY',
-        'DRONE_WORKSPACE',
-        'GITHUB_WORKSPACE',
-        'SYSTEM_DEFAULTWORKINGDIRECTORY',
-        'WORKSPACE',
+        "BITBUCKET_CLONE_DIR",
+        "BUILD_SOURCESDIRECTORY",
+        "BUILDKITE_BUILD_CHECKOUT_PATH",
+        "CI_PROJECT_DIR",
+        "CIRCLE_WORKING_DIRECTORY",
+        "DRONE_WORKSPACE",
+        "GITHUB_WORKSPACE",
+        "SYSTEM_DEFAULTWORKINGDIRECTORY",
+        "WORKSPACE",
     ):
         env_value = os.getenv(env_var)
         if env_value:
             candidate_values.append(env_value)
 
-    try:
+    with contextlib.suppress(Exception):
         candidate_values.append(os.getcwd())
-    except Exception:
-        pass
 
-    normalized_candidates: List[List[str]] = []
+    normalized_candidates: list[list[str]] = []
     seen: set[tuple[str, ...]] = set()
     for value in candidate_values:
         parts = _normalize_path_parts(value)
@@ -120,23 +119,26 @@ def normalize_repo_relative_path(path_value: str | None) -> str | None:
         return None
 
     for workspace_parts in _get_workspace_prefix_candidates():
-        if len(normalized_parts) > len(workspace_parts) and normalized_parts[:len(workspace_parts)] == workspace_parts:
-            normalized_parts = normalized_parts[len(workspace_parts):]
+        if (
+            len(normalized_parts) > len(workspace_parts)
+            and normalized_parts[: len(workspace_parts)] == workspace_parts
+        ):
+            normalized_parts = normalized_parts[len(workspace_parts) :]
             break
 
-    normalized = '/'.join(normalized_parts)
+    normalized = "/".join(normalized_parts)
     return normalized or None
 
 
-def parse_sast_ignore_overrides(raw_value: str | None) -> List[Dict[str, str | None]]:
+def parse_sast_ignore_overrides(raw_value: str | None) -> list[dict[str, str | None]]:
     """Parse `rule_id` and `rule_id:path` ignore override entries."""
-    overrides: List[Dict[str, str | None]] = []
+    overrides: list[dict[str, str | None]] = []
     seen: set[tuple[str, str | None]] = set()
 
     if not raw_value:
         return overrides
 
-    for raw_entry in str(raw_value).split(','):
+    for raw_entry in str(raw_value).split(","):
         entry = raw_entry.strip()
         if not entry:
             continue
@@ -144,8 +146,8 @@ def parse_sast_ignore_overrides(raw_value: str | None) -> List[Dict[str, str | N
         rule_id = entry
         path = None
 
-        if ':' in entry:
-            rule_id, path_part = entry.split(':', 1)
+        if ":" in entry:
+            rule_id, path_part = entry.split(":", 1)
             rule_id = rule_id.strip()
             path_part = path_part.strip()
 
@@ -153,7 +155,7 @@ def parse_sast_ignore_overrides(raw_value: str | None) -> List[Dict[str, str | N
                 logger.warning("Ignoring malformed SAST ignore override: %r", entry)
                 continue
 
-            if any(ch in path_part for ch in ('*', '?', '[')):
+            if any(ch in path_part for ch in ("*", "?", "[")):
                 logger.warning(
                     "Ignoring unsupported SAST ignore override with glob syntax: %r",
                     entry,
@@ -174,40 +176,38 @@ def parse_sast_ignore_overrides(raw_value: str | None) -> List[Dict[str, str | N
         if key in seen:
             continue
         seen.add(key)
-        overrides.append({'rule_id': rule_id, 'path': path})
+        overrides.append({"rule_id": rule_id, "path": path})
 
     return overrides
 
 
 def alert_matches_sast_ignore_override(
-    alert: Dict[str, Any],
-    override: Dict[str, str | None],
+    alert: dict[str, Any],
+    override: dict[str, str | None],
 ) -> bool:
     """Return True when an alert matches a parsed SAST ignore override."""
-    props = alert.get('props', {}) or {}
-    rule_id = props.get('ruleId') or alert.get('title') or alert.get('ruleId')
-    if not rule_id or rule_id != override.get('rule_id'):
+    props = alert.get("props", {}) or {}
+    rule_id = props.get("ruleId") or alert.get("title") or alert.get("ruleId")
+    if not rule_id or rule_id != override.get("rule_id"):
         return False
 
-    override_path = override.get('path')
+    override_path = override.get("path")
     if not override_path:
         return True
 
-    alert_path = (
-        props.get('filePath')
-        or (alert.get('location') or {}).get('path')
-        or ''
-    )
+    alert_path = props.get("filePath") or (alert.get("location") or {}).get("path") or ""
     normalized_alert_path = normalize_repo_relative_path(alert_path)
     return normalized_alert_path == override_path
 
 
 class Config:
     """Configuration object that provides unified access to all settings"""
-    
-    def __init__(self, config_dict: Dict[str, Any] | None = None, json_config_path: str | None = None):
+
+    def __init__(
+        self, config_dict: dict[str, Any] | None = None, json_config_path: str | None = None
+    ):
         """Initialize configuration from dictionary, JSON file, or environment
-        
+
         Args:
             config_dict: Optional configuration dictionary (takes precedence)
             json_config_path: Optional path to JSON configuration file
@@ -228,16 +228,16 @@ class Config:
         else:
             # Default: merge environment config with Socket Basics API config
             self._config = merge_json_and_env_config()
-        
+
         self._config = self._config
 
         # Log where the configuration is being loaded from
         logger = logging.getLogger(__name__)
-        config_source = self._config.get('_config_source', 'environment')
+        config_source = self._config.get("_config_source", "environment")
         source_descriptions = {
-            'api': 'Socket dashboard (API)',
-            'json_file': 'JSON config file (--config)',
-            'environment': 'environment variables',
+            "api": "Socket dashboard (API)",
+            "json_file": "JSON config file (--config)",
+            "environment": "environment variables",
         }
         source_desc = source_descriptions.get(config_source, config_source)
         logger.info(f"Configuration loaded from: {source_desc}")
@@ -250,18 +250,21 @@ class Config:
         logger.debug(f"  socket_org: {self._config.get('socket_org')}")
         logger.debug(f"  socket_api_key set: {bool(self._config.get('socket_api_key'))}")
         # Validate workspace path: warn and fall back to cwd when missing
-        ws = Path(self._config.get('workspace', os.getcwd()))
+        ws = Path(self._config.get("workspace", os.getcwd()))
         if not ws.exists():
-            logging.getLogger(__name__).warning("Configured workspace does not exist: %s; falling back to current working directory", str(ws))
+            logging.getLogger(__name__).warning(
+                "Configured workspace does not exist: %s; falling back to current working directory",
+                str(ws),
+            )
             ws = Path(os.getcwd())
         self.workspace = ws
-        self.output_dir = Path(self._config.get('output_dir', self.workspace))
-        self.scan_files = self._parse_scan_files(self._config.get('scan_files', ''))
+        self.output_dir = Path(self._config.get("output_dir", self.workspace))
+        self.scan_files = self._parse_scan_files(self._config.get("scan_files", ""))
         # Normalize this once for every config source. Dashboard and JSON
         # values are not guaranteed to be real booleans, and connectors must
         # not treat the string ``"false"`` as truthy.
-        self._config['scan_all'] = coerce_bool(
-            self._config.get('scan_all'),
+        self._config["scan_all"] = coerce_bool(
+            self._config.get("scan_all"),
             False,
         )
         self._resolve_changed_files_scope()
@@ -282,21 +285,21 @@ class Config:
         string character by character looking for files named ``a``, ``u``,
         ``t``, ``o``.
         """
-        raw = self._config.get('changed_files')
+        raw = self._config.get("changed_files")
 
         if isinstance(raw, (list, tuple)):
-            self._config['changed_files'] = list(raw)
+            self._config["changed_files"] = list(raw)
             if raw:
-                self._config.setdefault('changed_files_scope_requested', True)
+                self._config.setdefault("changed_files_scope_requested", True)
             return
 
         if raw is None or not str(raw).strip():
             # Normalize to a list so callers never see '' or None here.
-            self._config['changed_files'] = []
+            self._config["changed_files"] = []
             return
 
-        self._config['changed_files_scope_requested'] = True
-        fail_open = coerce_bool(self._config.get('scan_all'), False)
+        self._config["changed_files_scope_requested"] = True
+        fail_open = coerce_bool(self._config.get("scan_all"), False)
         resolved = resolve_changed_files_request(
             str(raw),
             str(self.workspace),
@@ -309,8 +312,8 @@ class Config:
                     "falling back to a full-repo scan. See the warnings above for the "
                     "underlying git error."
                 )
-                self._config['changed_files'] = []
-                self._config['changed_files_scope_requested'] = False
+                self._config["changed_files"] = []
+                self._config["changed_files_scope_requested"] = False
                 return
             raise SystemExit(
                 "changed_files: the requested scope could not be resolved, so the scan "
@@ -321,23 +324,23 @@ class Config:
                 "input, set INPUT_SCAN_ALL=true in the environment, or set "
                 '"scan_all": true in a --config JSON file or your dashboard config.'
             )
-        self._config['changed_files'] = resolved
+        self._config["changed_files"] = resolved
 
     def get(self, key: str, default=None):
         """Get configuration value"""
         return self._config.get(key, default)
-    
+
     def set(self, key: str, value: Any):
         """Set configuration value"""
         self._config[key] = value
-    
-    def _parse_scan_files(self, scan_files_str: str) -> List[str]:
+
+    def _parse_scan_files(self, scan_files_str: str) -> list[str]:
         """Parse comma-separated scan files into a list"""
         if not scan_files_str.strip():
             return []
-        return [f.strip() for f in scan_files_str.split(',') if f.strip()]
-    
-    def get_scan_targets(self) -> List[str]:
+        return [f.strip() for f in scan_files_str.split(",") if f.strip()]
+
+    def get_scan_targets(self) -> list[str]:
         """Determine files to scan based on configuration.
 
         Precedence (highest to lowest):
@@ -357,25 +360,26 @@ class Config:
         working directory.
         """
         scope_requested = bool(
-            self.get('changed_files') or self.get('changed_files_scope_requested', False)
+            self.get("changed_files") or self.get("changed_files_scope_requested", False)
         )
 
         # Diff-only mode: scope the scan to the files changed in the PR/commit.
         # Keep honoring the scope when git resolves to zero files, e.g. a
         # delete-only PR, so callers skip instead of scanning the workspace.
-        changed_files = self.get('changed_files', []) or []
+        changed_files = self.get("changed_files", []) or []
         if scope_requested:
             targets = self._resolve_file_targets(changed_files)
             logging.getLogger(__name__).info(
                 "Diff-only scan scoping active: %d scan target(s) from %d changed file(s)",
-                len(targets), len(changed_files),
+                len(targets),
+                len(changed_files),
             )
             return targets
 
         # Explicit fail-open fallback. A failed changed-files resolution clears
         # changed_files_scope_requested, so this branch is reached only when no
         # successfully resolved changed-files scope exists.
-        if coerce_bool(self.get('scan_all'), False):
+        if coerce_bool(self.get("scan_all"), False):
             return [str(self.workspace)]
 
         # Explicit list of files to scan.
@@ -385,7 +389,7 @@ class Config:
         # Default: scan the workspace itself.
         return [str(self.workspace)]
 
-    def _resolve_file_targets(self, files: List[str]) -> List[str]:
+    def _resolve_file_targets(self, files: list[str]) -> list[str]:
         """Resolve a list of file paths to absolute scan targets.
 
         Relative paths are resolved against the workspace; absolute paths are
@@ -394,7 +398,7 @@ class Config:
         the provided paths exist, signalling callers that there is nothing to
         scan.
         """
-        valid: List[str] = []
+        valid: list[str] = []
         for f in files:
             p = Path(f)
             if not p.is_absolute():
@@ -404,51 +408,50 @@ class Config:
             else:
                 logging.getLogger(__name__).warning("Scan target does not exist: %s", str(p))
         return valid
-    
+
     def get_action_for_severity(self, severity: str) -> str:
         """Map severity to action according to security policy"""
         # Normalize severity to lowercase for consistent mapping
         severity_lower = severity.lower()
-        
-        # Security policy mapping
-        if severity_lower == 'critical':
-            return 'error'
-        elif severity_lower == 'high':
-            return 'warn'
-        elif severity_lower in ['medium', 'middle', 'moderate']:
-            return 'monitor'
-        elif severity_lower == 'low':
-            return 'ignore'
-        else:
-            # Default action for unknown severities
-            return 'monitor'
 
-    def get_sast_ignore_overrides(self) -> List[Dict[str, str | None]]:
+        # Security policy mapping
+        if severity_lower == "critical":
+            return "error"
+        if severity_lower == "high":
+            return "warn"
+        if severity_lower in ["medium", "middle", "moderate"]:
+            return "monitor"
+        if severity_lower == "low":
+            return "ignore"
+        # Default action for unknown severities
+        return "monitor"
+
+    def get_sast_ignore_overrides(self) -> list[dict[str, str | None]]:
         """Return parsed SAST ignore overrides from config."""
-        if not hasattr(self, '_sast_ignore_overrides_cache'):
-            raw_value = self.get('sast_ignore_overrides', '')
+        if not hasattr(self, "_sast_ignore_overrides_cache"):
+            raw_value = self.get("sast_ignore_overrides", "")
             overrides = parse_sast_ignore_overrides(raw_value)
 
-            workspace_value = self.get('workspace') or os.getcwd()
+            workspace_value = self.get("workspace") or os.getcwd()
             try:
                 workspace_root = Path(str(workspace_value)).expanduser()
             except Exception:
                 workspace_root = Path(os.getcwd())
 
             for override in overrides:
-                override_path = override.get('path')
+                override_path = override.get("path")
                 if not override_path:
                     continue
 
                 try:
-                    candidate = workspace_root.joinpath(*str(override_path).split('/'))
+                    candidate = workspace_root.joinpath(*str(override_path).split("/"))
                     if not candidate.exists():
                         logger.warning(
                             "SAST ignore override path %r for rule %r does not exist under workspace %s; "
                             "exact path overrides require a repo-relative file path and will not fall back to "
                             "rule-only matching.",
                             override_path,
-                            override.get('rule_id'),
+                            override.get("rule_id"),
                             workspace_root,
                         )
                 except Exception:
@@ -461,114 +464,126 @@ class Config:
 
             self._sast_ignore_overrides_cache = overrides
         return self._sast_ignore_overrides_cache
-    
+
     @property
     def repo(self) -> str:
         """Get repository name"""
-        return str(self.get('repo', ''))
-    
+        return str(self.get("repo", ""))
+
     @property
     def branch(self) -> str:
         """Get branch name"""
-        return str(self.get('branch', ''))
-    
+        return str(self.get("branch", ""))
+
     @property
     def commit_hash(self) -> str:
         """Get commit hash (optional)"""
-        return str(self.get('commit_hash', ''))
-    
+        return str(self.get("commit_hash", ""))
+
     @property
     def is_default_branch(self) -> bool:
         """Check if current branch is the default branch"""
-        return bool(self.get('is_default_branch', False))
-    
+        return bool(self.get("is_default_branch", False))
+
     def is_notifier_available(self, notifier: str) -> bool:
         """Check if a notifier is available based on Socket plan"""
-        available_notifiers = self.get('available_notifiers', ['console_tabular', 'console_json'])
+        available_notifiers = self.get("available_notifiers", ["console_tabular", "console_json"])
         if not isinstance(available_notifiers, list):
-            available_notifiers = ['console_tabular', 'console_json']
+            available_notifiers = ["console_tabular", "console_json"]
         return notifier in available_notifiers
-    
-    def get_socket_plan_info(self) -> Dict[str, Any]:
+
+    def get_socket_plan_info(self) -> dict[str, Any]:
         """Get Socket plan information"""
         return {
-            'plan': self.get('socket_plan', 'free'),
-            'has_enterprise': self.get('socket_has_enterprise', False),
-            'available_notifiers': self.get('available_notifiers', ['console_tabular', 'console_json'])
+            "plan": self.get("socket_plan", "free"),
+            "has_enterprise": self.get("socket_has_enterprise", False),
+            "available_notifiers": self.get(
+                "available_notifiers", ["console_tabular", "console_json"]
+            ),
         }
-    
+
     def should_run_sast(self) -> bool:
         """Check if any SAST language is enabled dynamically"""
         try:
             # Get SAST parameters dynamically from connectors config
             connectors_config = load_connectors_config()
-            opengrep_config = connectors_config.get('connectors', {}).get('opengrep', {})
-            
-            for param in opengrep_config.get('parameters', []):
-                param_name = param.get('name', '')
-                if 'sast_enabled' in param_name and self.get(param_name, False):
+            opengrep_config = connectors_config.get("connectors", {}).get("opengrep", {})
+
+            for param in opengrep_config.get("parameters", []):
+                param_name = param.get("name", "")
+                if "sast_enabled" in param_name and self.get(param_name, False):
                     return True
-                    
+
             return False
         except Exception:
             # Fallback to hardcoded check if YAML loading fails
             sast_langs = [
-                'python_sast_enabled', 'golang_sast_enabled', 'javascript_sast_enabled',
-                'typescript_sast_enabled', 'java_sast_enabled', 'ruby_sast_enabled',
-                'dotnet_sast_enabled', 'scala_sast_enabled', 'kotlin_sast_enabled', 
-                'rust_sast_enabled', 'c_sast_enabled', 'cpp_sast_enabled', 
-                'php_sast_enabled', 'swift_sast_enabled', 'elixir_sast_enabled', 
-                'erlang_sast_enabled', 'csharp_sast_enabled'
+                "python_sast_enabled",
+                "golang_sast_enabled",
+                "javascript_sast_enabled",
+                "typescript_sast_enabled",
+                "java_sast_enabled",
+                "ruby_sast_enabled",
+                "dotnet_sast_enabled",
+                "scala_sast_enabled",
+                "kotlin_sast_enabled",
+                "rust_sast_enabled",
+                "c_sast_enabled",
+                "cpp_sast_enabled",
+                "php_sast_enabled",
+                "swift_sast_enabled",
+                "elixir_sast_enabled",
+                "erlang_sast_enabled",
+                "csharp_sast_enabled",
             ]
             return any(self.get(lang, False) for lang in sast_langs)
-    
-    def build_opengrep_rules(self) -> List[str]:
+
+    def build_opengrep_rules(self) -> list[str]:
         """Build list of rule files based on enabled languages"""
         # Explicit mapping from connector boolean flags to bundled rule filenames.
         # Exclude languages for which we don't ship rule files (objective-c, erlang).
         language_rules = {
-            'python_sast_enabled': 'python.yml',
-            'go_sast_enabled': 'go.yml',
-            'golang_sast_enabled': 'go.yml',
-            'javascript_sast_enabled': 'javascript_typescript.yml',
-            'typescript_sast_enabled': 'javascript_typescript.yml',
-            'java_sast_enabled': 'java.yml',
-            'ruby_sast_enabled': 'ruby.yml',
-            'csharp_sast_enabled': 'dotnet.yml',
-            'dotnet_sast_enabled': 'dotnet.yml',
-            'scala_sast_enabled': 'scala.yml',
-            'kotlin_sast_enabled': 'kotlin.yml',
-            'rust_sast_enabled': 'rust.yml',
-            'c_sast_enabled': 'c_cpp.yml',
-            'cpp_sast_enabled': 'c_cpp.yml',
-            'php_sast_enabled': 'php.yml',
-            'swift_sast_enabled': 'swift.yml',
-            'elixir_sast_enabled': 'elixir.yml'
+            "python_sast_enabled": "python.yml",
+            "go_sast_enabled": "go.yml",
+            "golang_sast_enabled": "go.yml",
+            "javascript_sast_enabled": "javascript_typescript.yml",
+            "typescript_sast_enabled": "javascript_typescript.yml",
+            "java_sast_enabled": "java.yml",
+            "ruby_sast_enabled": "ruby.yml",
+            "csharp_sast_enabled": "dotnet.yml",
+            "dotnet_sast_enabled": "dotnet.yml",
+            "scala_sast_enabled": "scala.yml",
+            "kotlin_sast_enabled": "kotlin.yml",
+            "rust_sast_enabled": "rust.yml",
+            "c_sast_enabled": "c_cpp.yml",
+            "cpp_sast_enabled": "c_cpp.yml",
+            "php_sast_enabled": "php.yml",
+            "swift_sast_enabled": "swift.yml",
+            "elixir_sast_enabled": "elixir.yml",
         }
 
         # If user has requested 'all rules', run the full rule files for the languages
         # that are enabled. If no specific languages are enabled but --all-languages is
         # set, fall back to all bundled rule files. If neither is set, return empty
         # to allow upstream logic to skip scanning.
-        if self.get('all_rules_enabled', False):
+        if self.get("all_rules_enabled", False):
             rule_files = []
             for flag, filename in language_rules.items():
-                if self.get(flag, False):
-                    if filename not in rule_files:
-                        rule_files.append(filename)
+                if self.get(flag, False) and filename not in rule_files:
+                    rule_files.append(filename)
 
             # If no specific language flags were enabled, but user set --all-languages,
             # return all bundled rules.
             if not rule_files:
-                if self.get('all_languages_enabled', False):
+                if self.get("all_languages_enabled", False):
                     try:
                         base_dir = Path(__file__).parent.parent
-                        rules_dir = base_dir / 'rules'
-                        found = [p.name for p in rules_dir.glob('*.yml') if p.is_file()]
-                        excluded = {'objective-c.yml', 'erlang.yml'}
+                        rules_dir = base_dir / "rules"
+                        found = [p.name for p in rules_dir.glob("*.yml") if p.is_file()]
+                        excluded = {"objective-c.yml", "erlang.yml"}
                         return [f for f in found if f not in excluded]
                     except Exception:
-                        return list({v for v in language_rules.values()})
+                        return list(set(language_rules.values()))
                 # No languages enabled -> nothing to run
                 return []
 
@@ -576,47 +591,46 @@ class Config:
 
         rule_files = []
         for flag, filename in language_rules.items():
-            if self.get(flag, False):
-                if filename not in rule_files:
-                    rule_files.append(filename)
+            if self.get(flag, False) and filename not in rule_files:
+                rule_files.append(filename)
 
         return rule_files
 
-    def get_enabled_rules_for_language(self, language: str) -> List[str]:
+    def get_enabled_rules_for_language(self, language: str) -> list[str]:
         """Get list of enabled rules for a specific language"""
         rules_param = f"{language}_enabled_rules"
         rules_str = self.get(rules_param, "")
-        
+
         if not rules_str or not rules_str.strip():
             return []
-        
-        return [rule.strip() for rule in rules_str.split(',') if rule.strip()]
 
-    def build_filtered_opengrep_rules(self) -> Dict[str, List[str]]:
+        return [rule.strip() for rule in rules_str.split(",") if rule.strip()]
+
+    def build_filtered_opengrep_rules(self) -> dict[str, list[str]]:
         """Build mapping of rule files to specific rules that should be enabled"""
         # Map connector flags to (rule filename, parameter name) so we can
         # look up the user-specified enabled rules for that language.
         language_rule_mapping = {
-            'python_sast_enabled': ('python.yml', 'python_enabled_rules'),
-            'go_sast_enabled': ('go.yml', 'go_enabled_rules'),
-            'golang_sast_enabled': ('go.yml', 'go_enabled_rules'),
-            'javascript_sast_enabled': ('javascript_typescript.yml', 'javascript_enabled_rules'),
-            'typescript_sast_enabled': ('javascript_typescript.yml', 'javascript_enabled_rules'),
-            'java_sast_enabled': ('java.yml', 'java_enabled_rules'),
-            'ruby_sast_enabled': ('ruby.yml', 'ruby_enabled_rules'),
-            'csharp_sast_enabled': ('dotnet.yml', 'csharp_enabled_rules'),
-            'dotnet_sast_enabled': ('dotnet.yml', 'dotnet_enabled_rules'),
-            'scala_sast_enabled': ('scala.yml', 'scala_enabled_rules'),
-            'kotlin_sast_enabled': ('kotlin.yml', 'kotlin_enabled_rules'),
-            'rust_sast_enabled': ('rust.yml', 'rust_enabled_rules'),
-            'c_sast_enabled': ('c_cpp.yml', 'c_enabled_rules'),
-            'cpp_sast_enabled': ('c_cpp.yml', 'cpp_enabled_rules'),
-            'php_sast_enabled': ('php.yml', 'php_enabled_rules'),
-            'swift_sast_enabled': ('swift.yml', 'swift_enabled_rules'),
-            'elixir_sast_enabled': ('elixir.yml', 'elixir_enabled_rules')
+            "python_sast_enabled": ("python.yml", "python_enabled_rules"),
+            "go_sast_enabled": ("go.yml", "go_enabled_rules"),
+            "golang_sast_enabled": ("go.yml", "go_enabled_rules"),
+            "javascript_sast_enabled": ("javascript_typescript.yml", "javascript_enabled_rules"),
+            "typescript_sast_enabled": ("javascript_typescript.yml", "javascript_enabled_rules"),
+            "java_sast_enabled": ("java.yml", "java_enabled_rules"),
+            "ruby_sast_enabled": ("ruby.yml", "ruby_enabled_rules"),
+            "csharp_sast_enabled": ("dotnet.yml", "csharp_enabled_rules"),
+            "dotnet_sast_enabled": ("dotnet.yml", "dotnet_enabled_rules"),
+            "scala_sast_enabled": ("scala.yml", "scala_enabled_rules"),
+            "kotlin_sast_enabled": ("kotlin.yml", "kotlin_enabled_rules"),
+            "rust_sast_enabled": ("rust.yml", "rust_enabled_rules"),
+            "c_sast_enabled": ("c_cpp.yml", "c_enabled_rules"),
+            "cpp_sast_enabled": ("c_cpp.yml", "cpp_enabled_rules"),
+            "php_sast_enabled": ("php.yml", "php_enabled_rules"),
+            "swift_sast_enabled": ("swift.yml", "swift_enabled_rules"),
+            "elixir_sast_enabled": ("elixir.yml", "elixir_enabled_rules"),
         }
 
-        rule_file_filters: Dict[str, set] = {}
+        rule_file_filters: dict[str, set] = {}
 
         for flag, (rule_file, rules_param) in language_rule_mapping.items():
             if not self.get(flag, False):
@@ -627,7 +641,7 @@ class Config:
             if not enabled_rules:
                 continue
 
-            for r in [s.strip() for s in enabled_rules.split(',') if s.strip()]:
+            for r in [s.strip() for s in enabled_rules.split(",") if s.strip()]:
                 if rule_file not in rule_file_filters:
                     rule_file_filters[rule_file] = set()
                 rule_file_filters[rule_file].add(r)
@@ -635,48 +649,48 @@ class Config:
         # Convert sets to lists for output
         return {k: list(v) for k, v in rule_file_filters.items()}
 
-    def get_custom_rules_path(self) -> Optional[Path]:
+    def get_custom_rules_path(self) -> Path | None:
         """Get the absolute path to custom SAST rules directory.
-        
+
         Returns path relative to workspace if workspace is set, otherwise relative to cwd.
         Returns None if custom rules are not enabled or path doesn't exist.
         """
         # Cache the result to avoid repeated warnings and path resolution
-        if hasattr(self, '_custom_rules_path_cache'):
+        if hasattr(self, "_custom_rules_path_cache"):
             return self._custom_rules_path_cache
-        
-        if not self.get('use_custom_sast_rules', False):
+
+        if not self.get("use_custom_sast_rules", False):
             self._custom_rules_path_cache = None
             return None
-        
-        custom_path_str = self.get('custom_sast_rule_path', 'custom_rules')
+
+        custom_path_str = self.get("custom_sast_rule_path", "custom_rules")
         if not custom_path_str:
             self._custom_rules_path_cache = None
             return None
-        
+
         # Determine base path
         try:
-            if hasattr(self, 'workspace') and self.workspace:
+            if hasattr(self, "workspace") and self.workspace:
                 base_path = Path(self.workspace)
             else:
                 base_path = Path.cwd()
         except Exception:
             base_path = Path.cwd()
-        
+
         # Resolve custom rules path
         custom_path = base_path / custom_path_str
-        
+
         # Check if path exists
         if not custom_path.exists():
             logger.debug(f"Custom SAST rules path does not exist: {custom_path}")
             self._custom_rules_path_cache = None
             return None
-        
+
         if not custom_path.is_dir():
             logger.warning(f"Custom SAST rules path is not a directory: {custom_path}")
             self._custom_rules_path_cache = None
             return None
-        
+
         self._custom_rules_path_cache = custom_path
         return custom_path
 
@@ -684,13 +698,14 @@ class Config:
 # Centralized environment variable getters
 # All connectors and notifiers should use these methods instead of calling os.getenv directly
 
-def get_env_with_fallbacks(*env_vars: str, default: str = '') -> str:
+
+def get_env_with_fallbacks(*env_vars: str, default: str = "") -> str:
     """Get environment variable value with multiple fallback options.
-    
+
     Args:
         *env_vars: Variable number of environment variable names to check (in priority order)
         default: Default value if none of the env vars are set
-        
+
     Returns:
         First non-empty environment variable value found, or default
     """
@@ -703,207 +718,207 @@ def get_env_with_fallbacks(*env_vars: str, default: str = '') -> str:
 
 def get_github_token() -> str:
     """Get GitHub token from environment variables."""
-    return get_env_with_fallbacks('GITHUB_TOKEN', 'INPUT_GITHUB_TOKEN')
+    return get_env_with_fallbacks("GITHUB_TOKEN", "INPUT_GITHUB_TOKEN")
 
 
 def get_github_repository() -> str:
     """Get GitHub repository from environment variables."""
-    return get_env_with_fallbacks('GITHUB_REPOSITORY', 'INPUT_GITHUB_REPOSITORY')
+    return get_env_with_fallbacks("GITHUB_REPOSITORY", "INPUT_GITHUB_REPOSITORY")
 
 
 def get_github_pr_number() -> str:
     """Get GitHub PR number from environment variables."""
-    return get_env_with_fallbacks('GITHUB_PR_NUMBER', 'INPUT_PR_NUMBER')
+    return get_env_with_fallbacks("GITHUB_PR_NUMBER", "INPUT_PR_NUMBER")
 
 
 def get_slack_webhook_url() -> str:
     """Get Slack webhook URL from environment variables."""
-    return get_env_with_fallbacks('SLACK_WEBHOOK_URL', 'INPUT_SLACK_WEBHOOK_URL')
+    return get_env_with_fallbacks("SLACK_WEBHOOK_URL", "INPUT_SLACK_WEBHOOK_URL")
 
 
 def get_webhook_url() -> str:
     """Get generic webhook URL from environment variables."""
-    return get_env_with_fallbacks('WEBHOOK_URL', 'INPUT_WEBHOOK_URL')
+    return get_env_with_fallbacks("WEBHOOK_URL", "INPUT_WEBHOOK_URL")
 
 
 def get_ms_sentinel_workspace_id() -> str:
     """Get Microsoft Sentinel workspace ID from environment variables."""
-    return get_env_with_fallbacks('MS_SENTINEL_WORKSPACE_ID', 'INPUT_MS_SENTINEL_WORKSPACE_ID')
+    return get_env_with_fallbacks("MS_SENTINEL_WORKSPACE_ID", "INPUT_MS_SENTINEL_WORKSPACE_ID")
 
 
 def get_ms_sentinel_shared_key() -> str:
     """Get Microsoft Sentinel shared key from environment variables."""
-    return get_env_with_fallbacks('MS_SENTINEL_SHARED_KEY', 'INPUT_MS_SENTINEL_SHARED_KEY')
+    return get_env_with_fallbacks("MS_SENTINEL_SHARED_KEY", "INPUT_MS_SENTINEL_SHARED_KEY")
 
 
 def get_ms_sentinel_collector_url() -> str:
     """Get Microsoft Sentinel collector URL from environment variables."""
-    return get_env_with_fallbacks('MS_SENTINEL_COLLECTOR_URL', 'INPUT_MS_SENTINEL_COLLECTOR_URL')
+    return get_env_with_fallbacks("MS_SENTINEL_COLLECTOR_URL", "INPUT_MS_SENTINEL_COLLECTOR_URL")
 
 
 def get_jira_url() -> str:
     """Get JIRA URL from environment variables."""
-    return get_env_with_fallbacks('JIRA_URL', 'INPUT_JIRA_URL')
+    return get_env_with_fallbacks("JIRA_URL", "INPUT_JIRA_URL")
 
 
 def get_jira_project() -> str:
     """Get JIRA project from environment variables."""
-    return get_env_with_fallbacks('JIRA_PROJECT', 'INPUT_JIRA_PROJECT')
+    return get_env_with_fallbacks("JIRA_PROJECT", "INPUT_JIRA_PROJECT")
 
 
 def get_jira_email() -> str:
     """Get JIRA email from environment variables."""
-    return get_env_with_fallbacks('JIRA_EMAIL', 'INPUT_JIRA_EMAIL')
+    return get_env_with_fallbacks("JIRA_EMAIL", "INPUT_JIRA_EMAIL")
 
 
 def get_jira_api_token() -> str:
     """Get JIRA API token from environment variables."""
-    return get_env_with_fallbacks('JIRA_API_TOKEN', 'INPUT_JIRA_API_TOKEN')
+    return get_env_with_fallbacks("JIRA_API_TOKEN", "INPUT_JIRA_API_TOKEN")
 
 
 def get_sumologic_http_source_url() -> str:
     """Get SumoLogic HTTP source URL from environment variables."""
-    return get_env_with_fallbacks('SUMO_LOGIC_HTTP_SOURCE_URL', 'INPUT_SUMO_LOGIC_HTTP_SOURCE_URL')
+    return get_env_with_fallbacks("SUMO_LOGIC_HTTP_SOURCE_URL", "INPUT_SUMO_LOGIC_HTTP_SOURCE_URL")
 
 
 def get_sumologic_endpoint() -> str:
     """Get SumoLogic endpoint from environment variables."""
-    return get_env_with_fallbacks('SUMOLOGIC_ENDPOINT', 'INPUT_SUMOLOGIC_ENDPOINT')
+    return get_env_with_fallbacks("SUMOLOGIC_ENDPOINT", "INPUT_SUMOLOGIC_ENDPOINT")
 
 
 def get_msteams_webhook_url() -> str:
     """Get Microsoft Teams webhook URL from environment variables."""
-    return get_env_with_fallbacks('MSTEAMS_WEBHOOK_URL', 'INPUT_MSTEAMS_WEBHOOK_URL')
+    return get_env_with_fallbacks("MSTEAMS_WEBHOOK_URL", "INPUT_MSTEAMS_WEBHOOK_URL")
 
 
 def get_socket_basics_severities() -> str:
     """Get Socket Basics severities from environment variables."""
-    return get_env_with_fallbacks('SOCKET_BASICS_SEVERITIES', 'INPUT_FINDING_SEVERITIES')
+    return get_env_with_fallbacks("SOCKET_BASICS_SEVERITIES", "INPUT_FINDING_SEVERITIES")
 
 
 def get_github_workspace() -> str:
     """Get GitHub workspace from environment variables."""
-    return get_env_with_fallbacks('GITHUB_WORKSPACE', default=os.getcwd())
+    return get_env_with_fallbacks("GITHUB_WORKSPACE", default=os.getcwd())
 
 
-def load_config_from_json(json_path: str) -> Dict[str, Any]:
+def load_config_from_json(json_path: str) -> dict[str, Any]:
     """Load configuration from a JSON file
-    
+
     Args:
         json_path: Path to the JSON configuration file
-        
+
     Returns:
         Dictionary containing the configuration from the JSON file
-        
+
     Raises:
         FileNotFoundError: If the JSON file doesn't exist
         json.JSONDecodeError: If the JSON file is malformed
     """
     try:
-        with open(json_path, 'r', encoding='utf-8') as f:
+        with open(json_path, encoding="utf-8") as f:
             config = json.load(f)
-        
+
         # Validate that the loaded config is a dictionary
         if not isinstance(config, dict):
-            raise ValueError(f"JSON config file must contain a JSON object, got {type(config).__name__}")
-            
+            raise ValueError(
+                f"JSON config file must contain a JSON object, got {type(config).__name__}"
+            )
+
         logger = logging.getLogger(__name__)
         logger.info("Successfully loaded configuration from JSON file: %s", json_path)
-        
+
         return config
-        
-    except FileNotFoundError:
-        raise FileNotFoundError(f"JSON configuration file not found: {json_path}")
+
+    except FileNotFoundError as error:
+        raise FileNotFoundError(f"JSON configuration file not found: {json_path}") from error
     except json.JSONDecodeError as e:
-        raise json.JSONDecodeError(f"Invalid JSON in configuration file {json_path}: {e.msg}", e.doc, e.pos)
+        raise json.JSONDecodeError(
+            f"Invalid JSON in configuration file {json_path}: {e.msg}", e.doc, e.pos
+        ) from e
 
 
-def load_config_from_env() -> Dict[str, Any]:
+def load_config_from_env() -> dict[str, Any]:  # noqa: C901
     """Load configuration from environment variables dynamically from connectors.yaml"""
     config = {
         # Core workspace settings
-        'workspace': os.getenv('GITHUB_WORKSPACE', os.getcwd()),
-        'output_dir': os.getenv('OUTPUT_DIR', os.getcwd()),
-        
+        "workspace": os.getenv("GITHUB_WORKSPACE", os.getcwd()),
+        "output_dir": os.getenv("OUTPUT_DIR", os.getcwd()),
         # Scan scope. changed_files is kept as the raw request string here
         # ('auto', 'pr', a commit hash, or a file list); Config resolves it
         # against git once, so every construction path honors it identically.
-        'scan_all': os.getenv('INPUT_SCAN_ALL', 'false').lower() == 'true',
-        'scan_files': os.getenv('INPUT_SCAN_FILES', ''),
-        'changed_files': os.getenv('INPUT_CHANGED_FILES', ''),
-
+        "scan_all": os.getenv("INPUT_SCAN_ALL", "false").lower() == "true",
+        "scan_files": os.getenv("INPUT_SCAN_FILES", ""),
+        "changed_files": os.getenv("INPUT_CHANGED_FILES", ""),
         # Output and logging toggles. These mirror the --verbose,
         # --console-tabular-enabled and --console-json-enabled CLI flags so the
         # GitHub Action inputs of the same name (and INPUT_* entries in a .env
         # file) behave identically to the flags.
-        'verbose': coerce_bool(os.getenv('INPUT_VERBOSE', ''), False),
-        'console_tabular_enabled': coerce_bool(os.getenv('INPUT_CONSOLE_TABULAR_ENABLED', ''), False),
-        'console_json_enabled': coerce_bool(os.getenv('INPUT_CONSOLE_JSON_ENABLED', ''), False),
-        
+        "verbose": coerce_bool(os.getenv("INPUT_VERBOSE", ""), False),
+        "console_tabular_enabled": coerce_bool(
+            os.getenv("INPUT_CONSOLE_TABULAR_ENABLED", ""), False
+        ),
+        "console_json_enabled": coerce_bool(os.getenv("INPUT_CONSOLE_JSON_ENABLED", ""), False),
         # Core Socket API configuration (top-level, like workspace)
-        'socket_org': (
-            os.getenv('SOCKET_ORG', '') or 
-            os.getenv('SOCKET_ORG_SLUG', '') or
-            os.getenv('INPUT_SOCKET_ORG', '')
+        "socket_org": (
+            os.getenv("SOCKET_ORG", "")
+            or os.getenv("SOCKET_ORG_SLUG", "")
+            or os.getenv("INPUT_SOCKET_ORG", "")
         ),
-        'socket_api_key': (
-            os.getenv('SOCKET_SECURITY_API_KEY', '') or 
-            os.getenv('SOCKET_SECURITY_API_TOKEN', '') or
-            os.getenv('SOCKET_API_KEY', '') or
-            os.getenv('INPUT_SOCKET_SECURITY_API_KEY', '') or
-            os.getenv('INPUT_SOCKET_API_KEY', '')
+        "socket_api_key": (
+            os.getenv("SOCKET_SECURITY_API_KEY", "")
+            or os.getenv("SOCKET_SECURITY_API_TOKEN", "")
+            or os.getenv("SOCKET_API_KEY", "")
+            or os.getenv("INPUT_SOCKET_SECURITY_API_KEY", "")
+            or os.getenv("INPUT_SOCKET_API_KEY", "")
         ),
-        
         # Socket plan detection (will be populated later in merge process)
-        'socket_plan': '',
-        'socket_has_enterprise': False,
-        'available_notifiers': ['console_tabular', 'console_json'],  # Default free plan notifiers
-        
+        "socket_plan": "",
+        "socket_has_enterprise": False,
+        "available_notifiers": ["console_tabular", "console_json"],  # Default free plan notifiers
         # OpenGrep configuration (optional override for custom rules)
-        'opengrep_rules_dir': os.getenv('INPUT_OPENGREP_RULES_DIR', ''),
-        
+        "opengrep_rules_dir": os.getenv("INPUT_OPENGREP_RULES_DIR", ""),
         # GitHub environment variables for discovery functions
-        'github_actor': os.getenv('GITHUB_ACTOR', ''),
-        'github_pr_number': os.getenv('GITHUB_PR_NUMBER', ''),
-        'github_head_ref': os.getenv('GITHUB_HEAD_REF', ''),
-        'github_event_path': os.getenv('GITHUB_EVENT_PATH', ''),
-        'github_sha': os.getenv('GITHUB_SHA', ''),
-        'github_repository': os.getenv('GITHUB_REPOSITORY', ''),
-        'github_ref_name': os.getenv('GITHUB_REF_NAME', ''),
+        "github_actor": os.getenv("GITHUB_ACTOR", ""),
+        "github_pr_number": os.getenv("GITHUB_PR_NUMBER", ""),
+        "github_head_ref": os.getenv("GITHUB_HEAD_REF", ""),
+        "github_event_path": os.getenv("GITHUB_EVENT_PATH", ""),
+        "github_sha": os.getenv("GITHUB_SHA", ""),
+        "github_repository": os.getenv("GITHUB_REPOSITORY", ""),
+        "github_ref_name": os.getenv("GITHUB_REF_NAME", ""),
     }
-    
+
     # Dynamically load connector parameters from YAML configuration
     try:
         connectors_config = load_connectors_config()
-        
-        for connector_name, connector_config in connectors_config.get('connectors', {}).items():
-            for param in connector_config.get('parameters', []):
-                param_name = param.get('name')
-                env_variable = param.get('env_variable')
-                param_type = param.get('type', 'str')
-                default_value = param.get('default', False if param_type == 'bool' else '')
-                
+
+        for connector_config in connectors_config.get("connectors", {}).values():
+            for param in connector_config.get("parameters", []):
+                param_name = param.get("name")
+                env_variable = param.get("env_variable")
+                param_type = param.get("type", "str")
+                default_value = param.get("default", False if param_type == "bool" else "")
+
                 if param_name and env_variable:
                     env_value = os.getenv(env_variable)
-                    
+
                     if env_value is not None:
-                        if param_type == 'bool':
-                            val = env_value.lower() == 'true'
+                        if param_type == "bool":
+                            val = env_value.lower() == "true"
                             config[param_name] = val
                             # honor 'enables' and 'disables' metadata from connectors.yaml
                             try:
-                                if val and 'enables' in param:
-                                    for enabled in param.get('enables', []):
+                                if val and "enables" in param:
+                                    for enabled in param.get("enables", []):
                                         config[enabled] = True
-                                if val and 'disables' in param:
-                                    for disabled in param.get('disables', []):
+                                if val and "disables" in param:
+                                    for disabled in param.get("disables", []):
                                         config[disabled] = False
                                 # if the boolean flag is false but a default was provided,
                                 # do not automatically flip related params; explicit true flags
                                 # drive enable/disable propagation.
                             except Exception:
                                 pass
-                        elif param_type == 'int':
+                        elif param_type == "int":
                             try:
                                 config[param_name] = int(env_value)
                             except ValueError:
@@ -913,32 +928,37 @@ def load_config_from_env() -> Dict[str, Any]:
                     else:
                         # Use default value if environment variable is not set
                         config[param_name] = default_value
-                        
+
     except Exception as e:
-        logging.getLogger(__name__).warning("Warning: Error loading dynamic config from environment: %s", e)
-    
+        logging.getLogger(__name__).warning(
+            "Warning: Error loading dynamic config from environment: %s", e
+        )
+
     # Also load notification parameters from notifications.yaml so CLI/env can enable them
     try:
         notif_cfg = load_notifications_config()
-        for n_name, n_cfg in (notif_cfg.get('notifiers') or {}).items():
-            for param in n_cfg.get('parameters', []) or []:
-                p_name = param.get('name')
-                env_var = param.get('env_variable')
-                p_type = param.get('type', 'str')
-                default_value = param.get('default', '' if p_type != 'bool' else False)
+        for n_cfg in (notif_cfg.get("notifiers") or {}).values():
+            for param in n_cfg.get("parameters", []) or []:
+                p_name = param.get("name")
+                env_var = param.get("env_variable")
+                p_type = param.get("type", "str")
+                default_value = param.get("default", "" if p_type != "bool" else False)
 
                 if p_name and env_var:
                     env_value = os.getenv(env_var)
                     if env_value is not None:
-                        if p_type == 'bool':
+                        if p_type == "bool":
                             config[p_name] = coerce_bool(env_value, bool(default_value))
-                        elif p_type == 'int':
+                        elif p_type == "int":
                             try:
                                 config[p_name] = int(env_value)
                             except ValueError:
                                 logging.getLogger(__name__).warning(
                                     "Invalid integer for %s (env %s): %s; using default %s",
-                                    p_name, env_var, env_value, default_value
+                                    p_name,
+                                    env_var,
+                                    env_value,
+                                    default_value,
                                 )
                                 config[p_name] = default_value
                         else:
@@ -948,22 +968,22 @@ def load_config_from_env() -> Dict[str, Any]:
     except Exception:
         # Best-effort; do not fail on notification parsing
         pass
-    
+
     # Auto-enable scanning when values are provided (removes need for separate enabled flags)
     # If container_images has a value, enable image scanning
-    if config.get('container_images'):
-        config['trivy_image_enabled'] = True
-        config['container_image_scanning_enabled'] = True
-    
+    if config.get("container_images"):
+        config["trivy_image_enabled"] = True
+        config["container_image_scanning_enabled"] = True
+
     # If dockerfiles has a value, enable Dockerfile scanning
-    if config.get('dockerfiles'):
-        config['trivy_dockerfile_enabled'] = True
-        config['dockerfile_scanning_enabled'] = True
+    if config.get("dockerfiles"):
+        config["trivy_dockerfile_enabled"] = True
+        config["dockerfile_scanning_enabled"] = True
 
     return config
 
 
-def load_socket_basics_config(org_slug_override: str | None = None) -> Dict[str, Any] | None:
+def load_socket_basics_config(org_slug_override: str | None = None) -> dict[str, Any] | None:  # noqa: C901
     """Load Socket Basics configuration from Socket API if organization has enterprise plan
 
     Args:
@@ -975,110 +995,136 @@ def load_socket_basics_config(org_slug_override: str | None = None) -> Dict[str,
     """
     logger = logging.getLogger(__name__)
     logger.debug(" load_socket_basics_config() called")
-    
+
     # Check if Socket API integration is available
     # Support both direct env vars and GitHub Actions INPUT_ prefixed vars
     api_key = (
-        os.environ.get('SOCKET_SECURITY_API_KEY')
-        or os.environ.get('SOCKET_SECURITY_API_TOKEN')
-        or os.environ.get('INPUT_SOCKET_SECURITY_API_KEY')
+        os.environ.get("SOCKET_SECURITY_API_KEY")
+        or os.environ.get("SOCKET_SECURITY_API_TOKEN")
+        or os.environ.get("INPUT_SOCKET_SECURITY_API_KEY")
     )
-    
-    logger.debug(f" API key check - SOCKET_SECURITY_API_KEY set: {bool(os.environ.get('SOCKET_SECURITY_API_KEY'))}")
-    logger.debug(f" API key check - SOCKET_SECURITY_API_TOKEN set: {bool(os.environ.get('SOCKET_SECURITY_API_TOKEN'))}")
-    logger.debug(f" API key check - INPUT_SOCKET_SECURITY_API_KEY set: {bool(os.environ.get('INPUT_SOCKET_SECURITY_API_KEY'))}")
+
+    logger.debug(
+        f" API key check - SOCKET_SECURITY_API_KEY set: {bool(os.environ.get('SOCKET_SECURITY_API_KEY'))}"
+    )
+    logger.debug(
+        f" API key check - SOCKET_SECURITY_API_TOKEN set: {bool(os.environ.get('SOCKET_SECURITY_API_TOKEN'))}"
+    )
+    logger.debug(
+        f" API key check - INPUT_SOCKET_SECURITY_API_KEY set: {bool(os.environ.get('INPUT_SOCKET_SECURITY_API_KEY'))}"
+    )
     logger.debug(f" Final api_key available: {bool(api_key)}")
-    
+
     if not api_key:
         logger.info("Socket API key not detected - running in free plan mode (limited features)")
-        logger.debug("Checked: SOCKET_SECURITY_API_KEY, SOCKET_SECURITY_API_TOKEN, INPUT_SOCKET_SECURITY_API_KEY")
+        logger.debug(
+            "Checked: SOCKET_SECURITY_API_KEY, SOCKET_SECURITY_API_TOKEN, INPUT_SOCKET_SECURITY_API_KEY"
+        )
         return {
-            'socket_plan': 'free',
-            'socket_has_enterprise': False,
-            'available_notifiers': ['console_tabular', 'console_json']
+            "socket_plan": "free",
+            "socket_has_enterprise": False,
+            "available_notifiers": ["console_tabular", "console_json"],
         }
-    
+
     logger.info("Socket API key detected - attempting to load dashboard configuration")
-    
+
     # Support both direct env vars and GitHub Actions INPUT_ prefixed vars
     org_slug = org_slug_override or (
-        os.environ.get('SOCKET_ORG_SLUG')
-        or os.environ.get('SOCKET_ORG')
-        or os.environ.get('INPUT_SOCKET_ORG')
+        os.environ.get("SOCKET_ORG_SLUG")
+        or os.environ.get("SOCKET_ORG")
+        or os.environ.get("INPUT_SOCKET_ORG")
     )
-    
+
     logger.debug(f" SOCKET_ORG_SLUG: {os.environ.get('SOCKET_ORG_SLUG', 'not set')}")
     logger.debug(f" SOCKET_ORG: {os.environ.get('SOCKET_ORG', 'not set')}")
     logger.debug(f" INPUT_SOCKET_ORG: {os.environ.get('INPUT_SOCKET_ORG', 'not set')}")
     logger.debug(f" org_slug from env: {org_slug or 'not set - will auto-discover'}")
-    
+
     try:
         # Import socketdev here to avoid import errors if not installed
         from socketdev import socketdev
-        
+
         # Initialize SDK
         sdk = socketdev(token=api_key, timeout=100)
-        
+
         # Get organizations and find the right one or auto-discover
         orgs = sdk.org.get()
         target_org = None
-        
+
         logger.debug(f" Found {len(orgs.get('organizations', {}))} organizations in API response")
-        
+
         if len(orgs) > 0:
             if org_slug:
                 # Look for specific organization
                 logger.debug(f" Looking for specific organization: {org_slug}")
-                for org_key in orgs['organizations']:
-                    org = orgs['organizations'][org_key]
-                    if org.get('slug') == org_slug:
+                for org_key in orgs["organizations"]:
+                    org = orgs["organizations"][org_key]
+                    if org.get("slug") == org_slug:
                         target_org = org
-                        logger.info(f"Found organization '{org_slug}' with plan: {org.get('plan', '')}")
+                        logger.info(
+                            f"Found organization '{org_slug}' with plan: {org.get('plan', '')}"
+                        )
                         break
             else:
                 # Auto-discover first organization
                 logger.debug(" Auto-discovering organization (no SOCKET_ORG set)")
-                for org_key in orgs['organizations']:
-                    org = orgs['organizations'][org_key]
+                for org_key in orgs["organizations"]:
+                    org = orgs["organizations"][org_key]
                     target_org = org
-                    org_slug = org['slug']
-                    logger.info(f"Auto-discovered organization '{org_slug}' with plan: {org.get('plan', '')}")
+                    org_slug = org["slug"]
+                    logger.info(
+                        f"Auto-discovered organization '{org_slug}' with plan: {org.get('plan', '')}"
+                    )
                     break
-        
+
         if not target_org or not org_slug:
             logger.warning("No suitable organization found in API response")
             return None
-        
+
         # Check if organization has enterprise plan
-        plan = target_org.get('plan', '')
-        has_enterprise = plan.startswith('enterprise')
-        
+        plan = target_org.get("plan", "")
+        has_enterprise = plan.startswith("enterprise")
+
         # Always return plan information, even for non-enterprise plans
         base_plan_config = {
-            'socket_plan': plan,
-            'socket_has_enterprise': has_enterprise,
-            'socket_org': org_slug,  # Populate discovered org
-            'available_notifiers': ['console_tabular', 'console_json'] if not has_enterprise else [
-                'console_tabular', 'console_json', 'slack', 'ms_teams', 'jira', 
-                'webhook', 'sumologic', 'ms_sentinel', 'github_pr', 'json_notifier'
-            ]
+            "socket_plan": plan,
+            "socket_has_enterprise": has_enterprise,
+            "socket_org": org_slug,  # Populate discovered org
+            "available_notifiers": ["console_tabular", "console_json"]
+            if not has_enterprise
+            else [
+                "console_tabular",
+                "console_json",
+                "slack",
+                "ms_teams",
+                "jira",
+                "webhook",
+                "sumologic",
+                "ms_sentinel",
+                "github_pr",
+                "json_notifier",
+            ],
         }
-        
+
         if not has_enterprise:
-            logger.info(f"Organization '{org_slug}' does not have enterprise plan, returning basic config only")
+            logger.info(
+                f"Organization '{org_slug}' does not have enterprise plan, returning basic config only"
+            )
             return base_plan_config
-        
+
         # Get Socket Basics configuration
         basics_config_response = sdk.basics.get_config(org_slug=org_slug)
         logger.info(f"Retrieved Socket Basics config for enterprise organization '{org_slug}'")
-        
+
         # Convert response to dictionary if needed
         basics_config = None
         if isinstance(basics_config_response, dict):
             basics_config = basics_config_response
-        elif hasattr(basics_config_response, '__dict__'):
+        elif hasattr(basics_config_response, "__dict__"):
             basics_config = basics_config_response.__dict__
-        elif hasattr(basics_config_response, 'to_dict') and callable(getattr(basics_config_response, 'to_dict')):
+        elif hasattr(basics_config_response, "to_dict") and callable(
+            basics_config_response.to_dict
+        ):
             basics_config = basics_config_response.to_dict()
         else:
             # Try to convert to dict using json serialization
@@ -1087,27 +1133,37 @@ def load_socket_basics_config(org_slug_override: str | None = None) -> Dict[str,
             except Exception:
                 logger.warning("Could not convert Socket Basics config response to dictionary")
                 return None
-        
+
         # If additionalParameters contains JSON, parse and merge it
-        if isinstance(basics_config, dict) and basics_config.get('additionalParameters'):
+        if isinstance(basics_config, dict) and basics_config.get("additionalParameters"):
             logger.debug(" Found additionalParameters in Socket Basics config")
             logger.debug(f" additionalParameters content: {basics_config['additionalParameters']}")
             try:
-                additional_params = json.loads(basics_config['additionalParameters'])
-                logger.debug(f" Parsed additionalParameters: {json.dumps(additional_params, indent=2)}")
+                additional_params = json.loads(basics_config["additionalParameters"])
+                logger.debug(
+                    f" Parsed additionalParameters: {json.dumps(additional_params, indent=2)}"
+                )
                 if isinstance(additional_params, dict):
                     merged_config = {**base_plan_config, **basics_config, **additional_params}
                     logger.debug(" Merged additionalParameters into Socket Basics config")
                     logger.debug(f" Final merged config keys: {list(merged_config.keys())}")
-                    logger.debug(f" Key config values - javascript_sast_enabled: {merged_config.get('javascript_sast_enabled')}, socket_tier_1_enabled: {merged_config.get('socket_tier_1_enabled')}, console_tabular_enabled: {merged_config.get('console_tabular_enabled')}")
+                    logger.debug(
+                        f" Key config values - javascript_sast_enabled: {merged_config.get('javascript_sast_enabled')}, socket_tier_1_enabled: {merged_config.get('socket_tier_1_enabled')}, console_tabular_enabled: {merged_config.get('console_tabular_enabled')}"
+                    )
                     return merged_config
             except json.JSONDecodeError as e:
                 logger.warning(f"additionalParameters is not valid JSON: {e}, using base config")
-                logger.debug(f" Raw additionalParameters that failed to parse: {repr(basics_config['additionalParameters'])}")
-        
+                logger.debug(
+                    f" Raw additionalParameters that failed to parse: {basics_config['additionalParameters']!r}"
+                )
+
         # Return basic config merged with plan information
-        return {**base_plan_config, **basics_config} if isinstance(basics_config, dict) else base_plan_config
-        
+        return (
+            {**base_plan_config, **basics_config}
+            if isinstance(basics_config, dict)
+            else base_plan_config
+        )
+
     except ImportError:
         logger.debug("socketdev package not installed, skipping Socket Basics config load")
         return None
@@ -1116,214 +1172,208 @@ def load_socket_basics_config(org_slug_override: str | None = None) -> Dict[str,
         return None
 
 
-def load_explicit_env_config() -> Dict[str, Any]:
+def load_explicit_env_config() -> dict[str, Any]:  # noqa: C901
     """Load only explicitly set environment variables (not defaults)"""
     logger = logging.getLogger(__name__)
     config = {}
-    
+
     # Log which API key sources are available for debugging. The list holds the
     # variable names, which come from the tuple below; a variable's value is
     # only ever tested for emptiness and is never carried into the log line.
     api_key_env_vars = (
-        'SOCKET_SECURITY_API_KEY',
-        'SOCKET_SECURITY_API_TOKEN',
-        'INPUT_SOCKET_SECURITY_API_KEY',
+        "SOCKET_SECURITY_API_KEY",
+        "SOCKET_SECURITY_API_TOKEN",
+        "INPUT_SOCKET_SECURITY_API_KEY",
     )
     found_sources = [name for name in api_key_env_vars if os.environ.get(name)]
     if found_sources:
         logger.debug(f"API key sources detected: {', '.join(found_sources)}")
-    
+
     # Core settings - only if explicitly set
-    if 'GITHUB_WORKSPACE' in os.environ:
-        config['workspace'] = os.environ['GITHUB_WORKSPACE']
-    if 'OUTPUT_DIR' in os.environ:
-        config['output_dir'] = os.environ['OUTPUT_DIR']
-    if 'INPUT_SCAN_ALL' in os.environ:
-        config['scan_all'] = os.environ['INPUT_SCAN_ALL'].lower() == 'true'
-    if 'INPUT_SCAN_FILES' in os.environ:
-        config['scan_files'] = os.environ['INPUT_SCAN_FILES']
-    if 'INPUT_CHANGED_FILES' in os.environ:
-        config['changed_files'] = os.environ['INPUT_CHANGED_FILES']
-    if 'INPUT_OPENGREP_RULES_DIR' in os.environ:
-        config['opengrep_rules_dir'] = os.environ['INPUT_OPENGREP_RULES_DIR']
-    if 'INPUT_VERBOSE' in os.environ:
-        config['verbose'] = coerce_bool(os.environ['INPUT_VERBOSE'], False)
-    if 'INPUT_CONSOLE_TABULAR_ENABLED' in os.environ:
-        config['console_tabular_enabled'] = coerce_bool(os.environ['INPUT_CONSOLE_TABULAR_ENABLED'], False)
-    if 'INPUT_CONSOLE_JSON_ENABLED' in os.environ:
-        config['console_json_enabled'] = coerce_bool(os.environ['INPUT_CONSOLE_JSON_ENABLED'], False)
-    
+    if "GITHUB_WORKSPACE" in os.environ:
+        config["workspace"] = os.environ["GITHUB_WORKSPACE"]
+    if "OUTPUT_DIR" in os.environ:
+        config["output_dir"] = os.environ["OUTPUT_DIR"]
+    if "INPUT_SCAN_ALL" in os.environ:
+        config["scan_all"] = os.environ["INPUT_SCAN_ALL"].lower() == "true"
+    if "INPUT_SCAN_FILES" in os.environ:
+        config["scan_files"] = os.environ["INPUT_SCAN_FILES"]
+    if "INPUT_CHANGED_FILES" in os.environ:
+        config["changed_files"] = os.environ["INPUT_CHANGED_FILES"]
+    if "INPUT_OPENGREP_RULES_DIR" in os.environ:
+        config["opengrep_rules_dir"] = os.environ["INPUT_OPENGREP_RULES_DIR"]
+    if "INPUT_VERBOSE" in os.environ:
+        config["verbose"] = coerce_bool(os.environ["INPUT_VERBOSE"], False)
+    if "INPUT_CONSOLE_TABULAR_ENABLED" in os.environ:
+        config["console_tabular_enabled"] = coerce_bool(
+            os.environ["INPUT_CONSOLE_TABULAR_ENABLED"], False
+        )
+    if "INPUT_CONSOLE_JSON_ENABLED" in os.environ:
+        config["console_json_enabled"] = coerce_bool(
+            os.environ["INPUT_CONSOLE_JSON_ENABLED"], False
+        )
+
     # Dynamically load connector parameters from YAML configuration - only if explicitly set
     try:
         connectors_config = load_connectors_config()
-        
-        for connector_name, connector_config in connectors_config.get('connectors', {}).items():
-            for param in connector_config.get('parameters', []):
-                param_name = param.get('name')
-                env_variable = param.get('env_variable')
-                param_type = param.get('type', 'str')
-                
+
+        for connector_config in connectors_config.get("connectors", {}).values():
+            for param in connector_config.get("parameters", []):
+                param_name = param.get("name")
+                env_variable = param.get("env_variable")
+                param_type = param.get("type", "str")
+
                 if param_name and env_variable and env_variable in os.environ:
                     env_value = os.environ[env_variable]
-                    
-                    if param_type == 'bool':
-                        val = env_value.lower() == 'true'
+
+                    if param_type == "bool":
+                        val = env_value.lower() == "true"
                         config[param_name] = val
                         # honor 'enables' and 'disables' metadata from connectors.yaml
                         try:
-                            if val and 'enables' in param:
-                                for enabled in param.get('enables', []):
+                            if val and "enables" in param:
+                                for enabled in param.get("enables", []):
                                     config[enabled] = True
-                            if val and 'disables' in param:
-                                for disabled in param.get('disables', []):
+                            if val and "disables" in param:
+                                for disabled in param.get("disables", []):
                                     config[disabled] = False
                         except Exception:
                             pass
-                    elif param_type == 'int':
-                        try:
+                    elif param_type == "int":
+                        with contextlib.suppress(ValueError):
+                            # Invalid values leave the configured default intact.
                             config[param_name] = int(env_value)
-                        except ValueError:
-                            pass  # Skip invalid values
                     else:  # str type
                         config[param_name] = env_value
-                        
+
     except Exception as e:
         logging.getLogger(__name__).warning("Warning: Error loading explicit env config: %s", e)
-    
+
     return config
 
 
-def normalize_api_config(api_config: Dict[str, Any]) -> Dict[str, Any]:
+def normalize_api_config(api_config: dict[str, Any]) -> dict[str, Any]:
     """Normalize camelCase API keys to snake_case internal format.
-    
+
     Maps Socket Basics API response keys (camelCase) to internal config keys (snake_case).
     This allows the API to use camelCase while maintaining snake_case internally.
-    
+
     Args:
         api_config: Configuration dictionary from Socket Basics API (camelCase)
-        
+
     Returns:
         Normalized configuration dictionary (snake_case)
     """
     # Mapping from camelCase API keys to snake_case internal keys
     API_TO_INTERNAL_MAP = {
         # Console/Output
-        'consoleTabularEnabled': 'console_tabular_enabled',
-        'consoleJsonEnabled': 'console_json_enabled',
-        'verbose': 'verbose',
-        
+        "consoleTabularEnabled": "console_tabular_enabled",
+        "consoleJsonEnabled": "console_json_enabled",
+        "verbose": "verbose",
         # SAST Language Flags
-        'allLanguagesEnabled': 'all_languages_enabled',
-        'pythonSastEnabled': 'python_sast_enabled',
-        'javascriptSastEnabled': 'javascript_sast_enabled',
-        'typescriptSastEnabled': 'typescript_sast_enabled',
-        'goSastEnabled': 'go_sast_enabled',
-        'golangSastEnabled': 'golang_sast_enabled',
-        'javaSastEnabled': 'java_sast_enabled',
-        'phpSastEnabled': 'php_sast_enabled',
-        'rubySastEnabled': 'ruby_sast_enabled',
-        'csharpSastEnabled': 'csharp_sast_enabled',
-        'dotnetSastEnabled': 'dotnet_sast_enabled',
-        'cSastEnabled': 'c_sast_enabled',
-        'cppSastEnabled': 'cpp_sast_enabled',
-        'kotlinSastEnabled': 'kotlin_sast_enabled',
-        'scalaSastEnabled': 'scala_sast_enabled',
-        'swiftSastEnabled': 'swift_sast_enabled',
-        'rustSastEnabled': 'rust_sast_enabled',
-        'elixirSastEnabled': 'elixir_sast_enabled',
-        
+        "allLanguagesEnabled": "all_languages_enabled",
+        "pythonSastEnabled": "python_sast_enabled",
+        "javascriptSastEnabled": "javascript_sast_enabled",
+        "typescriptSastEnabled": "typescript_sast_enabled",
+        "goSastEnabled": "go_sast_enabled",
+        "golangSastEnabled": "golang_sast_enabled",
+        "javaSastEnabled": "java_sast_enabled",
+        "phpSastEnabled": "php_sast_enabled",
+        "rubySastEnabled": "ruby_sast_enabled",
+        "csharpSastEnabled": "csharp_sast_enabled",
+        "dotnetSastEnabled": "dotnet_sast_enabled",
+        "cSastEnabled": "c_sast_enabled",
+        "cppSastEnabled": "cpp_sast_enabled",
+        "kotlinSastEnabled": "kotlin_sast_enabled",
+        "scalaSastEnabled": "scala_sast_enabled",
+        "swiftSastEnabled": "swift_sast_enabled",
+        "rustSastEnabled": "rust_sast_enabled",
+        "elixirSastEnabled": "elixir_sast_enabled",
         # SAST Rules Configuration
-        'allRulesEnabled': 'all_rules_enabled',
-        'pythonEnabledRules': 'python_enabled_rules',
-        'pythonDisabledRules': 'python_disabled_rules',
-        'javascriptEnabledRules': 'javascript_enabled_rules',
-        'javascriptDisabledRules': 'javascript_disabled_rules',
-        'goEnabledRules': 'go_enabled_rules',
-        'goDisabledRules': 'go_disabled_rules',
-        'javaEnabledRules': 'java_enabled_rules',
-        'javaDisabledRules': 'java_disabled_rules',
-        'kotlinEnabledRules': 'kotlin_enabled_rules',
-        'kotlinDisabledRules': 'kotlin_disabled_rules',
-        'scalaEnabledRules': 'scala_enabled_rules',
-        'scalaDisabledRules': 'scala_disabled_rules',
-        'phpEnabledRules': 'php_enabled_rules',
-        'phpDisabledRules': 'php_disabled_rules',
-        'rubyEnabledRules': 'ruby_enabled_rules',
-        'rubyDisabledRules': 'ruby_disabled_rules',
-        'csharpEnabledRules': 'csharp_enabled_rules',
-        'csharpDisabledRules': 'csharp_disabled_rules',
-        'dotnetEnabledRules': 'dotnet_enabled_rules',
-        'dotnetDisabledRules': 'dotnet_disabled_rules',
-        'cEnabledRules': 'c_enabled_rules',
-        'cDisabledRules': 'c_disabled_rules',
-        'cppEnabledRules': 'cpp_enabled_rules',
-        'cppDisabledRules': 'cpp_disabled_rules',
-        'swiftEnabledRules': 'swift_enabled_rules',
-        'swiftDisabledRules': 'swift_disabled_rules',
-        'rustEnabledRules': 'rust_enabled_rules',
-        'rustDisabledRules': 'rust_disabled_rules',
-        'elixirEnabledRules': 'elixir_enabled_rules',
-        'elixirDisabledRules': 'elixir_disabled_rules',
-        
+        "allRulesEnabled": "all_rules_enabled",
+        "pythonEnabledRules": "python_enabled_rules",
+        "pythonDisabledRules": "python_disabled_rules",
+        "javascriptEnabledRules": "javascript_enabled_rules",
+        "javascriptDisabledRules": "javascript_disabled_rules",
+        "goEnabledRules": "go_enabled_rules",
+        "goDisabledRules": "go_disabled_rules",
+        "javaEnabledRules": "java_enabled_rules",
+        "javaDisabledRules": "java_disabled_rules",
+        "kotlinEnabledRules": "kotlin_enabled_rules",
+        "kotlinDisabledRules": "kotlin_disabled_rules",
+        "scalaEnabledRules": "scala_enabled_rules",
+        "scalaDisabledRules": "scala_disabled_rules",
+        "phpEnabledRules": "php_enabled_rules",
+        "phpDisabledRules": "php_disabled_rules",
+        "rubyEnabledRules": "ruby_enabled_rules",
+        "rubyDisabledRules": "ruby_disabled_rules",
+        "csharpEnabledRules": "csharp_enabled_rules",
+        "csharpDisabledRules": "csharp_disabled_rules",
+        "dotnetEnabledRules": "dotnet_enabled_rules",
+        "dotnetDisabledRules": "dotnet_disabled_rules",
+        "cEnabledRules": "c_enabled_rules",
+        "cDisabledRules": "c_disabled_rules",
+        "cppEnabledRules": "cpp_enabled_rules",
+        "cppDisabledRules": "cpp_disabled_rules",
+        "swiftEnabledRules": "swift_enabled_rules",
+        "swiftDisabledRules": "swift_disabled_rules",
+        "rustEnabledRules": "rust_enabled_rules",
+        "rustDisabledRules": "rust_disabled_rules",
+        "elixirEnabledRules": "elixir_enabled_rules",
+        "elixirDisabledRules": "elixir_disabled_rules",
         # OpenGrep/SAST Configuration
-        'openGrepNotificationMethod': 'opengrep_notification_method',
-        'useCustomSastRules': 'use_custom_sast_rules',
-        'customSastRulePath': 'custom_sast_rule_path',
+        "openGrepNotificationMethod": "opengrep_notification_method",
+        "useCustomSastRules": "use_custom_sast_rules",
+        "customSastRulePath": "custom_sast_rule_path",
         # Accept common pluralized variant for robustness.
-        'customSastRulesPath': 'custom_sast_rule_path',
-        
+        "customSastRulesPath": "custom_sast_rule_path",
         # Socket Tier 1
-        'socketTier1Enabled': 'socket_tier_1_enabled',
-        'socketAdditionalParams': 'socket_additional_params',
-        
+        "socketTier1Enabled": "socket_tier_1_enabled",
+        "socketAdditionalParams": "socket_additional_params",
         # Secret Scanning
-        'secretScanningEnabled': 'secret_scanning_enabled',
-        'disableAllSecrets': 'disable_all_secrets',
-        'trufflehogExcludeDir': 'trufflehog_exclude_dir',
-        'trufflehogShowUnverified': 'trufflehog_show_unverified',
-        'trufflehogNotificationMethod': 'trufflehog_notification_method',
-        
+        "secretScanningEnabled": "secret_scanning_enabled",
+        "disableAllSecrets": "disable_all_secrets",
+        "trufflehogExcludeDir": "trufflehog_exclude_dir",
+        "trufflehogShowUnverified": "trufflehog_show_unverified",
+        "trufflehogNotificationMethod": "trufflehog_notification_method",
         # Container/Image Scanning
-        'containerImagesToScan': 'container_images',
-        'dockerfiles': 'dockerfiles',
-        'trivyImageEnabled': 'trivy_image_enabled',
-        'trivyDockerfileEnabled': 'trivy_dockerfile_enabled',
-        'trivyNotificationMethod': 'trivy_notification_method',
-        'trivyDisabledRules': 'trivy_disabled_rules',
-        'trivyImageScanningDisabled': 'trivy_image_scanning_disabled',
-        
+        "containerImagesToScan": "container_images",
+        "dockerfiles": "dockerfiles",
+        "trivyImageEnabled": "trivy_image_enabled",
+        "trivyDockerfileEnabled": "trivy_dockerfile_enabled",
+        "trivyNotificationMethod": "trivy_notification_method",
+        "trivyDisabledRules": "trivy_disabled_rules",
+        "trivyImageScanningDisabled": "trivy_image_scanning_disabled",
         # Notifier Configuration
-        'slackWebhookUrl': 'slack_webhook_url',
-        'webhookUrl': 'webhook_url',
-        'msSentinelWorkspaceId': 'ms_sentinel_workspace_id',
-        'msSentinelKey': 'ms_sentinel_shared_key',
-        'sumologicEndpoint': 'sumologic_endpoint',
-        'jiraUrl': 'jira_url',
-        'jiraProject': 'jira_project',
-        'jiraEmail': 'jira_email',
-        'jiraApiToken': 'jira_api_token',
-        'githubToken': 'github_token',
-        'githubApiUrl': 'github_api_url',
-        'msteamsWebhookUrl': 'msteams_webhook_url',
-        
+        "slackWebhookUrl": "slack_webhook_url",
+        "webhookUrl": "webhook_url",
+        "msSentinelWorkspaceId": "ms_sentinel_workspace_id",
+        "msSentinelKey": "ms_sentinel_shared_key",
+        "sumologicEndpoint": "sumologic_endpoint",
+        "jiraUrl": "jira_url",
+        "jiraProject": "jira_project",
+        "jiraEmail": "jira_email",
+        "jiraApiToken": "jira_api_token",
+        "githubToken": "github_token",
+        "githubApiUrl": "github_api_url",
+        "msteamsWebhookUrl": "msteams_webhook_url",
         # S3 Configuration
-        's3Enabled': 's3_enabled',
-        's3Bucket': 's3_bucket',
-        's3AccessKey': 's3_access_key',
-        's3SecretKey': 's3_secret_key',
-        's3Endpoint': 's3_endpoint',
-        's3Region': 's3_region',
-        
+        "s3Enabled": "s3_enabled",
+        "s3Bucket": "s3_bucket",
+        "s3AccessKey": "s3_access_key",
+        "s3SecretKey": "s3_secret_key",
+        "s3Endpoint": "s3_endpoint",
+        "s3Region": "s3_region",
         # Additional Features
-        'externalCveScanningEnabled': 'external_cve_scanning_enabled',
-        'socketScanningEnabled': 'socket_scanning_enabled',
-        'socketScaEnabled': 'socket_sca_enabled',
-        'additionalParameters': 'additional_parameters',
+        "externalCveScanningEnabled": "external_cve_scanning_enabled",
+        "socketScanningEnabled": "socket_scanning_enabled",
+        "socketScaEnabled": "socket_sca_enabled",
+        "additionalParameters": "additional_parameters",
     }
-    
+
     normalized = {}
     logger = logging.getLogger(__name__)
-    
+
     for api_key, value in api_config.items():
         # Check if we have a mapping for this key
         if api_key in API_TO_INTERNAL_MAP:
@@ -1334,53 +1384,51 @@ def normalize_api_config(api_config: Dict[str, Any]) -> Dict[str, Any]:
             # Pass through unmapped keys as-is (for plan info, etc.)
             normalized[api_key] = value
             logger.debug(f" Pass-through key '{api_key}' = {value}")
-    
+
     # Special handling: if containerImagesToScan or dockerfiles have values, enable scanning
     # This eliminates the need for separate *_enabled flags
-    if normalized.get('container_images'):
-        normalized['trivy_image_enabled'] = True
-        normalized['container_image_scanning_enabled'] = True  # For backward compatibility
+    if normalized.get("container_images"):
+        normalized["trivy_image_enabled"] = True
+        normalized["container_image_scanning_enabled"] = True  # For backward compatibility
         logger.debug(" Auto-enabled trivy_image_enabled because container_images is set")
-    
-    if normalized.get('dockerfiles'):
-        normalized['trivy_dockerfile_enabled'] = True
-        normalized['dockerfile_scanning_enabled'] = True  # For backward compatibility
+
+    if normalized.get("dockerfiles"):
+        normalized["trivy_dockerfile_enabled"] = True
+        normalized["dockerfile_scanning_enabled"] = True  # For backward compatibility
         logger.debug(" Auto-enabled trivy_dockerfile_enabled because dockerfiles is set")
-    
+
     # Handle trivy notification method mapping
-    if 'trivy_notification_method' in normalized:
-        normalized['notification_method'] = normalized['trivy_notification_method']
-    
+    if "trivy_notification_method" in normalized:
+        normalized["notification_method"] = normalized["trivy_notification_method"]
+
     # Handle trufflehog notification method mapping
-    if 'trufflehog_notification_method' in normalized:
-        if 'notification_method' not in normalized:
-            normalized['notification_method'] = normalized['trufflehog_notification_method']
-    
+    if "trufflehog_notification_method" in normalized and "notification_method" not in normalized:
+        normalized["notification_method"] = normalized["trufflehog_notification_method"]
+
     # Handle opengrep notification method mapping
-    if 'opengrep_notification_method' in normalized:
-        if 'notification_method' not in normalized:
-            normalized['notification_method'] = normalized['opengrep_notification_method']
-    
+    if "opengrep_notification_method" in normalized and "notification_method" not in normalized:
+        normalized["notification_method"] = normalized["opengrep_notification_method"]
+
     return normalized
 
 
 def merge_json_and_env_config(
-    json_config: Dict[str, Any] | None = None,
+    json_config: dict[str, Any] | None = None,
     socket_org: str | None = None,
-) -> Dict[str, Any]:
+) -> dict[str, Any]:
     """Merge JSON configuration with environment variables
-    
+
     Priority order (highest to lowest):
     1. CLI options (handled separately via argparse, highest priority)
     2. Socket Basics API config / JSON config (dashboard settings)
     3. Environment variables from action.yml (lowest priority - defaults)
-    
+
     Args:
         json_config: Optional dictionary from JSON config file
         socket_org: Organization slug from ``--socket-org``. Applied before the
             dashboard lookup so the right organization's configuration loads,
             and re-applied by the caller after the merge so it wins overall.
-        
+
     Returns:
         Merged configuration dictionary
     """
@@ -1389,9 +1437,9 @@ def merge_json_and_env_config(
     # Start with environment defaults (lowest priority)
     config = load_config_from_env()
     if socket_org:
-        config['socket_org'] = socket_org
+        config["socket_org"] = socket_org
     logger.info("Configuration sources: environment defaults loaded")
-    
+
     # Override with Socket Basics API config if no explicit JSON config provided
     # API config takes precedence over environment defaults
     if not json_config:
@@ -1405,19 +1453,27 @@ def merge_json_and_env_config(
             # Only filter string values ending with _enabled_rules or _disabled_rules
             filtered_config = {}
             for k, v in normalized_config.items():
-                if isinstance(v, str) and v == '' and (k.endswith('_enabled_rules') or k.endswith('_disabled_rules')):
+                if (
+                    isinstance(v, str)
+                    and v == ""
+                    and (k.endswith(("_enabled_rules", "_disabled_rules")))
+                ):
                     # Skip empty rule config strings - they'll fall back to defaults
                     logger.debug(f"Filtering out empty rule config: {k}")
                     continue
                 filtered_config[k] = v
             config.update(filtered_config)
-            if bool(filtered_config.get('socket_has_enterprise', False)):
-                logging.getLogger(__name__).info("Loaded Socket Basics API configuration (overrides environment defaults)")
+            if bool(filtered_config.get("socket_has_enterprise", False)):
+                logging.getLogger(__name__).info(
+                    "Loaded Socket Basics API configuration (overrides environment defaults)"
+                )
             else:
-                logging.getLogger(__name__).info("Loaded Socket plan metadata (free/non-enterprise mode; no dashboard overrides)")
+                logging.getLogger(__name__).info(
+                    "Loaded Socket plan metadata (free/non-enterprise mode; no dashboard overrides)"
+                )
         else:
             logger.debug(" No Socket Basics API config loaded")
-    
+
     # Override with explicit JSON config if provided
     # JSON config also takes precedence over environment defaults
     if json_config:
@@ -1426,44 +1482,50 @@ def merge_json_and_env_config(
         # Filter out empty strings for rule configs - treat them as unset to use code defaults
         filtered_json = {}
         for k, v in normalized_json.items():
-            if isinstance(v, str) and v == '' and (k.endswith('_enabled_rules') or k.endswith('_disabled_rules')):
+            if (
+                isinstance(v, str)
+                and v == ""
+                and (k.endswith(("_enabled_rules", "_disabled_rules")))
+            ):
                 # Skip empty rule config strings - they'll fall back to defaults
                 logger.debug(f"Filtering out empty rule config: {k}")
                 continue
             filtered_json[k] = v
         config.update(filtered_json)
-        logging.getLogger(__name__).info("Loaded JSON configuration (overrides environment defaults)")
-    
+        logging.getLogger(__name__).info(
+            "Loaded JSON configuration (overrides environment defaults)"
+        )
+
     # Note: CLI arguments are handled separately and take highest priority
     # They override the config object after this merge completes
     logger.info(
         "Effective custom SAST config: use_custom_sast_rules=%s custom_sast_rule_path=%s all_languages_enabled=%s all_rules_enabled=%s",
-        bool(config.get('use_custom_sast_rules', False)),
-        config.get('custom_sast_rule_path', ''),
-        bool(config.get('all_languages_enabled', False)),
-        bool(config.get('all_rules_enabled', False)),
+        bool(config.get("use_custom_sast_rules", False)),
+        config.get("custom_sast_rule_path", ""),
+        bool(config.get("all_languages_enabled", False)),
+        bool(config.get("all_rules_enabled", False)),
     )
-    
+
     return config
 
 
-def load_connectors_config() -> Dict[str, Any]:
+def load_connectors_config() -> dict[str, Any]:
     """Load connectors configuration from YAML file"""
     try:
         base_dir = Path(__file__).parent.parent  # Go up from core to socket_basics
         config_path = base_dir / "connectors.yaml"
-        
+
         if not config_path.exists():
             return {}
-            
-        with open(config_path, 'r') as f:
+
+        with open(config_path) as f:
             return yaml.safe_load(f)
     except Exception as e:
         logging.getLogger(__name__).warning("Warning: Could not load connectors config: %s", e)
         return {}
 
 
-def load_notifications_config() -> Dict[str, Any]:
+def load_notifications_config() -> dict[str, Any]:
     """Load notifier configuration from notifications.yaml"""
     try:
         base_dir = Path(__file__).parent.parent  # Go up from core to socket_basics
@@ -1472,7 +1534,7 @@ def load_notifications_config() -> Dict[str, Any]:
         if not config_path.exists():
             return {}
 
-        with open(config_path, 'r') as f:
+        with open(config_path) as f:
             return yaml.safe_load(f) or {}
     except Exception as e:
         logging.getLogger(__name__).warning("Warning: Could not load notifications config: %s", e)
@@ -1492,13 +1554,14 @@ def _add_bool_cli_arg(parser: argparse.ArgumentParser, option: str, default: Any
     environment, a JSON config or the Socket dashboard.
     """
     if coerce_bool(default, False):
-        parser.add_argument(option, action=argparse.BooleanOptionalAction,
-                            default=None, help=description)
+        parser.add_argument(
+            option, action=argparse.BooleanOptionalAction, default=None, help=description
+        )
     else:
-        parser.add_argument(option, action='store_true', default=None, help=description)
+        parser.add_argument(option, action="store_true", default=None, help=description)
 
 
-def _apply_param_cli_overrides(config_dict: Dict[str, Any], args, params: List[Dict[str, Any]]):
+def _apply_param_cli_overrides(config_dict: dict[str, Any], args, params: list[dict[str, Any]]):
     """Copy CLI values for YAML-declared parameters into the effective config.
 
     ``params`` is the ``parameters`` list of one connector (connectors.yaml) or
@@ -1507,14 +1570,14 @@ def _apply_param_cli_overrides(config_dict: Dict[str, Any], args, params: List[D
     reaches the config exactly like a connector flag does.
     """
     for param in params or []:
-        param_name = param.get('name')
-        option = param.get('option')
+        param_name = param.get("name")
+        option = param.get("option")
 
         if not param_name or not option:
             continue
 
         # Convert option like "--python" to attribute name "python"
-        arg_name = option.lstrip('-').replace('-', '_')
+        arg_name = option.lstrip("-").replace("-", "_")
 
         if not hasattr(args, arg_name):
             continue
@@ -1524,15 +1587,15 @@ def _apply_param_cli_overrides(config_dict: Dict[str, Any], args, params: List[D
             # The option was not passed, so leave the existing config alone.
             continue
 
-        if param.get('type') == 'bool':
+        if param.get("type") == "bool":
             config_dict[param_name] = bool(arg_value)
 
             if arg_value:
                 # Handle enables/disables attributes
-                for enabled_param in param.get('enables', []):
+                for enabled_param in param.get("enables", []):
                     config_dict[enabled_param] = True
 
-                for disabled_param in param.get('disables', []):
+                for disabled_param in param.get("disables", []):
                     config_dict[disabled_param] = False
 
         elif arg_value:
@@ -1541,50 +1604,54 @@ def _apply_param_cli_overrides(config_dict: Dict[str, Any], args, params: List[D
             config_dict[param_name] = arg_value
 
 
-def add_dynamic_cli_args(parser: argparse.ArgumentParser):
+def add_dynamic_cli_args(parser: argparse.ArgumentParser):  # noqa: C901
     """Add CLI arguments based on connectors configuration"""
     try:
         connectors_config = load_connectors_config()
-        
-        for connector_name, connector_config in connectors_config.get('connectors', {}).items():
-            for param in connector_config.get('parameters', []):
-                option = param.get('option')
+
+        for connector_name, connector_config in connectors_config.get("connectors", {}).items():
+            for param in connector_config.get("parameters", []):
+                option = param.get("option")
                 if not option:
                     continue
-                    
-                param_type = param.get('type', 'str')
-                description = param.get('description', f"Enable {connector_name}")
 
-                if param_type == 'bool':
-                    _add_bool_cli_arg(parser, option, param.get('default'), description)
-                elif param_type == 'str':
+                param_type = param.get("type", "str")
+                description = param.get("description", f"Enable {connector_name}")
+
+                if param_type == "bool":
+                    _add_bool_cli_arg(parser, option, param.get("default"), description)
+                elif param_type == "str":
                     parser.add_argument(option, type=str, default=None, help=description)
-                elif param_type == 'int':
+                elif param_type == "int":
                     parser.add_argument(option, type=int, default=None, help=description)
-                    
+
     except Exception as e:
         logging.getLogger(__name__).warning("Warning: Could not load dynamic CLI args: %s", e)
 
     # Add optional changed-files CLI argument to limit scans to changed files
-    parser.add_argument('--changed-files', type=str, default='',
-                        help="Scope all scanners (SAST/OpenGrep, secrets, containers) to changed "
-                             "files only. Accepts a comma-separated file list, a commit hash, "
-                             "'auto' (PR base-ref diff in CI, else staged changes), 'pr' (diff "
-                             "against GITHUB_BASE_REF), or 'current-commit'.")
+    parser.add_argument(
+        "--changed-files",
+        type=str,
+        default="",
+        help="Scope all scanners (SAST/OpenGrep, secrets, containers) to changed "
+        "files only. Accepts a comma-separated file list, a commit hash, "
+        "'auto' (PR base-ref diff in CI, else staged changes), 'pr' (diff "
+        "against GITHUB_BASE_REF), or 'current-commit'.",
+    )
 
     # Also add CLI args for notification plugins declared in notifications.yaml
     try:
         notif_cfg = load_notifications_config()
-        for n_name, n_cfg in (notif_cfg.get('notifiers') or {}).items():
-            for param in n_cfg.get('parameters', []) or []:
-                option = param.get('option')
-                p_type = param.get('type', 'str')
-                desc = param.get('description', f"Notification parameter for {n_name}")
+        for n_name, n_cfg in (notif_cfg.get("notifiers") or {}).items():
+            for param in n_cfg.get("parameters", []) or []:
+                option = param.get("option")
+                p_type = param.get("type", "str")
+                desc = param.get("description", f"Notification parameter for {n_name}")
                 if not option:
                     continue
-                if p_type == 'bool':
-                    _add_bool_cli_arg(parser, option, param.get('default'), desc)
-                elif p_type == 'int':
+                if p_type == "bool":
+                    _add_bool_cli_arg(parser, option, param.get("default"), desc)
+                elif p_type == "int":
                     parser.add_argument(option, type=int, default=None, help=desc)
                 else:
                     parser.add_argument(option, type=str, default=None, help=desc)
@@ -1594,49 +1661,92 @@ def add_dynamic_cli_args(parser: argparse.ArgumentParser):
 
 def parse_cli_args():
     """Parse command line arguments and return argument parser"""
-    parser = argparse.ArgumentParser(prog='socket-basics', description='Socket Security Basics - Dynamic security scanning')
+    parser = argparse.ArgumentParser(
+        prog="socket-basics", description="Socket Security Basics - Dynamic security scanning"
+    )
     try:
         from ..version import __version__ as _socket_basics_version
     except Exception:  # pragma: no cover - version module is always shipped
-        _socket_basics_version = 'unknown'
-    parser.add_argument('--version', action='version', version=f'%(prog)s {_socket_basics_version}')
-    parser.add_argument('--config', type=str, 
-                       help='Path to JSON configuration file. JSON config is merged with environment variables (JSON takes precedence)')
-    parser.add_argument('--output', type=str, default='.socket.facts.json', 
-                       help='Output file name (default: .socket.facts.json)')
-    parser.add_argument('--workspace', type=str, help='Workspace directory to scan')
-    parser.add_argument('--socket-org', type=str, default=None,
-                        help='Socket organization slug (overrides SOCKET_ORG). The API key has no flag; '
-                             'set SOCKET_SECURITY_API_KEY in the environment.')
-    parser.add_argument('--repo', type=str, help='Repository name (use when workspace is not a git repo)')
-    parser.add_argument('--branch', type=str, help='Branch name (use when workspace is not a git repo)')
-    parser.add_argument('--default-branch', action='store_true', help='Explicitly mark this as the default branch (sets make_default_branch=true and set_as_pending_head=true)')
-    parser.add_argument('--commit-message', type=str, help='Commit message for full scan submission')
-    parser.add_argument('--pull-request', type=int, help='Pull request number for full scan submission')
-    parser.add_argument('--committers', type=str, help='Comma-separated list of committers for full scan submission')
-    parser.add_argument('--scan-files', type=str, help='Comma-separated list of files to scan')
+        _socket_basics_version = "unknown"
+    parser.add_argument("--version", action="version", version=f"%(prog)s {_socket_basics_version}")
+    parser.add_argument(
+        "--config",
+        type=str,
+        help="Path to JSON configuration file. JSON config is merged with environment variables (JSON takes precedence)",
+    )
+    parser.add_argument(
+        "--output",
+        type=str,
+        default=".socket.facts.json",
+        help="Output file name (default: .socket.facts.json)",
+    )
+    parser.add_argument("--workspace", type=str, help="Workspace directory to scan")
+    parser.add_argument(
+        "--socket-org",
+        type=str,
+        default=None,
+        help="Socket organization slug (overrides SOCKET_ORG). The API key has no flag; "
+        "set SOCKET_SECURITY_API_KEY in the environment.",
+    )
+    parser.add_argument(
+        "--repo", type=str, help="Repository name (use when workspace is not a git repo)"
+    )
+    parser.add_argument(
+        "--branch", type=str, help="Branch name (use when workspace is not a git repo)"
+    )
+    parser.add_argument(
+        "--default-branch",
+        action="store_true",
+        help="Explicitly mark this as the default branch (sets make_default_branch=true and set_as_pending_head=true)",
+    )
+    parser.add_argument(
+        "--commit-message", type=str, help="Commit message for full scan submission"
+    )
+    parser.add_argument(
+        "--pull-request", type=int, help="Pull request number for full scan submission"
+    )
+    parser.add_argument(
+        "--committers", type=str, help="Comma-separated list of committers for full scan submission"
+    )
+    parser.add_argument("--scan-files", type=str, help="Comma-separated list of files to scan")
     # Paired form rather than store_true: the default is false, but scan_all can
     # already be on from INPUT_SCAN_ALL, a --config file or dashboard config, and
     # store_true offers no way to turn that back off.
-    parser.add_argument('--scan-all', action=argparse.BooleanOptionalAction, default=None,
-                        help="Widen to a full-workspace scan when a --changed-files scope cannot "
-                             "be resolved, instead of failing with a configuration error. Does "
-                             "not override a scope that resolved successfully. --no-scan-all "
-                             "forces the fail-closed behavior back on.")
-    parser.add_argument('--console-tabular-enabled', action='store_true', help='Enable consolidated console tabular output')
-    parser.add_argument('--console-json-enabled', action='store_true', help='Enable consolidated console JSON output')
-    parser.add_argument('--verbose', '-v', action='store_true', help='Verbose logging')
-    parser.add_argument('--enable-s3-upload', action='store_true', help='Enable uploading the output file to S3 using SOCKET_S3_* env vars')
-    
+    parser.add_argument(
+        "--scan-all",
+        action=argparse.BooleanOptionalAction,
+        default=None,
+        help="Widen to a full-workspace scan when a --changed-files scope cannot "
+        "be resolved, instead of failing with a configuration error. Does "
+        "not override a scope that resolved successfully. --no-scan-all "
+        "forces the fail-closed behavior back on.",
+    )
+    parser.add_argument(
+        "--console-tabular-enabled",
+        action="store_true",
+        help="Enable consolidated console tabular output",
+    )
+    parser.add_argument(
+        "--console-json-enabled",
+        action="store_true",
+        help="Enable consolidated console JSON output",
+    )
+    parser.add_argument("--verbose", "-v", action="store_true", help="Verbose logging")
+    parser.add_argument(
+        "--enable-s3-upload",
+        action="store_true",
+        help="Enable uploading the output file to S3 using SOCKET_S3_* env vars",
+    )
+
     # Add dynamic CLI arguments from connectors configuration
     add_dynamic_cli_args(parser)
-    
+
     return parser
 
 
-def create_config_from_args(args) -> Config:
+def create_config_from_args(args) -> Config:  # noqa: C901
     """Create configuration object from parsed CLI arguments"""
-    cli_socket_org = (getattr(args, 'socket_org', None) or '').strip() or None
+    cli_socket_org = (getattr(args, "socket_org", None) or "").strip() or None
 
     # Load base config from environment or JSON file
     if args.config:
@@ -1646,101 +1756,102 @@ def create_config_from_args(args) -> Config:
         except (FileNotFoundError, json.JSONDecodeError, ValueError) as e:
             logger = logging.getLogger(__name__)
             logger.error("Failed to load JSON config from %s: %s", args.config, e)
-            raise SystemExit(f"Error loading configuration file: {e}")
+            raise SystemExit(f"Error loading configuration file: {e}") from e
     else:
         config_dict = merge_json_and_env_config(socket_org=cli_socket_org)
-    
+
     # Override config with CLI args
     if cli_socket_org:
-        config_dict['socket_org'] = cli_socket_org
+        config_dict["socket_org"] = cli_socket_org
     if args.workspace:
-        config_dict['workspace'] = args.workspace
+        config_dict["workspace"] = args.workspace
         # When workspace is explicitly set, default output_dir to workspace unless OUTPUT_DIR env var is set
-        if 'OUTPUT_DIR' not in os.environ:
-            config_dict['output_dir'] = args.workspace
+        if "OUTPUT_DIR" not in os.environ:
+            config_dict["output_dir"] = args.workspace
     if args.scan_files:
-        config_dict['scan_files'] = args.scan_files
+        config_dict["scan_files"] = args.scan_files
     # None means the flag was absent, which must not overwrite an INPUT_SCAN_ALL,
     # --config JSON or dashboard value with an implicit false.
-    scan_all_arg = getattr(args, 'scan_all', None)
+    scan_all_arg = getattr(args, "scan_all", None)
     if scan_all_arg is not None:
-        config_dict['scan_all'] = scan_all_arg
+        config_dict["scan_all"] = scan_all_arg
     # Console tabular flag (new) with fallback to deprecated name
-    if getattr(args, 'console_tabular_enabled', False) or getattr(args, 'output_console_enabled', False):
-        config_dict['console_tabular_enabled'] = True
+    if getattr(args, "console_tabular_enabled", False) or getattr(
+        args, "output_console_enabled", False
+    ):
+        config_dict["console_tabular_enabled"] = True
 
     # Console JSON flag (new) with fallback to deprecated name
-    if getattr(args, 'console_json_enabled', False) or getattr(args, 'output_json_enabled', False):
-        config_dict['console_json_enabled'] = True
+    if getattr(args, "console_json_enabled", False) or getattr(args, "output_json_enabled", False):
+        config_dict["console_json_enabled"] = True
     if args.verbose:
-        config_dict['verbose'] = args.verbose
+        config_dict["verbose"] = args.verbose
         # Repository/branch discovery with precedence: CLI -> Env -> Git -> Error
-    config_dict['repo'] = _discover_repository(
-        getattr(args, 'repo', None),
-        github_repository=config_dict.get('github_repository', ''),
-        github_event_path=config_dict.get('github_event_path', '')
+    config_dict["repo"] = _discover_repository(
+        getattr(args, "repo", None),
+        github_repository=config_dict.get("github_repository", ""),
+        github_event_path=config_dict.get("github_event_path", ""),
     )
-    config_dict['branch'] = _discover_branch(
-        getattr(args, 'branch', None),
-        github_head_ref=config_dict.get('github_head_ref', ''),
-        github_ref_name=config_dict.get('github_ref_name', ''),
-        github_event_path=config_dict.get('github_event_path', '')
+    config_dict["branch"] = _discover_branch(
+        getattr(args, "branch", None),
+        github_head_ref=config_dict.get("github_head_ref", ""),
+        github_ref_name=config_dict.get("github_ref_name", ""),
+        github_event_path=config_dict.get("github_event_path", ""),
     )
-    config_dict['commit_hash'] = _discover_commit_hash()
-    
+    config_dict["commit_hash"] = _discover_commit_hash()
+
     # Default branch detection: CLI flag -> Environment -> Git detection
     is_default_branch = False
-    if getattr(args, 'default_branch', False):
+    if getattr(args, "default_branch", False):
         # Explicitly set via CLI
         is_default_branch = True
         logger = logging.getLogger(__name__)
         logger.debug("Default branch explicitly set via --default-branch CLI flag")
-    elif config_dict.get('socket_default_branch', False):
+    elif config_dict.get("socket_default_branch", False):
         # Set via SOCKET_DEFAULT_BRANCH environment variable
         is_default_branch = True
         logger = logging.getLogger(__name__)
         logger.debug("Default branch set via SOCKET_DEFAULT_BRANCH environment variable")
     else:
         # Auto-detect by comparing current branch with repository default
-        current_branch = config_dict.get('branch', '')
-        workspace_path = config_dict.get('workspace', '')
+        current_branch = config_dict.get("branch", "")
+        workspace_path = config_dict.get("workspace", "")
         is_default_branch = _discover_is_default_branch(current_branch, workspace_path)
-    
-    config_dict['is_default_branch'] = is_default_branch
-    
+
+    config_dict["is_default_branch"] = is_default_branch
+
     # Handle additional full scan parameters
-    if getattr(args, 'commit_message', None):
-        config_dict['commit_message'] = args.commit_message
-    
+    if getattr(args, "commit_message", None):
+        config_dict["commit_message"] = args.commit_message
+
     # Pull request discovery: CLI -> Environment -> Default to 0
-    if getattr(args, 'pull_request', None) is not None:
-        config_dict['pull_request'] = args.pull_request
+    if getattr(args, "pull_request", None) is not None:
+        config_dict["pull_request"] = args.pull_request
     else:
-        config_dict['pull_request'] = _discover_pull_request(
-            github_pr_number=config_dict.get('github_pr_number', ''),
-            github_event_path=config_dict.get('github_event_path', ''),
-            github_head_ref=config_dict.get('github_head_ref', '')
+        config_dict["pull_request"] = _discover_pull_request(
+            github_pr_number=config_dict.get("github_pr_number", ""),
+            github_event_path=config_dict.get("github_event_path", ""),
+            github_head_ref=config_dict.get("github_head_ref", ""),
         )
-    
+
     # Committer discovery: CLI -> Git -> Environment
-    if getattr(args, 'committers', None):
+    if getattr(args, "committers", None):
         # Parse comma-separated committers from CLI
-        committers = [c.strip() for c in args.committers.split(',') if c.strip()]
-        config_dict['committers'] = committers
+        committers = [c.strip() for c in args.committers.split(",") if c.strip()]
+        config_dict["committers"] = committers
     else:
         # Auto-discover committers from git
-        config_dict['committers'] = _discover_committers(
-            github_actor=config_dict.get('github_actor', '')
+        config_dict["committers"] = _discover_committers(
+            github_actor=config_dict.get("github_actor", "")
         )
-        
-    if getattr(args, 'enable_s3_upload', False):
-        config_dict['enable_s3_upload'] = True
-    else:
-        # Allow enabling S3 uploads via environment variable SOCKET_S3_ENABLED
-        # so sourcing an .env file with SOCKET_S3_ENABLED=true will trigger uploads
-        if os.getenv('SOCKET_S3_ENABLED', '').lower() in ('true', '1', 'yes'):
-            config_dict['enable_s3_upload'] = True
-    
+
+    if getattr(args, "enable_s3_upload", False) or os.getenv("SOCKET_S3_ENABLED", "").lower() in (
+        "true",
+        "1",
+        "yes",
+    ):
+        config_dict["enable_s3_upload"] = True
+
     # Dynamically apply connector and notifier parameters from CLI args.
     # Notifiers register their own CLI options in add_dynamic_cli_args, so they
     # have to be copied here too or a parsed notifier flag never reaches the
@@ -1748,34 +1859,38 @@ def create_config_from_args(args) -> Config:
     try:
         connectors_config = load_connectors_config()
 
-        for connector_config in connectors_config.get('connectors', {}).values():
-            _apply_param_cli_overrides(config_dict, args, connector_config.get('parameters', []))
+        for connector_config in connectors_config.get("connectors", {}).values():
+            _apply_param_cli_overrides(config_dict, args, connector_config.get("parameters", []))
 
         notifications_config = load_notifications_config()
 
-        for notifier_config in (notifications_config.get('notifiers') or {}).values():
-            _apply_param_cli_overrides(config_dict, args, notifier_config.get('parameters', []))
+        for notifier_config in (notifications_config.get("notifiers") or {}).values():
+            _apply_param_cli_overrides(config_dict, args, notifier_config.get("parameters", []))
     except Exception as e:
         logging.getLogger(__name__).warning("Warning: Error processing dynamic CLI args: %s", e)
-    
+
     # Auto-enable scanning when values are provided (removes need for separate enabled flags)
     # If container_images has a value, enable image scanning
-    if config_dict.get('container_images'):
-        config_dict['trivy_image_enabled'] = True
-        config_dict['container_image_scanning_enabled'] = True
-        logging.getLogger(__name__).debug("Auto-enabled Trivy image scanning because --images provided")
-    
+    if config_dict.get("container_images"):
+        config_dict["trivy_image_enabled"] = True
+        config_dict["container_image_scanning_enabled"] = True
+        logging.getLogger(__name__).debug(
+            "Auto-enabled Trivy image scanning because --images provided"
+        )
+
     # If dockerfiles has a value, enable Dockerfile scanning
-    if config_dict.get('dockerfiles'):
-        config_dict['trivy_dockerfile_enabled'] = True
-        config_dict['dockerfile_scanning_enabled'] = True
-        logging.getLogger(__name__).debug("Auto-enabled Trivy Dockerfile scanning because --dockerfiles provided")
+    if config_dict.get("dockerfiles"):
+        config_dict["trivy_dockerfile_enabled"] = True
+        config_dict["dockerfile_scanning_enabled"] = True
+        logging.getLogger(__name__).debug(
+            "Auto-enabled Trivy Dockerfile scanning because --dockerfiles provided"
+        )
 
     # Persist the chosen output filename into config so connectors can reference it
     try:
-        output_arg = getattr(args, 'output', None)
+        output_arg = getattr(args, "output", None)
         if output_arg:
-            config_dict['output'] = output_arg
+            config_dict["output"] = output_arg
     except Exception:
         pass
 
@@ -1783,33 +1898,39 @@ def create_config_from_args(args) -> Config:
     # the raw request string ('auto', 'pr', a commit hash, or a file list) is
     # stored as-is. Config resolves it against git exactly once, so a config
     # built without going through here honors the scope the same way.
-    changed_files_arg = getattr(args, 'changed_files', '') if args is not None else ''
+    changed_files_arg = getattr(args, "changed_files", "") if args is not None else ""
     if changed_files_arg and str(changed_files_arg).strip():
-        config_dict['changed_files'] = str(changed_files_arg).strip()
+        config_dict["changed_files"] = str(changed_files_arg).strip()
 
     # Post-processing: ensure repository/branch are set; if workspace isn't a git repo,
     # require explicit --repo and --branch to be provided.
     try:
-        ws = config_dict.get('workspace', os.getcwd())
-        git_dir = Path(ws) / '.git'
+        ws = config_dict.get("workspace", os.getcwd())
+        git_dir = Path(ws) / ".git"
         if git_dir.exists():
             try:
                 # Detect branch if not already set
-                if 'branch' not in config_dict or not config_dict.get('branch'):
+                if "branch" not in config_dict or not config_dict.get("branch"):
                     import subprocess
-                    branch_name = subprocess.check_output(
-                        ['git', '-C', str(ws), 'rev-parse', '--abbrev-ref', 'HEAD'],
-                        env=_git_env(ws),
-                    ).decode().strip()
+
+                    branch_name = (
+                        subprocess.check_output(
+                            ["git", "-C", str(ws), "rev-parse", "--abbrev-ref", "HEAD"],
+                            env=_git_env(ws),
+                        )
+                        .decode()
+                        .strip()
+                    )
                     if branch_name:
-                        config_dict.setdefault('branch', branch_name)
+                        config_dict.setdefault("branch", branch_name)
             except Exception:
                 # ignore git detection failures
                 pass
-        else:
-            # Not a git repo: require CLI-provided repo and branch
-            if not config_dict.get('repo') or not config_dict.get('branch'):
-                raise RuntimeError('Workspace is not a git repository; please provide --repo and --branch')
+        # Not a git repo: require CLI-provided repo and branch
+        elif not config_dict.get("repo") or not config_dict.get("branch"):
+            raise RuntimeError(
+                "Workspace is not a git repository; please provide --repo and --branch"
+            )
     except RuntimeError:
         # propagate to caller so CLI user sees the error
         raise
@@ -1820,16 +1941,16 @@ def create_config_from_args(args) -> Config:
     return Config(config_dict)
 
 
-SCOPE_REQUEST_AUTO = 'auto'
-SCOPE_REQUEST_PR = 'pr'
-SCOPE_REQUEST_CURRENT_COMMIT = ('current-commit', 'current_commit')
+SCOPE_REQUEST_AUTO = "auto"
+SCOPE_REQUEST_PR = "pr"
+SCOPE_REQUEST_CURRENT_COMMIT = ("current-commit", "current_commit")
 
 
 def resolve_changed_files_request(
     request: str,
     workspace_path: str,
     fail_open: bool = False,
-) -> Optional[List[str]]:
+) -> list[str] | None:
     """Resolve a raw ``changed_files`` request into a list of changed paths.
 
     ``request`` is whatever the user asked for:
@@ -1846,34 +1967,32 @@ def resolve_changed_files_request(
     into the full-repository fallback.
     """
     log = logging.getLogger(__name__)
-    value = (request or '').strip()
+    value = (request or "").strip()
     if not value:
         return []
 
     lowered = value.lower()
 
     if lowered == SCOPE_REQUEST_AUTO:
-        files = _detect_git_changed_files(workspace_path, mode='auto', fail_open=fail_open)
+        files = _detect_git_changed_files(workspace_path, mode="auto", fail_open=fail_open)
     elif lowered == SCOPE_REQUEST_PR:
-        files = _detect_git_changed_files(workspace_path, mode='pr', fail_open=fail_open)
+        files = _detect_git_changed_files(workspace_path, mode="pr", fail_open=fail_open)
     elif lowered in SCOPE_REQUEST_CURRENT_COMMIT:
         files = _detect_git_changed_files(
             workspace_path,
-            mode='current-commit',
+            mode="current-commit",
             fail_open=fail_open,
         )
-    elif re.match(r'^[0-9a-fA-F]{7,40}$', value):
+    elif re.match(r"^[0-9a-fA-F]{7,40}$", value):
         files = _detect_git_changed_files(
             workspace_path,
-            mode='commit',
+            mode="commit",
             commit=value,
             fail_open=fail_open,
         )
     else:
-        files = [f.strip() for f in value.split(',') if f.strip()]
-        log.info(
-            "Diff-only scan scoping requested with an explicit list of %d file(s)", len(files)
-        )
+        files = [f.strip() for f in value.split(",") if f.strip()]
+        log.info("Diff-only scan scoping requested with an explicit list of %d file(s)", len(files))
         return files
 
     if files is None:
@@ -1885,7 +2004,8 @@ def resolve_changed_files_request(
     elif files:
         log.info(
             "Diff-only scan scoping requested (changed_files=%s): resolved %d changed file(s)",
-            value, len(files),
+            value,
+            len(files),
         )
     else:
         log.info(
@@ -1896,13 +2016,13 @@ def resolve_changed_files_request(
     return files
 
 
-def _read_github_event() -> Dict[str, Any]:
+def _read_github_event() -> dict[str, Any]:
     """Load the GitHub Actions event payload, or {} when unavailable."""
-    event_path = os.environ.get('GITHUB_EVENT_PATH', '')
+    event_path = os.environ.get("GITHUB_EVENT_PATH", "")
     if not event_path:
         return {}
     try:
-        with open(event_path, 'r', encoding='utf-8') as fh:
+        with open(event_path, encoding="utf-8") as fh:
             payload = json.load(fh)
         return payload if isinstance(payload, dict) else {}
     except Exception:
@@ -1912,7 +2032,7 @@ def _read_github_event() -> Dict[str, Any]:
         return {}
 
 
-def _pr_base_candidates(base_ref: str | None = None) -> List[str]:
+def _pr_base_candidates(base_ref: str | None = None) -> list[str]:
     """Every ref we know of that could be the base of the current PR.
 
     ``GITHUB_BASE_REF`` is only set for ``pull_request`` and
@@ -1929,21 +2049,21 @@ def _pr_base_candidates(base_ref: str | None = None) -> List[str]:
     GitHub API call. ``_warn_no_base`` recognises that shape and says so rather
     than letting the run look like an empty diff.
     """
-    candidates: List[str] = []
+    candidates: list[str] = []
 
     def _add(value) -> None:
         if isinstance(value, str) and value.strip() and value.strip() not in candidates:
             candidates.append(value.strip())
 
     _add(base_ref)
-    _add(os.environ.get('GITHUB_BASE_REF', ''))
+    _add(os.environ.get("GITHUB_BASE_REF", ""))
 
-    pull_request = _read_github_event().get('pull_request')
+    pull_request = _read_github_event().get("pull_request")
     if isinstance(pull_request, dict):
-        base = pull_request.get('base')
+        base = pull_request.get("base")
         if isinstance(base, dict):
-            _add(base.get('sha'))
-            _add(base.get('ref'))
+            _add(base.get("sha"))
+            _add(base.get("ref"))
 
     return candidates
 
@@ -1957,13 +2077,13 @@ def _event_is_comment_on_pull_request() -> bool:
     on, so the scope cannot be resolved from the environment alone.
     """
     event = _read_github_event()
-    if isinstance(event.get('pull_request'), dict):
+    if isinstance(event.get("pull_request"), dict):
         return False
-    issue = event.get('issue')
-    return isinstance(issue, dict) and isinstance(issue.get('pull_request'), dict)
+    issue = event.get("issue")
+    return isinstance(issue, dict) and isinstance(issue.get("pull_request"), dict)
 
 
-def _git_env(workspace_path: str | Path | None = None) -> Dict[str, str]:
+def _git_env(workspace_path: str | Path | None = None) -> dict[str, str]:
     """Environment for git subprocesses that marks the scan workspace safe to read.
 
     The pre-built GitHub Action runs as root inside a Docker container while the
@@ -1984,13 +2104,13 @@ def _git_env(workspace_path: str | Path | None = None) -> Dict[str, str]:
     """
     env = dict(os.environ)
     try:
-        count = max(0, int(env.get('GIT_CONFIG_COUNT', '0') or '0'))
+        count = max(0, int(env.get("GIT_CONFIG_COUNT", "0") or "0"))
     except ValueError:
         count = 0
-    workspace = workspace_path or os.environ.get('GITHUB_WORKSPACE') or os.getcwd()
-    env[f'GIT_CONFIG_KEY_{count}'] = 'safe.directory'
-    env[f'GIT_CONFIG_VALUE_{count}'] = str(Path(workspace).resolve())
-    env['GIT_CONFIG_COUNT'] = str(count + 1)
+    workspace = workspace_path or os.environ.get("GITHUB_WORKSPACE") or os.getcwd()
+    env[f"GIT_CONFIG_KEY_{count}"] = "safe.directory"
+    env[f"GIT_CONFIG_VALUE_{count}"] = str(Path(workspace).resolve())
+    env["GIT_CONFIG_COUNT"] = str(count + 1)
     return env
 
 
@@ -2016,13 +2136,13 @@ class _GitScopeError(Exception):
         self.merge_base_miss = merge_base_miss
 
 
-def _detect_git_changed_files(
+def _detect_git_changed_files(  # noqa: C901
     workspace_path: str,
-    mode: str = 'staged',
+    mode: str = "staged",
     commit: str | None = None,
     base_ref: str | None = None,
     fail_open: bool = False,
-) -> Optional[List[str]]:
+) -> list[str] | None:
     """Detect changed files in a git repository.
 
     mode:
@@ -2052,8 +2172,8 @@ def _detect_git_changed_files(
         # fallback for direct callers that do not supply one.
         if workspace_path:
             ws = Path(workspace_path)
-        elif os.environ.get('GITHUB_WORKSPACE'):
-            ws = Path(os.environ['GITHUB_WORKSPACE'])
+        elif os.environ.get("GITHUB_WORKSPACE"):
+            ws = Path(os.environ["GITHUB_WORKSPACE"])
         else:
             ws = Path.cwd()
         # Resolve before changing directories below. Keeping a relative path
@@ -2068,13 +2188,14 @@ def _detect_git_changed_files(
             return None
 
         # Ensure this is a git repo
-        git_dir = ws / '.git'
+        git_dir = ws / ".git"
         if not git_dir.exists():
             log.warning(
                 "Cannot scope the scan to changed files: %s is not a git repository. "
                 "Check out the repository (actions/checkout) before running the scan, or pass "
                 "an explicit file list to changed_files instead of '%s'.",
-                str(ws), mode,
+                str(ws),
+                mode,
             )
             return None
 
@@ -2086,41 +2207,42 @@ def _detect_git_changed_files(
         try:
             os.chdir(str(ws))
 
-            git = ['git']
+            git = ["git"]
 
-            def _split(out: str) -> List[str]:
+            def _split(out: str) -> list[str]:
                 return [line.strip() for line in out.splitlines() if line.strip()]
 
             ref_miss_markers = (
-                'unknown revision',
-                'bad revision',
-                'ambiguous argument',
-                'invalid object name',
-                'invalid symmetric difference expression',
+                "unknown revision",
+                "bad revision",
+                "ambiguous argument",
+                "invalid object name",
+                "invalid symmetric difference expression",
             )
 
-            def _run_git(args: List[str]) -> List[str]:
+            def _run_git(args: list[str]) -> list[str]:
                 result = subprocess.run(
                     [*git, *args],
                     cwd=str(ws),
                     text=True,
                     capture_output=True,
                     env=git_env,
+                    check=False,
                 )
                 if result.returncode != 0:
-                    stderr = (result.stderr or '').strip()
-                    first = stderr.splitlines()[0] if stderr else f'exit code {result.returncode}'
+                    stderr = (result.stderr or "").strip()
+                    first = stderr.splitlines()[0] if stderr else f"exit code {result.returncode}"
                     lowered = stderr.lower()
                     raise _GitScopeError(
                         first,
                         ref_miss=any(marker in lowered for marker in ref_miss_markers),
-                        merge_base_miss='no merge base' in lowered,
+                        merge_base_miss="no merge base" in lowered,
                     )
                 return _split(result.stdout)
 
             def _is_shallow() -> bool:
                 try:
-                    return _run_git(['rev-parse', '--is-shallow-repository']) == ['true']
+                    return _run_git(["rev-parse", "--is-shallow-repository"]) == ["true"]
                 except Exception:
                     return False
 
@@ -2135,12 +2257,12 @@ def _detect_git_changed_files(
                 else is wrong with the checkout.
                 """
                 try:
-                    _run_git(['rev-parse', '--git-dir'])
+                    _run_git(["rev-parse", "--git-dir"])
                     return True
                 except Exception:
                     return False
 
-            def _diff_against_base(refs: List[str]) -> Optional[List[str]]:
+            def _diff_against_base(refs: list[str]) -> list[str] | None:
                 """Diff changed files (excluding deletions) against a PR base.
 
                 Each candidate is tried as the remote-tracking ref
@@ -2150,13 +2272,13 @@ def _detect_git_changed_files(
                 ``--diff-filter=ACMR`` excludes deleted paths so they never
                 become scan targets.
                 """
-                tried: List[str] = []
-                failures: List[str] = []
+                tried: list[str] = []
+                failures: list[str] = []
                 for ref in refs:
                     candidates = (
-                        (ref, ref.removeprefix('origin/'))
-                        if ref.startswith('origin/')
-                        else (f'origin/{ref}', ref)
+                        (ref, ref.removeprefix("origin/"))
+                        if ref.startswith("origin/")
+                        else (f"origin/{ref}", ref)
                     )
                     for candidate in candidates:
                         if candidate in tried:
@@ -2165,10 +2287,10 @@ def _detect_git_changed_files(
                         try:
                             files = _run_git(
                                 [
-                                    'diff',
-                                    '--name-only',
-                                    '--diff-filter=ACMR',
-                                    f'{candidate}...HEAD',
+                                    "diff",
+                                    "--name-only",
+                                    "--diff-filter=ACMR",
+                                    f"{candidate}...HEAD",
                                 ]
                             )
                             log.info("Resolved PR diff base to '%s'", candidate)
@@ -2179,7 +2301,7 @@ def _detect_git_changed_files(
                                 continue
                             raise
                 if tried:
-                    log.debug("No PR diff base resolved; tried: %s", ', '.join(tried))
+                    log.debug("No PR diff base resolved; tried: %s", ", ".join(tried))
                 if refs and _is_shallow() and not fail_open:
                     raise SystemExit(
                         f"changed_files: cannot diff against base ref '{refs[0]}' (missing ref "
@@ -2190,11 +2312,11 @@ def _detect_git_changed_files(
                 if failures:
                     log.warning(
                         "changed_files scope: no candidate PR base could be diffed (%s)",
-                        '; '.join(failures),
+                        "; ".join(failures),
                     )
                 return None
 
-            def _warn_no_base(refs: List[str]) -> None:
+            def _warn_no_base(refs: list[str]) -> None:
                 """Explain a failed base resolution instead of returning [] quietly."""
                 if not _git_is_usable():
                     log.warning(
@@ -2229,17 +2351,19 @@ def _detect_git_changed_files(
                 shallow_hint = (
                     " The checkout is shallow, so the base branch is not in it -- set "
                     "fetch-depth: 0 on actions/checkout."
-                    if _is_shallow() else
-                    " The base branch is not present in this checkout -- set fetch-depth: 0 on "
+                    if _is_shallow()
+                    else " The base branch is not present in this checkout -- set fetch-depth: 0 on "
                     "actions/checkout so it is fetched."
                 )
                 log.warning(
                     "Cannot scope the scan to changed files: none of the candidate PR bases (%s) "
                     "could be resolved in %s.%s",
-                    ', '.join(refs), str(ws), shallow_hint,
+                    ", ".join(refs),
+                    str(ws),
+                    shallow_hint,
                 )
 
-            if mode == 'auto':
+            if mode == "auto":
                 # Prefer the PR base diff in CI; fall back to staged changes
                 # for local/pre-commit use.
                 refs = _pr_base_candidates(base_ref)
@@ -2251,45 +2375,40 @@ def _detect_git_changed_files(
                     return None
                 if (
                     _event_is_comment_on_pull_request()
-                    or os.environ.get('GITHUB_ACTIONS', '').lower() == 'true'
+                    or os.environ.get("GITHUB_ACTIONS", "").lower() == "true"
                     or bool(_read_github_event())
                 ):
                     _warn_no_base(refs)
                     return None
-                staged = _run_git(['diff', '--name-only', '--cached'])
+                staged = _run_git(["diff", "--name-only", "--cached"])
                 log.info(
                     "changed_files='auto' fell back to staged changes: %d file(s)", len(staged)
                 )
                 return staged
-            elif mode == 'pr':
+            if mode == "pr":
                 refs = _pr_base_candidates(base_ref)
                 pr_files = _diff_against_base(refs)
                 if pr_files is not None:
                     return pr_files
                 _warn_no_base(refs)
                 return None
-            elif mode == 'staged':
+            if mode == "staged":
                 # staged but not yet committed
-                return _run_git(['diff', '--name-only', '--cached'])
-            elif mode == 'current-commit':
+                return _run_git(["diff", "--name-only", "--cached"])
+            if mode == "current-commit":
                 # files that are part of HEAD commit
-                return _run_git(
-                    ['diff-tree', '--no-commit-id', '--name-only', '-r', 'HEAD']
-                )
-            elif mode == 'commit' and commit:
-                return _run_git(
-                    ['diff-tree', '--no-commit-id', '--name-only', '-r', commit]
-                )
-            else:
-                log.warning("Unknown changed-files detection mode '%s'", mode)
-                return None
+                return _run_git(["diff-tree", "--no-commit-id", "--name-only", "-r", "HEAD"])
+            if mode == "commit" and commit:
+                return _run_git(["diff-tree", "--no-commit-id", "--name-only", "-r", commit])
+            log.warning("Unknown changed-files detection mode '%s'", mode)
+            return None
         finally:
             # Always restore original working directory
             os.chdir(original_cwd)
 
     except _GitScopeError as e:
-        hint = ''
-        if 'dubious ownership' in str(e).lower():
+        hint = ""
+        if "dubious ownership" in str(e).lower():
             hint = (
                 " — the workspace should already be marked safe.directory for this command; "
                 "please report this"
@@ -2301,281 +2420,290 @@ def _detect_git_changed_files(
         return None
 
 
-def discover_all_files(workspace_path: str, respect_gitignore: bool = True) -> List[str]:
+def discover_all_files(workspace_path: str, respect_gitignore: bool = True) -> list[str]:  # noqa: C901
     """Discover all files in a workspace, optionally respecting .gitignore patterns.
-    
+
     Args:
         workspace_path: Path to the workspace directory
         respect_gitignore: Whether to respect .gitignore patterns (default: True)
-        
+
     Returns:
         List of relative file paths from the workspace root
     """
     import fnmatch
     import os
-    
+
     workspace = Path(workspace_path)
     if not workspace.exists() or not workspace.is_dir():
         return []
-    
+
     all_files = []
     gitignore_patterns = []
-    
+
     # Load .gitignore patterns if requested and file exists
     if respect_gitignore:
-        gitignore_file = workspace / '.gitignore'
+        gitignore_file = workspace / ".gitignore"
         if gitignore_file.exists():
             try:
-                with open(gitignore_file, 'r', encoding='utf-8') as f:
-                    for line in f:
-                        line = line.strip()
+                with open(gitignore_file, encoding="utf-8") as f:
+                    for raw_line in f:
+                        line = raw_line.strip()
                         # Skip empty lines and comments
-                        if not line or line.startswith('#'):
+                        if not line or line.startswith("#"):
                             continue
                         gitignore_patterns.append(line)
             except Exception:
                 # If we can't read .gitignore, continue without patterns
                 pass
-    
+
     # Always ignore common patterns even if no .gitignore
     default_ignore_patterns = [
-        '.git',
-        '.git/**',
-        '__pycache__',
-        '__pycache__/**',
-        '*.pyc',
-        '.DS_Store',
-        '.venv',
-        '.venv/**',
-        'venv',
-        'venv/**',
-        'node_modules',
-        'node_modules/**',
-        '.tmp',
-        '.tmp/**',
-        'custom_rules',
-        'custom_rules/**',
+        ".git",
+        ".git/**",
+        "__pycache__",
+        "__pycache__/**",
+        "*.pyc",
+        ".DS_Store",
+        ".venv",
+        ".venv/**",
+        "venv",
+        "venv/**",
+        "node_modules",
+        "node_modules/**",
+        ".tmp",
+        ".tmp/**",
+        "custom_rules",
+        "custom_rules/**",
     ]
-    
+
     all_patterns = gitignore_patterns + default_ignore_patterns
-    
+
     def should_ignore(file_path: str) -> bool:
         """Check if a file should be ignored based on patterns"""
         # Convert to forward slashes for consistent pattern matching
-        normalized_path = file_path.replace(os.sep, '/')
-        
+        normalized_path = file_path.replace(os.sep, "/")
+
         for pattern in all_patterns:
             # Handle directory patterns (ending with /)
-            if pattern.endswith('/'):
+            if pattern.endswith("/"):
                 dir_pattern = pattern[:-1]
-                if normalized_path == dir_pattern or normalized_path.startswith(dir_pattern + '/'):
+                if normalized_path == dir_pattern or normalized_path.startswith(dir_pattern + "/"):
                     return True
             # Handle patterns with /** (recursive directory)
-            elif '/**' in pattern:
-                base_pattern = pattern.replace('/**', '')
-                if normalized_path.startswith(base_pattern + '/') or normalized_path == base_pattern:
+            elif "/**" in pattern:
+                base_pattern = pattern.replace("/**", "")
+                if (
+                    normalized_path.startswith(base_pattern + "/")
+                    or normalized_path == base_pattern
+                ):
                     return True
             # Handle glob patterns
-            elif '*' in pattern or '?' in pattern:
+            elif "*" in pattern or "?" in pattern:
                 if fnmatch.fnmatch(normalized_path, pattern):
                     return True
                 # Also check if any parent directory matches
-                parts = normalized_path.split('/')
+                parts = normalized_path.split("/")
                 for i in range(1, len(parts) + 1):
-                    partial_path = '/'.join(parts[:i])
+                    partial_path = "/".join(parts[:i])
                     if fnmatch.fnmatch(partial_path, pattern):
                         return True
             # Handle exact matches
-            else:
-                if normalized_path == pattern or normalized_path.startswith(pattern + '/'):
-                    return True
-        
+            elif normalized_path == pattern or normalized_path.startswith(pattern + "/"):
+                return True
+
         return False
-    
+
     # Walk the directory tree
     try:
         for root, dirs, files in os.walk(workspace):
             # Get relative path from workspace
             rel_root = os.path.relpath(root, workspace)
-            if rel_root == '.':
-                rel_root = ''
-            
+            if rel_root == ".":
+                rel_root = ""
+
             # Filter out directories that should be ignored
-            dirs[:] = [d for d in dirs if not should_ignore(os.path.join(rel_root, d) if rel_root else d)]
-            
+            dirs[:] = [
+                d for d in dirs if not should_ignore(os.path.join(rel_root, d) if rel_root else d)
+            ]
+
             # Add files that shouldn't be ignored
             for file in files:
                 rel_file_path = os.path.join(rel_root, file) if rel_root else file
                 if not should_ignore(rel_file_path):
                     all_files.append(rel_file_path)
-    
+
     except Exception:
         # If directory walking fails, return empty list
         return []
-    
+
     # Sort for consistent ordering
     all_files.sort()
     return all_files
 
 
-def _parse_github_event(github_event_path: str = '') -> Dict[str, str]:
+def _parse_github_event(github_event_path: str = "") -> dict[str, str]:
     """Parse GitHub event.json file for repo and branch information
-    
+
     Args:
         github_event_path: Path to GitHub event file from GITHUB_EVENT_PATH
-    
+
     Returns:
         Dict with 'repo' and 'branch' keys, empty strings if not found
     """
-    event_info = {'repo': '', 'branch': ''}
-    
+    event_info = {"repo": "", "branch": ""}
+
     # Only look for event file if we're in a GitHub environment
     if not github_event_path:
         return event_info
-    
+
     # Use the event path from environment, fallback to 'event.json'
     event_file = Path(github_event_path)
     if not event_file.exists():
         return event_info
-    
+
     try:
-        with open(event_file, 'r') as f:
+        with open(event_file) as f:
             event_data = json.load(f)
-        
+
         # Extract repo from pull_request.head.repo.full_name or repository.full_name
-        if 'pull_request' in event_data and 'head' in event_data['pull_request']:
-            pr_head = event_data['pull_request']['head']
-            if 'repo' in pr_head and 'full_name' in pr_head['repo']:
-                event_info['repo'] = pr_head['repo']['full_name']
+        if "pull_request" in event_data and "head" in event_data["pull_request"]:
+            pr_head = event_data["pull_request"]["head"]
+            if "repo" in pr_head and "full_name" in pr_head["repo"]:
+                event_info["repo"] = pr_head["repo"]["full_name"]
             # Extract branch from pull_request.head.ref
-            if 'ref' in pr_head:
-                event_info['branch'] = pr_head['ref']
-        elif 'repository' in event_data and 'full_name' in event_data['repository']:
-            event_info['repo'] = event_data['repository']['full_name']
-            
+            if "ref" in pr_head:
+                event_info["branch"] = pr_head["ref"]
+        elif "repository" in event_data and "full_name" in event_data["repository"]:
+            event_info["repo"] = event_data["repository"]["full_name"]
+
     except (json.JSONDecodeError, KeyError, Exception) as e:
         logging.getLogger(__name__).debug("Failed to parse event.json: %s", e)
-    
+
     return event_info
 
 
-def _discover_repository(cli_repo: str | None, github_repository: str = '', github_event_path: str = '') -> str:
+def _discover_repository(
+    cli_repo: str | None, github_repository: str = "", github_event_path: str = ""
+) -> str:
     """Discover repository name with precedence: CLI -> SCM Env -> GitHub event.json -> Git -> Error
-    
+
     Args:
         cli_repo: Repository from CLI argument (highest precedence)
-        
+
     Returns:
         Repository name in 'owner/repo' format
-        
+
     Raises:
         SystemExit: If repository cannot be determined
     """
     import subprocess
-    
+
     logger = logging.getLogger(__name__)
-    
+
     # 1. CLI Option (highest precedence)
     if cli_repo:
         logger.debug("Using repository from CLI: %s", cli_repo)
         return cli_repo
-    
+
     # 2. SCM Environment Variables (GitHub Actions, etc.)
     if github_repository:
         logger.debug("Using repository from GitHub environment: %s", github_repository)
         return github_repository
-    
+
     # 3. GitHub event.json file
     event_info = _parse_github_event(github_event_path)
-    if event_info['repo']:
-        logger.debug("Using repository from event.json: %s", event_info['repo'])
-        return event_info['repo']
-    
+    if event_info["repo"]:
+        logger.debug("Using repository from event.json: %s", event_info["repo"])
+        return event_info["repo"]
+
     # 4. Git information
     try:
         url = subprocess.check_output(
-            ['git', 'config', '--get', 'remote.origin.url'], 
-            text=True, 
+            ["git", "config", "--get", "remote.origin.url"],
+            text=True,
             stderr=subprocess.DEVNULL,
             env=_git_env(),
         ).strip()
-        
-        if url.endswith('.git'):
-            url = url[:-4]
-            
-        if url.startswith('git@'):
+
+        url = url.removesuffix(".git")
+
+        if url.startswith("git@"):
             # git@github.com:owner/repo
-            repo = url.split(':', 1)[1]
+            repo = url.split(":", 1)[1]
             logger.debug("Using repository from git remote (SSH): %s", repo)
             return repo
-        else:
-            # https://github.com/owner/repo
-            parts = url.rstrip('/').split('/')
-            if len(parts) >= 2:
-                repo = f"{parts[-2]}/{parts[-1]}"
-                logger.debug("Using repository from git remote (HTTPS): %s", repo)
-                return repo
+        # https://github.com/owner/repo
+        parts = url.rstrip("/").split("/")
+        if len(parts) >= 2:
+            repo = f"{parts[-2]}/{parts[-1]}"
+            logger.debug("Using repository from git remote (HTTPS): %s", repo)
+            return repo
     except (subprocess.CalledProcessError, FileNotFoundError, Exception) as e:
         logger.debug("Failed to discover repository from git: %s", e)
-    
+
     # 5. Error if not found
     logger.error("Could not determine repository name. Please provide --repo argument.")
     raise SystemExit("Repository discovery failed. Use --repo owner/repo to specify manually.")
 
 
-def _discover_branch(cli_branch: str | None, github_head_ref: str = '', github_ref_name: str = '', github_event_path: str = '') -> str:
+def _discover_branch(
+    cli_branch: str | None,
+    github_head_ref: str = "",
+    github_ref_name: str = "",
+    github_event_path: str = "",
+) -> str:
     """Discover branch name with precedence: CLI -> SCM Env -> GitHub event.json -> Git -> Error
-    
+
     Args:
         cli_branch: Branch from CLI argument (highest precedence)
-        
+
     Returns:
         Branch name
-        
+
     Raises:
         SystemExit: If branch cannot be determined
     """
     import subprocess
-    
+
     logger = logging.getLogger(__name__)
-    
+
     # 1. CLI Option (highest precedence)
     if cli_branch:
         logger.debug("Using branch from CLI: %s", cli_branch)
         return cli_branch
-    
+
     # 2. SCM Environment Variables (GitHub Actions, etc.)
     # For PRs, GITHUB_HEAD_REF contains the PR source branch
     if github_head_ref:
         logger.debug("Using branch from GITHUB_HEAD_REF: %s", github_head_ref)
         return github_head_ref
-    
+
     # For direct pushes, GITHUB_REF_NAME contains the branch
     if github_ref_name:
         logger.debug("Using branch from GITHUB_REF_NAME: %s", github_ref_name)
         return github_ref_name
-    
+
     # 3. GitHub event.json file
     event_info = _parse_github_event(github_event_path)
-    if event_info['branch']:
-        logger.debug("Using branch from event.json: %s", event_info['branch'])
-        return event_info['branch']
-    
+    if event_info["branch"]:
+        logger.debug("Using branch from event.json: %s", event_info["branch"])
+        return event_info["branch"]
+
     # 4. Git information
     try:
         branch = subprocess.check_output(
-            ['git', 'rev-parse', '--abbrev-ref', 'HEAD'], 
+            ["git", "rev-parse", "--abbrev-ref", "HEAD"],
             text=True,
             stderr=subprocess.DEVNULL,
             env=_git_env(),
         ).strip()
-        
-        if branch and branch != 'HEAD':
+
+        if branch and branch != "HEAD":
             logger.debug("Using branch from git: %s", branch)
             return branch
     except (subprocess.CalledProcessError, FileNotFoundError, Exception) as e:
         logger.debug("Failed to discover branch from git: %s", e)
-    
+
     # 5. Error if not found (if not a git repo and still unknown)
     logger.error("Could not determine branch name. Please provide --branch argument.")
     raise SystemExit("Branch discovery failed. Use --branch branch-name to specify manually.")
@@ -2583,134 +2711,145 @@ def _discover_branch(cli_branch: str | None, github_head_ref: str = '', github_r
 
 def _discover_commit_hash() -> str:
     """Discover current commit hash from git
-    
+
     Returns:
         Commit hash (short form) or empty string if not available
     """
     import subprocess
-    
+
     logger = logging.getLogger(__name__)
-    
+
     # 1. Environment Variable (GitHub Actions)
-    commit = os.getenv('GITHUB_SHA')
+    commit = os.getenv("GITHUB_SHA")
     if commit:
         # Return short form (first 7 characters)
         short_commit = commit[:7] if len(commit) >= 7 else commit
         logger.debug("Using commit hash from environment: %s", short_commit)
         return short_commit
-    
+
     # 2. Git information
     try:
         commit = subprocess.check_output(
-            ['git', 'rev-parse', '--short', 'HEAD'], 
+            ["git", "rev-parse", "--short", "HEAD"],
             text=True,
             stderr=subprocess.DEVNULL,
             env=_git_env(),
         ).strip()
-        
+
         if commit:
             logger.debug("Using commit hash from git: %s", commit)
             return commit
     except (subprocess.CalledProcessError, FileNotFoundError, Exception) as e:
         logger.debug("Failed to discover commit hash from git: %s", e)
-    
+
     # 3. Return empty string if not found (commit hash is optional)
     logger.debug("Could not determine commit hash - this is optional")
     return ""
 
 
-def _discover_is_default_branch(current_branch: str, workspace_path: str = '') -> bool:
+def _discover_is_default_branch(current_branch: str, workspace_path: str = "") -> bool:
     """Discover if the current branch is the default branch for the repository
-    
+
     Args:
         current_branch: The current branch name
         workspace_path: The workspace directory path (defaults to current directory)
-    
+
     Returns:
         True if current branch is the default branch, False otherwise
     """
     import subprocess
-    
+
     logger = logging.getLogger(__name__)
-    
+
     if not current_branch:
         logger.debug("No current branch provided, cannot determine if it's default")
         return False
-    
+
     # 1. Try to get the default branch from git remote (most reliable)
     try:
         # Change to the workspace directory for git commands
-        cwd = workspace_path if workspace_path else None
-        
+        cwd = workspace_path or None
+
         # Get the default branch from the remote origin
         result = subprocess.check_output(
-            ['git', 'symbolic-ref', 'refs/remotes/origin/HEAD'],
+            ["git", "symbolic-ref", "refs/remotes/origin/HEAD"],
             text=True,
             stderr=subprocess.DEVNULL,
             cwd=cwd,
             env=_git_env(workspace_path),
         ).strip()
-        
+
         # Extract branch name from refs/remotes/origin/branch-name
-        if result and result.startswith('refs/remotes/origin/'):
-            default_branch = result.replace('refs/remotes/origin/', '')
+        if result and result.startswith("refs/remotes/origin/"):
+            default_branch = result.replace("refs/remotes/origin/", "")
             is_default = current_branch == default_branch
-            logger.debug("Default branch from git remote: %s, current: %s, is_default: %s", 
-                        default_branch, current_branch, is_default)
+            logger.debug(
+                "Default branch from git remote: %s, current: %s, is_default: %s",
+                default_branch,
+                current_branch,
+                is_default,
+            )
             return is_default
-            
+
     except (subprocess.CalledProcessError, FileNotFoundError, Exception) as e:
         logger.debug("Failed to get default branch from git remote: %s", e)
-    
+
     # 2. Fallback: try to get default branch via git ls-remote
     try:
         # Get the default branch by checking what HEAD points to on the remote
         result = subprocess.check_output(
-            ['git', 'ls-remote', '--symref', 'origin', 'HEAD'],
+            ["git", "ls-remote", "--symref", "origin", "HEAD"],
             text=True,
             stderr=subprocess.DEVNULL,
             cwd=cwd,
             env=_git_env(workspace_path),
         ).strip()
-        
+
         # Parse the output: "ref: refs/heads/main\tHEAD"
-        for line in result.split('\n'):
-            if line.startswith('ref: refs/heads/'):
-                default_branch = line.split('ref: refs/heads/')[1].split('\t')[0]
+        for line in result.split("\n"):
+            if line.startswith("ref: refs/heads/"):
+                default_branch = line.split("ref: refs/heads/")[1].split("\t")[0]
                 is_default = current_branch == default_branch
-                logger.debug("Default branch from ls-remote: %s, current: %s, is_default: %s", 
-                            default_branch, current_branch, is_default)
+                logger.debug(
+                    "Default branch from ls-remote: %s, current: %s, is_default: %s",
+                    default_branch,
+                    current_branch,
+                    is_default,
+                )
                 return is_default
-                
+
     except (subprocess.CalledProcessError, FileNotFoundError, Exception) as e:
         logger.debug("Failed to get default branch from ls-remote: %s", e)
-    
+
     # 3. Fallback: check common default branch names
-    common_defaults = ['main', 'master', 'develop', 'trunk']
+    common_defaults = ["main", "master", "develop", "trunk"]
     if current_branch in common_defaults:
         logger.debug("Current branch '%s' matches common default branch pattern", current_branch)
         return True
-    
+
     # 4. Final fallback: not a default branch
-    logger.debug("Could not determine if '%s' is the default branch, assuming it's not", current_branch)
+    logger.debug(
+        "Could not determine if '%s' is the default branch, assuming it's not", current_branch
+    )
     return False
 
 
-def _discover_pull_request(github_pr_number: str = '', github_event_path: str = '', github_head_ref: str = '') -> int:
+def _discover_pull_request(
+    github_pr_number: str = "", github_event_path: str = "", github_head_ref: str = ""
+) -> int:
     """Discover pull request number from environment
-    
+
     Args:
         github_pr_number: GITHUB_PR_NUMBER environment variable
-        github_event_path: GITHUB_EVENT_PATH environment variable  
+        github_event_path: GITHUB_EVENT_PATH environment variable
         github_head_ref: GITHUB_HEAD_REF environment variable
-    
+
     Returns:
         Pull request number or 0 if not found/not a PR
     """
-    import subprocess
-    
+
     logger = logging.getLogger(__name__)
-    
+
     # 1. Environment Variable (GitHub Actions)
     if github_pr_number:
         try:
@@ -2719,97 +2858,93 @@ def _discover_pull_request(github_pr_number: str = '', github_event_path: str = 
             return pr_num
         except ValueError:
             logger.debug("Invalid PR number in GITHUB_PR_NUMBER: %s", github_pr_number)
-    
+
     # 2. GitHub event.json file (only if in GitHub environment)
     if github_event_path:
         event_file = Path(github_event_path)
         if event_file.exists():
             try:
-                with open(event_file, 'r') as f:
+                with open(event_file) as f:
                     event_data = json.load(f)
-                
+
                 # Extract PR number from pull_request.number
-                if 'pull_request' in event_data and 'number' in event_data['pull_request']:
-                    pr_num = event_data['pull_request']['number']
+                if "pull_request" in event_data and "number" in event_data["pull_request"]:
+                    pr_num = event_data["pull_request"]["number"]
                     logger.debug("Using PR number from event.json: %s", pr_num)
                     return pr_num
             except (json.JSONDecodeError, KeyError, Exception) as e:
                 logger.debug("Failed to parse PR number from event.json: %s", e)
-    
+
     # 3. Check if we're in a GitHub PR context
     if github_head_ref:
         # We're in a PR context but don't have the number
         logger.debug("In GitHub PR context but no PR number found, defaulting to 0")
         return 0
-    
+
     # 4. Not a PR context
     logger.debug("Not in a PR context, returning 0")
     return 0
 
 
-def _discover_committers(github_actor: str = '') -> List[str]:
+def _discover_committers(github_actor: str = "") -> list[str]:
     """Discover committer emails from git with GitHub user ID preference
-    
+
     Args:
         github_actor: GITHUB_ACTOR environment variable
-    
+
     Returns:
         List of committer email addresses, preferring GitHub user IDs when available
     """
     import subprocess
-    
+
     logger = logging.getLogger(__name__)
     committers = []
-    
+
     # 1. Environment Variables (GitHub Actions) - prefer GitHub user ID
     if github_actor:
         # Use the GitHub username directly as the committer
         committers.append(github_actor)
         logger.debug("Using GitHub user ID from GITHUB_ACTOR: %s", github_actor)
         return committers  # Return early since we have the preferred GitHub user ID
-    
+
     # 2. Git information - get the current commit author email
     git_email = None
     try:
         git_email = subprocess.check_output(
-            ['git', 'log', '-1', '--pretty=format:%ae'], 
-            text=True,
-            stderr=subprocess.DEVNULL
+            ["git", "log", "-1", "--pretty=format:%ae"], text=True, stderr=subprocess.DEVNULL
         ).strip()
-        
+
         if git_email:
             logger.debug("Found git commit author email: %s", git_email)
     except (subprocess.CalledProcessError, FileNotFoundError, Exception) as e:
         logger.debug("Failed to discover committer email from git: %s", e)
-    
+
     # 3. Git config user.email as fallback
     if not git_email:
         try:
             git_email = subprocess.check_output(
-                ['git', 'config', 'user.email'], 
-                text=True,
-                stderr=subprocess.DEVNULL
+                ["git", "config", "user.email"], text=True, stderr=subprocess.DEVNULL
             ).strip()
-            
+
             if git_email:
                 logger.debug("Found git config user.email: %s", git_email)
         except (subprocess.CalledProcessError, FileNotFoundError, Exception) as e:
             logger.debug("Failed to discover committer email from git config: %s", e)
-    
+
     # 4. Extract GitHub user ID from email if it's a GitHub noreply email
     if git_email:
         # Check if it's a GitHub noreply email pattern: username@users.noreply.github.com
-        if git_email.endswith('@users.noreply.github.com'):
-            github_username = git_email.split('@')[0]
+        if git_email.endswith("@users.noreply.github.com"):
+            github_username = git_email.split("@")[0]
             committers.append(github_username)
             logger.debug("Extracted GitHub user ID from noreply email: %s", github_username)
         else:
             # Use the configured email as-is
             committers.append(git_email)
             logger.debug("Using configured email: %s", git_email)
-    
+
     # 5. Return empty list if no committers found
     if not committers:
         logger.debug("Could not determine committer information")
-    
+
     return committers

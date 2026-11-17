@@ -26,16 +26,17 @@ second pass.
 """
 
 import re
-from typing import Any, Mapping
+from collections.abc import Mapping
+from typing import Any
 
 __all__ = [
-    "mask_value",
-    "scrub_tokens",
-    "redact_literals",
-    "redact_snippet",
-    "redact_message",
-    "redact_dataflow_trace",
     "is_credential_finding",
+    "mask_value",
+    "redact_dataflow_trace",
+    "redact_literals",
+    "redact_message",
+    "redact_snippet",
+    "scrub_tokens",
 ]
 
 # Below this length the revealed head and tail are a large enough fraction of
@@ -49,19 +50,20 @@ _DEFAULT_REVEAL = 4
 _MIN_STANDALONE_METAVAR_LENGTH = 8
 
 
-def mask_value(value: Any, reveal: int = _DEFAULT_REVEAL,
-               min_length: int = _MIN_LENGTH_FOR_PARTIAL_REVEAL) -> str:
+def mask_value(
+    value: Any, reveal: int = _DEFAULT_REVEAL, min_length: int = _MIN_LENGTH_FOR_PARTIAL_REVEAL
+) -> str:
     """Mask a credential, keeping enough shape to tell two findings apart.
 
     Values at least ``min_length`` long keep ``reveal`` leading and trailing
     characters; shorter ones are masked completely. The asterisk run matches
     the original length so the result still lines up with the source.
     """
-    text = value if isinstance(value, str) else str(value or '')
+    text = value if isinstance(value, str) else str(value or "")
     if not text:
         return text
     if len(text) < min_length or len(text) <= reveal * 2:
-        return '*' * len(text)
+        return "*" * len(text)
     return f"{text[:reveal]}{'*' * (len(text) - 2 * reveal)}{text[-reveal:]}"
 
 
@@ -71,36 +73,36 @@ def mask_value(value: Any, reveal: int = _DEFAULT_REVEAL,
 # type without disclosing anything.
 _TOKEN_PATTERNS = (
     # AWS access key IDs (AKIA/ASIA/ABIA/ACCA/A3T + 16 chars).
-    re.compile(r'\b((?:A3T[A-Z0-9]|AKIA|ABIA|ACCA|ASIA)[A-Z0-9]{16})\b'),
+    re.compile(r"\b((?:A3T[A-Z0-9]|AKIA|ABIA|ACCA|ASIA)[A-Z0-9]{16})\b"),
     # GitHub personal access, OAuth, user-to-server, server-to-server and
     # refresh tokens.
-    re.compile(r'\b(gh[pousr]_[A-Za-z0-9]{20,255})\b'),
-    re.compile(r'\b(github_pat_[A-Za-z0-9_]{20,255})\b'),
+    re.compile(r"\b(gh[pousr]_[A-Za-z0-9]{20,255})\b"),
+    re.compile(r"\b(github_pat_[A-Za-z0-9_]{20,255})\b"),
     # Stripe secret, restricted and publishable keys.
-    re.compile(r'\b((?:sk|rk|pk)_(?:live|test)_[A-Za-z0-9]{10,})\b'),
+    re.compile(r"\b((?:sk|rk|pk)_(?:live|test)_[A-Za-z0-9]{10,})\b"),
     # Slack bot/user/app/refresh tokens and legacy workspace tokens.
-    re.compile(r'\b(xox[abeoprs]-[A-Za-z0-9-]{10,})\b'),
+    re.compile(r"\b(xox[abeoprs]-[A-Za-z0-9-]{10,})\b"),
     # Google API keys.
-    re.compile(r'\b(AIza[A-Za-z0-9_\-]{35})\b'),
+    re.compile(r"\b(AIza[A-Za-z0-9_\-]{35})\b"),
     # OpenAI-style project and user keys.
-    re.compile(r'\b(sk-(?:proj-)?[A-Za-z0-9_\-]{20,})\b'),
+    re.compile(r"\b(sk-(?:proj-)?[A-Za-z0-9_\-]{20,})\b"),
     # npm and PyPI upload tokens.
-    re.compile(r'\b(npm_[A-Za-z0-9]{36})\b'),
-    re.compile(r'\b(pypi-[A-Za-z0-9_\-]{16,})\b'),
+    re.compile(r"\b(npm_[A-Za-z0-9]{36})\b"),
+    re.compile(r"\b(pypi-[A-Za-z0-9_\-]{16,})\b"),
     # Twilio account SIDs and API keys.
-    re.compile(r'\b((?:AC|SK)[0-9a-fA-F]{32})\b'),
+    re.compile(r"\b((?:AC|SK)[0-9a-fA-F]{32})\b"),
     # SendGrid.
-    re.compile(r'\b(SG\.[A-Za-z0-9_\-]{16,}\.[A-Za-z0-9_\-]{16,})\b'),
+    re.compile(r"\b(SG\.[A-Za-z0-9_\-]{16,}\.[A-Za-z0-9_\-]{16,})\b"),
     # JSON Web Tokens: the payload segment carries the claims.
-    re.compile(r'\b(eyJ[A-Za-z0-9_\-]+\.[A-Za-z0-9_\-]+\.[A-Za-z0-9_\-]*)'),
+    re.compile(r"\b(eyJ[A-Za-z0-9_\-]+\.[A-Za-z0-9_\-]+\.[A-Za-z0-9_\-]*)"),
     # Credentials embedded in a URL's authority section.
-    re.compile(r'://[^\s:/@]+:([^\s/@]+)@'),
+    re.compile(r"://[^\s:/@]+:([^\s/@]+)@"),
 )
 
 # PEM private keys are masked as a block: the base64 body is the key material
 # and its line structure carries nothing worth keeping.
 _PEM_BLOCK = re.compile(
-    r'(-----BEGIN [A-Z ]*PRIVATE KEY-----)(.*?)(-----END [A-Z ]*PRIVATE KEY-----)',
+    r"(-----BEGIN [A-Z ]*PRIVATE KEY-----)(.*?)(-----END [A-Z ]*PRIVATE KEY-----)",
     re.DOTALL,
 )
 
@@ -137,20 +139,20 @@ _STRING_LITERAL = re.compile(
 #
 # A single regex cannot express the third, so ``_split_assignment`` walks the
 # matches and skips the ones a literal covers.
-_ASSIGNMENT_OPERATOR = re.compile(r':=|(?<![=!<>:])=(?!=)|(?<!:):(?!:)')
+_ASSIGNMENT_OPERATOR = re.compile(r":=|(?<![=!<>:])=(?!=)|(?<!:):(?!:)")
 
 # Comment markers, used to mask text after the value on a credential line. A
 # marker inside a string literal is not a comment, so callers check the spans.
-_COMMENT_MARKER = re.compile(r'(?:#|//|--)')
+_COMMENT_MARKER = re.compile(r"(?:#|//|--)")
 
 # Statement separator. A line can carry more than one assignment, and only one
 # operator binds per statement.
-_STATEMENT_SEPARATOR = re.compile(r';')
+_STATEMENT_SEPARATOR = re.compile(r";")
 
 # A complete call with a literal argument is code rather than a bare credential,
 # so the literal pass can handle it without erasing the expression. Calls with
 # no literal stay on the fail-closed path: a config value can look call-shaped.
-_CALL_EXPRESSION = re.compile(r'^[\w.\[\]]+\s*\(.*\)$')
+_CALL_EXPRESSION = re.compile(r"^[\w.\[\]]+\s*\(.*\)$")
 
 # A value that opens a string literal, allowing the usual raw/bytes/format/
 # unicode prefixes. The prefix has to be recognized here: treating ``r"""...``
@@ -161,7 +163,7 @@ _LITERAL_OPENER = re.compile(
 )
 
 # Interpolation placeholders: f-strings, template literals, shell-style.
-_INTERPOLATION = re.compile(r'\$?\{[^}]*\}')
+_INTERPOLATION = re.compile(r"\$?\{[^}]*\}")
 
 # Any quote character. Used to find the opening delimiter of a literal that
 # never closes, which by definition no literal match can cover.
@@ -170,7 +172,7 @@ _QUOTE = re.compile(r'["\'`]')
 # Triple-quote delimiters, counted to detect a block that never closes.
 TRIPLE_DOUBLE = chr(34) * 3
 TRIPLE_SINGLE = chr(39) * 3
-_TRIPLE_QUOTE = re.compile(r'\"\"\"|\'\'\'')
+_TRIPLE_QUOTE = re.compile(r"\"\"\"|\'\'\'")
 
 # Rule-name fragments whose finding *is* the credential. ``hardcoded-ip`` and
 # the password-policy rules deliberately do not appear: their snippets are
@@ -183,21 +185,21 @@ _TRIPLE_QUOTE = re.compile(r'\"\"\"|\'\'\'')
 # publishing one. Keeping the handling snippets readable is the job of the
 # expression carve-out in ``redact_literals``, not of this list.
 _CREDENTIAL_RULE_FRAGMENTS = (
-    'hardcoded-secret',
-    'hardcoded-credential',
-    'hardcoded-password',
-    'hardcoded-key',
-    'hardcoded-token',
-    'default-credentials',
-    'plain-text-password',
-    'empty-password',
-    'weak-jwt-secret',
-    'private-key',
-    'api-key',
+    "hardcoded-secret",
+    "hardcoded-credential",
+    "hardcoded-password",
+    "hardcoded-key",
+    "hardcoded-token",
+    "default-credentials",
+    "plain-text-password",
+    "empty-password",
+    "weak-jwt-secret",
+    "private-key",
+    "api-key",
 )
 
 
-def _mask_match(match: 're.Match[str]') -> str:
+def _mask_match(match: "re.Match[str]") -> str:
     """Replace a pattern's captured secret in place, leaving its prefix intact."""
     whole = match.group(0)
     secret = match.group(1)
@@ -213,18 +215,17 @@ def _mask_match(match: 're.Match[str]') -> str:
 def scrub_tokens(text: Any) -> str:
     """Mask well-known credential formats anywhere in ``text``."""
     if not isinstance(text, str) or not text:
-        return text if isinstance(text, str) else ''
+        return text if isinstance(text, str) else ""
 
-    scrubbed = _PEM_BLOCK.sub(
-        lambda m: f"{m.group(1)}\n{'*' * 32}\n{m.group(3)}", text
-    )
+    scrubbed = _PEM_BLOCK.sub(lambda m: f"{m.group(1)}\n{'*' * 32}\n{m.group(3)}", text)
     for pattern in _TOKEN_PATTERNS:
         scrubbed = pattern.sub(_mask_match, scrubbed)
     return scrubbed
 
 
-def _split_assignment(code: str, offset: int, in_literal,
-                      literal_start_within) -> 'tuple[str, str, str, str] | None':
+def _split_assignment(
+    code: str, offset: int, in_literal, literal_start_within
+) -> "tuple[str, str, str, str] | None":
     """Split a statement at the assignment operator that binds, if it has one.
 
     Returns ``(head, value, trailing_whitespace, operator)``, where ``head``
@@ -243,50 +244,51 @@ def _split_assignment(code: str, offset: int, in_literal,
 
     literal_at = literal_start_within(offset, offset + len(code))
     before_literal = [
-        match for match in operators
+        match
+        for match in operators
         if literal_at is not None and offset + match.end() <= literal_at
     ]
     chosen = before_literal[-1] if before_literal else operators[0]
 
-    rest = code[chosen.end():]
+    rest = code[chosen.end() :]
     value = rest.lstrip()
     if not value:
         return None
-    head = code[:chosen.end()] + rest[:len(rest) - len(value)]
+    head = code[: chosen.end()] + rest[: len(rest) - len(value)]
     stripped = value.rstrip()
-    return head, stripped, value[len(stripped):], chosen.group(0)
+    return head, stripped, value[len(stripped) :], chosen.group(0)
 
 
-def _split_statements(code: str, offset: int, in_literal) -> 'list[tuple[str, int]]':
+def _split_statements(code: str, offset: int, in_literal) -> "list[tuple[str, int]]":
     """Split code on statement separators, keeping each separator as a piece.
 
     One operator binds per statement, so a line carrying more than one has to be
     handled a statement at a time: in ``a = hunter2; password = x`` the last
     operator is the second, which would leave the first value in the head.
     """
-    pieces: 'list[tuple[str, int]]' = []
+    pieces: list[tuple[str, int]] = []
     start = 0
     for separator in _STATEMENT_SEPARATOR.finditer(code):
         if in_literal(offset + separator.start()):
             continue
-        pieces.append((code[start:separator.start()], offset + start))
+        pieces.append((code[start : separator.start()], offset + start))
         pieces.append((separator.group(0), offset + separator.start()))
         start = separator.end()
     pieces.append((code[start:], offset + start))
     return pieces
 
 
-def _mask_outside_literals(text: str, offset: int, in_literal,
-                           prefix: int = 0) -> str:
+def _mask_outside_literals(text: str, offset: int, in_literal, prefix: int = 0) -> str:
     """Mask text except a trusted prefix and recognized literal spans."""
-    return ''.join(
-        char if index < prefix or in_literal(offset + index) else '*'
+    return "".join(
+        char if index < prefix or in_literal(offset + index) else "*"
         for index, char in enumerate(text)
     )
 
 
-def _mask_statement(code: str, offset: int, in_literal, literal_opens_at,
-                    literal_start_within) -> 'tuple[str, bool]':
+def _mask_statement(
+    code: str, offset: int, in_literal, literal_opens_at, literal_start_within
+) -> "tuple[str, bool]":
     """Mask one statement and report whether it contained an assignment."""
     split = _split_assignment(code, offset, in_literal, literal_start_within)
     if not split:
@@ -300,11 +302,13 @@ def _mask_statement(code: str, offset: int, in_literal, literal_opens_at,
     # remains readable; the literal pass masks the argument. The literal is
     # required because an unquoted config value can otherwise look like a call.
     # Colon-delimited values stay conservative for the same reason.
-    call_with_literal = all((
-        operator in ('=', ':='),
-        literal_at is not None,
-        _CALL_EXPRESSION.match(value),
-    ))
+    call_with_literal = all(
+        (
+            operator in ("=", ":="),
+            literal_at is not None,
+            _CALL_EXPRESSION.match(value),
+        )
+    )
     if call_with_literal:
         return code, True
 
@@ -314,13 +318,11 @@ def _mask_statement(code: str, offset: int, in_literal, literal_opens_at,
     # multiline literal and leave its continuation unprotected.
     opener = _LITERAL_OPENER.match(value)
     opens_literal = bool(opener) and literal_opens_at(
-        value_start + opener.start('quote'), len(opener.group('quote'))
+        value_start + opener.start("quote"), len(opener.group("quote"))
     )
     if literal_at is not None:
-        prefix = opener.start('quote') if opens_literal else 0
-        masked_value = _mask_outside_literals(
-            value, value_start, in_literal, prefix
-        )
+        prefix = opener.start("quote") if opens_literal else 0
+        masked_value = _mask_outside_literals(value, value_start, in_literal, prefix)
         return f"{head}{masked_value}{trailing}", True
 
     # With no literal there is no syntax worth guessing at. Mask the whole value
@@ -328,18 +330,16 @@ def _mask_statement(code: str, offset: int, in_literal, literal_opens_at,
     return f"{head}{'*' * len(value)}{trailing}", True
 
 
-def _mask_code(code: str, offset: int, in_literal, literal_opens_at,
-               literal_start_within) -> str:
+def _mask_code(code: str, offset: int, in_literal, literal_opens_at, literal_start_within) -> str:
     """Mask a line of code without trusting ambiguous statement boundaries."""
     handled = []
     has_assignment = False
     for piece, piece_offset in _split_statements(code, offset, in_literal):
-        if piece == ';':
+        if piece == ";":
             handled.append((piece, piece_offset, piece, False, True))
             continue
         masked, assigned = _mask_statement(
-            piece, piece_offset, in_literal, literal_opens_at,
-            literal_start_within
+            piece, piece_offset, in_literal, literal_opens_at, literal_start_within
         )
         handled.append((piece, piece_offset, masked, assigned, False))
         has_assignment = has_assignment or assigned
@@ -349,20 +349,19 @@ def _mask_code(code: str, offset: int, in_literal, literal_opens_at,
     # config value. Keep the first assignment readable, preserve literal spans
     # for the later masking pass, and fail closed on every other fragment.
     if has_assignment:
-        first_assignment = next(
-            index for index, item in enumerate(handled) if item[3]
-        )
-        return ''.join(
-            original if separator
-            else masked if index == first_assignment or not original.strip()
+        first_assignment = next(index for index, item in enumerate(handled) if item[3])
+        return "".join(
+            original
+            if separator
+            else masked
+            if index == first_assignment or not original.strip()
             else _mask_outside_literals(original, piece_offset, in_literal)
-            for index, (original, piece_offset, masked, _, separator)
-            in enumerate(handled)
+            for index, (original, piece_offset, masked, _, separator) in enumerate(handled)
         )
-    return ''.join(masked for _, _, masked, _, _ in handled)
+    return "".join(masked for _, _, masked, _, _ in handled)
 
 
-def _split_comment(line: str, offset: int, in_literal) -> 'tuple[str, str, str]':
+def _split_comment(line: str, offset: int, in_literal) -> "tuple[str, str, str]":
     """Split a line into code, comment marker and comment text.
 
     The marker is kept so the masked line still reads as commented. A marker
@@ -371,11 +370,11 @@ def _split_comment(line: str, offset: int, in_literal) -> 'tuple[str, str, str]'
     for marker in _COMMENT_MARKER.finditer(line):
         if in_literal(offset + marker.start()):
             continue
-        return line[:marker.start()], marker.group(0), line[marker.end():]
-    return line, '', ''
+        return line[: marker.start()], marker.group(0), line[marker.end() :]
+    return line, "", ""
 
 
-def redact_literals(text: Any) -> str:
+def redact_literals(text: Any) -> str:  # noqa: C901
     """Mask the body of every string literal, keeping the surrounding syntax.
 
     ``API_KEY = "sk_live_abc123"`` becomes ``API_KEY = "****************"``:
@@ -389,14 +388,14 @@ def redact_literals(text: Any) -> str:
     identify the finding, and the alternative is leaving a credential in place.
     """
     if not isinstance(text, str) or not text:
-        return text if isinstance(text, str) else ''
+        return text if isinstance(text, str) else ""
 
-    def _mask_literal(match: 're.Match[str]') -> str:
-        body = match.group('body')
+    def _mask_literal(match: "re.Match[str]") -> str:
+        body = match.group("body")
         if not body:
             return match.group(0)
-        quote = match.group('quote')
-        if '\n' in body or _INTERPOLATION.search(body):
+        quote = match.group("quote")
+        if "\n" in body or _INTERPOLATION.search(body):
             # A body that spans lines, or that interpolates, is a block of
             # content rather than one opaque value. The head-and-tail reveal
             # measures the whole thing, so the literal text around a placeholder
@@ -404,10 +403,10 @@ def redact_literals(text: Any) -> str:
             # -- ``f"{b}_SuperSecret123!"`` would show ``123!``. Mask every line
             # and keep the line breaks, so the snippet still shows where the
             # literal starts and ends.
-            masked = '\n'.join('*' * len(segment) for segment in body.split('\n'))
+            masked = "\n".join("*" * len(segment) for segment in body.split("\n"))
         else:
             masked = mask_value(body)
-        return f'{quote}{masked}{quote}'
+        return f"{quote}{masked}{quote}"
 
     # Literal spans are measured over the whole snippet, not line by line. A
     # literal can span lines, and a ``#`` or ``--`` on its second line is part
@@ -420,10 +419,11 @@ def redact_literals(text: Any) -> str:
     # would hide whatever it covers, including a real assignment on a later
     # line. Backticks and triple quotes span lines legitimately and are kept.
     spans = [
-        match.span() for match in _STRING_LITERAL.finditer(text)
-        if len(match.group('quote')) > 1
-        or match.group('quote') == '`'
-        or '\n' not in match.group(0)
+        match.span()
+        for match in _STRING_LITERAL.finditer(text)
+        if len(match.group("quote")) > 1
+        or match.group("quote") == "`"
+        or "\n" not in match.group(0)
     ]
 
     def in_literal(position: int) -> bool:
@@ -443,14 +443,11 @@ def redact_literals(text: Any) -> str:
         hold an opening and a closing delimiter is what separates a literal the
         pass can mask from an artifact of the unterminated one.
         """
-        return any(
-            start == position and end - start >= 2 * delimiter
-            for start, end in spans
-        )
+        return any(start == position and end - start >= 2 * delimiter for start, end in spans)
 
     masked_lines = []
     offset = 0
-    for line in text.split('\n'):
+    for line in text.split("\n"):
         # The comment comes off first. Everything below reasons about where the
         # value ends, and a comment can hold anything the value can -- including
         # an operator later in the line than the real one, which would bind and
@@ -496,13 +493,13 @@ def is_credential_finding(rule_id: Any, metadata: Mapping[str, Any] | None = Non
     A rule can state this directly with a ``redact`` metadata key, which is how
     custom rules opt in or out; otherwise the rule name decides.
     """
-    if isinstance(metadata, Mapping) and 'redact' in metadata:
-        declared = metadata.get('redact')
+    if isinstance(metadata, Mapping) and "redact" in metadata:
+        declared = metadata.get("redact")
         if isinstance(declared, str):
-            return declared.strip().lower() in ('1', 'true', 'yes', 'on')
+            return declared.strip().lower() in ("1", "true", "yes", "on")
         return bool(declared)
 
-    name = str(rule_id or '').lower()
+    name = str(rule_id or "").lower()
     return any(fragment in name for fragment in _CREDENTIAL_RULE_FRAGMENTS)
 
 
@@ -518,8 +515,7 @@ def redact_snippet(text: Any, credential_finding: bool = False) -> str:
     return scrubbed
 
 
-def redact_message(text: Any, metavars: Any = None,
-                   credential_finding: bool = False) -> str:
+def redact_message(text: Any, metavars: Any = None, credential_finding: bool = False) -> str:
     """Mask credentials interpolated into a scanner rule's message.
 
     OpenGrep expands metavariables before returning a result. For credential
@@ -535,7 +531,7 @@ def redact_message(text: Any, metavars: Any = None,
     for details in metavars.values():
         if not isinstance(details, Mapping):
             continue
-        value = details.get('abstract_content')
+        value = details.get("abstract_content")
         if isinstance(value, str) and value:
             values.add(value)
 
@@ -552,7 +548,7 @@ def redact_message(text: Any, metavars: Any = None,
             # contain it. Skipping short values outright is not an option --
             # a short credential still has to be masked.
             redacted = re.sub(
-                rf'(?<!\w){re.escape(value)}(?!\w)',
+                rf"(?<!\w){re.escape(value)}(?!\w)",
                 mask_value(value),
                 redacted,
             )
@@ -573,12 +569,12 @@ def redact_dataflow_trace(trace: Any, credential_finding: bool = False) -> Any:
         return trace
 
     def _mask(step: Any) -> None:
-        if isinstance(step, dict) and step.get('content'):
-            step['content'] = redact_snippet(step['content'], credential_finding)
+        if isinstance(step, dict) and step.get("content"):
+            step["content"] = redact_snippet(step["content"], credential_finding)
 
-    for key in ('source', 'sink'):
+    for key in ("source", "sink"):
         _mask(trace.get(key))
-    intermediates = trace.get('intermediates')
+    intermediates = trace.get("intermediates")
     if isinstance(intermediates, list):
         for step in intermediates:
             _mask(step)

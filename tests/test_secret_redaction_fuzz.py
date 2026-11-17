@@ -23,26 +23,50 @@ SHORT_SECRET = "hunter2"
 LONG_SECRET = "Sup3rS3cr3tValue99xyz"
 
 TARGETS = [
-    "password", "api_key", "DB_PASSWORD", "user.password", "apiKey",
-    "self.password", "PASSWORD", "password: str", "const password: string",
-    "creds['db']", "x",
+    "password",
+    "api_key",
+    "DB_PASSWORD",
+    "user.password",
+    "apiKey",
+    "self.password",
+    "PASSWORD",
+    "password: str",
+    "const password: string",
+    "creds['db']",
+    "x",
 ]
 OPERATORS = ["=", ":", ":=", "==", "!=", " = ", ": "]
 QUOTES = ['"', "'", "`", '"""', "'''"]
 PREFIXES = ["", "r", "f", "b", "u", "rb", "R", "F"]
 COMMENT_MARKERS = ["#", "//", "--"]
 COMMENT_BODIES = [
-    "note", "see x = y", "ratio a:b", 'a "quoted" note', 'unbalanced " quote',
-    "cf. k=v", "see get_secret()", "",
+    "note",
+    "see x = y",
+    "ratio a:b",
+    'a "quoted" note',
+    'unbalanced " quote',
+    "cf. k=v",
+    "see get_secret()",
+    "",
 ]
 WRAPPERS = [
-    "{value}", "get_secret({value})", "a if b else {value}",
-    "{value} + other", "other + {value}", "[{value}]", "f({value}, x)",
+    "{value}",
+    "get_secret({value})",
+    "a if b else {value}",
+    "{value} + other",
+    "other + {value}",
+    "[{value}]",
+    "f({value}, x)",
 ]
 BARE_VALUES = [
-    "{secret}", "{secret}=suffix", "prefix:{secret}", "prefix;{secret}",
-    "prefix;{secret}=suffix", "{secret}(arg)",
-    'prefix"decoy"{secret}', 'r""{secret}',
+    "{secret}",
+    "{secret}=suffix",
+    "prefix:{secret}",
+    "prefix;{secret}",
+    "prefix;{secret}=suffix",
+    "{secret}(arg)",
+    'prefix"decoy"{secret}',
+    'r""{secret}',
 ]
 
 
@@ -60,12 +84,11 @@ def _value(rng, secret, allow_bare=True):
         return rng.choice(WRAPPERS).format(value=_value(rng, secret, allow_bare=False))
     body = secret
     if rng.random() < 0.25:
-        body = "{x}_" + secret          # interpolation inflates the length
+        body = "{x}_" + secret  # interpolation inflates the length
     if rng.random() < 0.2:
         # The secret goes on either side of the break: a continuation line is
         # exactly where masking that stops at the opener's line loses it.
-        body = (secret + "\nsecond line" if rng.random() < 0.5
-                else "first line\n" + secret)
+        body = secret + "\nsecond line" if rng.random() < 0.5 else "first line\n" + secret
     quote = rng.choice(QUOTES)
     terminated = rng.random() < 0.8
     return rng.choice(PREFIXES) + quote + body + (quote if terminated else "")
@@ -109,9 +132,7 @@ def test_a_generated_credential_is_never_partly_revealed():
         snippet = _snippet(rng, LONG_SECRET)
         masked = redact_snippet(snippet, credential_finding=True)
         for fragment in (LONG_SECRET[:8], LONG_SECRET[-8:]):
-            assert fragment not in masked, (
-                f"partial reveal\n  in : {snippet!r}\n  out: {masked!r}"
-            )
+            assert fragment not in masked, f"partial reveal\n  in : {snippet!r}\n  out: {masked!r}"
 
 
 def test_generated_non_credential_snippets_are_untouched():

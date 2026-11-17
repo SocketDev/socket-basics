@@ -100,7 +100,7 @@ def _git(repo, *args):
         "GIT_COMMITTER_EMAIL": "t@example.com",
     }
     return subprocess.run(
-        ["git", "-C", str(repo), *args], capture_output=True, text=True, env=env
+        ["git", "-C", str(repo), *args], capture_output=True, text=True, env=env, check=False
     )
 
 
@@ -152,7 +152,6 @@ def pr_repo(tmp_path, monkeypatch):
 
 
 class TestDetectGitChangedFiles:
-
     def test_pr_mode_lists_added_and_modified(self, pr_repo):
         files = _detect_git_changed_files(str(pr_repo), mode="pr", base_ref="main")
         assert sorted(files) == ["base.py", "feat.py"]
@@ -238,8 +237,14 @@ def cloned_pr_repo(tmp_path, monkeypatch):
         _git(ws, "init")
         _git(ws, "remote", "add", "origin", str(upstream))
         if depth:
-            _git(ws, "fetch", "--no-tags", f"--depth={depth}", "origin",
-                 "+refs/heads/feature:refs/remotes/origin/feature")
+            _git(
+                ws,
+                "fetch",
+                "--no-tags",
+                f"--depth={depth}",
+                "origin",
+                "+refs/heads/feature:refs/remotes/origin/feature",
+            )
         else:
             _git(ws, "fetch", "--no-tags", "origin", "+refs/heads/*:refs/remotes/origin/*")
         _git(ws, "checkout", "--force", "origin/feature")
@@ -247,7 +252,7 @@ def cloned_pr_repo(tmp_path, monkeypatch):
 
     return {
         "upstream": upstream,
-        "deep": checkout("deep", 0),      # actions/checkout with fetch-depth: 0
+        "deep": checkout("deep", 0),  # actions/checkout with fetch-depth: 0
         "shallow": checkout("shallow", 1),  # actions/checkout default
     }
 
@@ -255,6 +260,7 @@ def cloned_pr_repo(tmp_path, monkeypatch):
 def _write_event(tmp_path, monkeypatch, payload):
     """Point GITHUB_EVENT_PATH at a pull_request event payload."""
     import json
+
     event = tmp_path / "event.json"
     event.write_text(json.dumps(payload))
     monkeypatch.setenv("GITHUB_EVENT_PATH", str(event))
@@ -291,9 +297,7 @@ class TestScopeRequestReachesEveryConfigPath:
 
         assert cfg.get_scan_targets() == [str(pr_repo)]
 
-    def test_env_only_config_fails_closed_when_scope_cannot_resolve(
-        self, pr_repo, monkeypatch
-    ):
+    def test_env_only_config_fails_closed_when_scope_cannot_resolve(self, pr_repo, monkeypatch):
         from socket_basics.core.config import load_config_from_env
 
         monkeypatch.setenv("GITHUB_WORKSPACE", str(pr_repo))
@@ -558,9 +562,7 @@ class TestPrBaseResolution:
         apart, so the PR-specific advice must not be given for an issue.
         """
         monkeypatch.delenv("GITHUB_BASE_REF", raising=False)
-        _write_event(
-            tmp_path, monkeypatch, {"action": "created", "issue": {"number": 12}}
-        )
+        _write_event(tmp_path, monkeypatch, {"action": "created", "issue": {"number": 12}})
 
         with caplog.at_level(logging.WARNING, logger="socket_basics.core.config"):
             files = _detect_git_changed_files(str(pr_repo), mode="pr")
@@ -617,9 +619,7 @@ class TestScopeResolutionPolicy:
         with pytest.raises(SystemExit, match="could not be resolved"):
             _make_config(pr_repo, changed_files="pr")
 
-    def test_scan_all_opts_into_full_scan_on_resolution_failure(
-        self, pr_repo, monkeypatch, caplog
-    ):
+    def test_scan_all_opts_into_full_scan_on_resolution_failure(self, pr_repo, monkeypatch, caplog):
         monkeypatch.delenv("GITHUB_BASE_REF", raising=False)
         monkeypatch.delenv("GITHUB_EVENT_PATH", raising=False)
 
@@ -633,9 +633,7 @@ class TestScopeResolutionPolicy:
 
     def test_unreadable_repository_returns_failure(self, pr_repo):
         (pr_repo / ".git" / "HEAD").write_text("garbage")
-        assert _detect_git_changed_files(
-            str(pr_repo), mode="pr", base_ref="main"
-        ) is None
+        assert _detect_git_changed_files(str(pr_repo), mode="pr", base_ref="main") is None
 
     def test_auto_does_not_fall_back_to_staged_when_pr_base_is_unresolvable(
         self, pr_repo, monkeypatch
@@ -661,12 +659,15 @@ class TestScopeResolutionPolicy:
         _git(pr_repo, "commit", "-m", "orphan")
         (pr_repo / ".git" / "shallow").touch()
 
-        assert _detect_git_changed_files(
-            str(pr_repo),
-            mode="pr",
-            base_ref="main",
-            fail_open=True,
-        ) is None
+        assert (
+            _detect_git_changed_files(
+                str(pr_repo),
+                mode="pr",
+                base_ref="main",
+                fail_open=True,
+            )
+            is None
+        )
 
     def test_successful_resolution_does_not_warn(self, pr_repo, monkeypatch, caplog):
         monkeypatch.setenv("GITHUB_BASE_REF", "main")
@@ -684,6 +685,7 @@ def _git_refuses_repo(repo):
         capture_output=True,
         text=True,
         env={**os.environ, "GIT_TEST_ASSUME_DIFFERENT_OWNER": "1"},
+        check=False,
     )
     return probe.returncode != 0
 
@@ -745,9 +747,7 @@ class TestContainerOwnershipMismatch:
         assert sorted(files) == ["base.py", "feat.py"]
         assert caplog.text == ""
 
-    def test_relative_workspace_survives_an_ownership_mismatch(
-        self, refusing_git, monkeypatch
-    ):
+    def test_relative_workspace_survives_an_ownership_mismatch(self, refusing_git, monkeypatch):
         monkeypatch.chdir(refusing_git.parent)
         files = _detect_git_changed_files(
             refusing_git.name,
@@ -756,9 +756,7 @@ class TestContainerOwnershipMismatch:
         )
         assert sorted(files) == ["base.py", "feat.py"]
 
-    def test_repository_discovery_survives_an_ownership_mismatch(
-        self, refusing_git, monkeypatch
-    ):
+    def test_repository_discovery_survives_an_ownership_mismatch(self, refusing_git, monkeypatch):
         setup = subprocess.run(
             [
                 "git",
@@ -772,6 +770,7 @@ class TestContainerOwnershipMismatch:
             capture_output=True,
             text=True,
             env=_git_env(refusing_git),
+            check=False,
         )
         assert setup.returncode == 0, setup.stderr
         monkeypatch.chdir(refusing_git)
@@ -860,7 +859,7 @@ class TestConnectorsHonorTheResolvedScope:
         }
         config = SimpleNamespace(workspace=tmp_path, _config=values)
         config.get = lambda key, default=None: values.get(key, default)
-        config.get_scan_targets = lambda: []
+        config.get_scan_targets = list
         scanner = TruffleHogScanner.__new__(TruffleHogScanner)
         scanner.config = config
         scanner.is_enabled = lambda: True
@@ -880,9 +879,7 @@ class TestConnectorsHonorTheResolvedScope:
         assert scanner.scan() == {}
         assert called == []
 
-    def test_empty_scope_with_scan_all_does_not_widen_to_the_workspace(
-        self, pr_repo, monkeypatch
-    ):
+    def test_empty_scope_with_scan_all_does_not_widen_to_the_workspace(self, pr_repo, monkeypatch):
         """scan_all must not override an empty scope for TruffleHog.
 
         A successfully resolved scope remains authoritative when scan_all is
@@ -906,16 +903,12 @@ class TestConnectorsHonorTheResolvedScope:
             invocations.append(cmd)
             return SimpleNamespace(returncode=0, stdout="", stderr="")
 
-        monkeypatch.setattr(
-            "socket_basics.core.connector.trufflehog.subprocess.run", record_run
-        )
+        monkeypatch.setattr("socket_basics.core.connector.trufflehog.subprocess.run", record_run)
 
         assert TruffleHogScanner(cfg).scan() == {}
         assert invocations == []
 
-    def test_scan_all_without_a_scope_still_scans_the_workspace(
-        self, pr_repo, monkeypatch
-    ):
+    def test_scan_all_without_a_scope_still_scans_the_workspace(self, pr_repo, monkeypatch):
         """The empty-scope guard must not disable an ordinary scan_all run."""
         from socket_basics.core.connector.trufflehog import TruffleHogScanner
 
@@ -937,9 +930,7 @@ class TestConnectorsHonorTheResolvedScope:
             invocations.append(cmd)
             return SimpleNamespace(returncode=0, stdout="", stderr="")
 
-        monkeypatch.setattr(
-            "socket_basics.core.connector.trufflehog.subprocess.run", record_run
-        )
+        monkeypatch.setattr("socket_basics.core.connector.trufflehog.subprocess.run", record_run)
 
         TruffleHogScanner(cfg).scan()
         assert staged_calls == []
@@ -948,7 +939,7 @@ class TestConnectorsHonorTheResolvedScope:
         # scope this test covers.
         command = invocations[0]
         exclude_index = command.index("--exclude-paths")
-        assert command[:exclude_index] + command[exclude_index + 2:] == [
+        assert command[:exclude_index] + command[exclude_index + 2 :] == [
             "trufflehog",
             "filesystem",
             "--json",
@@ -969,9 +960,7 @@ class TestConnectorsHonorTheResolvedScope:
         scanner.scan()
         assert called == ["staged"]
 
-    def test_changed_paths_that_are_all_gone_never_reach_trufflehog(
-        self, pr_repo, monkeypatch
-    ):
+    def test_changed_paths_that_are_all_gone_never_reach_trufflehog(self, pr_repo, monkeypatch):
         """Nothing runs when every path in the scope is gone.
 
         A changed-file list names deleted paths all the time, and TruffleHog
@@ -986,13 +975,9 @@ class TestConnectorsHonorTheResolvedScope:
             invocations.append(cmd)
             return SimpleNamespace(returncode=0, stdout="", stderr="")
 
-        monkeypatch.setattr(
-            "socket_basics.core.connector.trufflehog.subprocess.run", record_run
-        )
+        monkeypatch.setattr("socket_basics.core.connector.trufflehog.subprocess.run", record_run)
 
-        scanner = self._scanner(
-            pr_repo, changed_files=["gone.py"], scope_requested=True
-        )
+        scanner = self._scanner(pr_repo, changed_files=["gone.py"], scope_requested=True)
 
         assert scanner.scan() == {}
         assert invocations == []
@@ -1007,13 +992,9 @@ class TestConnectorsHonorTheResolvedScope:
             captured["cmd"] = cmd
             return SimpleNamespace(returncode=0, stdout="", stderr="")
 
-        monkeypatch.setattr(
-            "socket_basics.core.connector.trufflehog.subprocess.run", fake_run
-        )
+        monkeypatch.setattr("socket_basics.core.connector.trufflehog.subprocess.run", fake_run)
 
-        scanner = self._scanner(
-            pr_repo, changed_files=["gone.py", "kept.py"], scope_requested=True
-        )
+        scanner = self._scanner(pr_repo, changed_files=["gone.py", "kept.py"], scope_requested=True)
         scanner.scan()
 
         assert captured["cmd"][-1] == str(pr_repo / "kept.py")
@@ -1027,14 +1008,12 @@ def _record_trivy_paths(monkeypatch):
     def fake_run(cmd, *args, **kwargs):
         scanned.append(cmd[-1])
         # Write the JSON Trivy would have written to --output.
-        out_index = cmd.index('--output') + 1
-        with open(cmd[out_index], 'w') as fh:
+        out_index = cmd.index("--output") + 1
+        with open(cmd[out_index], "w") as fh:
             json.dump({"Results": []}, fh)
         return SimpleNamespace(returncode=0, stdout="", stderr="")
 
-    monkeypatch.setattr(
-        "socket_basics.core.connector.trivy.trivy.subprocess.run", fake_run
-    )
+    monkeypatch.setattr("socket_basics.core.connector.trivy.trivy.subprocess.run", fake_run)
     return scanned
 
 
@@ -1073,22 +1052,16 @@ class TestTrivyVulnScanHonorsTheResolvedScope:
         assert scanner.scan_vulnerabilities() == {}
         assert scanned == []
 
-    def test_scope_whose_paths_all_vanished_does_not_widen_either(
-        self, tmp_path, monkeypatch
-    ):
+    def test_scope_whose_paths_all_vanished_does_not_widen_either(self, tmp_path, monkeypatch):
         # A delete-only PR: the scope resolved to files, but none of them exist
         # in the checkout any more, so no directory survives resolution.
         scanned = _record_trivy_paths(monkeypatch)
-        scanner = self._scanner(
-            tmp_path, changed_files=["gone/removed.py"], scope_requested=True
-        )
+        scanner = self._scanner(tmp_path, changed_files=["gone/removed.py"], scope_requested=True)
 
         assert scanner.scan_vulnerabilities() == {}
         assert scanned == []
 
-    def test_resolved_scope_still_scans_only_the_changed_directories(
-        self, tmp_path, monkeypatch
-    ):
+    def test_resolved_scope_still_scans_only_the_changed_directories(self, tmp_path, monkeypatch):
         (tmp_path / "pkg").mkdir()
         (tmp_path / "pkg" / "requirements.txt").write_text("requests==2.0.0\n")
         scanned = _record_trivy_paths(monkeypatch)
@@ -1111,32 +1084,23 @@ class TestTrivyVulnScanHonorsTheResolvedScope:
         scanner.scan_vulnerabilities()
         assert scanned == [str(tmp_path)]
 
-    def test_successful_empty_scope_still_wins_when_scan_all_is_set(
-        self, tmp_path, monkeypatch
-    ):
+    def test_successful_empty_scope_still_wins_when_scan_all_is_set(self, tmp_path, monkeypatch):
         scanned = _record_trivy_paths(monkeypatch)
-        scanner = self._scanner(
-            tmp_path, changed_files=[], scope_requested=True, scan_all=True
-        )
+        scanner = self._scanner(tmp_path, changed_files=[], scope_requested=True, scan_all=True)
 
         assert scanner.scan_vulnerabilities() == {}
         assert scanned == []
 
-    def test_scan_all_after_failed_resolution_scans_the_workspace(
-        self, tmp_path, monkeypatch
-    ):
+    def test_scan_all_after_failed_resolution_scans_the_workspace(self, tmp_path, monkeypatch):
         (tmp_path / "staged").mkdir()
         (tmp_path / "staged" / "requirements.txt").write_text("requests==2.0.0\n")
         staged_calls = []
         monkeypatch.setattr(
             "socket_basics.core.config._detect_git_changed_files",
-            lambda *a, **k: staged_calls.append(k.get("mode"))
-            or ["staged/requirements.txt"],
+            lambda *a, **k: staged_calls.append(k.get("mode")) or ["staged/requirements.txt"],
         )
         scanned = _record_trivy_paths(monkeypatch)
-        scanner = self._scanner(
-            tmp_path, changed_files=[], scope_requested=False, scan_all=True
-        )
+        scanner = self._scanner(tmp_path, changed_files=[], scope_requested=False, scan_all=True)
 
         scanner.scan_vulnerabilities()
         assert staged_calls == []
@@ -1157,7 +1121,7 @@ class TestTrivyDockerfileScanHonorsTheResolvedScope:
         tmp_path,
         changed_files,
         scope_requested,
-        dockerfiles='Dockerfile',
+        dockerfiles="Dockerfile",
         scan_all=False,
     ):
         from socket_basics.core.connector.trivy.trivy import TrivyScanner
@@ -1205,9 +1169,7 @@ class TestTrivyDockerfileScanHonorsTheResolvedScope:
         scanner.scan_dockerfiles()
         assert scanned == ["web.Dockerfile"]
 
-    def test_successful_scope_still_wins_when_scan_all_is_set(
-        self, tmp_path, monkeypatch
-    ):
+    def test_successful_scope_still_wins_when_scan_all_is_set(self, tmp_path, monkeypatch):
         monkeypatch.chdir(tmp_path)
         (tmp_path / "Dockerfile").write_text("FROM alpine\n")
         (tmp_path / "app.py").write_text("x = 1\n")
@@ -1228,8 +1190,7 @@ class TestTrivyDockerfileScanHonorsTheResolvedScope:
         staged_calls = []
         monkeypatch.setattr(
             "socket_basics.core.config._detect_git_changed_files",
-            lambda *a, **k: staged_calls.append(k.get("mode"))
-            or ["staged.Dockerfile"],
+            lambda *a, **k: staged_calls.append(k.get("mode")) or ["staged.Dockerfile"],
         )
         scanned = _record_trivy_paths(monkeypatch)
         scanner = self._scanner(

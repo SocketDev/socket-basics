@@ -44,15 +44,18 @@ tests/
 import pytest
 from socket_basics.module import function_to_test
 
+
 def test_basic_functionality():
     """Test basic functionality with valid input."""
     result = function_to_test("input")
     assert result == "expected_output"
 
+
 def test_edge_case():
     """Test edge case handling."""
     result = function_to_test("")
     assert result == ""
+
 
 def test_error_handling():
     """Test error handling."""
@@ -134,8 +137,8 @@ pytest -m integration
 **Example:**
 ```python
 def test_detect_language_from_filename():
-    assert detect_language_from_filename('app.js') == 'javascript'
-    assert detect_language_from_filename('main.py') == 'python'
+    assert detect_language_from_filename("app.js") == "javascript"
+    assert detect_language_from_filename("main.py") == "python"
 ```
 
 ### Integration Tests (Future)
@@ -160,11 +163,8 @@ Use pytest fixtures for common test data:
 @pytest.fixture
 def mock_config():
     """Provide a mock configuration object."""
-    return {
-        'repo': 'owner/repo',
-        'commit_hash': 'abc123',
-        'pr_comment_links_enabled': True
-    }
+    return {"repo": "owner/repo", "commit_hash": "abc123", "pr_comment_links_enabled": True}
+
 
 def test_with_config(mock_config):
     result = format_with_config(mock_config)
@@ -251,6 +251,7 @@ Test fixtures and sample data should be:
 ```python
 SAMPLE_TRACE = """owasp-goat - server.js 72:12-75:6
   -> express routes/auth.js 45:2"""
+
 
 def test_trace_parsing():
     result = parse_trace(SAMPLE_TRACE)

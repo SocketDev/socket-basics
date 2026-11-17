@@ -20,7 +20,10 @@ def _action() -> dict:
 
 def _parameter_env_vars() -> set[str]:
     env_vars: set[str] = set()
-    for filename, top_key in (("connectors.yaml", "connectors"), ("notifications.yaml", "notifiers")):
+    for filename, top_key in (
+        ("connectors.yaml", "connectors"),
+        ("notifications.yaml", "notifiers"),
+    ):
         data = yaml.safe_load((ROOT / "socket_basics" / filename).read_text())
         for cfg in (data.get(top_key) or {}).values():
             for param in cfg.get("parameters") or []:

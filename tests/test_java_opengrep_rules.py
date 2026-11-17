@@ -35,9 +35,7 @@ REQUIRE_OPENGREP_ENV = "SOCKET_BASICS_REQUIRE_OPENGREP"
 
 _HAVE_OPENGREP = shutil.which("opengrep") is not None
 if not _HAVE_OPENGREP and os.environ.get(REQUIRE_OPENGREP_ENV):
-    pytest.fail(
-        f"{REQUIRE_OPENGREP_ENV} is set but opengrep is not on PATH", pytrace=False
-    )
+    pytest.fail(f"{REQUIRE_OPENGREP_ENV} is set but opengrep is not on PATH", pytrace=False)
 
 pytestmark = pytest.mark.skipif(
     not _HAVE_OPENGREP,
@@ -80,8 +78,15 @@ def _scan() -> set[tuple[str, str, int]]:
         out = Path(tmp) / "results.json"
         proc = subprocess.run(
             [
-                "opengrep", "--json", "--quiet", "--no-git-ignore",
-                "--config", str(RULES), "--output", str(out), tmp,
+                "opengrep",
+                "--json",
+                "--quiet",
+                "--no-git-ignore",
+                "--config",
+                str(RULES),
+                "--output",
+                str(out),
+                tmp,
             ],
             capture_output=True,
             text=True,

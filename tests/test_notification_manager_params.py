@@ -1,5 +1,3 @@
-import os
-
 from socket_basics.core.notification.manager import NotificationManager
 
 
@@ -13,7 +11,11 @@ def _base_cfg():
                     {"name": "jira_url", "env_variable": "INPUT_JIRA_URL", "type": "str"},
                     {"name": "jira_project", "env_variable": "INPUT_JIRA_PROJECT", "type": "str"},
                     {"name": "jira_email", "env_variable": "INPUT_JIRA_EMAIL", "type": "str"},
-                    {"name": "jira_api_token", "env_variable": "INPUT_JIRA_API_TOKEN", "type": "str"},
+                    {
+                        "name": "jira_api_token",
+                        "env_variable": "INPUT_JIRA_API_TOKEN",
+                        "type": "str",
+                    },
                 ],
             }
         }

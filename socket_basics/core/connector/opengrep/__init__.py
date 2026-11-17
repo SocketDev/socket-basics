@@ -1,4 +1,3 @@
-#!/usr/bin/env python3
 """
 OpenGrep SAST Scanner Connector
 
@@ -7,830 +6,953 @@ language rule files and appends --exclude-rule flags for any rules that
 should be skipped. It intentionally does not attempt per-rule fallbacks.
 """
 
+import contextlib
 import json
 import logging
 import os
 import subprocess
 import tempfile
-import yaml
 from pathlib import Path
-from typing import Dict, Any, List
+from typing import Any
 
-from ..base import BaseConnector
-# Opengrep produces canonical components/notifications directly
+import yaml
 
-# Import individual notifier modules
-from . import github_pr, slack, ms_teams, ms_sentinel, sumologic, console, jira, webhook, json_notifier
-from .custom_rules import CustomRulesBuilder
-from .cwe_catalog import CWE_CATALOG
-from ...utils.redaction import (
-	is_credential_finding,
-	redact_dataflow_trace,
-	redact_message,
-	redact_snippet,
-)
+from ...formatters import get_all_formatters as get_all_formatters
 
 # Import shared formatters
-from ...formatters import get_all_formatters
+from ...utils.redaction import (
+    is_credential_finding,
+    redact_dataflow_trace,
+    redact_message,
+    redact_snippet,
+)
+from ..base import BaseConnector
+
+# Opengrep produces canonical components/notifications directly
+# Import individual notifier modules
+from . import (
+    console,
+    github_pr,
+    jira,
+    json_notifier,
+    ms_sentinel,
+    ms_teams,
+    slack,
+    sumologic,
+    webhook,
+)
+from .custom_rules import CustomRulesBuilder
+from .cwe_catalog import CWE_CATALOG
 
 logger = logging.getLogger(__name__)
 
 
 class OpenGrepScanner(BaseConnector):
-	def __init__(self, config):
-		super().__init__(config)
+    def __init__(self, config):
+        super().__init__(config)
 
-	def scan(self) -> Dict[str, Any]:
-		# Determine enabled rule files
-		try:
-			rule_files = self.config.build_opengrep_rules() or []
-		except Exception:
-			rule_files = []
-		logger.info(
-			"OpenGrep config summary: all_languages_enabled=%s all_rules_enabled=%s requested_rule_files=%s",
-			bool(self.config.get('all_languages_enabled', False)),
-			bool(self.config.get('all_rules_enabled', False)),
-			rule_files,
-		)
+    def scan(self) -> dict[str, Any]:  # noqa: C901
+        # Determine enabled rule files
+        try:
+            rule_files = self.config.build_opengrep_rules() or []
+        except Exception:
+            rule_files = []
+        logger.info(
+            "OpenGrep config summary: all_languages_enabled=%s all_rules_enabled=%s requested_rule_files=%s",
+            bool(self.config.get("all_languages_enabled", False)),
+            bool(self.config.get("all_rules_enabled", False)),
+            rule_files,
+        )
 
-		# If no languages selected and not explicitly allowing all, skip
-		if not rule_files and not self.config.get('all_languages_enabled', False):
-			logger.debug('No SAST languages enabled; skipping OpenGrep')
-			return {}
+        # If no languages selected and not explicitly allowing all, skip
+        if not rule_files and not self.config.get("all_languages_enabled", False):
+            logger.debug("No SAST languages enabled; skipping OpenGrep")
+            return {}
 
-		targets = self.config.get_scan_targets()
+        targets = self.config.get_scan_targets()
 
-		# Diff-only / explicit file scoping resolved to no existing files (for
-		# example a delete-only PR). Running OpenGrep without any target makes it
-		# scan its own working directory and emit spurious findings, so skip.
-		if not targets:
-			logger.info('No scan targets to analyze (scoped scan matched no existing files); skipping OpenGrep')
-			return {}
+        # Diff-only / explicit file scoping resolved to no existing files (for
+        # example a delete-only PR). Running OpenGrep without any target makes it
+        # scan its own working directory and emit spurious findings, so skip.
+        if not targets:
+            logger.info(
+                "No scan targets to analyze (scoped scan matched no existing files); skipping OpenGrep"
+            )
+            return {}
 
-		# Locate bundled rules directory for fallback and all-language expansion.
-		module_dir = Path(__file__).resolve().parents[3]
-		bundled_rules_dir = module_dir / 'rules'
-		rules_dir = self.config.get('opengrep_rules_dir') or (str(bundled_rules_dir) if bundled_rules_dir.exists() else None)
-		if not rules_dir:
-			logger.error('No rules directory found')
-			return {}
+        # Locate bundled rules directory for fallback and all-language expansion.
+        module_dir = Path(__file__).resolve().parents[3]
+        bundled_rules_dir = module_dir / "rules"
+        rules_dir = self.config.get("opengrep_rules_dir") or (
+            str(bundled_rules_dir) if bundled_rules_dir.exists() else None
+        )
+        if not rules_dir:
+            logger.error("No rules directory found")
+            return {}
 
-		if not rule_files and self.config.get('all_languages_enabled', False):
-			try:
-				rule_files = [
-					p.name
-					for p in Path(rules_dir).glob('*.yml')
-					if p.name != 'tests.yml'
-				]
-				logger.info("Expanded all-languages scan to rule files: %s", rule_files)
-			except Exception:
-				logger.debug('Failed expanding all-languages into rule files', exc_info=True)
-				rule_files = []
+        if not rule_files and self.config.get("all_languages_enabled", False):
+            try:
+                rule_files = [
+                    p.name for p in Path(rules_dir).glob("*.yml") if p.name != "tests.yml"
+                ]
+                logger.info("Expanded all-languages scan to rule files: %s", rule_files)
+            except Exception:
+                logger.debug("Failed expanding all-languages into rule files", exc_info=True)
+                rule_files = []
 
-		# Check if custom rules mode is enabled
-		custom_rules_path = self.config.get_custom_rules_path()
-		custom_rule_files: Dict[str, Path] = {}
-		logger.info(
-			"Custom SAST requested=%s custom_path=%s resolved_path=%s",
-			bool(self.config.get('use_custom_sast_rules', False)),
-			self.config.get('custom_sast_rule_path', ''),
-			str(custom_rules_path) if custom_rules_path else '(none)',
-		)
-		
-		if custom_rules_path:
-			logger.info(f"Custom SAST rules enabled, loading from: {custom_rules_path}")
-			try:
-				builder = CustomRulesBuilder(custom_rules_path)
-				custom_rule_files = builder.build_rule_files(rule_files)
-			except Exception as e:
-				logger.error(f"Failed to build custom rule files: {e}", exc_info=True)
-				custom_rule_files = {}
+        # Check if custom rules mode is enabled
+        custom_rules_path = self.config.get_custom_rules_path()
+        custom_rule_files: dict[str, Path] = {}
+        logger.info(
+            "Custom SAST requested=%s custom_path=%s resolved_path=%s",
+            bool(self.config.get("use_custom_sast_rules", False)),
+            self.config.get("custom_sast_rule_path", ""),
+            str(custom_rules_path) if custom_rules_path else "(none)",
+        )
 
-		# Read filtered rule definitions if available
-		try:
-			filtered = self.config.build_filtered_opengrep_rules() or {}
-		except Exception:
-			filtered = {}
-		if filtered:
-			filtered_counts = {k: len(v or []) for k, v in filtered.items()}
-			logger.info("Per-language enabled-rule filters detected: %s", filtered_counts)
-		else:
-			logger.info("Per-language enabled-rule filters disabled for this run")
+        if custom_rules_path:
+            logger.info(f"Custom SAST rules enabled, loading from: {custom_rules_path}")
+            try:
+                builder = CustomRulesBuilder(custom_rules_path)
+                custom_rule_files = builder.build_rule_files(rule_files)
+            except Exception as e:
+                logger.error(f"Failed to build custom rule files: {e}", exc_info=True)
+                custom_rule_files = {}
 
-		# Debugging: log computed rule files and filtered rules for diagnosis
-		try:
-			logger.debug('Computed rule_files for OpenGrep: %s', rule_files)
-			logger.debug('Computed filtered rule mapping: %s', filtered)
-		except Exception:
-			pass
+        # Read filtered rule definitions if available
+        try:
+            filtered = self.config.build_filtered_opengrep_rules() or {}
+        except Exception:
+            filtered = {}
+        if filtered:
+            filtered_counts = {k: len(v or []) for k, v in filtered.items()}
+            logger.info("Per-language enabled-rule filters detected: %s", filtered_counts)
+        else:
+            logger.info("Per-language enabled-rule filters disabled for this run")
 
-		if self.config.get('all_rules_enabled', False):
-			filtered = {}
+        # Debugging: log computed rule files and filtered rules for diagnosis
+        try:
+            logger.debug("Computed rule_files for OpenGrep: %s", rule_files)
+            logger.debug("Computed filtered rule mapping: %s", filtered)
+        except Exception:
+            pass
 
-		config_args: List[str] = []
-		
-		# Build config_args using custom rules where available, falling back to bundled rules
-		# Process all enabled languages - use filtered rules if specified, otherwise use all rules
-		for rf in rule_files:
-			# Check if we have a custom rule file for this language
-			using_custom_rules = bool(custom_rule_files and rf in custom_rule_files)
-			if custom_rule_files and rf in custom_rule_files:
-				p = custom_rule_files[rf]
-				logger.info("Using custom rules for %s from %s", rf, p)
-			else:
-				# Fall back to bundled rules
-				p = Path(rules_dir) / rf
-				if not p.exists():
-					logger.debug('Rule file missing: %s', p)
-					continue
-				logger.info("Using bundled rules for %s from %s", rf, p)
-			
-			# Check if this language has specific rules enabled (filtered mode)
-			if filtered and rf in filtered:
-				enabled_ids = filtered[rf]
-				logger.info("Filtering rules for %s: %d enabled IDs configured", rf, len(enabled_ids))
-				try:
-					with open(p, 'r') as fh:
-						data = yaml.safe_load(fh) or {}
-					all_ids = [r.get('id') for r in (data.get('rules') or []) if r.get('id')]
-					# Custom-rule mode can coexist with legacy bundled allowlists.
-					# If none of the configured enabled IDs match custom IDs, keep all
-					# custom IDs active to avoid silently disabling user-authored rules.
-					if using_custom_rules:
-						matched_enabled_ids = [rid for rid in all_ids if rid in (enabled_ids or [])]
-						if enabled_ids and not matched_enabled_ids:
-							logger.warning(
-								"No configured enabled-rule IDs matched custom rules for %s; using all custom rules from %s",
-								rf,
-								p,
-							)
-							config_args.extend(['--config', str(p)])
-							continue
-						to_exclude = [rid for rid in all_ids if rid not in matched_enabled_ids]
-					else:
-						to_exclude = [rid for rid in all_ids if rid not in (enabled_ids or [])]
-					config_args.extend(['--config', str(p)])
-					for ex in to_exclude:
-						config_args.extend(['--exclude-rule', ex])
-				except Exception:
-					logger.debug('Failed reading/parsing rule file %s', p, exc_info=True)
-			else:
-				# No specific rules configured - use all rules from this file
-				logger.debug(f"Using all rules for {rf}")
-				config_args.extend(['--config', str(p)])
+        if self.config.get("all_rules_enabled", False):
+            filtered = {}
 
-		# If nothing selected, only include all bundled rule files when the
-		# caller explicitly requested all languages or all rules. Otherwise
-		# skip scanning to avoid running unrelated language rules.
-		if not config_args:
-			# If all_rules_enabled is set, include all rule files for the
-			# languages that the config reports as enabled (build_opengrep_rules).
-			# Only when all_languages_enabled is True should we include every
-			# bundled rule file regardless of language flags.
-			if self.config.get('all_rules_enabled', False):
-				try:
-					rule_files = self.config.build_opengrep_rules() or []
-					for rf in rule_files:
-						p = Path(rules_dir) / rf
-						if p.exists():
-							config_args.extend(['--config', str(p)])
-				except Exception:
-					logger.debug('Failed expanding all_rules into specific rule files', exc_info=True)
+        config_args: list[str] = []
 
-			if not config_args and self.config.get('all_languages_enabled', False):
-				try:
-					for p in Path(rules_dir).glob('*.yml'):
-						# Skip tests.yml from community rules
-						if p.name == 'tests.yml':
-							continue
-						config_args.extend(['--config', str(p)])
-				except Exception:
-					pass
+        # Build config_args using custom rules where available, falling back to bundled rules
+        # Process all enabled languages - use filtered rules if specified, otherwise use all rules
+        for rf in rule_files:
+            # Check if we have a custom rule file for this language
+            using_custom_rules = bool(custom_rule_files and rf in custom_rule_files)
+            if custom_rule_files and rf in custom_rule_files:
+                p = custom_rule_files[rf]
+                logger.info("Using custom rules for %s from %s", rf, p)
+            else:
+                # Fall back to bundled rules
+                p = Path(rules_dir) / rf
+                if not p.exists():
+                    logger.debug("Rule file missing: %s", p)
+                    continue
+                logger.info("Using bundled rules for %s from %s", rf, p)
 
-			if not config_args:
-				logger.debug('No rule files selected and not configured to include all; skipping OpenGrep')
-				return {}
+            # Check if this language has specific rules enabled (filtered mode)
+            if filtered and rf in filtered:
+                enabled_ids = filtered[rf]
+                logger.info(
+                    "Filtering rules for %s: %d enabled IDs configured", rf, len(enabled_ids)
+                )
+                try:
+                    with open(p) as fh:
+                        data = yaml.safe_load(fh) or {}
+                    all_ids = [r.get("id") for r in (data.get("rules") or []) if r.get("id")]
+                    # Custom-rule mode can coexist with legacy bundled allowlists.
+                    # If none of the configured enabled IDs match custom IDs, keep all
+                    # custom IDs active to avoid silently disabling user-authored rules.
+                    if using_custom_rules:
+                        matched_enabled_ids = [rid for rid in all_ids if rid in (enabled_ids or [])]
+                        if enabled_ids and not matched_enabled_ids:
+                            logger.warning(
+                                "No configured enabled-rule IDs matched custom rules for %s; using all custom rules from %s",
+                                rf,
+                                p,
+                            )
+                            config_args.extend(["--config", str(p)])
+                            continue
+                        to_exclude = [rid for rid in all_ids if rid not in matched_enabled_ids]
+                    else:
+                        to_exclude = [rid for rid in all_ids if rid not in (enabled_ids or [])]
+                    config_args.extend(["--config", str(p)])
+                    for ex in to_exclude:
+                        config_args.extend(["--exclude-rule", ex])
+                except Exception:
+                    logger.debug("Failed reading/parsing rule file %s", p, exc_info=True)
+            else:
+                # No specific rules configured - use all rules from this file
+                logger.debug(f"Using all rules for {rf}")
+                config_args.extend(["--config", str(p)])
 
-		if not config_args:
-			logger.error('No valid rule files found')
-			return {}
+        # If nothing selected, only include all bundled rule files when the
+        # caller explicitly requested all languages or all rules. Otherwise
+        # skip scanning to avoid running unrelated language rules.
+        if not config_args:
+            # If all_rules_enabled is set, include all rule files for the
+            # languages that the config reports as enabled (build_opengrep_rules).
+            # Only when all_languages_enabled is True should we include every
+            # bundled rule file regardless of language flags.
+            if self.config.get("all_rules_enabled", False):
+                try:
+                    rule_files = self.config.build_opengrep_rules() or []
+                    for rf in rule_files:
+                        p = Path(rules_dir) / rf
+                        if p.exists():
+                            config_args.extend(["--config", str(p)])
+                except Exception:
+                    logger.debug(
+                        "Failed expanding all_rules into specific rule files", exc_info=True
+                    )
 
-		# Run combined OpenGrep once
-		with tempfile.NamedTemporaryFile(mode='w', suffix='.json', delete=False) as tf:
-			out_file = tf.name
+            if not config_args and self.config.get("all_languages_enabled", False):
+                try:
+                    for p in Path(rules_dir).glob("*.yml"):
+                        # Skip tests.yml from community rules
+                        if p.name == "tests.yml":
+                            continue
+                        config_args.extend(["--config", str(p)])
+                except Exception:
+                    pass
 
-		cmd = ['opengrep', '--json', '--dataflow-traces', '--output', out_file]
-		verbose = self.config.get('verbose', False)
-		cmd.append('--verbose' if verbose else '--quiet')
+            if not config_args:
+                logger.debug(
+                    "No rule files selected and not configured to include all; skipping OpenGrep"
+                )
+                return {}
 
-		try:
-			ws = Path(self.config.workspace)
-			if not (ws / '.git').exists():
-				cmd.append('-a')
-				cmd.append('--no-git-ignore')
-		except Exception:
-			pass
+        if not config_args:
+            logger.error("No valid rule files found")
+            return {}
 
-		cmd.extend(config_args + targets)
-		logger.info('Running OpenGrep: %s', ' '.join(cmd))
+        # Run combined OpenGrep once
+        with tempfile.NamedTemporaryFile(mode="w", suffix=".json", delete=False) as tf:
+            out_file = tf.name
 
-		try:
-			result = subprocess.run(cmd, capture_output=True, text=True)
-		except FileNotFoundError:
-			logger.error('OpenGrep binary not found')
-			try:
-				os.unlink(out_file)
-			except Exception:
-				pass
-			return {}
+        cmd = ["opengrep", "--json", "--dataflow-traces", "--output", out_file]
+        verbose = self.config.get("verbose", False)
+        cmd.append("--verbose" if verbose else "--quiet")
 
-		if verbose and result.stdout:
-			logger.debug('OpenGrep stdout: %s', result.stdout)
-		if verbose and result.stderr:
-			logger.debug('OpenGrep stderr: %s', result.stderr)
+        try:
+            ws = Path(self.config.workspace)
+            if not (ws / ".git").exists():
+                cmd.append("-a")
+                cmd.append("--no-git-ignore")
+        except Exception:
+            pass
 
-		if os.path.exists(out_file) and os.path.getsize(out_file) > 0:
-			try:
-				with open(out_file, 'r') as fh:
-					raw = fh.read()
-					data = json.loads(raw)
-			except Exception:
-				logger.debug('Failed to parse OpenGrep JSON output', exc_info=True)
-				data = {}
-		else:
-			logger.warning('OpenGrep produced no output (combined run)')
-			data = {}
+        cmd.extend(config_args + targets)
+        logger.info("Running OpenGrep: %s", " ".join(cmd))
 
-		try:
-			os.unlink(out_file)
-		except Exception:
-			pass
+        try:
+            result = subprocess.run(cmd, capture_output=True, text=True, check=False)
+        except FileNotFoundError:
+            logger.error("OpenGrep binary not found")
+            with contextlib.suppress(Exception):
+                os.unlink(out_file)
+            return {}
 
-		try:
-			raw_processed = self._convert_to_socket_facts(data or {})
-			# Convert mapping -> canonical wrapper if needed
-			if isinstance(raw_processed, dict) and raw_processed and 'components' not in raw_processed and all(isinstance(v, dict) for v in raw_processed.values()):
-				raw_processed = {'components': list(raw_processed.values())}
-			# raw_processed is now canonical; build socket_facts from it
-			socket_facts = raw_processed if isinstance(raw_processed, dict) and isinstance(raw_processed.get('components'), list) else {'components': []}
-			notifications = []
-			# Build per-subtype notification tables (e.g. 'sast-python',
-			# 'sast-golang', 'sast-typescript'). For each subtype present in
-			# the alerts, create a table with title=subtype and rows similar
-			# to the old notification_rows format.
-			wrapper = {'components': socket_facts.get('components', [])}
-			try:
-				comps_map: Dict[str, Dict[str, Any]] = {c.get('id') or c.get('name'): c for c in socket_facts.get('components', [])}
-				
-				# Build notifications using new shared formatters
-				notifications_by_notifier = self.generate_notifications(wrapper.get('components', []))
-				
-				if notifications_by_notifier:
-					wrapper['notifications'] = notifications_by_notifier
-				elif notifications:
-					# fallback to old format if needed
-					wrapper['notifications'] = [{'title': 'results', 'rows': notifications}]
-			except Exception:
-				# if grouping fails, fall back to raw notifications
-				if notifications:
-					# fallback: attach as canonical notifications list
-					wrapper['notifications'] = [{'title': 'results', 'rows': notifications}]
+        if verbose and result.stdout:
+            logger.debug("OpenGrep stdout: %s", result.stdout)
+        if verbose and result.stderr:
+            logger.debug("OpenGrep stderr: %s", result.stderr)
 
-			return {'components': wrapper.get('components', []), 'notifications': wrapper.get('notifications', [])}
-		except Exception:
-			logger.exception('Processing OpenGrep results failed')
-			return {'components': [], 'notifications': []}
+        if os.path.exists(out_file) and os.path.getsize(out_file) > 0:
+            try:
+                with open(out_file) as fh:
+                    raw = fh.read()
+                    data = json.loads(raw)
+            except Exception:
+                logger.debug("Failed to parse OpenGrep JSON output", exc_info=True)
+                data = {}
+        else:
+            logger.warning("OpenGrep produced no output (combined run)")
+            data = {}
 
-	def _convert_to_socket_facts(self, raw_results: Any) -> Dict[str, Any]:
-		"""Convert OpenGrep JSON output into a mapping of component_id -> component.
+        with contextlib.suppress(Exception):
+            os.unlink(out_file)
 
-		Expected output for the manager is a dict where each value is a component
-		dict containing an 'alerts' list. If no alerts are present we return an
-		empty dict so the manager treats this as no results.
-		"""
-		if not raw_results:
-			return {}
+        try:
+            raw_processed = self._convert_to_socket_facts(data or {})
+            # Convert mapping -> canonical wrapper if needed
+            if (
+                isinstance(raw_processed, dict)
+                and raw_processed
+                and "components" not in raw_processed
+                and all(isinstance(v, dict) for v in raw_processed.values())
+            ):
+                raw_processed = {"components": list(raw_processed.values())}
+            # raw_processed is now canonical; build socket_facts from it
+            socket_facts = (
+                raw_processed
+                if isinstance(raw_processed, dict)
+                and isinstance(raw_processed.get("components"), list)
+                else {"components": []}
+            )
+            notifications = []
+            # Build per-subtype notification tables (e.g. 'sast-python',
+            # 'sast-golang', 'sast-typescript'). For each subtype present in
+            # the alerts, create a table with title=subtype and rows similar
+            # to the old notification_rows format.
+            wrapper = {"components": socket_facts.get("components", [])}
+            try:
+                {c.get("id") or c.get("name"): c for c in socket_facts.get("components", [])}
 
-		# Common shapes: {'components': [ {...}, ... ]} or {'results': [...]}
-		out: Dict[str, Any] = {}
+                # Build notifications using new shared formatters
+                notifications_by_notifier = self.generate_notifications(
+                    wrapper.get("components", [])
+                )
 
-		# If opengrep produces a 'results' list (common), convert each finding into
-		# a component with a single alert. Group alerts by path so each file is a
-		# component that contains its alerts.
-		if isinstance(raw_results, dict):
-			results = raw_results.get('results') if isinstance(raw_results.get('results'), list) else None
-			if isinstance(results, list):
-				# group alerts by file path
-				comps: Dict[str, Dict[str, Any]] = {}
-				for r in results:
-					try:
-						path = r.get('path') or (r.get('extra', {}) or {}).get('file') or 'unknown'
-						
-						# Skip files from custom_rules directory - these are rule files, not source code
-						# Check if path starts with custom_rules (relative to workspace/cwd)
-						try:
-							from pathlib import Path as _P
-							p = _P(path)
-							# Get custom rules path from config
-							custom_rules_path = self.config.get_custom_rules_path()
-							if custom_rules_path:
-								custom_rules_path = Path(custom_rules_path)
-								# Check if the file path is inside the custom rules directory
-								try:
-									# For absolute paths
-									if p.is_absolute() and custom_rules_path.is_absolute():
-										try:
-											p.relative_to(custom_rules_path)
-											logger.debug(f"Skipping result from custom_rules directory: {path}")
-											continue
-										except ValueError:
-											pass
-									# For relative paths, check if path starts with custom_rules
-									else:
-										path_str = str(p.as_posix())
-										custom_rules_str = str(custom_rules_path.as_posix())
-										# Normalize both to relative paths
-										if path_str.startswith(custom_rules_str + '/') or path_str == custom_rules_str:
-											logger.debug(f"Skipping result from custom_rules directory: {path}")
-											continue
-										# Also check if just the first component matches (e.g., "custom_rules/...")
-										parts = p.parts
-										if parts and parts[0] == custom_rules_path.name:
-											logger.debug(f"Skipping result from custom_rules directory: {path}")
-											continue
-								except Exception:
-									pass
-						except Exception:
-							pass
-						
-						# Normalize path early to strip workspace/temp/custom_rules paths
-						normalized_path = path
-						try:
-							from pathlib import Path as _P
-							p = _P(path)
-							ws = getattr(self.config, 'workspace', None)
-							ws_root = getattr(ws, 'path', None) or getattr(ws, 'root', None) or ws
-							if ws_root:
-								# If path is absolute and inside workspace, make it relative
-								if p.is_absolute():
-									try:
-										if str(p).startswith(str(ws_root)):
-											p = _P(os.path.relpath(str(p), str(ws_root)))
-									except Exception:
-										pass
-								else:
-									# Remove leading workspace folder components
-									parts = str(p).split(os.sep)
-									ws_name = os.path.basename(str(ws_root))
-									if parts and (parts[0] == ws_name or (len(parts) >= 2 and parts[0] in ('.', '..') and parts[1] == ws_name)):
-										if parts[0] == ws_name:
-											parts = parts[1:]
-										else:
-											parts = parts[2:]
-										p = _P(os.path.join(*parts)) if parts else _P('')
-							normalized_path = str(p.as_posix())
-						except Exception:
-							pass
-						
-						# Preserve original identifier so we can annotate generatedBy when
-						# the rule comes from the bundled socket_basics ruleset
-						original_check_id = r.get('check_id') or (r.get('extra') or {}).get('rule_id') or ''
-						check_id = original_check_id
-						# Remove internal namespace prefix if present; connectors own
-						# their emitted identifiers and must not expose internal pkg IDs
-						# We only want to show the actual rule name from the rules file, not any path/package prefix
-						try:
-							if isinstance(check_id, str) and '.' in check_id:
-								# Extract just the rule name by taking the last segment after the final dot
-								# This handles all patterns:
-								#   - socket_basics.rules.rule-name -> rule-name
-								#   - socket-basics.socket_basics.rules.rule-name -> rule-name
-								#   - /tmp/path.socket_custom_rules_XXXX.rule-name -> rule-name
-								#   - any.other.prefix.rule-name -> rule-name
-								check_id = check_id.split('.')[-1]
-						except Exception:
-							pass
-						severity = ((r.get('extra') or {}).get('severity') or r.get('severity') or '')
-						severity_norm = str(severity).lower() if severity is not None else ''
-						message = (r.get('extra') or {}).get('message') or r.get('message') or ''
-						credential_finding = is_credential_finding(
-							check_id, (r.get('extra') or {}).get('metadata') or {}
-						)
-						message = redact_message(
-							message,
-							(r.get('extra') or {}).get('metavars') or {},
-							credential_finding=credential_finding,
-						)
-						start = (r.get('start') or {}).get('line')
-						end = (r.get('end') or {}).get('line')
+                if notifications_by_notifier:
+                    wrapper["notifications"] = notifications_by_notifier
+                elif notifications:
+                    # fallback to old format if needed
+                    wrapper["notifications"] = [{"title": "results", "rows": notifications}]
+            except Exception:
+                # if grouping fails, fall back to raw notifications
+                if notifications:
+                    # fallback: attach as canonical notifications list
+                    wrapper["notifications"] = [{"title": "results", "rows": notifications}]
 
-						# Normalize severity to one of low/medium/high/critical
-						if severity_norm in ('critical', 'error', 'err'):
-							sev_label = 'critical'
-						elif severity_norm in ('high',):
-							sev_label = 'high'
-						elif severity_norm in ('medium', 'moderate'):
-							sev_label = 'medium'
-						elif severity_norm in ('low', 'warning'):
-							sev_label = 'low'
-						else:
-							# default if unknown
-							sev_label = 'medium'
+            return {
+                "components": wrapper.get("components", []),
+                "notifications": wrapper.get("notifications", []),
+            }
+        except Exception:
+            logger.exception("Processing OpenGrep results failed")
+            return {"components": [], "notifications": []}
 
-						# Mask here, not at the destinations: everything below
-						# reads `code_snippet`, and the props it lands in are
-						# read in turn by the facts file, the upload and every
-						# notifier. See socket_basics.core.utils.redaction.
-						code_snippet = (r.get('extra') or {}).get('lines') or (r.get('extra') or {}).get('snippet') or ''
-						code_snippet = redact_snippet(
-							code_snippet,
-							credential_finding=credential_finding,
-						)
+    def _convert_to_socket_facts(self, raw_results: Any) -> dict[str, Any]:  # noqa: C901
+        """Convert OpenGrep JSON output into a mapping of component_id -> component.
 
-						alert = {
-							'title': check_id,
-							'description': message,
-							'severity': sev_label,
-							'type': 'generic',
-							'location': {
-								'path': normalized_path,
-								'start': start,
-								'end': end
-							},
-							'props': {
-								'ruleId': check_id,
-								'confidence': (r.get('extra') or {}).get('metadata', {}).get('confidence', ''),
-								'fingerprint': (r.get('extra') or {}).get('fingerprint') or '',
-								# Fill commonly-consumed fields so notifiers can format Location/Lines
-								'filePath': normalized_path,
-								'startLine': start,
-								'endLine': end,
-								'codeSnippet': code_snippet
-							}
-						}
+        Expected output for the manager is a dict where each value is a component
+        dict containing an 'alerts' list. If no alerts are present we return an
+        empty dict so the manager treats this as no results.
+        """
+        if not raw_results:
+            return {}
 
-						# -- Enrich alert with additional metadata --
-						_metadata = (r.get('extra') or {}).get('metadata', {})
-						_cwe = _metadata.get('cwe', '')
-						_owasp_raw = _metadata.get('owasp', '')
-						_subcategory = _metadata.get('subcategory', '')
-						_fix = _metadata.get('fix', '')
-						_rule_refs = _metadata.get('references', [])
+        # Common shapes: {'components': [ {...}, ... ]} or {'results': [...]}
 
-						# Normalize owasp to a single string (rules may define it as a list)
-						if isinstance(_owasp_raw, list):
-							_owasp = _owasp_raw[0] if _owasp_raw else ''
-						else:
-							_owasp = _owasp_raw or ''
-						# Strip descriptive suffix like "A03:2021 - Injection" -> "A03:2021"
-						if isinstance(_owasp, str) and ' - ' in _owasp:
-							_owasp = _owasp.split(' - ', 1)[0].strip()
+        # If opengrep produces a 'results' list (common), convert each finding into
+        # a component with a single alert. Group alerts by path so each file is a
+        # component that contains its alerts.
+        if isinstance(raw_results, dict):
+            results = (
+                raw_results.get("results") if isinstance(raw_results.get("results"), list) else None
+            )
+            if isinstance(results, list):
+                # group alerts by file path
+                comps: dict[str, dict[str, Any]] = {}
+                for r in results:
+                    try:
+                        path = r.get("path") or (r.get("extra", {}) or {}).get("file") or "unknown"
 
-						if _cwe:
-							alert['props']['cwe'] = _cwe
-						if _owasp:
-							alert['props']['owasp'] = _owasp
-						if _subcategory:
-							alert['props']['subcategory'] = _subcategory
-						if _fix:
-							alert['props']['fix'] = _fix
+                        # Skip files from custom_rules directory - these are rule files, not source code
+                        # Check if path starts with custom_rules (relative to workspace/cwd)
+                        try:
+                            from pathlib import Path as _P
 
-						# Look up CWE in catalog for human-readable name and description
-						_cwe_info = CWE_CATALOG.get(_cwe, {}) if _cwe else {}
-						if _cwe_info:
-							alert['props']['vulnerabilityName'] = _cwe_info.get('name', '')
-							alert['props']['vulnerabilityCategory'] = _cwe_info.get('category', '')
-							# For sparse rule messages, provide an enriched description from the CWE catalog
-							if len(message) < 60:
-								alert['props']['enrichedDescription'] = _cwe_info.get('description', '')
+                            p = _P(path)
+                            # Get custom rules path from config
+                            custom_rules_path = self.config.get_custom_rules_path()
+                            if custom_rules_path:
+                                custom_rules_path = Path(custom_rules_path)
+                                # Check if the file path is inside the custom rules directory
+                                try:
+                                    # For absolute paths
+                                    if p.is_absolute() and custom_rules_path.is_absolute():
+                                        try:
+                                            p.relative_to(custom_rules_path)
+                                            logger.debug(
+                                                f"Skipping result from custom_rules directory: {path}"
+                                            )
+                                            continue
+                                        except ValueError:
+                                            pass
+                                    # For relative paths, check if path starts with custom_rules
+                                    else:
+                                        path_str = str(p.as_posix())
+                                        custom_rules_str = str(custom_rules_path.as_posix())
+                                        # Normalize both to relative paths
+                                        if (
+                                            path_str.startswith(custom_rules_str + "/")
+                                            or path_str == custom_rules_str
+                                        ):
+                                            logger.debug(
+                                                f"Skipping result from custom_rules directory: {path}"
+                                            )
+                                            continue
+                                        # Also check if just the first component matches (e.g., "custom_rules/...")
+                                        parts = p.parts
+                                        if parts and parts[0] == custom_rules_path.name:
+                                            logger.debug(
+                                                f"Skipping result from custom_rules directory: {path}"
+                                            )
+                                            continue
+                                except Exception:
+                                    pass
+                        except Exception:
+                            pass
 
-						_vulnerability_class = _metadata.get('vulnerability_class', '')
-						_likelihood = _metadata.get('likelihood', '')
-						_impact = _metadata.get('impact', '')
-						_technology = _metadata.get('technology', '')
-						_framework = _metadata.get('framework', '')
+                        # Normalize path early to strip workspace/temp/custom_rules paths
+                        normalized_path = path
+                        try:
+                            from pathlib import Path as _P
 
-						if _vulnerability_class:
-							alert['props']['vulnerabilityClass'] = _vulnerability_class
-						if _likelihood:
-							alert['props']['likelihood'] = _likelihood
-						if _impact:
-							alert['props']['impact'] = _impact
-						if _technology:
-							alert['props']['technology'] = _technology
-						if _framework:
-							alert['props']['framework'] = _framework
+                            p = _P(path)
+                            ws = getattr(self.config, "workspace", None)
+                            ws_root = getattr(ws, "path", None) or getattr(ws, "root", None) or ws
+                            if ws_root:
+                                # If path is absolute and inside workspace, make it relative
+                                if p.is_absolute():
+                                    try:
+                                        if str(p).startswith(str(ws_root)):
+                                            p = _P(os.path.relpath(str(p), str(ws_root)))
+                                    except Exception:
+                                        pass
+                                else:
+                                    # Remove leading workspace folder components
+                                    parts = str(p).split(os.sep)
+                                    ws_name = os.path.basename(str(ws_root))
+                                    if parts and (
+                                        parts[0] == ws_name
+                                        or (
+                                            len(parts) >= 2
+                                            and parts[0] in (".", "..")
+                                            and parts[1] == ws_name
+                                        )
+                                    ):
+                                        if parts[0] == ws_name:
+                                            parts = parts[1:]
+                                        else:
+                                            parts = parts[2:]
+                                        p = _P(os.path.join(*parts)) if parts else _P("")
+                            normalized_path = str(p.as_posix())
+                        except Exception:
+                            pass
 
-						# Extract dataflow trace (available for taint-mode rules)
-						_dataflow = (r.get('extra') or {}).get('dataflow_trace')
-						if _dataflow:
-							try:
-								def _fmt_trace_loc(trace_item):
-									"""Format a dataflow trace item's location."""
-									if isinstance(trace_item, list):
-										trace_item = trace_item[0] if trace_item else {}
-									if not isinstance(trace_item, dict):
-										return {'content': '', 'file': '', 'line': ''}
-									loc = trace_item.get('location') or {}
-									content = trace_item.get('content', '')
-									path = loc.get('path', '') or ''
-									start_info = loc.get('start', {})
-									line = start_info.get('line', '') if isinstance(start_info, dict) else ''
-									return {'content': content.strip() if content else '', 'file': path, 'line': line}
+                        # Preserve original identifier so we can annotate generatedBy when
+                        # the rule comes from the bundled socket_basics ruleset
+                        original_check_id = (
+                            r.get("check_id") or (r.get("extra") or {}).get("rule_id") or ""
+                        )
+                        check_id = original_check_id
+                        # Remove internal namespace prefix if present; connectors own
+                        # their emitted identifiers and must not expose internal pkg IDs
+                        # We only want to show the actual rule name from the rules file, not any path/package prefix
+                        try:
+                            if isinstance(check_id, str) and "." in check_id:
+                                # Extract just the rule name by taking the last segment after the final dot
+                                # This handles all patterns:
+                                #   - socket_basics.rules.rule-name -> rule-name
+                                #   - socket-basics.socket_basics.rules.rule-name -> rule-name
+                                #   - /tmp/path.socket_custom_rules_XXXX.rule-name -> rule-name
+                                #   - any.other.prefix.rule-name -> rule-name
+                                check_id = check_id.split(".")[-1]
+                        except Exception:
+                            pass
+                        severity = (r.get("extra") or {}).get("severity") or r.get("severity") or ""
+                        severity_norm = str(severity).lower() if severity is not None else ""
+                        message = (r.get("extra") or {}).get("message") or r.get("message") or ""
+                        credential_finding = is_credential_finding(
+                            check_id, (r.get("extra") or {}).get("metadata") or {}
+                        )
+                        message = redact_message(
+                            message,
+                            (r.get("extra") or {}).get("metavars") or {},
+                            credential_finding=credential_finding,
+                        )
+                        start = (r.get("start") or {}).get("line")
+                        end = (r.get("end") or {}).get("line")
 
-								_source = _dataflow.get('taint_source') or {}
-								_sink = _dataflow.get('taint_sink') or {}
-								_intermediates = _dataflow.get('intermediate_vars') or []
+                        # Normalize severity to one of low/medium/high/critical
+                        if severity_norm in ("critical", "error", "err"):
+                            sev_label = "critical"
+                        elif severity_norm == "high":
+                            sev_label = "high"
+                        elif severity_norm in ("medium", "moderate"):
+                            sev_label = "medium"
+                        elif severity_norm in ("low", "warning"):
+                            sev_label = "low"
+                        else:
+                            # default if unknown
+                            sev_label = "medium"
 
-								_trace_data = {
-									'source': _fmt_trace_loc(_source),
-									'sink': _fmt_trace_loc(_sink),
-								}
-								if _intermediates:
-									_trace_data['intermediates'] = [_fmt_trace_loc(v) for v in _intermediates]
+                        # Mask here, not at the destinations: everything below
+                        # reads `code_snippet`, and the props it lands in are
+                        # read in turn by the facts file, the upload and every
+                        # notifier. See socket_basics.core.utils.redaction.
+                        code_snippet = (
+                            (r.get("extra") or {}).get("lines")
+                            or (r.get("extra") or {}).get("snippet")
+                            or ""
+                        )
+                        code_snippet = redact_snippet(
+                            code_snippet,
+                            credential_finding=credential_finding,
+                        )
 
-								# Trace steps quote source lines the same way the
-								# snippet does, so they get the same treatment.
-								alert['props']['dataflowTrace'] = redact_dataflow_trace(
-									_trace_data, credential_finding
-								)
-							except Exception:
-								pass  # Skip trace if structure is unexpected
+                        alert = {
+                            "title": check_id,
+                            "description": message,
+                            "severity": sev_label,
+                            "type": "generic",
+                            "location": {"path": normalized_path, "start": start, "end": end},
+                            "props": {
+                                "ruleId": check_id,
+                                "confidence": (r.get("extra") or {})
+                                .get("metadata", {})
+                                .get("confidence", ""),
+                                "fingerprint": (r.get("extra") or {}).get("fingerprint") or "",
+                                # Fill commonly-consumed fields so notifiers can format Location/Lines
+                                "filePath": normalized_path,
+                                "startLine": start,
+                                "endLine": end,
+                                "codeSnippet": code_snippet,
+                            },
+                        }
 
-						# Auto-generate reference URLs from CWE / OWASP IDs
-						_references = []
-						if isinstance(_cwe, str) and _cwe.startswith('CWE-'):
-							_cwe_num = _cwe.split('-', 1)[1]
-							_references.append({
-								'title': _cwe,
-								'url': f'https://cwe.mitre.org/data/definitions/{_cwe_num}.html'
-							})
-						if isinstance(_owasp, str) and _owasp:
-							# Extract category code (e.g. "A03" from "A03:2021")
-							_owasp_code = _owasp.split(':')[0] if ':' in _owasp else _owasp
-							_references.append({
-								'title': f'OWASP Top 10 {_owasp}',
-								'url': f'https://owasp.org/Top10/{_owasp_code}/'
-							})
-						if isinstance(_rule_refs, list):
-							for _ref in _rule_refs:
-								if isinstance(_ref, str):
-									_references.append({'title': _ref, 'url': _ref})
-								elif isinstance(_ref, dict):
-									_references.append(_ref)
-						if _references:
-							alert['props']['references'] = _references
+                        # -- Enrich alert with additional metadata --
+                        _metadata = (r.get("extra") or {}).get("metadata", {})
+                        _cwe = _metadata.get("cwe", "")
+                        _owasp_raw = _metadata.get("owasp", "")
+                        _subcategory = _metadata.get("subcategory", "")
+                        _fix = _metadata.get("fix", "")
+                        _rule_refs = _metadata.get("references", [])
 
-						# Build detailedReport markdown blob
-						_report_parts = []
-						_report_parts.append(f'## {check_id}\n')
-						if message:
-							_report_parts.append(f'**Description:** {message}\n')
-						# Location + code snippet
-						_loc_line = f'**Location:** `{normalized_path}`'
-						if start and end:
-							_loc_line += f' (lines {start}\u2013{end})' if start != end else f' (line {start})'
-						elif start:
-							_loc_line += f' (line {start})'
-						_report_parts.append(_loc_line + '\n')
-						if code_snippet:
-							_report_parts.append(f'```\n{code_snippet.rstrip()}\n```\n')
-						# Severity & confidence
-						_conf = alert['props'].get('confidence', '')
-						_sev_line = f'**Severity:** {sev_label}'
-						if _conf:
-							_sev_line += f' | **Confidence:** {_conf}'
-						_report_parts.append(_sev_line + '\n')
-						# CWE explainer from catalog
-						if _cwe_info and _cwe_info.get('description'):
-							_report_parts.append(f'**What is {_cwe}?** {_cwe_info["description"]}\n')
-						# Data Flow section (only for taint-mode rules with traces)
-						if _dataflow and alert['props'].get('dataflowTrace'):
-							_trace = alert['props']['dataflowTrace']
-							_flow_parts = ['### Data Flow\n']
-							_src = _trace.get('source', {})
-							if _src.get('content'):
-								_src_loc = f"`{_src['file']}:{_src['line']}`" if _src.get('file') and _src.get('line') else ''
-								_flow_parts.append(f'1. **Source** {_src_loc}:\n   ```\n   {_src["content"]}\n   ```\n')
-							for i, _inter in enumerate(_trace.get('intermediates', []), 1):
-								if _inter.get('content'):
-									_inter_loc = f"`{_inter['file']}:{_inter['line']}`" if _inter.get('file') and _inter.get('line') else ''
-									_flow_parts.append(f'{i+1}. **Intermediate** {_inter_loc}:\n   ```\n   {_inter["content"]}\n   ```\n')
-							_snk = _trace.get('sink', {})
-							if _snk.get('content'):
-								_snk_loc = f"`{_snk['file']}:{_snk['line']}`" if _snk.get('file') and _snk.get('line') else ''
-								_step = len(_trace.get('intermediates', [])) + 2
-								_flow_parts.append(f'{_step}. **Sink** {_snk_loc}:\n   ```\n   {_snk["content"]}\n   ```\n')
-							if len(_flow_parts) > 1:  # more than just the heading
-								_report_parts.extend(_flow_parts)
-						# CWE / OWASP references
-						if _cwe or _owasp:
-							_ref_items = []
-							if _cwe and isinstance(_cwe, str) and _cwe.startswith('CWE-'):
-								_cwe_num = _cwe.split('-', 1)[1]
-								_ref_items.append(f'[{_cwe}](https://cwe.mitre.org/data/definitions/{_cwe_num}.html)')
-							elif _cwe:
-								_ref_items.append(str(_cwe))
-							if _owasp:
-								_owasp_code = _owasp.split(':')[0] if ':' in _owasp else _owasp
-								_ref_items.append(f'[OWASP Top 10 {_owasp}](https://owasp.org/Top10/{_owasp_code}/)')
-							_report_parts.append('**References:** ' + ' | '.join(_ref_items) + '\n')
-						# Remediation
-						if _fix:
-							_report_parts.append(f'**Remediation:** {_fix}\n')
+                        # Normalize owasp to a single string (rules may define it as a list)
+                        if isinstance(_owasp_raw, list):
+                            _owasp = _owasp_raw[0] if _owasp_raw else ""
+                        else:
+                            _owasp = _owasp_raw or ""
+                        # Strip descriptive suffix like "A03:2021 - Injection" -> "A03:2021"
+                        if isinstance(_owasp, str) and " - " in _owasp:
+                            _owasp = _owasp.split(" - ", 1)[0].strip()
 
-						alert['props']['detailedReport'] = {
-							'content-type': 'text/markdown',
-							'content': '\n'.join(_report_parts)
-						}
+                        if _cwe:
+                            alert["props"]["cwe"] = _cwe
+                        if _owasp:
+                            alert["props"]["owasp"] = _owasp
+                        if _subcategory:
+                            alert["props"]["subcategory"] = _subcategory
+                        if _fix:
+                            alert["props"]["fix"] = _fix
 
-						# Determine a more specific subtype when possible.
-						# Prefer file extension, then check_id naming conventions.
-						detected_subtype = None
-						try:
-							from pathlib import Path as _P
-							ext = (_P(normalized_path).suffix or '').lower()
-							if ext == '.py' or (isinstance(check_id, str) and check_id.startswith('python-')):
-								detected_subtype = 'sast-python'
-							elif ext in ('.js', '.ts') or (isinstance(check_id, str) and check_id.startswith('js-')):
-								detected_subtype = 'sast-javascript'
-							elif ext in ('.go',) or (isinstance(check_id, str) and check_id.startswith('go-')):
-								detected_subtype = 'sast-golang'
-						except Exception:
-							detected_subtype = None
+                        # Look up CWE in catalog for human-readable name and description
+                        _cwe_info = CWE_CATALOG.get(_cwe, {}) if _cwe else {}
+                        if _cwe_info:
+                            alert["props"]["vulnerabilityName"] = _cwe_info.get("name", "")
+                            alert["props"]["vulnerabilityCategory"] = _cwe_info.get("category", "")
+                            # For sparse rule messages, provide an enriched description from the CWE catalog
+                            if len(message) < 60:
+                                alert["props"]["enrichedDescription"] = _cwe_info.get(
+                                    "description", ""
+                                )
 
-						# Provide required top-level classification fields
-						# SAST findings should be classified as vulnerabilities by default
-						alert.setdefault('category', 'vulnerability')
-						# Ensure generatedBy indicates the originating opengrep flavor
-						try:
-							# detected_subtype may be like 'sast-python' or 'sast-javascript'
-							if detected_subtype:
-								# Map 'sast-python' -> 'opengrep-python'
-								gen = detected_subtype.replace('sast-', 'opengrep-')
-							else:
-								gen = 'sast-generic'
-							# Force the generatedBy to the opengrep flavor so
-							# notifiers can attribute findings correctly.
-							alert['generatedBy'] = gen
-						except Exception:
-							alert['generatedBy'] = 'opengrep'
-						if detected_subtype:
-							alert['subType'] = detected_subtype
-						else:
-							alert.setdefault('subType', 'sast-generic')
+                        _vulnerability_class = _metadata.get("vulnerability_class", "")
+                        _likelihood = _metadata.get("likelihood", "")
+                        _impact = _metadata.get("impact", "")
+                        _technology = _metadata.get("technology", "")
+                        _framework = _metadata.get("framework", "")
 
-						# Build component ID from normalized path
-						try:
-							import hashlib as _hash
-							comp_id = _hash.sha256(normalized_path.encode('utf-8')).hexdigest()
-						except Exception:
-							comp_id = normalized_path
+                        if _vulnerability_class:
+                            alert["props"]["vulnerabilityClass"] = _vulnerability_class
+                        if _likelihood:
+                            alert["props"]["likelihood"] = _likelihood
+                        if _impact:
+                            alert["props"]["impact"] = _impact
+                        if _technology:
+                            alert["props"]["technology"] = _technology
+                        if _framework:
+                            alert["props"]["framework"] = _framework
 
-						if comp_id not in comps:
-							comps[comp_id] = {
-								'id': comp_id,
-								'type': 'generic',
-								'subPath': detected_subtype,
-								'name': normalized_path,
-								"internal": True,
-								'alerts': []
-							}
-						
-						# Normalize alert action based on disabled rules before adding to component
-						from ..normalizer import _normalize_alert
-						try:
-							alert = _normalize_alert(alert, connector=self)
-						except Exception:
-							logger.debug('Failed to normalize alert action', exc_info=True)
-						
-						comps[comp_id]['alerts'].append(alert)
-					except Exception:
-						logger.debug('Failed to convert single opengrep result to alert', exc_info=True)
-				
-				# Now add components for ALL files in the workspace (even those without alerts)
-				try:
-					from ...config import discover_all_files
-					import hashlib as _hash
-					from pathlib import Path as _P
-					
-					workspace = getattr(self.config, 'workspace', None)
-					if workspace:
-						all_files = discover_all_files(str(workspace), respect_gitignore=True)
-						logger.debug(f"Discovered {len(all_files)} files in workspace for component generation")
-						
-						for file_path in all_files:
-							# Normalize path and generate component ID (same logic as above)
-							try:
-								norm = file_path.replace('\\', '/')  # Normalize to forward slashes
-								comp_id = _hash.sha256(norm.encode('utf-8')).hexdigest()
-								
-								# Only add if not already present (files with alerts already have components)
-								if comp_id not in comps:
-									comps[comp_id] = {
-										'id': comp_id,
-										'type': 'generic',
-										'subPath': 'sast-generic',
-										'name': file_path,
-										"internal": True,
-										'alerts': []
-									}
-							except Exception:
-								logger.debug(f'Failed to create component for file: {file_path}', exc_info=True)
-				except Exception as e:
-					logger.debug(f'Failed to discover all workspace files: {e}', exc_info=True)
-				
-				return comps
+                        # Extract dataflow trace (available for taint-mode rules)
+                        _dataflow = (r.get("extra") or {}).get("dataflow_trace")
+                        if _dataflow:
+                            try:
 
-			# If it's already a mapping of component_id -> component, return all (not just with alerts)
-			if all(isinstance(v, dict) for v in raw_results.values()):
-				return raw_results
+                                def _fmt_trace_loc(trace_item):
+                                    """Format a dataflow trace item's location."""
+                                    if isinstance(trace_item, list):
+                                        trace_item = trace_item[0] if trace_item else {}
+                                    if not isinstance(trace_item, dict):
+                                        return {"content": "", "file": "", "line": ""}
+                                    loc = trace_item.get("location") or {}
+                                    content = trace_item.get("content", "")
+                                    path = loc.get("path", "") or ""
+                                    start_info = loc.get("start", {})
+                                    line = (
+                                        start_info.get("line", "")
+                                        if isinstance(start_info, dict)
+                                        else ""
+                                    )
+                                    return {
+                                        "content": content.strip() if content else "",
+                                        "file": path,
+                                        "line": line,
+                                    }
 
-		return {}
+                                _source = _dataflow.get("taint_source") or {}
+                                _sink = _dataflow.get("taint_sink") or {}
+                                _intermediates = _dataflow.get("intermediate_vars") or []
 
+                                _trace_data = {
+                                    "source": _fmt_trace_loc(_source),
+                                    "sink": _fmt_trace_loc(_sink),
+                                }
+                                if _intermediates:
+                                    _trace_data["intermediates"] = [
+                                        _fmt_trace_loc(v) for v in _intermediates
+                                    ]
 
+                                # Trace steps quote source lines the same way the
+                                # snippet does, so they get the same treatment.
+                                alert["props"]["dataflowTrace"] = redact_dataflow_trace(
+                                    _trace_data, credential_finding
+                                )
+                            except Exception:
+                                pass  # Skip trace if structure is unexpected
 
-	def notification_rows(self, processed_results: Dict[str, Any]) -> List[List[str]]:
-		# Legacy method - returns flat list of rows (not grouped tables)
-		# This is kept for backward compatibility
-		rows: List[List[str]] = []
-		if not processed_results:
-			return rows
-		
-		for comp in processed_results.values():
-			for a in comp.get('alerts', []):
-				props = a.get('props', {}) or {}
-				severity = a.get('severity', 'low')
-				full_path = props.get('filePath', a.get('location', {}).get('path')) or '-'
-				try:
-					from pathlib import Path
-					file_name = Path(full_path).name
-				except Exception:
-					file_name = full_path
+                        # Auto-generate reference URLs from CWE / OWASP IDs
+                        _references = []
+                        if isinstance(_cwe, str) and _cwe.startswith("CWE-"):
+                            _cwe_num = _cwe.split("-", 1)[1]
+                            _references.append(
+                                {
+                                    "title": _cwe,
+                                    "url": f"https://cwe.mitre.org/data/definitions/{_cwe_num}.html",
+                                }
+                            )
+                        if isinstance(_owasp, str) and _owasp:
+                            # Extract category code (e.g. "A03" from "A03:2021")
+                            _owasp_code = _owasp.split(":")[0] if ":" in _owasp else _owasp
+                            _references.append(
+                                {
+                                    "title": f"OWASP Top 10 {_owasp}",
+                                    "url": f"https://owasp.org/Top10/{_owasp_code}/",
+                                }
+                            )
+                        if isinstance(_rule_refs, list):
+                            for _ref in _rule_refs:
+                                if isinstance(_ref, str):
+                                    _references.append({"title": _ref, "url": _ref})
+                                elif isinstance(_ref, dict):
+                                    _references.append(_ref)
+                        if _references:
+                            alert["props"]["references"] = _references
 
-				row = [
-					props.get('ruleId', a.get('title', '')),
-					severity,
-					file_name,
-					full_path,
-					f"{props.get('startLine','')}-{props.get('endLine','')}",
-					props.get('codeSnippet','') or ''
-				]
-				rows.append(row)
+                        # Build detailedReport markdown blob
+                        _report_parts = []
+                        _report_parts.append(f"## {check_id}\n")
+                        if message:
+                            _report_parts.append(f"**Description:** {message}\n")
+                        # Location + code snippet
+                        _loc_line = f"**Location:** `{normalized_path}`"
+                        if start and end:
+                            _loc_line += (
+                                f" (lines {start}\u2013{end})"
+                                if start != end
+                                else f" (line {start})"
+                            )
+                        elif start:
+                            _loc_line += f" (line {start})"
+                        _report_parts.append(_loc_line + "\n")
+                        if code_snippet:
+                            _report_parts.append(f"```\n{code_snippet.rstrip()}\n```\n")
+                        # Severity & confidence
+                        _conf = alert["props"].get("confidence", "")
+                        _sev_line = f"**Severity:** {sev_label}"
+                        if _conf:
+                            _sev_line += f" | **Confidence:** {_conf}"
+                        _report_parts.append(_sev_line + "\n")
+                        # CWE explainer from catalog
+                        if _cwe_info and _cwe_info.get("description"):
+                            _report_parts.append(
+                                f"**What is {_cwe}?** {_cwe_info['description']}\n"
+                            )
+                        # Data Flow section (only for taint-mode rules with traces)
+                        if _dataflow and alert["props"].get("dataflowTrace"):
+                            _trace = alert["props"]["dataflowTrace"]
+                            _flow_parts = ["### Data Flow\n"]
+                            _src = _trace.get("source", {})
+                            if _src.get("content"):
+                                _src_loc = (
+                                    f"`{_src['file']}:{_src['line']}`"
+                                    if _src.get("file") and _src.get("line")
+                                    else ""
+                                )
+                                _flow_parts.append(
+                                    f"1. **Source** {_src_loc}:\n   ```\n   {_src['content']}\n   ```\n"
+                                )
+                            for i, _inter in enumerate(_trace.get("intermediates", []), 1):
+                                if _inter.get("content"):
+                                    _inter_loc = (
+                                        f"`{_inter['file']}:{_inter['line']}`"
+                                        if _inter.get("file") and _inter.get("line")
+                                        else ""
+                                    )
+                                    _flow_parts.append(
+                                        f"{i + 1}. **Intermediate** {_inter_loc}:\n   ```\n   {_inter['content']}\n   ```\n"
+                                    )
+                            _snk = _trace.get("sink", {})
+                            if _snk.get("content"):
+                                _snk_loc = (
+                                    f"`{_snk['file']}:{_snk['line']}`"
+                                    if _snk.get("file") and _snk.get("line")
+                                    else ""
+                                )
+                                _step = len(_trace.get("intermediates", [])) + 2
+                                _flow_parts.append(
+                                    f"{_step}. **Sink** {_snk_loc}:\n   ```\n   {_snk['content']}\n   ```\n"
+                                )
+                            if len(_flow_parts) > 1:  # more than just the heading
+                                _report_parts.extend(_flow_parts)
+                        # CWE / OWASP references
+                        if _cwe or _owasp:
+                            _ref_items = []
+                            if _cwe and isinstance(_cwe, str) and _cwe.startswith("CWE-"):
+                                _cwe_num = _cwe.split("-", 1)[1]
+                                _ref_items.append(
+                                    f"[{_cwe}](https://cwe.mitre.org/data/definitions/{_cwe_num}.html)"
+                                )
+                            elif _cwe:
+                                _ref_items.append(str(_cwe))
+                            if _owasp:
+                                _owasp_code = _owasp.split(":")[0] if ":" in _owasp else _owasp
+                                _ref_items.append(
+                                    f"[OWASP Top 10 {_owasp}](https://owasp.org/Top10/{_owasp_code}/)"
+                                )
+                            _report_parts.append("**References:** " + " | ".join(_ref_items) + "\n")
+                        # Remediation
+                        if _fix:
+                            _report_parts.append(f"**Remediation:** {_fix}\n")
 
-		return rows
-	
-	def generate_notifications(self, components: List[Dict[str, Any]]) -> Dict[str, List[Dict[str, str]]]:
-		"""Generate pre-formatted notifications for all notifier types.
-		
-		Args:
-			components: List of component dictionaries with alerts
-			
-		Returns:
-			Dictionary mapping notifier keys to lists of notification dictionaries
-		"""
-		if not components:
-			return {}
-		
-		# Create component mapping for compatibility with connector-specific formatters
-		comps_map = {c.get('id') or c.get('name') or str(id(c)): c for c in components}
-		
-		# Get all alerts grouped by subtype, with severity filtering
-		groups: Dict[str, List[Dict[str, Any]]] = {}
-		for c in comps_map.values():
-			for a in c.get('alerts', []):
-				# Skip suppressed alerts. A rule disabled via *_disabled_rules or
-				# matched by a local SAST ignore override is forced to action
-				# 'ignore' and tagged with an actionReason by the normalizer. Gate
-				# on that explicit reason rather than action == 'ignore', because
-				# 'ignore' is also the default action the normalizer derives for
-				# low-severity findings -- those should still notify when a user
-				# opts in to low severities. Suppressed alerts still ship in the
-				# uploaded facts; this only gates notifications.
-				if (a.get('actionReason') or '') in ('disabled_rule', 'sast_ignore_override'):
-					continue
+                        alert["props"]["detailedReport"] = {
+                            "content-type": "text/markdown",
+                            "content": "\n".join(_report_parts),
+                        }
 
-				# Filter by severity - only include alerts that match allowed severities
-				alert_severity = (a.get('severity') or '').strip().lower()
-				if alert_severity and hasattr(self, 'allowed_severities') and alert_severity not in self.allowed_severities:
-					continue  # Skip this alert - severity not enabled
-				
-				st = a.get('subType') or a.get('subtype') or 'sast-generic'
-				groups.setdefault(st, []).append({'component': c, 'alert': a})
-		
-		if not groups:
-			return {}
-		
-		# Build notifications for each notifier type using OpenGrep-specific modules
-		notifications_by_notifier = {}
-		notifications_by_notifier['github_pr'] = github_pr.format_notifications(groups, config=self.config)
-		notifications_by_notifier['slack'] = slack.format_notifications(groups)
-		notifications_by_notifier['msteams'] = ms_teams.format_notifications(groups)
-		notifications_by_notifier['ms_sentinel'] = ms_sentinel.format_notifications(groups)
-		notifications_by_notifier['sumologic'] = sumologic.format_notifications(groups)
-		notifications_by_notifier['json'] = json_notifier.format_notifications(groups)
-		notifications_by_notifier['console'] = console.format_notifications(groups)
-		notifications_by_notifier['jira'] = jira.format_notifications(groups)
-		notifications_by_notifier['webhook'] = webhook.format_notifications(groups)
-		
-		return notifications_by_notifier
+                        # Determine a more specific subtype when possible.
+                        # Prefer file extension, then check_id naming conventions.
+                        detected_subtype = None
+                        try:
+                            from pathlib import Path as _P
+
+                            ext = (_P(normalized_path).suffix or "").lower()
+                            if ext == ".py" or (
+                                isinstance(check_id, str) and check_id.startswith("python-")
+                            ):
+                                detected_subtype = "sast-python"
+                            elif ext in (".js", ".ts") or (
+                                isinstance(check_id, str) and check_id.startswith("js-")
+                            ):
+                                detected_subtype = "sast-javascript"
+                            elif ext == ".go" or (
+                                isinstance(check_id, str) and check_id.startswith("go-")
+                            ):
+                                detected_subtype = "sast-golang"
+                        except Exception:
+                            detected_subtype = None
+
+                        # Provide required top-level classification fields
+                        # SAST findings should be classified as vulnerabilities by default
+                        alert.setdefault("category", "vulnerability")
+                        # Ensure generatedBy indicates the originating opengrep flavor
+                        try:
+                            # detected_subtype may be like 'sast-python' or 'sast-javascript'
+                            if detected_subtype:
+                                # Map 'sast-python' -> 'opengrep-python'
+                                gen = detected_subtype.replace("sast-", "opengrep-")
+                            else:
+                                gen = "sast-generic"
+                            # Force the generatedBy to the opengrep flavor so
+                            # notifiers can attribute findings correctly.
+                            alert["generatedBy"] = gen
+                        except Exception:
+                            alert["generatedBy"] = "opengrep"
+                        if detected_subtype:
+                            alert["subType"] = detected_subtype
+                        else:
+                            alert.setdefault("subType", "sast-generic")
+
+                        # Build component ID from normalized path
+                        try:
+                            import hashlib as _hash
+
+                            comp_id = _hash.sha256(normalized_path.encode("utf-8")).hexdigest()
+                        except Exception:
+                            comp_id = normalized_path
+
+                        if comp_id not in comps:
+                            comps[comp_id] = {
+                                "id": comp_id,
+                                "type": "generic",
+                                "subPath": detected_subtype,
+                                "name": normalized_path,
+                                "internal": True,
+                                "alerts": [],
+                            }
+
+                        # Normalize alert action based on disabled rules before adding to component
+                        from ..normalizer import _normalize_alert
+
+                        try:
+                            alert = _normalize_alert(alert, connector=self)
+                        except Exception:
+                            logger.debug("Failed to normalize alert action", exc_info=True)
+
+                        comps[comp_id]["alerts"].append(alert)
+                    except Exception:
+                        logger.debug(
+                            "Failed to convert single opengrep result to alert", exc_info=True
+                        )
+
+                # Now add components for ALL files in the workspace (even those without alerts)
+                try:
+                    import hashlib as _hash
+                    from pathlib import Path as _P
+
+                    from ...config import discover_all_files
+
+                    workspace = getattr(self.config, "workspace", None)
+                    if workspace:
+                        all_files = discover_all_files(str(workspace), respect_gitignore=True)
+                        logger.debug(
+                            f"Discovered {len(all_files)} files in workspace for component generation"
+                        )
+
+                        for file_path in all_files:
+                            # Normalize path and generate component ID (same logic as above)
+                            try:
+                                norm = file_path.replace("\\", "/")  # Normalize to forward slashes
+                                comp_id = _hash.sha256(norm.encode("utf-8")).hexdigest()
+
+                                # Only add if not already present (files with alerts already have components)
+                                if comp_id not in comps:
+                                    comps[comp_id] = {
+                                        "id": comp_id,
+                                        "type": "generic",
+                                        "subPath": "sast-generic",
+                                        "name": file_path,
+                                        "internal": True,
+                                        "alerts": [],
+                                    }
+                            except Exception:
+                                logger.debug(
+                                    f"Failed to create component for file: {file_path}",
+                                    exc_info=True,
+                                )
+                except Exception as e:
+                    logger.debug(f"Failed to discover all workspace files: {e}", exc_info=True)
+
+                return comps
+
+            # If it's already a mapping of component_id -> component, return all (not just with alerts)
+            if all(isinstance(v, dict) for v in raw_results.values()):
+                return raw_results
+
+        return {}
+
+    def notification_rows(self, processed_results: dict[str, Any]) -> list[list[str]]:
+        # Legacy method - returns flat list of rows (not grouped tables)
+        # This is kept for backward compatibility
+        rows: list[list[str]] = []
+        if not processed_results:
+            return rows
+
+        for comp in processed_results.values():
+            for a in comp.get("alerts", []):
+                props = a.get("props", {}) or {}
+                severity = a.get("severity", "low")
+                full_path = props.get("filePath", a.get("location", {}).get("path")) or "-"
+                try:
+                    from pathlib import Path
+
+                    file_name = Path(full_path).name
+                except Exception:
+                    file_name = full_path
+
+                row = [
+                    props.get("ruleId", a.get("title", "")),
+                    severity,
+                    file_name,
+                    full_path,
+                    f"{props.get('startLine', '')}-{props.get('endLine', '')}",
+                    props.get("codeSnippet", "") or "",
+                ]
+                rows.append(row)
+
+        return rows
+
+    def generate_notifications(
+        self, components: list[dict[str, Any]]
+    ) -> dict[str, list[dict[str, str]]]:
+        """Generate pre-formatted notifications for all notifier types.
+
+        Args:
+                components: List of component dictionaries with alerts
+
+        Returns:
+                Dictionary mapping notifier keys to lists of notification dictionaries
+        """
+        if not components:
+            return {}
+
+        # Create component mapping for compatibility with connector-specific formatters
+        comps_map = {c.get("id") or c.get("name") or str(id(c)): c for c in components}
+
+        # Get all alerts grouped by subtype, with severity filtering
+        groups: dict[str, list[dict[str, Any]]] = {}
+        for c in comps_map.values():
+            for a in c.get("alerts", []):
+                # Skip suppressed alerts. A rule disabled via *_disabled_rules or
+                # matched by a local SAST ignore override is forced to action
+                # 'ignore' and tagged with an actionReason by the normalizer. Gate
+                # on that explicit reason rather than action == 'ignore', because
+                # 'ignore' is also the default action the normalizer derives for
+                # low-severity findings -- those should still notify when a user
+                # opts in to low severities. Suppressed alerts still ship in the
+                # uploaded facts; this only gates notifications.
+                if (a.get("actionReason") or "") in ("disabled_rule", "sast_ignore_override"):
+                    continue
+
+                # Filter by severity - only include alerts that match allowed severities
+                alert_severity = (a.get("severity") or "").strip().lower()
+                if (
+                    alert_severity
+                    and hasattr(self, "allowed_severities")
+                    and alert_severity not in self.allowed_severities
+                ):
+                    continue  # Skip this alert - severity not enabled
+
+                st = a.get("subType") or a.get("subtype") or "sast-generic"
+                groups.setdefault(st, []).append({"component": c, "alert": a})
+
+        if not groups:
+            return {}
+
+        # Build notifications for each notifier type using OpenGrep-specific modules
+        notifications_by_notifier = {}
+        notifications_by_notifier["github_pr"] = github_pr.format_notifications(
+            groups, config=self.config
+        )
+        notifications_by_notifier["slack"] = slack.format_notifications(groups)
+        notifications_by_notifier["msteams"] = ms_teams.format_notifications(groups)
+        notifications_by_notifier["ms_sentinel"] = ms_sentinel.format_notifications(groups)
+        notifications_by_notifier["sumologic"] = sumologic.format_notifications(groups)
+        notifications_by_notifier["json"] = json_notifier.format_notifications(groups)
+        notifications_by_notifier["console"] = console.format_notifications(groups)
+        notifications_by_notifier["jira"] = jira.format_notifications(groups)
+        notifications_by_notifier["webhook"] = webhook.format_notifications(groups)
+
+        return notifications_by_notifier

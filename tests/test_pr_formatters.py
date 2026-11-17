@@ -8,21 +8,22 @@ These tests do NOT hit any network — they use the same mock config and
 fixture data as scripts/preview_pr_comments.py.
 """
 
-import pytest
 import re
 
 # Re-use the shared mock config and fixtures from the preview script
 import sys
 from pathlib import Path
 
+import pytest
+
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 from scripts.preview_pr_comments import (
-    make_mock_config,
     OPENGREP_FIXTURES,
-    TRUFFLEHOG_FIXTURES,
     TIER1_FIXTURES,
-    _trivy_image_fixture,
+    TRUFFLEHOG_FIXTURES,
     _trivy_dockerfile_fixture,
+    _trivy_image_fixture,
+    make_mock_config,
 )
 
 
@@ -40,6 +41,7 @@ def config_no_links():
 # Shared assertions
 # ---------------------------------------------------------------------------
 
+
 def assert_section_markers(content: str, section_id: str):
     """Every formatter output must have matching start/end HTML comment markers."""
     assert f"<!-- {section_id} start -->" in content
@@ -49,7 +51,7 @@ def assert_section_markers(content: str, section_id: str):
 def assert_has_logo(content: str):
     """Logo image tag must be present in the H2 header."""
     assert '<img src="' in content
-    assert 'socket-logo.png' in content
+    assert "socket-logo.png" in content
     assert 'width="24"' in content
 
 
@@ -70,15 +72,18 @@ def assert_severity_emojis(content: str, expected_severities: list):
 # OpenGrep SAST
 # ---------------------------------------------------------------------------
 
+
 class TestOpenGrepFormatter:
     def test_returns_one_result_per_subtype(self, config):
         from socket_basics.core.connector.opengrep.github_pr import format_notifications
+
         results = format_notifications(OPENGREP_FIXTURES, config=config)
         assert len(results) == 2  # sast-javascript + sast-python
         assert all("title" in r and "content" in r for r in results)
 
     def test_section_markers(self, config):
         from socket_basics.core.connector.opengrep.github_pr import format_notifications
+
         results = format_notifications(OPENGREP_FIXTURES, config=config)
         for result in results:
             content = result["content"]
@@ -88,6 +93,7 @@ class TestOpenGrepFormatter:
 
     def test_logo_and_scan_link(self, config):
         from socket_basics.core.connector.opengrep.github_pr import format_notifications
+
         results = format_notifications(OPENGREP_FIXTURES, config=config)
         for result in results:
             assert_has_logo(result["content"])
@@ -95,6 +101,7 @@ class TestOpenGrepFormatter:
 
     def test_summary_section(self, config):
         from socket_basics.core.connector.opengrep.github_pr import format_notifications
+
         results = format_notifications(OPENGREP_FIXTURES, config=config)
         js_content = next(r["content"] for r in results if "JavaScript" in r["title"])
         assert "### Summary" in js_content
@@ -103,6 +110,7 @@ class TestOpenGrepFormatter:
 
     def test_collapsible_sections(self, config):
         from socket_basics.core.connector.opengrep.github_pr import format_notifications
+
         results = format_notifications(OPENGREP_FIXTURES, config=config)
         js_content = next(r["content"] for r in results if "JavaScript" in r["title"])
         assert "<details" in js_content
@@ -112,6 +120,7 @@ class TestOpenGrepFormatter:
 
     def test_clickable_file_links(self, config):
         from socket_basics.core.connector.opengrep.github_pr import format_notifications
+
         results = format_notifications(OPENGREP_FIXTURES, config=config)
         js_content = next(r["content"] for r in results if "JavaScript" in r["title"])
         assert "https://github.com/SocketDev/example-app/blob/" in js_content
@@ -121,6 +130,7 @@ class TestOpenGrepFormatter:
 
     def test_code_fencing_with_language(self, config):
         from socket_basics.core.connector.opengrep.github_pr import format_notifications
+
         results = format_notifications(OPENGREP_FIXTURES, config=config)
         js_content = next(r["content"] for r in results if "JavaScript" in r["title"])
         # .ts files -> typescript fencing
@@ -128,6 +138,7 @@ class TestOpenGrepFormatter:
 
     def test_no_links_when_repo_empty(self, config_no_links):
         from socket_basics.core.connector.opengrep.github_pr import format_notifications
+
         results = format_notifications(OPENGREP_FIXTURES, config=config_no_links)
         js_content = next(r["content"] for r in results if "JavaScript" in r["title"])
         assert "https://github.com" not in js_content
@@ -135,6 +146,7 @@ class TestOpenGrepFormatter:
     def test_clean_filepath_no_workspace_prefix(self, config):
         """Display paths must not contain /github/workspace/ prefixes."""
         from socket_basics.core.connector.opengrep.github_pr import format_notifications
+
         # Inject a workspace-prefixed path
         fixture = {
             "sast-javascript": [
@@ -164,20 +176,24 @@ class TestOpenGrepFormatter:
 # Trivy (image / vuln)
 # ---------------------------------------------------------------------------
 
+
 class TestTrivyImageFormatter:
     def test_returns_single_result(self, config):
         from socket_basics.core.connector.trivy.github_pr import format_notifications
+
         results = format_notifications(_trivy_image_fixture(), scan_type="image", config=config)
         assert len(results) == 1
         assert results[0]["title"] == "Socket Container Scan"
 
     def test_section_markers(self, config):
         from socket_basics.core.connector.trivy.github_pr import format_notifications
+
         results = format_notifications(_trivy_image_fixture(), scan_type="image", config=config)
         assert_section_markers(results[0]["content"], "trivy-container")
 
     def test_logo_and_scan_link(self, config):
         from socket_basics.core.connector.trivy.github_pr import format_notifications
+
         results = format_notifications(_trivy_image_fixture(), scan_type="image", config=config)
         assert_has_logo(results[0]["content"])
         assert_has_scan_link(results[0]["content"])
@@ -185,20 +201,26 @@ class TestTrivyImageFormatter:
     def test_cve_links_use_html_in_summary(self, config):
         """CVE links inside <summary> must use HTML <a> tags, not markdown."""
         from socket_basics.core.connector.trivy.github_pr import format_notifications
+
         results = format_notifications(_trivy_image_fixture(), scan_type="image", config=config)
         content = results[0]["content"]
-        assert '<a href="https://nvd.nist.gov/vuln/detail/CVE-2021-23337">CVE-2021-23337</a>' in content
+        assert (
+            '<a href="https://nvd.nist.gov/vuln/detail/CVE-2021-23337">CVE-2021-23337</a>'
+            in content
+        )
         # Should NOT have markdown link syntax inside <summary>
         assert "[CVE-2021-23337](https://nvd.nist.gov" not in content
 
     def test_cvss_scores(self, config):
         from socket_basics.core.connector.trivy.github_pr import format_notifications
+
         results = format_notifications(_trivy_image_fixture(), scan_type="image", config=config)
         content = results[0]["content"]
         assert "CVSS 7.2" in content
 
     def test_expandable_panels(self, config):
         from socket_basics.core.connector.trivy.github_pr import format_notifications
+
         results = format_notifications(_trivy_image_fixture(), scan_type="image", config=config)
         content = results[0]["content"]
         assert "<details>" in content
@@ -211,16 +233,23 @@ class TestTrivyImageFormatter:
 # Trivy Dockerfile
 # ---------------------------------------------------------------------------
 
+
 class TestTrivyDockerfileFormatter:
     def test_returns_single_result(self, config):
         from socket_basics.core.connector.trivy.github_pr import format_notifications
-        results = format_notifications(_trivy_dockerfile_fixture(), scan_type="dockerfile", config=config)
+
+        results = format_notifications(
+            _trivy_dockerfile_fixture(), scan_type="dockerfile", config=config
+        )
         assert len(results) == 1
         assert results[0]["title"] == "Socket Dockerfile Scan"
 
     def test_table_format(self, config):
         from socket_basics.core.connector.trivy.github_pr import format_notifications
-        results = format_notifications(_trivy_dockerfile_fixture(), scan_type="dockerfile", config=config)
+
+        results = format_notifications(
+            _trivy_dockerfile_fixture(), scan_type="dockerfile", config=config
+        )
         content = results[0]["content"]
         # Dockerfile scan uses a markdown table
         assert "| Rule ID |" in content
@@ -232,20 +261,24 @@ class TestTrivyDockerfileFormatter:
 # TruffleHog
 # ---------------------------------------------------------------------------
 
+
 class TestTruffleHogFormatter:
     def test_returns_single_result(self, config):
         from socket_basics.core.connector.trufflehog.github_pr import format_notifications
+
         results = format_notifications(TRUFFLEHOG_FIXTURES, config=config)
         assert len(results) == 1
         assert results[0]["title"] == "Socket Secret Scanning"
 
     def test_section_markers(self, config):
         from socket_basics.core.connector.trufflehog.github_pr import format_notifications
+
         results = format_notifications(TRUFFLEHOG_FIXTURES, config=config)
         assert_section_markers(results[0]["content"], "trufflehog-secrets")
 
     def test_table_with_expected_columns(self, config):
         from socket_basics.core.connector.trufflehog.github_pr import format_notifications
+
         results = format_notifications(TRUFFLEHOG_FIXTURES, config=config)
         content = results[0]["content"]
         assert "| Detector |" in content
@@ -256,6 +289,7 @@ class TestTruffleHogFormatter:
 
     def test_verified_status(self, config):
         from socket_basics.core.connector.trufflehog.github_pr import format_notifications
+
         results = format_notifications(TRUFFLEHOG_FIXTURES, config=config)
         content = results[0]["content"]
         assert "✅ **VERIFIED**" in content
@@ -263,6 +297,7 @@ class TestTruffleHogFormatter:
 
     def test_clickable_file_links(self, config):
         from socket_basics.core.connector.trufflehog.github_pr import format_notifications
+
         results = format_notifications(TRUFFLEHOG_FIXTURES, config=config)
         content = results[0]["content"]
         assert "config/deploy.env:12" in content
@@ -270,6 +305,7 @@ class TestTruffleHogFormatter:
 
     def test_redacted_secrets(self, config):
         from socket_basics.core.connector.trufflehog.github_pr import format_notifications
+
         results = format_notifications(TRUFFLEHOG_FIXTURES, config=config)
         content = results[0]["content"]
         assert "`AKIA****EXAMPLE`" in content
@@ -279,20 +315,24 @@ class TestTruffleHogFormatter:
 # Socket Tier 1
 # ---------------------------------------------------------------------------
 
+
 class TestTier1Formatter:
     def test_returns_single_result(self, config):
         from socket_basics.core.connector.socket_tier1.github_pr import format_notifications
+
         results = format_notifications(TIER1_FIXTURES, config=config)
         assert len(results) == 1
         assert results[0]["title"] == "Socket Security Tier 1"
 
     def test_section_markers(self, config):
         from socket_basics.core.connector.socket_tier1.github_pr import format_notifications
+
         results = format_notifications(TIER1_FIXTURES, config=config)
         assert_section_markers(results[0]["content"], "socket-tier1")
 
     def test_severity_summary(self, config):
         from socket_basics.core.connector.socket_tier1.github_pr import format_notifications
+
         results = format_notifications(TIER1_FIXTURES, config=config)
         content = results[0]["content"]
         assert "### Summary" in content
@@ -301,6 +341,7 @@ class TestTier1Formatter:
 
     def test_reachability_grouping(self, config):
         from socket_basics.core.connector.socket_tier1.github_pr import format_notifications
+
         results = format_notifications(TIER1_FIXTURES, config=config)
         content = results[0]["content"]
         assert "**Reachable**" in content
@@ -309,12 +350,14 @@ class TestTier1Formatter:
 
     def test_cve_links(self, config):
         from socket_basics.core.connector.socket_tier1.github_pr import format_notifications
+
         results = format_notifications(TIER1_FIXTURES, config=config)
         content = results[0]["content"]
         assert "[CVE-2021-23337](https://nvd.nist.gov/vuln/detail/CVE-2021-23337)" in content
 
     def test_trace_with_links(self, config):
         from socket_basics.core.connector.socket_tier1.github_pr import format_notifications
+
         results = format_notifications(TIER1_FIXTURES, config=config)
         content = results[0]["content"]
         # Trace should contain file links
@@ -323,6 +366,7 @@ class TestTier1Formatter:
 
     def test_collapsible_purl_sections(self, config):
         from socket_basics.core.connector.socket_tier1.github_pr import format_notifications
+
         results = format_notifications(TIER1_FIXTURES, config=config)
         content = results[0]["content"]
         assert "<details" in content
@@ -333,26 +377,31 @@ class TestTier1Formatter:
 # Cross-cutting: empty input handling
 # ---------------------------------------------------------------------------
 
+
 class TestEmptyInputs:
     def test_opengrep_empty_groups(self, config):
         from socket_basics.core.connector.opengrep.github_pr import format_notifications
+
         results = format_notifications({}, config=config)
         assert results == []
 
     def test_trivy_empty_mapping(self, config):
         from socket_basics.core.connector.trivy.github_pr import format_notifications
+
         results = format_notifications({}, scan_type="image", config=config)
         assert len(results) == 1
         assert "No vulnerabilities found" in results[0]["content"]
 
     def test_trufflehog_empty_mapping(self, config):
         from socket_basics.core.connector.trufflehog.github_pr import format_notifications
+
         results = format_notifications({}, config=config)
         assert len(results) == 1
         assert "No secrets detected" in results[0]["content"]
 
     def test_tier1_empty_list(self, config):
         from socket_basics.core.connector.socket_tier1.github_pr import format_notifications
+
         results = format_notifications([], config=config)
         assert len(results) == 1
         assert "No reachability issues found" in results[0]["content"]
@@ -361,6 +410,7 @@ class TestEmptyInputs:
 # ---------------------------------------------------------------------------
 # pr_comment_collapse_all: close the collapsible sections, critical included
 # ---------------------------------------------------------------------------
+
 
 @pytest.fixture
 def config_collapse_all():
@@ -377,12 +427,14 @@ class TestCollapseAll:
 
     def test_opengrep_critical_section_is_expanded_by_default(self, config):
         from socket_basics.core.connector.opengrep.github_pr import format_notifications
+
         results = format_notifications(OPENGREP_FIXTURES, config=config)
         js_content = next(r["content"] for r in results if "JavaScript" in r["title"])
         assert "<details open>" in js_content
 
     def test_opengrep_collapses_critical_section_when_enabled(self, config_collapse_all):
         from socket_basics.core.connector.opengrep.github_pr import format_notifications
+
         results = format_notifications(OPENGREP_FIXTURES, config=config_collapse_all)
         js_content = next(r["content"] for r in results if "JavaScript" in r["title"])
         assert "<details open>" not in js_content
@@ -391,11 +443,13 @@ class TestCollapseAll:
 
     def test_tier1_critical_section_is_expanded_by_default(self, config):
         from socket_basics.core.connector.socket_tier1.github_pr import format_notifications
+
         content = format_notifications(TIER1_FIXTURES, config=config)[0]["content"]
         assert "<details open>" in content
 
     def test_tier1_collapses_critical_section_when_enabled(self, config_collapse_all):
         from socket_basics.core.connector.socket_tier1.github_pr import format_notifications
+
         content = format_notifications(TIER1_FIXTURES, config=config_collapse_all)[0]["content"]
         assert "<details open>" not in content
         assert "<details>" in content
@@ -413,17 +467,25 @@ class TestCollapseAllScope:
 
     def _trufflehog(self, config):
         from socket_basics.core.connector.trufflehog.github_pr import format_notifications
+
         return format_notifications(TRUFFLEHOG_FIXTURES, config=config)
 
     def _trivy_dockerfile(self, config):
         from socket_basics.core.connector.trivy.github_pr import format_notifications
-        return format_notifications(_trivy_dockerfile_fixture(),
-                                    item_name="Dockerfile", scan_type="dockerfile", config=config)
+
+        return format_notifications(
+            _trivy_dockerfile_fixture(),
+            item_name="Dockerfile",
+            scan_type="dockerfile",
+            config=config,
+        )
 
     def _trivy_image(self, config):
         from socket_basics.core.connector.trivy.github_pr import format_notifications
-        return format_notifications(_trivy_image_fixture(),
-                                    item_name="example-app:latest", scan_type="image", config=config)
+
+        return format_notifications(
+            _trivy_image_fixture(), item_name="example-app:latest", scan_type="image", config=config
+        )
 
     def test_trufflehog_output_is_byte_identical(self, config, config_collapse_all):
         default = [r["content"] for r in self._trufflehog(config)]
@@ -452,6 +514,7 @@ class TestCollapseAllScope:
     def test_sast_keeps_one_visible_summary_row_per_file(self, config_collapse_all):
         """A closed section is still a row on screen, not nothing."""
         from socket_basics.core.connector.opengrep.github_pr import format_notifications
+
         results = format_notifications(OPENGREP_FIXTURES, config=config_collapse_all)
         js_content = next(r["content"] for r in results if "JavaScript" in r["title"])
         assert js_content.count("<summary>") == 2
@@ -464,22 +527,26 @@ class TestFeatureFlagCoercion:
 
     def test_string_true_enables_collapse_all(self):
         from socket_basics.core.notification.github_pr_helpers import get_feature_flags
+
         flags = get_feature_flags(make_mock_config(collapse_all="true"))
         assert flags["collapse_all"] is True
 
     def test_string_false_does_not_enable_collapse_all(self):
         from socket_basics.core.notification.github_pr_helpers import get_feature_flags
+
         flags = get_feature_flags(make_mock_config(collapse_all="false"))
         assert flags["collapse_all"] is False
 
     def test_string_false_disables_links(self):
         from socket_basics.core.notification.github_pr_helpers import get_feature_flags
+
         config = make_mock_config()
         config["pr_comment_links_enabled"] = "false"
         assert get_feature_flags(config)["enable_links"] is False
 
     def test_missing_config_keeps_documented_defaults(self):
         from socket_basics.core.notification.github_pr_helpers import get_feature_flags
+
         flags = get_feature_flags(None)
         assert flags["collapse_all"] is False
         assert flags["collapse_non_critical"] is True
@@ -496,6 +563,7 @@ class TestActionInputCoercion:
 
     def _load(self, monkeypatch, **env):
         from socket_basics.core.config import load_config_from_env
+
         for name in (
             "INPUT_PR_COMMENT_ENABLED",
             "INPUT_PR_COMMENT_COLLAPSE_ALL",
@@ -555,7 +623,7 @@ class TestNotifierCliArgsReachTheConfig:
     """
 
     def _config(self, monkeypatch, tmp_path, *cli_args, **env):
-        from socket_basics.core.config import parse_cli_args, create_config_from_args
+        from socket_basics.core.config import create_config_from_args, parse_cli_args
 
         # A stale INPUT_* variable would decide the outcome instead of the flag.
         for name in (
@@ -569,8 +637,15 @@ class TestNotifierCliArgsReachTheConfig:
 
         # tmp_path is not a git repo, so --repo and --branch are required and no
         # git command can reach the network.
-        argv = ["--workspace", str(tmp_path), "--repo", "acme/widget",
-                "--branch", "feature-x", *cli_args]
+        argv = [
+            "--workspace",
+            str(tmp_path),
+            "--repo",
+            "acme/widget",
+            "--branch",
+            "feature-x",
+            *cli_args,
+        ]
         return create_config_from_args(parse_cli_args().parse_args(argv))
 
     def test_collapse_all_flag_lands_in_the_effective_config(self, monkeypatch, tmp_path):
@@ -600,7 +675,11 @@ class TestNotifierCliArgsReachTheConfig:
         The workflow turned links off through the environment. Copying the
         parser's value for every flag regardless would put that back to on.
         """
-        config = self._config(monkeypatch, tmp_path, "--pr-comment-collapse-all",
-                              INPUT_PR_COMMENT_LINKS_ENABLED="false")
+        config = self._config(
+            monkeypatch,
+            tmp_path,
+            "--pr-comment-collapse-all",
+            INPUT_PR_COMMENT_LINKS_ENABLED="false",
+        )
         assert config.get("pr_comment_links_enabled") is False
         assert config.get("pr_comment_collapse_all") is True

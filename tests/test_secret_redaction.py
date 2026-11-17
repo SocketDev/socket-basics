@@ -132,7 +132,7 @@ class TestScrubTokens:
     def test_ordinary_code_is_left_alone(self):
         for snippet in (
             "eval(rawConfigStr)",
-            "cursor.execute(f\"SELECT * FROM users WHERE id = {user_id}\")",
+            'cursor.execute(f"SELECT * FROM users WHERE id = {user_id}")',
             "app.use(express.static('public'))",
             "if len(password) < 8:",
         ):
@@ -146,15 +146,9 @@ class TestRedactLiterals:
         assert "51QwErTyUiOpAsDfGhJk" not in redacted
 
     def test_every_quote_style_is_covered(self):
-        assert "SuperSecret123!" not in redact_literals(
-            "const DB_PASSWORD = 'SuperSecret123!';"
-        )
-        assert "SuperSecret123!" not in redact_literals(
-            "const DB_PASSWORD = `SuperSecret123!`;"
-        )
-        assert "SuperSecret123!" not in redact_literals(
-            'DB_PASSWORD = "SuperSecret123!"'
-        )
+        assert "SuperSecret123!" not in redact_literals("const DB_PASSWORD = 'SuperSecret123!';")
+        assert "SuperSecret123!" not in redact_literals("const DB_PASSWORD = `SuperSecret123!`;")
+        assert "SuperSecret123!" not in redact_literals('DB_PASSWORD = "SuperSecret123!"')
 
     def test_escaped_quotes_inside_a_literal_do_not_end_it(self):
         redacted = redact_literals(r'key = "abc\"def SuperSecret123!"')
@@ -195,9 +189,7 @@ class TestRedactLiterals:
         assert redacted.startswith("password: ")
 
     def test_each_line_uses_the_appropriate_redaction(self):
-        redacted = redact_literals(
-            'credentials:\n  user: "admin"\n  password: hunter2'
-        )
+        redacted = redact_literals('credentials:\n  user: "admin"\n  password: hunter2')
         assert "admin" not in redacted
         assert "hunter2" not in redacted
 
@@ -293,9 +285,7 @@ class TestStatementsAndComments:
             assert "hunter2" not in redacted and "SuperSecret123!" not in redacted, line
 
     def test_the_comment_marker_survives_so_the_line_still_reads(self):
-        assert redact_literals("password = hunter2 # note").startswith(
-            "password = ******* #"
-        )
+        assert redact_literals("password = hunter2 # note").startswith("password = ******* #")
 
     def test_a_call_shaped_unquoted_value_is_masked(self):
         for line in ("password: hunter2(foo)", "password = hunter2(foo)"):
@@ -309,9 +299,9 @@ class TestMultilineAndUnterminatedLiterals:
     on another, or never close at all.
     """
 
-    TRIPLE_DOUBLE = 'PASSWORD = ' + '"' * 3 + 'hunter2\n# not a comment\n' + '"' * 3
-    TRIPLE_SINGLE = 'SQL = ' + "'" * 3 + '\nSELECT hunter2 -- inline\n' + "'" * 3
-    BACKTICK = 'password = `hunter2\n// js template\n`'
+    TRIPLE_DOUBLE = "PASSWORD = " + '"' * 3 + "hunter2\n# not a comment\n" + '"' * 3
+    TRIPLE_SINGLE = "SQL = " + "'" * 3 + "\nSELECT hunter2 -- inline\n" + "'" * 3
+    BACKTICK = "password = `hunter2\n// js template\n`"
 
     def test_a_marker_on_a_later_line_of_a_literal_is_not_a_comment(self):
         for snippet in (self.TRIPLE_DOUBLE, self.TRIPLE_SINGLE, self.BACKTICK):
@@ -325,7 +315,7 @@ class TestMultilineAndUnterminatedLiterals:
         the masking pass will cover" leaves the value untouched, because the
         pass covers only the two quotes.
         """
-        for opener in ('"' * 3, "'" * 3, 'r' + '"' * 3, "f" + "'" * 3):
+        for opener in ('"' * 3, "'" * 3, "r" + '"' * 3, "f" + "'" * 3):
             snippet = f"password = {opener}hunter2\nunterminated"
             assert "hunter2" not in redact_literals(snippet), snippet
 
@@ -438,9 +428,7 @@ class TestCredentialRuleSelection:
 
 class TestRedactSnippet:
     def test_a_credential_finding_masks_the_literal(self):
-        redacted = redact_snippet(
-            'DB_PASSWORD = "SuperSecret123!"', credential_finding=True
-        )
+        redacted = redact_snippet('DB_PASSWORD = "SuperSecret123!"', credential_finding=True)
         assert "SuperSecret123!" not in redacted
         assert "DB_PASSWORD" in redacted
 
@@ -532,9 +520,7 @@ class TestPasswordLogicRules:
         assert redacted.endswith(")")
 
     def test_a_hardcoded_comparison_value_is_masked(self):
-        redacted = redact_snippet(
-            'if user.password == "hunter2":', credential_finding=True
-        )
+        redacted = redact_snippet('if user.password == "hunter2":', credential_finding=True)
         assert "hunter2" not in redacted
         assert redacted.startswith('if user.password == "')
 
@@ -546,9 +532,7 @@ class TestPasswordLogicRules:
         assert "notes" not in redacted
 
     def test_a_literal_argument_to_a_call_is_still_masked(self):
-        redacted = redact_snippet(
-            "password = get_secret('default_pw')", credential_finding=True
-        )
+        redacted = redact_snippet("password = get_secret('default_pw')", credential_finding=True)
         assert "default_pw" not in redacted
         assert redacted.startswith("password = get_secret(")
 
@@ -562,9 +546,7 @@ class TestRedactDataflowTrace:
         """
         trace = {
             "source": {"content": 'password = "SuperSecret123!"', "file": "a.py", "line": 1},
-            "intermediates": [
-                {"content": 'tmp = "SuperSecret123!"', "file": "a.py", "line": 2}
-            ],
+            "intermediates": [{"content": 'tmp = "SuperSecret123!"', "file": "a.py", "line": 2}],
             "sink": {"content": 'connect(password="SuperSecret123!")', "file": "a.py", "line": 3},
         }
         serialized = json.dumps(redact_dataflow_trace(trace, credential_finding=True))
@@ -583,9 +565,7 @@ class TestRedactDataflowTrace:
     def test_trace_steps_are_scrubbed(self):
         trace = {
             "source": {"content": f"key = '{AWS_KEY_ID}'", "file": "a.py", "line": 1},
-            "intermediates": [
-                {"content": f"tmp = '{GITHUB_TOKEN}'", "file": "a.py", "line": 2}
-            ],
+            "intermediates": [{"content": f"tmp = '{GITHUB_TOKEN}'", "file": "a.py", "line": 2}],
             "sink": {"content": "requests.get(url, headers={'k': key})", "file": "a.py", "line": 3},
         }
         serialized = json.dumps(redact_dataflow_trace(trace))

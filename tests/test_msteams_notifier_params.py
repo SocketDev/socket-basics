@@ -1,7 +1,5 @@
-import os
-
-from socket_basics.core.notification.ms_teams_notifier import MSTeamsNotifier
 from socket_basics.core.notification.manager import NotificationManager
+from socket_basics.core.notification.ms_teams_notifier import MSTeamsNotifier
 
 
 def _base_cfg():
@@ -11,7 +9,11 @@ def _base_cfg():
                 "module_path": "socket_basics.core.notification.ms_teams_notifier",
                 "class": "MSTeamsNotifier",
                 "parameters": [
-                    {"name": "msteams_webhook_url", "env_variable": "INPUT_MSTEAMS_WEBHOOK_URL", "type": "str"},
+                    {
+                        "name": "msteams_webhook_url",
+                        "env_variable": "INPUT_MSTEAMS_WEBHOOK_URL",
+                        "type": "str",
+                    },
                 ],
             }
         }
@@ -52,7 +54,9 @@ def test_msteams_enabled_via_app_config(monkeypatch):
     monkeypatch.delenv("INPUT_MSTEAMS_WEBHOOK_URL", raising=False)
 
     cfg = _base_cfg()
-    nm = NotificationManager(cfg, app_config={"msteams_webhook_url": "https://outlook.office.com/webhook/dashboard"})
+    nm = NotificationManager(
+        cfg, app_config={"msteams_webhook_url": "https://outlook.office.com/webhook/dashboard"}
+    )
     nm.load_from_config()
 
     msteams = next(n for n in nm.notifiers if getattr(n, "name", "") == "msteams")
@@ -76,7 +80,9 @@ def test_msteams_app_config_precedence_over_env(monkeypatch):
     monkeypatch.setenv("INPUT_MSTEAMS_WEBHOOK_URL", "https://outlook.office.com/webhook/env")
 
     cfg = _base_cfg()
-    nm = NotificationManager(cfg, app_config={"msteams_webhook_url": "https://outlook.office.com/webhook/dashboard"})
+    nm = NotificationManager(
+        cfg, app_config={"msteams_webhook_url": "https://outlook.office.com/webhook/dashboard"}
+    )
     nm.load_from_config()
 
     msteams = next(n for n in nm.notifiers if getattr(n, "name", "") == "msteams")

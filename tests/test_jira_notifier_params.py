@@ -1,5 +1,5 @@
-from socket_basics.core.notification.jira_notifier import JiraNotifier
 from socket_basics.core.config import normalize_api_config
+from socket_basics.core.notification.jira_notifier import JiraNotifier
 
 
 def test_jira_notifier_reads_new_param_names():

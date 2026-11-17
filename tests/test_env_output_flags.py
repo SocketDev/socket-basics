@@ -27,7 +27,9 @@ def test_output_flags_default_off(clean_env):
     assert config["console_json_enabled"] is False
 
     explicit = load_explicit_env_config()
-    assert not any(key in explicit for key in ("verbose", "console_tabular_enabled", "console_json_enabled"))
+    assert not any(
+        key in explicit for key in ("verbose", "console_tabular_enabled", "console_json_enabled")
+    )
 
 
 def test_output_flags_read_from_input_env(clean_env):
