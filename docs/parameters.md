@@ -725,6 +725,13 @@ For a least-privilege token, grant these:
 | `full-scans:create` | Uploading results to the Socket dashboard. Socket Tier 1 also needs it to upload manifests and record the reachability scan |
 | `socket-basics:read` | Loading scanner configuration from the Socket dashboard, on Enterprise organizations. Without it on an Enterprise organization, the organization is also not discovered from the key |
 
+Scopes are grouped by their prefix, and granting a group grants every scope in
+it. The `full-scans` group covers `full-scans:create`, `full-scans:list` and
+`full-scans:delete`, so it works here but holds more than Socket Basics uses.
+`socket-basics:read` is the only scope in the `socket-basics` group, so
+selecting either one is the same token: the dashboard shows both checked, and
+the API reports the scope as `socket-basics`.
+
 The scopes each endpoint checks are listed in the
 [API reference](https://docs.socket.dev/reference). A few calls check no scope
 and work with any valid token for the organization: `GET organizations` and
@@ -736,9 +743,10 @@ or creates the repository with a separate call. The repository name travels as
 a parameter of the scan upload.
 
 The [CI/CD token setup guide](https://docs.socket.dev/docs/create-socket-api-key-for-cicd)
-is written for the Socket CLIs. Its list includes `full-scans:create`, so a
-token made from it can upload results, but it does not include
-`socket-basics:read`. Add that scope to load dashboard configuration.
+lists scopes for several Socket tools. Socket Basics needs only the two above.
+A token created for the Socket CLIs can upload results if it has
+`full-scans:create`. Check that it also has `socket-basics:read` before relying
+on dashboard configuration.
 
 #### API calls by run type
 
@@ -755,12 +763,15 @@ This step reads the key from `SOCKET_SECURITY_API_KEY`,
 only as `SOCKET_API_KEY` or `INPUT_SOCKET_API_KEY` is used for uploads and
 Tier 1 but skips this step.
 
-If either call fails, the log shows `Error loading Socket Basics config` and
-the run continues with the environment and workflow inputs alone. Nothing from
-this step is kept, including the discovered organization, so set `SOCKET_ORG`
-when the key lacks `socket-basics:read`. When the settings call is denied for a
-missing scope, the error logged just before it starts with
-`Insufficient permissions`.
+If either call fails, the log shows one warning,
+`Error loading Socket Basics config: ...`, and the run continues with the
+environment and workflow inputs alone. When the settings call is denied for a
+missing scope, that warning reads
+`Error loading Socket Basics config: Insufficient permissions`, followed by the
+request path. Nothing from this step is kept, including the discovered
+organization, so on an Enterprise organization set `SOCKET_ORG` when the key
+lacks `socket-basics:read`. On other plans the settings call is never made, and
+the organization is discovered without that scope.
 
 **Result upload**, after the scanners finish:
 
@@ -783,7 +794,7 @@ these calls with the same token:
 |:---|:---|:---|
 | `GET organizations` | none | Check that the organization is on an Enterprise plan |
 | `GET orgs/{org}/supported-files` | none | Fetch the supported manifest file patterns |
-| `POST orgs/{org}/coana-cli/artifacts` | none | Find the reachability engine download. Only called when the engine is not cached, which is every run in a fresh container (see [Network access for Tier 1](#network-access-for-tier-1)) |
+| `POST orgs/{org}/coana-cli/artifacts` | `full-scans:create` or `fixes:list` | Find the reachability engine download. Only called when the engine is not cached, which is every run in a fresh container (see [Network access for Tier 1](#network-access-for-tier-1)) |
 | `POST orgs/{org}/upload-manifest-files` | `full-scans:create` | Upload the manifests for analysis |
 | `POST tier1-reachability-scan/finalize` | `full-scans:create` | Mark the reachability scan done. A failure here only logs a warning |
 

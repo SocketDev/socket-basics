@@ -210,8 +210,9 @@ Include these in your workflow's `jobs.<job_id>.permissions` section.
 - Without it the scan still runs and comments on the PR, but nothing reaches the Socket dashboard.
 
 **`socket_org`** (optional)
-- Discovered from the API key when the key has the `socket-basics:read` scope. Set it
-  explicitly when configuring the scan from `with:` inputs instead of the dashboard.
+- Discovered from the API key. On an Enterprise organization, discovery also needs
+  the `socket-basics:read` scope. Set it explicitly when configuring the scan from
+  `with:` inputs instead of the dashboard.
 - Outside the action the same value is `SOCKET_ORG` or `--socket-org`. See the
   [name mapping](parameters.md#name-mapping) for the equivalents of every input.
 
@@ -1111,9 +1112,9 @@ env:
 
 **Solutions:**
 1. Provide `socket_security_api_key`. Without it the scan runs locally only.
-2. Check the log for `No Socket organization configured`. Either set `socket_org`
-   or use an API key with the `socket-basics:read` scope so the organization can
-   be discovered from the key.
+2. Check the log for `No Socket organization configured`, and set `socket_org`.
+   The organization is normally discovered from the key, but on an Enterprise
+   organization that also needs the `socket-basics:read` scope.
 3. Check the token scopes: `full-scans:create` is required to upload;
    `socket-basics:read` is required to load dashboard configuration.
    `Insufficient permissions` in the log means a scope is missing. See

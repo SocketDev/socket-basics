@@ -167,7 +167,9 @@ Create your `SOCKET_SECURITY_API_KEY` in the [Socket Dashboard](https://socket.d
 | `full-scans:create` | Submitting scan results to your organization, and running Socket Tier 1 reachability |
 | `socket-basics:read` | Loading scanner configuration from the Socket Dashboard (Enterprise organizations) |
 
-If Socket Basics is configured from the Socket Dashboard, `socket-basics:read` is required. If it is missing, the log shows `Insufficient permissions` and `Error loading Socket Basics config`, and the scan runs with the workflow inputs alone. On an Enterprise organization the organization is then not discovered from the key either, so results are not uploaded unless `SOCKET_ORG` is set.
+If Socket Basics is configured from the Socket Dashboard, `socket-basics:read` is required. If it is missing, the log shows `Error loading Socket Basics config: Insufficient permissions`, and the scan runs with the workflow inputs alone. On an Enterprise organization the organization is then not discovered from the key either, so results are not uploaded unless `SOCKET_ORG` is set.
+
+Each scope sits in a group named by its prefix, and granting the group also works: `full-scans` includes `full-scans:create`, and `socket-basics` contains only `socket-basics:read`.
 
 If Socket Basics is configured with CLI arguments, environment variables, or a JSON config file, only `full-scans:create` is required. Set `SOCKET_ORG` explicitly in your workflow when using this mode.
 
@@ -272,7 +274,7 @@ Add new connectors by:
 
 **Socket API errors / results missing from the dashboard:**
 - Ensure `SOCKET_SECURITY_API_KEY` and `SOCKET_ORG` are set correctly
-- `No Socket organization configured` in the log means nothing was uploaded: set `SOCKET_ORG`, or use a key with the `socket-basics:read` scope so the organization can be discovered
+- `No Socket organization configured` in the log means nothing was uploaded: set `SOCKET_ORG`. The organization is normally discovered from the key, but on an Enterprise organization that also needs the `socket-basics:read` scope
 - `Need at least one file to be uploaded` means the facts file was written outside the scanned workspace; keep `--output` inside it (see [Save Results to File](docs/local-install-docker.md#save-results-to-file))
 - Verify your Socket Enterprise subscription is active
 - If you see `Insufficient permissions`, confirm your API token has the scopes required for your configuration mode (see [Required API Token Scopes](#required-api-token-scopes))
