@@ -8,10 +8,24 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Upgrade notes
+- **The heavy image's Socket Python CLI changes its exit codes.** It moves from
+  2.12.0 to 2.13.1, and 2.13.0 exits `2` for invalid flags (was `1`), `130` for
+  Ctrl+C (was `2`), and applies `--disable-blocking` and
+  `--exit-code-on-api-error` to missing tokens and other setup failures.
+  `--strict-blocking` now also fails on existing blocking alerts. Check any
+  pipeline step that runs `socketcli` from the heavy image and matches on an
+  exit code; see the CLI's
+  [upgrade guidance](https://github.com/SocketDev/socket-python-cli#upgrading-to-2130).
+  Socket Basics does not run `socketcli` itself, so its own exit codes are
+  unchanged.
+
 ### Changed
-- socketdev 3.6.2 -> 3.6.3 in the lockfile. The `>=3.6.2` floor in
-  `pyproject.toml` is unchanged, because the bundled Socket Python CLI still
-  pins 3.6.2 exactly.
+- Bundled tools: Socket Python CLI 2.12.0 -> 2.13.1.
+- The bundled Socket Python CLI now pins the Coana reachability engine 15.15.2.
+  Socket Tier 1 runs through the Socket npm CLI, which still pins 15.15.0.
+- Socket Python SDK (`socketdev`) 3.6.2 -> 3.6.3, which Socket Python CLI
+  2.13.1 pins exactly. Source installs now require `socketdev>=3.6.3`.
 
 ## [3.5.0] - 2026-11-13
 

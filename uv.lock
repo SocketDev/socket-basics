@@ -724,7 +724,7 @@ requires-dist = [
     { name = "pytest-cov", marker = "extra == 'dev'", specifier = ">=7.1.0" },
     { name = "pyyaml", specifier = ">=6.0.0" },
     { name = "requests", specifier = ">=2.33.0" },
-    { name = "socketdev", specifier = ">=3.6.2" },
+    { name = "socketdev", specifier = ">=3.6.3" },
     { name = "tabulate", specifier = "~=0.10.0" },
     { name = "tomli", marker = "python_full_version < '3.11'" },
 ]
