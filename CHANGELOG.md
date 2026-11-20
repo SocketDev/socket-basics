@@ -10,7 +10,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Upgrade notes
 - **The heavy image's Socket Python CLI changes its exit codes.** It moves from
-  2.12.0 to 2.13.1, and 2.13.0 exits `2` for invalid flags (was `1`), `130` for
+  2.12.0 to 2.13.2, and 2.13.0 exits `2` for invalid flags (was `1`), `130` for
   Ctrl+C (was `2`), and applies `--disable-blocking` and
   `--exit-code-on-api-error` to missing tokens and other setup failures.
   `--strict-blocking` now also fails on existing blocking alerts. Check any
@@ -21,11 +21,13 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   unchanged.
 
 ### Changed
-- Bundled tools: Socket Python CLI 2.12.0 -> 2.13.1.
-- The bundled Socket Python CLI now pins the Coana reachability engine 15.15.2.
+- The images ship Node.js 24 (LTS, supported until April 2028) instead of
+  Node.js 22.
+- Bundled tools: Socket Python CLI 2.12.0 -> 2.13.2.
+- The bundled Socket Python CLI 2.13.2 pins the Coana reachability engine 15.15.2.
   Socket Tier 1 runs through the Socket npm CLI, which still pins 15.15.0.
 - Socket Python SDK (`socketdev`) 3.6.2 -> 3.6.3, which Socket Python CLI
-  2.13.1 pins exactly. Source installs now require `socketdev>=3.6.3`.
+  2.13.2 pins exactly. Source installs now require `socketdev>=3.6.3`.
 
 ## [3.5.0] - 2026-11-13
 
@@ -47,8 +49,6 @@ existing setup.
 - Pass multiple exclusions as repeated `--exclude-paths` flags. (#125)
 
 ### Changed
-- The images ship Node.js 24 (LTS, supported until April 2028) instead of
-  Node.js 22.
 - The images set `NODE_USE_ENV_PROXY=1`, so Socket Tier 1 honors `HTTPS_PROXY`
   and `NO_PROXY`. The Socket npm CLI does not apply `HTTPS_PROXY` to its own
   requests, and Tier 1 behind a proxy failed with `getaddrinfo EAI_AGAIN
