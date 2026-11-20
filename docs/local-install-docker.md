@@ -784,13 +784,15 @@ security-scan:
 
 1. `Need at least one file to be uploaded` in the log: the facts file was
    written outside the workspace. Use a path under `/workspace` for `--output`.
-2. `No Socket organization configured` in the log: set `SOCKET_ORG`, or use an
-   API key with the `socket-basics` scope so the organization can be discovered.
+2. `No Socket organization configured` in the log: set `SOCKET_ORG`. The
+   organization is normally discovered from the key, but on an Enterprise
+   organization that also needs the `socket-basics:read` scope.
 3. `Socket API key not detected - running in free plan mode`: the key did not
    reach the container. Check the `.env` file or `-e` flags and the variable
    name (`SOCKET_SECURITY_API_KEY`).
-4. `Insufficient permissions`: the key is missing the `full-scans` scope (upload)
-   or the `socket-basics` scope (dashboard configuration).
+4. `Insufficient permissions`: the key is missing the `full-scans:create` scope
+   (upload) or the `socket-basics:read` scope (dashboard configuration). See
+   [API token scopes](parameters.md#api-token-scopes).
 
 ### PR Comment Not Posted
 
