@@ -30,7 +30,7 @@ ARG TRIVY_IMAGE=ghcr.io/socketdev/trivy:0.76.1@sha256:883da3593a60e311b2ed87c3a5
 FROM ${TRIVY_IMAGE} AS trivy
 
 # ─── Stage: trufflehog ────────────────────────────────────────────────────────
-FROM trufflesecurity/trufflehog:3.99.8 AS trufflehog
+FROM trufflesecurity/trufflehog:3.99.9 AS trufflehog
 
 # ─── Stage: uv ────────────────────────────────────────────────────────────────
 # Named stage required — COPY --from does not support ARG variable expansion.
@@ -39,7 +39,7 @@ FROM ghcr.io/astral-sh/uv:0.13.7 AS uv
 # ─── Stage: opengrep-installer ────────────────────────────────────────────────
 # OpenGrep does not publish an official Docker image with a stable binary path,
 # so we install via their official script in a dedicated build stage.
-FROM python:3.12-slim AS opengrep-installer
+FROM python:3.15-slim AS opengrep-installer
 ARG OPENGREP_VERSION
 RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
     --mount=type=cache,target=/var/lib/apt,sharing=locked \
@@ -49,7 +49,7 @@ RUN curl -fsSL https://raw.githubusercontent.com/opengrep/opengrep/main/install.
     | bash -s -- -v "${OPENGREP_VERSION}"
 
 # ─── Stage: runtime ───────────────────────────────────────────────────────────
-FROM python:3.12-slim AS runtime
+FROM python:3.15-slim AS runtime
 
 WORKDIR /socket-basics
 
