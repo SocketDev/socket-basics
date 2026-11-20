@@ -8,6 +8,12 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [3.5.0] - 2026-11-13
+
+Minor rather than patch: Socket Tier 1 parses `socket_additional_params`
+differently (#125) and needs new network access (#118), and either can break an
+existing setup.
+
 ### Upgrade notes
 - **Socket Tier 1 needs outbound access to `api.socket.dev` and
   `storage.googleapis.com`.** Socket npm CLI 1.9.0 and later download the
@@ -16,6 +22,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   effect, and a `--reach-version` older than the move fails. The heavy image's
   Python CLI made the same change in 2.11.1, which shipped in 3.4.1. See
   [Network access for Tier 1](docs/parameters.md#network-access-for-tier-1).
+- A comma between a Tier 1 option and its value is no longer a separator:
+  change `--reach-analysis-timeout,90s` to `--reach-analysis-timeout=90s`.
+  Comma-joined options such as `--view=full,--all` still split. (#125)
+- Pass multiple exclusions as repeated `--exclude-paths` flags. (#125)
 
 ### Changed
 - The images set `NODE_USE_ENV_PROXY=1`, so Socket Tier 1 honors `HTTPS_PROXY`
@@ -23,25 +33,24 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   requests, and Tier 1 behind a proxy failed with `getaddrinfo EAI_AGAIN
   api.socket.dev`. Node only acts on it when a proxy variable is set. Native
   installs need it set by hand.
-- **Behavior change:** `socket_additional_params` now uses shell-style,
-  space-separated arguments and preserves commas within argument values. A
-  comma acts as a legacy separator only when it is unquoted and followed by a
-  hyphen (normally another option). Configurations that used commas as general
-  separators (for example, `--view,full`) must use a space or `=` instead. Repeat
-  list-valued flags, such as
-  `--exclude-paths=tests --exclude-paths=fixtures`.
 - Bundled tools: OpenGrep v1.26.0 -> v1.33.1, TruffleHog 3.96.0 -> 3.99.8,
-  Socket npm CLI 1.1.165 -> 1.14.0, Socket Python CLI 2.11.3 -> 2.11.11, uv
+  Socket npm CLI 1.1.165 -> 1.15.0, Socket Python CLI 2.11.3 -> 2.12.0, uv
   0.12.1 -> 0.13.7; in the app-tests image, gosec v2.28.0 -> v2.30.0 and Go
   1.26.5 -> 1.27.3. Java SAST benchmark results are unchanged on OpenGrep 1.33.1.
+- Socket Tier 1 runs the Coana reachability engine 15.15.0, the version both
+  bundled Socket CLIs now pin.
 - Socket Python SDK (`socketdev`) 3.6.1 -> 3.6.2, which Socket Python CLI
-  2.11.11 pins exactly. Source installs now require `socketdev>=3.6.2`.
+  2.12.0 pins exactly. Source installs now require `socketdev>=3.6.2`.
 - TruffleHog no longer reports AppOptics or Bing Subscription Key credentials;
   upstream retired both detectors in 3.97.0.
 - Base and tool images are pinned as literal `FROM` tags so Dependabot can
   update them. `--build-arg TRUFFLEHOG_VERSION` no longer has any effect.
 
 ### Fixed
+- Socket Tier 1 keeps commas and quoted spaces inside `socket_additional_params`
+  values, so `--reach-ecosystems=npm,pypi` reaches the Socket CLI as one
+  argument. Malformed quoting fails with an `Invalid socket_additional_params`
+  error. (#125)
 - TruffleHog 3.99.8 is built on Go 1.27.3, clearing the CVE-2026-111943
   finding noted in 3.4.1.
 
