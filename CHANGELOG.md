@@ -8,6 +8,11 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Changed
+- socketdev 3.6.2 -> 3.6.3 in the lockfile. The `>=3.6.2` floor in
+  `pyproject.toml` is unchanged, because the bundled Socket Python CLI still
+  pins 3.6.2 exactly.
+
 ## [3.5.0] - 2026-11-13
 
 Minor rather than patch: Socket Tier 1 parses `socket_additional_params`
