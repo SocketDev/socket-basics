@@ -23,7 +23,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 ### Changed
 - The images ship Node.js 24 (LTS, supported until April 2028) instead of
   Node.js 22.
-- Bundled tools: Socket Python CLI 2.12.0 -> 2.13.2.
+- Bundled tools: Socket Python CLI 2.12.0 -> 2.13.2; TruffleHog 3.99.8 ->
+  3.99.9 in the socket-basics and heavy images (#142).
 - The bundled Socket Python CLI 2.13.2 pins the Coana reachability engine 15.15.2.
   Socket Tier 1 runs through the Socket npm CLI, which still pins 15.15.0.
 - Socket Python SDK (`socketdev`) 3.6.2 -> 3.6.3, which Socket Python CLI
