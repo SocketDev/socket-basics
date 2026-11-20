@@ -185,3 +185,72 @@ def test_describe_api_error_names_messageless_sdk_errors():
     assert check_core_tools.describe_api_error(exc) == (
         "APIConnectionError | caused by ConnectionError: Connection reset by peer"
     )
+
+
+PINNED = "pkg:npm/socket@1.16.0"
+LATEST = "pkg:npm/socket@1.17.0"
+
+
+def _row(status=None):
+    return {"status": status, "alerts": [], "malware": [], "critical": []}
+
+
+def test_scoring_rescores_only_pending_required_coordinates():
+    pending_row = _row("pending")
+    calls = []
+    sleeps = []
+
+    def analyze(purls, token):
+        calls.append(list(purls))
+        if len(calls) == 1:
+            # Pending row indexed under two keys, as analyze_purls does.
+            return {PINNED: pending_row, "pkg:npm/socket@1.16.0#echo": pending_row, LATEST: _row()}
+        # The rescored row comes back under a different key than the pending one.
+        return {"npm/socket@1.16.0": _row()}
+
+    result = check_core_tools.score_purls_with_retry(
+        [PINNED, LATEST],
+        "token",
+        required=frozenset({PINNED}),
+        analyze=analyze,
+        sleep=sleeps.append,
+    )
+
+    assert calls == [[PINNED, LATEST], [PINNED]]
+    assert sleeps == [check_core_tools.SCORING_RETRY_DELAYS_SEC[0]]
+    assert check_core_tools._match_analysis(result, PINNED)["status"] is None
+    assert pending_row not in result.values()
+    assert LATEST in result
+
+
+def test_scoring_returns_pending_rows_after_the_last_attempt():
+    calls = []
+
+    def analyze(purls, token):
+        calls.append(1)
+        return {PINNED: _row("pending")}
+
+    result = check_core_tools.score_purls_with_retry(
+        [PINNED], "token", required=frozenset({PINNED}), analyze=analyze, sleep=lambda _: None
+    )
+
+    assert len(calls) == len(check_core_tools.SCORING_RETRY_DELAYS_SEC) + 1
+    assert result[PINNED]["status"] == "pending"
+
+
+def test_scoring_does_not_wait_on_pending_report_only_coordinates():
+    calls = []
+
+    def analyze(purls, token):
+        calls.append(1)
+        return {PINNED: _row(), LATEST: _row("pending")}
+
+    check_core_tools.score_purls_with_retry(
+        [PINNED, LATEST],
+        "token",
+        required=frozenset({PINNED}),
+        analyze=analyze,
+        sleep=lambda _: pytest.fail("should not wait"),
+    )
+
+    assert len(calls) == 1
