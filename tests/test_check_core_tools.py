@@ -1,5 +1,7 @@
 import re
 
+import pytest
+
 from scripts import check_core_tools
 
 
@@ -102,3 +104,84 @@ def test_incomplete_discovery_report_cannot_be_mistaken_for_no_drift():
 
     assert "Latest-version discovery incomplete" in report
     assert "must not be used to resolve the drift issue" in report
+
+
+def _raise_from(exc, cause):
+    """Raise exc inside an except block for cause, as socketdev does."""
+    try:
+        raise cause
+    except type(cause):
+        try:
+            raise exc
+        except type(exc) as raised:
+            return raised
+
+
+def test_scoring_retries_transient_api_errors_then_succeeds():
+    from socketdev.exceptions import APIBadGateway, APIConnectionError
+
+    failures = [APIBadGateway(), APIConnectionError()]
+    sleeps = []
+
+    def flaky_analyze(purls, token):
+        if failures:
+            raise failures.pop(0)
+        return {"pkg:npm/socket@1.16.0": {"score": {}}}
+
+    result = check_core_tools.score_purls_with_retry(
+        ["pkg:npm/socket@1.16.0"], "token", analyze=flaky_analyze, sleep=sleeps.append
+    )
+
+    assert result == {"pkg:npm/socket@1.16.0": {"score": {}}}
+    assert sleeps == list(check_core_tools.SCORING_RETRY_DELAYS_SEC)
+
+
+def test_scoring_gives_up_after_the_last_transient_failure():
+    from socketdev.exceptions import APITimeout
+
+    calls = []
+
+    def always_times_out(purls, token):
+        calls.append(1)
+        raise APITimeout()
+
+    with pytest.raises(APITimeout):
+        check_core_tools.score_purls_with_retry(
+            ["p"], "token", analyze=always_times_out, sleep=lambda _: None
+        )
+    assert len(calls) == len(check_core_tools.SCORING_RETRY_DELAYS_SEC) + 1
+
+
+@pytest.mark.parametrize(
+    "error",
+    [
+        "APIAccessDenied",
+        "APIInsufficientQuota",
+        "RuntimeError",
+    ],
+)
+def test_scoring_does_not_retry_deterministic_errors(error):
+    import socketdev.exceptions as sdk_errors
+
+    exc_type = getattr(sdk_errors, error, None) or RuntimeError
+    calls = []
+
+    def fails(purls, token):
+        calls.append(1)
+        raise exc_type("nope")
+
+    with pytest.raises(exc_type):
+        check_core_tools.score_purls_with_retry(["p"], "token", analyze=fails, sleep=lambda _: None)
+    assert len(calls) == 1
+
+
+def test_describe_api_error_names_messageless_sdk_errors():
+    import requests
+    from socketdev.exceptions import APIBadGateway, APIConnectionError
+
+    assert check_core_tools.describe_api_error(APIBadGateway()) == "APIBadGateway | HTTP 502"
+
+    exc = _raise_from(APIConnectionError(), requests.ConnectionError("Connection reset by peer"))
+    assert check_core_tools.describe_api_error(exc) == (
+        "APIConnectionError | caused by ConnectionError: Connection reset by peer"
+    )

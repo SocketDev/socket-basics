@@ -55,6 +55,7 @@ import json
 import os
 import re
 import sys
+import time
 import urllib.request
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -500,6 +501,72 @@ def analyze_purls(purls: list[str], token: str) -> dict[str, dict[str, Any]]:
     return by_purl
 
 
+# Waits before each retry of a transient Socket API failure. Three attempts in
+# all keeps a lasting outage under two minutes of extra job time.
+SCORING_RETRY_DELAYS_SEC = (15, 45)
+
+
+def _is_transient_api_error(exc: BaseException) -> bool:
+    """Whether socketdev classifies the failure as worth retrying.
+
+    socketdev's APIFailure.is_transient_error() is true for 408/502/503/504,
+    dropped connections, and client-side timeouts. Anything else, including
+    401/403, 429 quota errors, and an empty result, fails the same way again.
+    """
+    check = getattr(exc, "is_transient_error", None)
+    return bool(callable(check) and check())
+
+
+def describe_api_error(exc: BaseException) -> str:
+    """Name the exception, its HTTP status, and the error that caused it.
+
+    socketdev raises several exceptions with no message (APITimeout,
+    APIConnectionError, APIBadGateway, and the 403/404/429 variants) and logs
+    the detail instead, so str(exc) alone is often empty. The status code and
+    the underlying requests error carried on __context__ say what failed
+    without printing response headers into public CI logs.
+    """
+    parts = [type(exc).__name__]
+    status = getattr(exc, "status_code", None)
+    if status is not None:
+        parts.append(f"HTTP {status}")
+    if str(exc):
+        parts.append(str(exc))
+    cause = exc.__cause__ or exc.__context__
+    if cause is not None:
+        parts.append(f"caused by {type(cause).__name__}: {cause}")
+    return " | ".join(parts)
+
+
+def score_purls_with_retry(
+    purls: list[str],
+    token: str,
+    *,
+    analyze: Callable[[list[str], str], dict[str, dict[str, Any]]] = analyze_purls,
+    sleep: Callable[[float], None] = time.sleep,
+    delays: tuple[float, ...] = SCORING_RETRY_DELAYS_SEC,
+) -> dict[str, dict[str, Any]]:
+    """Run analyze_purls, retrying only failures socketdev marks transient.
+
+    Both requests behind it (the org lookup and the batch purl POST) only
+    read, so repeating them is safe. The last failure is raised for the
+    caller to fail closed on.
+    """
+    for attempt, delay in enumerate((*delays, None), start=1):
+        try:
+            return analyze(purls, token)
+        except Exception as exc:  # noqa: BLE001
+            if delay is None or not _is_transient_api_error(exc):
+                raise
+            print(
+                f"  ! Socket scoring attempt {attempt} failed ({describe_api_error(exc)}); "
+                f"retrying in {delay:g}s",
+                file=sys.stderr,
+            )
+            sleep(delay)
+    raise AssertionError("unreachable")
+
+
 def _match_analysis(analyses: dict[str, dict[str, Any]], purl: str) -> dict[str, Any]:
     if purl in analyses:
         return analyses[purl]
@@ -635,9 +702,9 @@ def main() -> int:
     if token_present and purls:
         print(f"== Scoring {len(purls)} PURLs through Socket ==")
         try:
-            analyses = analyze_purls(purls, token)
+            analyses = score_purls_with_retry(purls, token)
         except Exception as exc:  # noqa: BLE001
-            print(f"! Socket analysis failed: {exc}", file=sys.stderr)
+            print(f"! Socket analysis failed: {describe_api_error(exc)}", file=sys.stderr)
             scoring_error = True
     for t in tools:
         t.analyses = analyses
