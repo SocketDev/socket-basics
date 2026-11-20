@@ -50,7 +50,7 @@ docker inspect ghcr.io/socketdev/socket-basics:3.5.0 \
   | jq '.[0].Config.Labels'
 # {
 #   "com.socket.trivy-version": "0.76.1",
-#   "com.socket.trufflehog-version": "3.99.8",
+#   "com.socket.trufflehog-version": "3.99.9",
 #   "com.socket.opengrep-version": "v1.33.1",
 #   "org.opencontainers.image.version": "3.5.0",
 #   ...

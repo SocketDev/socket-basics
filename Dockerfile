@@ -30,7 +30,7 @@ ARG TRIVY_IMAGE=ghcr.io/socketdev/trivy:0.76.1@sha256:883da3593a60e311b2ed87c3a5
 FROM ${TRIVY_IMAGE} AS trivy
 
 # ─── Stage: trufflehog ────────────────────────────────────────────────────────
-FROM trufflesecurity/trufflehog:3.99.8 AS trufflehog
+FROM trufflesecurity/trufflehog:3.99.9 AS trufflehog
 
 # ─── Stage: uv ────────────────────────────────────────────────────────────────
 # Named stage required — COPY --from does not support ARG variable expansion.
@@ -104,7 +104,7 @@ ARG OPENGREP_VERSION
 # Mirrors the trufflehog FROM tag above. A literal FROM tag cannot be read back
 # into an ARG, so this is the one pin stated twice;
 # tests/test_dockerfile_pins.py fails if the two ever disagree.
-ARG TRUFFLEHOG_VERSION=3.99.8
+ARG TRUFFLEHOG_VERSION=3.99.9
 ARG SOCKET_NPM_CLI_VERSION
 LABEL org.opencontainers.image.title="Socket Basics" \
       org.opencontainers.image.source="https://github.com/SocketDev/socket-basics" \
