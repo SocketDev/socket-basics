@@ -501,8 +501,7 @@ def analyze_purls(purls: list[str], token: str) -> dict[str, dict[str, Any]]:
     return by_purl
 
 
-# Waits before each retry of a transient Socket API failure. Three attempts in
-# all keeps a lasting outage under two minutes of extra job time.
+# Backoff before each retry, in addition to the SDK request timeouts.
 SCORING_RETRY_DELAYS_SEC = (15, 45)
 
 
@@ -546,7 +545,7 @@ def score_purls_with_retry(
     analyze: Callable[[list[str], str], dict[str, dict[str, Any]]] = analyze_purls,
     sleep: Callable[[float], None] = time.sleep,
     delays: tuple[float, ...] = SCORING_RETRY_DELAYS_SEC,
-) -> dict[str, dict[str, Any]]:
+) -> tuple[dict[str, dict[str, Any]], Exception | None]:
     """Run analyze_purls, retrying transient failures and pending results.
 
     Two kinds of attempt are retried:
@@ -560,18 +559,19 @@ def score_purls_with_retry(
     doesn't wait on a release Socket is still ingesting.
 
     Both requests behind analyze_purls (the org lookup and the batch purl
-    POST) only read, so repeating them is safe. The last failure is raised,
-    and rows still pending after the last attempt are returned as-is, for the
-    caller to fail closed on.
+    POST) only read, so repeating them is safe. Return the accumulated rows
+    with any terminal API error so the caller can report findings and fail
+    closed on incomplete scoring.
     """
     analyses: dict[str, dict[str, Any]] = {}
     to_score = purls
+    pending: list[str] = []
     for attempt, delay in enumerate((*delays, None), start=1):
         try:
-            analyses.update(analyze(to_score, token))
+            rows = analyze(to_score, token)
         except Exception as exc:  # noqa: BLE001
             if delay is None or not _is_transient_api_error(exc):
-                raise
+                return analyses, exc
             print(
                 f"  ! Socket scoring attempt {attempt} failed ({describe_api_error(exc)}); "
                 f"retrying in {delay:g}s",
@@ -579,24 +579,24 @@ def score_purls_with_retry(
             )
             sleep(delay)
             continue
+        # Drop stale pending rows only after a rescore succeeds. A normalized
+        # response key may differ, and the fallback finds the first match.
+        for p in pending:
+            stale = _match_analysis(analyses, p)
+            for key in [k for k, v in analyses.items() if v is stale]:
+                del analyses[key]
+        analyses.update(rows)
         pending = [
             p for p in sorted(required) if _match_analysis(analyses, p).get("status") == "pending"
         ]
         if not pending or delay is None:
-            return analyses
+            return analyses, None
         print(
             f"  ! Socket analysis still pending for {len(pending)} pinned coordinate(s) "
             f"after attempt {attempt}; rescoring them in {delay:g}s",
             file=sys.stderr,
         )
         sleep(delay)
-        # Drop the stale pending rows first: _match_analysis falls back to the
-        # first name@version match, which would otherwise keep finding them
-        # even when the rescored row comes back under a different key.
-        for p in pending:
-            stale = _match_analysis(analyses, p)
-            for key in [k for k, v in analyses.items() if v is stale]:
-                del analyses[key]
         to_score = pending
     raise AssertionError("unreachable")
 
@@ -735,13 +735,11 @@ def main() -> int:
     scoring_error = False
     if token_present and purls:
         print(f"== Scoring {len(purls)} PURLs through Socket ==")
-        try:
-            # Pinned coordinates of covered tools are the ones a pending row
-            # fails the run for, so they are the ones worth waiting on.
-            required = frozenset(t.purl(v) for t in tools if t.socket_coverage for v in t.pinned)
-            analyses = score_purls_with_retry(purls, token, required=required)
-        except Exception as exc:  # noqa: BLE001
-            print(f"! Socket analysis failed: {describe_api_error(exc)}", file=sys.stderr)
+        # Only pending rows for covered pins can fail the run.
+        required = frozenset(t.purl(v) for t in tools if t.socket_coverage for v in t.pinned)
+        analyses, error = score_purls_with_retry(purls, token, required=required)
+        if error is not None:
+            print(f"! Socket analysis failed: {describe_api_error(error)}", file=sys.stderr)
             scoring_error = True
     for t in tools:
         t.analyses = analyses

@@ -268,6 +268,9 @@ With `--app-tests` to also test the app_tests image (requires full build context
 ./scripts/smoke-test-docker.sh --app-tests
 ```
 
+Use `linux/amd64` or `linux/arm64` for app-tests builds. The Node.js 24 base
+image has no `linux/arm/v7` variant for 32-bit ARM.
+
 This builds the image(s) and verifies the currently bundled tools are installed and executable. A GitHub Action runs this on Dockerfile changes and daily.
 
 ## Running Scans

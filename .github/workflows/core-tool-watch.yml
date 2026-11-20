@@ -36,7 +36,9 @@ concurrency:
 jobs:
   analyze:
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    # Three scoring attempts can spend 19 minutes on requests and backoff.
+    # Allow time for setup, release discovery, and report uploads as well.
+    timeout-minutes: 30
     environment: socket-firewall
     permissions:
       contents: read

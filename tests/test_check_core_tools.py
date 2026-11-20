@@ -1,4 +1,7 @@
+import json
 import re
+import sys
+from functools import partial
 
 import pytest
 
@@ -128,11 +131,12 @@ def test_scoring_retries_transient_api_errors_then_succeeds():
             raise failures.pop(0)
         return {"pkg:npm/socket@1.16.0": {"score": {}}}
 
-    result = check_core_tools.score_purls_with_retry(
+    result, error = check_core_tools.score_purls_with_retry(
         ["pkg:npm/socket@1.16.0"], "token", analyze=flaky_analyze, sleep=sleeps.append
     )
 
     assert result == {"pkg:npm/socket@1.16.0": {"score": {}}}
+    assert error is None
     assert sleeps == list(check_core_tools.SCORING_RETRY_DELAYS_SEC)
 
 
@@ -145,10 +149,11 @@ def test_scoring_gives_up_after_the_last_transient_failure():
         calls.append(1)
         raise APITimeout()
 
-    with pytest.raises(APITimeout):
-        check_core_tools.score_purls_with_retry(
-            ["p"], "token", analyze=always_times_out, sleep=lambda _: None
-        )
+    result, error = check_core_tools.score_purls_with_retry(
+        ["p"], "token", analyze=always_times_out, sleep=lambda _: None
+    )
+    assert result == {}
+    assert isinstance(error, APITimeout)
     assert len(calls) == len(check_core_tools.SCORING_RETRY_DELAYS_SEC) + 1
 
 
@@ -170,8 +175,11 @@ def test_scoring_does_not_retry_deterministic_errors(error):
         calls.append(1)
         raise exc_type("nope")
 
-    with pytest.raises(exc_type):
-        check_core_tools.score_purls_with_retry(["p"], "token", analyze=fails, sleep=lambda _: None)
+    result, error = check_core_tools.score_purls_with_retry(
+        ["p"], "token", analyze=fails, sleep=lambda _: None
+    )
+    assert result == {}
+    assert isinstance(error, exc_type)
     assert len(calls) == 1
 
 
@@ -208,7 +216,7 @@ def test_scoring_rescores_only_pending_required_coordinates():
         # The rescored row comes back under a different key than the pending one.
         return {"npm/socket@1.16.0": _row()}
 
-    result = check_core_tools.score_purls_with_retry(
+    result, error = check_core_tools.score_purls_with_retry(
         [PINNED, LATEST],
         "token",
         required=frozenset({PINNED}),
@@ -217,6 +225,7 @@ def test_scoring_rescores_only_pending_required_coordinates():
     )
 
     assert calls == [[PINNED, LATEST], [PINNED]]
+    assert error is None
     assert sleeps == [check_core_tools.SCORING_RETRY_DELAYS_SEC[0]]
     assert check_core_tools._match_analysis(result, PINNED)["status"] is None
     assert pending_row not in result.values()
@@ -230,11 +239,12 @@ def test_scoring_returns_pending_rows_after_the_last_attempt():
         calls.append(1)
         return {PINNED: _row("pending")}
 
-    result = check_core_tools.score_purls_with_retry(
+    result, error = check_core_tools.score_purls_with_retry(
         [PINNED], "token", required=frozenset({PINNED}), analyze=analyze, sleep=lambda _: None
     )
 
     assert len(calls) == len(check_core_tools.SCORING_RETRY_DELAYS_SEC) + 1
+    assert error is None
     assert result[PINNED]["status"] == "pending"
 
 
@@ -254,3 +264,57 @@ def test_scoring_does_not_wait_on_pending_report_only_coordinates():
     )
 
     assert len(calls) == 1
+
+
+def test_build_reports_critical_pin_when_another_pin_exhausts_rescores(monkeypatch, tmp_path, capsys):
+    from socketdev.exceptions import APIBadGateway
+
+    sdk_purl = "pkg:pypi/socketdev@3.6.3"
+    tools = [
+        check_core_tools.Tool(
+            "npm", "Socket npm CLI", lambda: ["1.16.0"], lambda: None, lambda _: PINNED
+        ),
+        check_core_tools.Tool(
+            "sdk", "Socket SDK", lambda: ["3.6.3"], lambda: None, lambda _: sdk_purl
+        ),
+    ]
+    calls = []
+
+    def analyze(purls, token):
+        calls.append(purls)
+        if len(calls) == 1:
+            return {PINNED: _row("pending"), sdk_purl: {**_row(), "critical": ["test-alert"]}}
+        raise APIBadGateway()
+
+    report = tmp_path / "report.json"
+    output = tmp_path / "github-output"
+    retry = partial(check_core_tools.score_purls_with_retry, analyze=analyze, sleep=lambda _: None)
+    monkeypatch.setattr(check_core_tools, "score_purls_with_retry", retry)
+    monkeypatch.setattr(check_core_tools, "build_tools", lambda: tools)
+    monkeypatch.setenv("SOCKET_API_TOKEN", "test-token")
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        [
+            "check_core_tools.py",
+            "--mode",
+            "build",
+            "--fail-on-malware",
+            "--json-out",
+            str(report),
+            "--github-output",
+            str(output),
+        ],
+    )
+
+    assert check_core_tools.main() == 1
+    assert calls == [[PINNED, sdk_purl], [PINNED], [PINNED]]
+    stdout, stderr = capsys.readouterr()
+    assert "test-alert" in stdout
+    assert "analysis pending upstream" in stdout
+    assert "Socket analysis failed: APIBadGateway | HTTP 502" in stderr
+    analysis_report = json.loads(report.read_text())
+    assert analysis_report["scoring_error"] is True
+    assert analysis_report["pending"] == [f"npm {PINNED}"]
+    assert analysis_report["findings"][1]["analyses"]["3.6.3"]["critical"] == ["test-alert"]
+    assert "critical=true" in output.read_text().splitlines()
