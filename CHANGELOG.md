@@ -9,8 +9,6 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 ## [Unreleased]
 
 ### Upgrade notes
-- The app-tests image's Node.js 24 base supports 64-bit ARM (`linux/arm64`).
-  The official `node:24-slim` tag has no 32-bit ARM (`linux/arm/v7`) build.
 - **The heavy image's Socket Python CLI changes its exit codes.** It moves from
   2.12.0 to 2.13.2, and 2.13.0 exits `2` for invalid flags (was `1`), `130` for
   Ctrl+C (was `2`), and applies `--disable-blocking` and

@@ -266,7 +266,9 @@ def test_scoring_does_not_wait_on_pending_report_only_coordinates():
     assert len(calls) == 1
 
 
-def test_build_reports_critical_pin_when_another_pin_exhausts_rescores(monkeypatch, tmp_path, capsys):
+def test_build_reports_critical_pin_when_another_pin_exhausts_rescores(
+    monkeypatch, tmp_path, capsys
+):
     from socketdev.exceptions import APIBadGateway
 
     sdk_purl = "pkg:pypi/socketdev@3.6.3"
