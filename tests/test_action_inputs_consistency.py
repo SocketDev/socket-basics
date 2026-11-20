@@ -67,3 +67,31 @@ def test_input_names_used_in_the_docs_are_declared() -> None:
         "scan_files",
     }
     assert documented <= inputs, f"undeclared: {sorted(documented - inputs)}"
+
+
+def _bundled_rule_ids() -> set[str]:
+    ids: set[str] = set()
+    for path in (ROOT / "socket_basics" / "rules").glob("*.yml"):
+        for rule in (yaml.safe_load(path.read_text()) or {}).get("rules") or []:
+            ids.add(rule["id"])
+    return ids
+
+
+def test_default_rule_lists_name_only_existing_rules() -> None:
+    """A renamed rule must not leave a dead ID in a default allowlist."""
+    known = _bundled_rule_ids()
+    defaults = {
+        f"action.yml:{name}": spec.get("default") or ""
+        for name, spec in _action()["inputs"].items()
+        if name.endswith(("_enabled_rules", "_disabled_rules"))
+    }
+    connectors = yaml.safe_load((ROOT / "socket_basics" / "connectors.yaml").read_text())
+    for cfg in connectors["connectors"].values():
+        for param in cfg.get("parameters") or []:
+            if param["name"].endswith(("_enabled_rules", "_disabled_rules")):
+                defaults[f"connectors.yaml:{param['name']}"] = param.get("default") or ""
+    unknown = {
+        where: sorted({i.strip() for i in value.split(",") if i.strip()} - known)
+        for where, value in defaults.items()
+    }
+    assert {k: v for k, v in unknown.items() if v} == {}

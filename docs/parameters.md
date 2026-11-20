@@ -82,7 +82,7 @@ GitHub Action input is delivered to the container as the environment variable
 | `--use-custom-sast-rules` | `use_custom_sast_rules` | `INPUT_USE_CUSTOM_SAST_RULES` | `use_custom_sast_rules` | Use custom SAST rules instead of bundled rules (falls back to bundled rules for languages without custom rules) |
 | `--custom-sast-rule-path` | `custom_sast_rule_path` | `INPUT_CUSTOM_SAST_RULE_PATH` | `custom_sast_rule_path` | Relative path to custom SAST rules directory (relative to workspace if set, otherwise cwd) |
 | `--sast-ignore-overrides` | `sast_ignore_overrides` | `INPUT_SAST_IGNORE_OVERRIDES` | `sast_ignore_overrides` | Comma-separated list of SAST ignore overrides in rule_id or rule_id:path format |
-| `--<lang>-enabled-rules` | `<lang>_enabled_rules` | `INPUT_<LANG>_ENABLED_RULES` | `<lang>_enabled_rules` | Comma-separated allowlist of rules for one language (defaults to the high-confidence set). |
+| `--<lang>-enabled-rules` | `<lang>_enabled_rules` | `INPUT_<LANG>_ENABLED_RULES` | `<lang>_enabled_rules` | Comma-separated allowlist of rule IDs for one language. Empty (the default) runs every bundled rule for the language. |
 | `--<lang>-disabled-rules` | `<lang>_disabled_rules` | `INPUT_<LANG>_DISABLED_RULES` | `<lang>_disabled_rules` | Comma-separated rules to disable for one language. |
 
 `<lang>` is one of: `c`, `cpp`, `csharp`, `dotnet`, `elixir`, `go`, `java`, `javascript`, `kotlin`, `php`, `python`, `ruby`, `rust`, `scala`, `swift`.
@@ -500,20 +500,24 @@ line carrying one does not pass it through.
 
 ### Language-Specific Rule Configuration
 
-For each language, you can enable or disable specific rules:
+For each language, you can enable or disable specific rules. By default every
+bundled rule for an enabled language runs. An enabled-rules list narrows the scan
+to exactly those rule IDs; IDs that match no bundled rule are ignored with a
+warning in the log. Rule IDs are the `id` values in
+[`socket_basics/rules/`](../socket_basics/rules/).
 
 **Pattern:** `--<language>-enabled-rules` or `--<language>-disabled-rules`
 
 **Examples:**
 ```bash
 # Enable specific Python rules
-socket-basics --python --python-enabled-rules "sql-injection,xss-detection"
+socket-basics --python --python-enabled-rules "python-sql-injection,python-command-injection"
 
 # Disable specific JavaScript rules
-socket-basics --javascript --javascript-disabled-rules "console-log,debugger-statement"
+socket-basics --javascript --javascript-disabled-rules "js-debugger-statement,js-parseint-missing-radix"
 
 # Enable specific Go rules
-socket-basics --go --go-enabled-rules "error-handling,sql-injection"
+socket-basics --go --go-enabled-rules "go-sql-format-string,go-hardcoded-credentials"
 ```
 
 **Available for:**
