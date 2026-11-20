@@ -9,8 +9,8 @@
 #   docker build --build-arg OPENGREP_VERSION=v1.33.1 -f app_tests/Dockerfile app_tests
 ARG GOSEC_VERSION=v2.30.0
 ARG OPENGREP_VERSION=v1.33.1
-ARG SOCKET_NPM_CLI_VERSION=1.15.0
-ARG SOCKET_PYTHON_CLI_VERSION=2.13.1
+ARG SOCKET_NPM_CLI_VERSION=1.16.0
+ARG SOCKET_PYTHON_CLI_VERSION=2.13.2
 #
 # Socket-built Trivy, pinned by digest and deliberately kept out of Dependabot's
 # reach; updated by Socket's trivy-dist release process. See the root
@@ -29,7 +29,7 @@ FROM golang:1.27.3 AS golang
 # ─── Stage: node ──────────────────────────────────────────────────────────────
 # Node comes from a named stage, not the nodesource install script, so its
 # version is a FROM tag that Dependabot and the pin checkers can read.
-FROM node:22-slim AS node
+FROM node:24-slim AS node
 
 # ─── Stage: uv ────────────────────────────────────────────────────────────────
 # Named stage required — COPY --from does not support ARG variable expansion.
