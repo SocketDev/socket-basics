@@ -289,16 +289,16 @@ OpenGrep works with the bundled Socket Basics SAST rules. No additional configur
 brew install trufflehog
 
 # Using Docker (alternative; pin explicitly — Docker Hub tags have no "v" prefix):
-docker pull trufflesecurity/trufflehog:3.99.8
+docker pull trufflesecurity/trufflehog:3.99.9
 
 # Manual installation (Linux):
-wget https://github.com/trufflesecurity/trufflehog/releases/download/v3.99.8/trufflehog_3.99.8_linux_amd64.tar.gz
-tar -xzf trufflehog_3.99.8_linux_amd64.tar.gz
+wget https://github.com/trufflesecurity/trufflehog/releases/download/v3.99.9/trufflehog_3.99.9_linux_amd64.tar.gz
+tar -xzf trufflehog_3.99.9_linux_amd64.tar.gz
 sudo mv trufflehog /usr/local/bin/
 
 # Manual installation (macOS):
-wget https://github.com/trufflesecurity/trufflehog/releases/download/v3.99.8/trufflehog_3.99.8_darwin_arm64.tar.gz
-tar -xzf trufflehog_3.99.8_darwin_arm64.tar.gz
+wget https://github.com/trufflesecurity/trufflehog/releases/download/v3.99.9/trufflehog_3.99.9_darwin_arm64.tar.gz
+tar -xzf trufflehog_3.99.9_darwin_arm64.tar.gz
 sudo mv trufflehog /usr/local/bin/
 
 # Verify installation

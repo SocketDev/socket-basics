@@ -39,7 +39,7 @@ FROM ghcr.io/astral-sh/uv:0.13.7 AS uv
 # ─── Stage: opengrep-installer ────────────────────────────────────────────────
 # OpenGrep does not publish an official Docker image with a stable binary path,
 # so we install via their official script in a dedicated build stage.
-FROM python:3.15-slim AS opengrep-installer
+FROM python:3.12-slim AS opengrep-installer
 ARG OPENGREP_VERSION
 RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
     --mount=type=cache,target=/var/lib/apt,sharing=locked \
@@ -49,7 +49,7 @@ RUN curl -fsSL https://raw.githubusercontent.com/opengrep/opengrep/main/install.
     | bash -s -- -v "${OPENGREP_VERSION}"
 
 # ─── Stage: runtime ───────────────────────────────────────────────────────────
-FROM python:3.15-slim AS runtime
+FROM python:3.12-slim AS runtime
 
 WORKDIR /socket-basics
 
@@ -104,7 +104,7 @@ ARG OPENGREP_VERSION
 # Mirrors the trufflehog FROM tag above. A literal FROM tag cannot be read back
 # into an ARG, so this is the one pin stated twice;
 # tests/test_dockerfile_pins.py fails if the two ever disagree.
-ARG TRUFFLEHOG_VERSION=3.99.8
+ARG TRUFFLEHOG_VERSION=3.99.9
 ARG SOCKET_NPM_CLI_VERSION
 LABEL org.opencontainers.image.title="Socket Basics" \
       org.opencontainers.image.source="https://github.com/SocketDev/socket-basics" \
