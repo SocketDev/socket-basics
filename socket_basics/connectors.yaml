@@ -167,10 +167,10 @@ connectors:
       # Python rule configuration
       - name: python_enabled_rules
         option: --python-enabled-rules
-        description: "Comma-separated list of Python SAST rules to enable (default: high-confidence rules)"
+        description: "Comma-separated IDs of the Python SAST rules to run (default: empty, which runs every bundled Python rule)"
         env_variable: INPUT_PYTHON_ENABLED_RULES
         type: str
-        default: "python-path-traversal-open,python-open-redirect,python-weak-hash-md5,python-weak-hash-sha1,python-weak-cipher-des,python-ssl-verify-disabled,python-insecure-tls-version,python-code-injection-eval,python-sql-injection,python-nosql-injection,python-command-injection,python-ldap-injection,python-xss-template,python-template-injection,python-yaml-load-unsafe,python-debug-mode-enabled,python-weak-session-config,python-insecure-file-permissions,python-jwt-no-verify,python-weak-jwt-algorithm,python-plain-text-password,python-unsafe-deserialization,python-ssrf-vulnerability,python-bare-except,python-dangerous-eval-exec,python-sql-format-string,python-insecure-temp-file"
+        default: ""
       - name: python_disabled_rules
         option: --python-disabled-rules
         description: "Comma-separated list of Python SAST rules to disable"
@@ -181,10 +181,10 @@ connectors:
       # JavaScript/TypeScript rule configuration
       - name: javascript_enabled_rules
         option: --javascript-enabled-rules
-        description: "Comma-separated list of JavaScript/TypeScript SAST rules to enable (default: high-confidence rules)"
+        description: "Comma-separated IDs of the JavaScript/TypeScript SAST rules to run (default: empty, which runs every bundled JavaScript/TypeScript rule)"
         env_variable: INPUT_JAVASCRIPT_ENABLED_RULES
         type: str
-        default: "js-code-injection-eval,js-sql-injection,js-nosql-injection,js-command-injection,js-ldap-injection,js-prototype-pollution,js-xss-innerhtml,js-dom-xss,js-path-traversal,js-open-redirect,js-cors-allow-all,js-weak-hash-md5,js-weak-hash-sha1,js-hardcoded-secret,js-weak-cipher,js-tls-reject-unauthorized-false,js-insecure-tls-version,js-jwt-no-verify,js-weak-jwt-secret,js-weak-session-cookie,js-default-credentials,js-error-stack-exposed,js-unsafe-deserialization,js-ssrf-vulnerability,js-react-dangerous-html,js-unsafe-buffer,js-unsafe-file-operations,js-unsafe-process-spawn,js-debugger-statement,js-parseint-missing-radix"
+        default: ""
       - name: javascript_disabled_rules
         option: --javascript-disabled-rules
         description: "Comma-separated list of JavaScript/TypeScript SAST rules to disable"
@@ -201,10 +201,10 @@ connectors:
       # Go rule configuration
       - name: go_enabled_rules
         option: --go-enabled-rules
-        description: "Comma-separated list of Go SAST rules to enable (default: high-confidence rules)"
+        description: "Comma-separated IDs of the Go SAST rules to run (default: empty, which runs every bundled Go rule)"
         env_variable: INPUT_GO_ENABLED_RULES
         type: str
-        default: "go-hardcoded-credentials,go-ssh-insecure-ignore-host-key,go-sql-format-string,go-sql-string-concat,go-command-execution,go-file-path-traversal,go-zip-traversal,go-bad-tls-connection,go-import-des,go-import-rc4,go-empty-password,go-sql-direct-concat"
+        default: ""
       - name: go_disabled_rules
         option: --go-disabled-rules
         description: "Comma-separated list of Go SAST rules to disable"
@@ -215,10 +215,10 @@ connectors:
       # Java rule configuration  
       - name: java_enabled_rules
         option: --java-enabled-rules
-        description: "Comma-separated list of Java SAST rules to enable (default: high-confidence rules)"
+        description: "Comma-separated IDs of the Java SAST rules to run (default: empty, which runs every bundled Java rule)"
         env_variable: INPUT_JAVA_ENABLED_RULES
         type: str
-        default: "java-reflection-injection,java-sql-injection,java-unsafe-deserialization,java-command-injection,java-ldap-injection,java-hardcoded-credentials,java-weak-crypto-md5,java-weak-crypto-sha1,java-insecure-random,java-xxe-vulnerability,java-path-traversal,java-ssl-bypass,java-spring-security-bypass,java-jpa-sql-injection,java-struts-ognl-injection,java-jndi-injection,java-el-injection,java-template-injection,java-file-upload-no-validation"
+        default: ""
       - name: java_disabled_rules
         option: --java-disabled-rules
         description: "Comma-separated list of Java SAST rules to disable"
@@ -229,10 +229,10 @@ connectors:
       # PHP rule configuration
       - name: php_enabled_rules
         option: --php-enabled-rules
-        description: "Comma-separated list of PHP SAST rules to enable (default: high-confidence rules)"
+        description: "Comma-separated IDs of the PHP SAST rules to run (default: empty, which runs every bundled PHP rule)"
         env_variable: INPUT_PHP_ENABLED_RULES
         type: str
-        default: "php-code-injection,php-sql-injection,php-command-injection,php-unsafe-deserialization,php-ldap-injection,php-file-inclusion,php-xss,php-hardcoded-secrets,php-path-traversal,php-open-redirect,php-xxe-vulnerability,php-laravel-security,php-wordpress-security,php-codeigniter-security,php-file-upload-vulnerability,php-insecure-direct-object-reference,php-prepared-statement-injection"
+        default: ""
       - name: php_disabled_rules
         option: --php-disabled-rules
         description: "Comma-separated list of PHP SAST rules to disable"
@@ -243,10 +243,10 @@ connectors:
       # Ruby rule configuration
       - name: ruby_enabled_rules
         option: --ruby-enabled-rules
-        description: "Comma-separated list of Ruby SAST rules to enable (default: high-confidence rules)"
+        description: "Comma-separated IDs of the Ruby SAST rules to run (default: empty, which runs every bundled Ruby rule)"
         env_variable: INPUT_RUBY_ENABLED_RULES
         type: str
-        default: "ruby-eval-injection,ruby-command-injection,ruby-sql-injection,ruby-unsafe-deserialization,ruby-dynamic-method-definition,ruby-hardcoded-secrets,ruby-path-traversal,ruby-open-redirect,ruby-xss-raw-output,ruby-ssl-verification-bypass,ruby-weak-crypto,ruby-rails-find-by-sql-injection,ruby-rails-where-injection,ruby-template-injection"
+        default: ""
       - name: ruby_disabled_rules
         option: --ruby-disabled-rules
         description: "Comma-separated list of Ruby SAST rules to disable"
@@ -257,10 +257,10 @@ connectors:
       # C# rule configuration
       - name: csharp_enabled_rules
         option: --csharp-enabled-rules
-        description: "Comma-separated list of C# SAST rules to enable (default: high-confidence rules)"
+        description: "Comma-separated IDs of the C# SAST rules to run (default: empty, which runs every bundled C# rule)"
         env_variable: INPUT_CSHARP_ENABLED_RULES
         type: str
-        default: "dotnet-sql-injection,dotnet-command-injection,dotnet-code-injection,dotnet-unsafe-deserialization,dotnet-ldap-injection,dotnet-hardcoded-credentials,dotnet-weak-crypto-md5,dotnet-weak-crypto-sha1,dotnet-ssl-bypass,dotnet-xss-response-write,dotnet-path-traversal,dotnet-insecure-random,dotnet-xxe-vulnerability,dotnet-aspnet-validaterequest-false,dotnet-aspnet-viewstate-mac-disabled,dotnet-aspnetcore-auth-bypass,dotnet-ef-sql-injection,dotnet-broken-access-control,dotnet-crypto-failures,dotnet-xpath-injection,dotnet-auth-failures,dotnet-integrity-failures,dotnet-ssrf,dotnet-unsafe-code"
+        default: ""
       - name: csharp_disabled_rules
         option: --csharp-disabled-rules
         description: "Comma-separated list of C# SAST rules to disable"
@@ -271,10 +271,10 @@ connectors:
       # .NET rule configuration
       - name: dotnet_enabled_rules
         option: --dotnet-enabled-rules
-        description: "Comma-separated list of .NET SAST rules to enable (default: high-confidence rules)"
+        description: "Comma-separated IDs of the .NET SAST rules to run (default: empty, which runs every bundled .NET rule)"
         env_variable: INPUT_DOTNET_ENABLED_RULES
         type: str
-        default: "dotnet-sql-injection,dotnet-command-injection,dotnet-code-injection,dotnet-unsafe-deserialization,dotnet-ldap-injection,dotnet-hardcoded-credentials,dotnet-weak-crypto-md5,dotnet-weak-crypto-sha1,dotnet-ssl-bypass,dotnet-xss-response-write,dotnet-path-traversal,dotnet-insecure-random,dotnet-xxe-vulnerability,dotnet-aspnet-validaterequest-false,dotnet-aspnet-viewstate-mac-disabled,dotnet-aspnetcore-auth-bypass,dotnet-ef-sql-injection,dotnet-broken-access-control,dotnet-crypto-failures,dotnet-xpath-injection,dotnet-auth-failures,dotnet-integrity-failures,dotnet-ssrf,dotnet-unsafe-code"
+        default: ""
       - name: dotnet_disabled_rules
         option: --dotnet-disabled-rules
         description: "Comma-separated list of .NET SAST rules to disable"
@@ -285,10 +285,10 @@ connectors:
       # C rule configuration
       - name: c_enabled_rules
         option: --c-enabled-rules
-        description: "Comma-separated list of C SAST rules to enable (default: high-confidence rules)"
+        description: "Comma-separated IDs of the C SAST rules to run (default: empty, which runs every bundled C rule)"
         env_variable: INPUT_C_ENABLED_RULES
         type: str
-        default: "c-buffer-overflow,c-format-string-vulnerability,c-command-injection,c-sql-injection,c-memory-management,c-use-after-free,c-integer-overflow,c-null-pointer-dereference,c-hardcoded-secrets,c-race-condition,cpp-unsafe-cast,cpp-memory-management,c-weak-crypto,c-ssl-issues,c-input-validation"
+        default: ""
       - name: c_disabled_rules
         option: --c-disabled-rules
         description: "Comma-separated list of C SAST rules to disable"
@@ -299,10 +299,10 @@ connectors:
       # C++ rule configuration
       - name: cpp_enabled_rules
         option: --cpp-enabled-rules
-        description: "Comma-separated list of C++ SAST rules to enable (default: high-confidence rules)"
+        description: "Comma-separated IDs of the C++ SAST rules to run (default: empty, which runs every bundled C++ rule)"
         env_variable: INPUT_CPP_ENABLED_RULES
         type: str
-        default: "c-buffer-overflow,c-format-string-vulnerability,c-command-injection,c-sql-injection,c-memory-management,c-use-after-free,c-integer-overflow,c-null-pointer-dereference,c-hardcoded-secrets,c-race-condition,cpp-unsafe-cast,cpp-memory-management,c-weak-crypto,c-ssl-issues,c-input-validation"
+        default: ""
       - name: cpp_disabled_rules
         option: --cpp-disabled-rules
         description: "Comma-separated list of C++ SAST rules to disable"
@@ -313,10 +313,10 @@ connectors:
       # Kotlin rule configuration
       - name: kotlin_enabled_rules
         option: --kotlin-enabled-rules
-        description: "Comma-separated list of Kotlin SAST rules to enable (default: high-confidence rules)"
+        description: "Comma-separated IDs of the Kotlin SAST rules to run (default: empty, which runs every bundled Kotlin rule)"
         env_variable: INPUT_KOTLIN_ENABLED_RULES
         type: str
-        default: "kotlin-sql-injection,kotlin-command-injection,kotlin-code-injection,kotlin-unsafe-deserialization,kotlin-hardcoded-secrets,kotlin-weak-crypto-md5,kotlin-weak-crypto-sha1,kotlin-ssl-bypass,kotlin-path-traversal,kotlin-xss,kotlin-android-intent-user-input,kotlin-spring-security-bypass,kotlin-jpa-query-injection,kotlin-template-injection,kotlin-ldap-injection,kotlin-file-upload-no-validation,kotlin-xxe-vulnerability"
+        default: ""
       - name: kotlin_disabled_rules
         option: --kotlin-disabled-rules
         description: "Comma-separated list of Kotlin SAST rules to disable"
@@ -327,10 +327,10 @@ connectors:
       # Scala rule configuration
       - name: scala_enabled_rules
         option: --scala-enabled-rules
-        description: "Comma-separated list of Scala SAST rules to enable (default: high-confidence rules)"
+        description: "Comma-separated IDs of the Scala SAST rules to run (default: empty, which runs every bundled Scala rule)"
         env_variable: INPUT_SCALA_ENABLED_RULES
         type: str
-        default: "scala-sql-injection,scala-code-injection,scala-command-injection,scala-unsafe-deserialization,scala-hardcoded-secrets,scala-weak-crypto-md5,scala-weak-crypto-sha1,scala-ssl-bypass,scala-path-traversal,scala-xss-template,scala-slick-sql-injection,scala-json-injection,scala-file-upload-no-validation"
+        default: ""
       - name: scala_disabled_rules
         option: --scala-disabled-rules
         description: "Comma-separated list of Scala SAST rules to disable"
@@ -341,10 +341,10 @@ connectors:
       # Swift rule configuration
       - name: swift_enabled_rules
         option: --swift-enabled-rules
-        description: "Comma-separated list of Swift SAST rules to enable (default: high-confidence rules)"
+        description: "Comma-separated IDs of the Swift SAST rules to run (default: empty, which runs every bundled Swift rule)"
         env_variable: INPUT_SWIFT_ENABLED_RULES
         type: str
-        default: "swift-sql-injection,swift-command-injection,swift-unsafe-deserialization,swift-hardcoded-secrets,swift-weak-crypto-md5,swift-weak-crypto-sha1,swift-ssl-bypass,swift-path-traversal,swift-webview-xss,swift-ios-insecure-storage,swift-macos-privilege-escalation,swift-macos-code-signing,swift-certificate-pinning-bypass,swift-core-data-injection"
+        default: ""
       - name: swift_disabled_rules
         option: --swift-disabled-rules
         description: "Comma-separated list of Swift SAST rules to disable"
@@ -355,10 +355,10 @@ connectors:
       # Rust rule configuration
       - name: rust_enabled_rules
         option: --rust-enabled-rules
-        description: "Comma-separated list of Rust SAST rules to enable (default: high-confidence rules)"
+        description: "Comma-separated IDs of the Rust SAST rules to run (default: empty, which runs every bundled Rust rule)"
         env_variable: INPUT_RUST_ENABLED_RULES
         type: str
-        default: "rust-unsafe-usage,rust-command-injection,rust-unsafe-deserialization,rust-sql-injection,rust-hardcoded-secrets,rust-weak-crypto-md5,rust-weak-crypto-sha1,rust-insecure-tls,rust-path-traversal,rust-buffer-overflow-potential,rust-diesel-injection,rust-serde-security,rust-memory-safety"
+        default: ""
       - name: rust_disabled_rules
         option: --rust-disabled-rules
         description: "Comma-separated list of Rust SAST rules to disable"
@@ -369,10 +369,10 @@ connectors:
       # Elixir rule configuration
       - name: elixir_enabled_rules
         option: --elixir-enabled-rules
-        description: "Comma-separated list of Elixir SAST rules to enable (default: high-confidence rules)"
+        description: "Comma-separated IDs of the Elixir SAST rules to run (default: empty, which runs every bundled Elixir rule)"
         env_variable: INPUT_ELIXIR_ENABLED_RULES
         type: str
-        default: "elixir-code-injection,elixir-sql-injection,elixir-command-injection,elixir-unsafe-deserialization,elixir-hardcoded-secrets,elixir-weak-crypto,elixir-path-traversal,elixir-xss,elixir-open-redirect,elixir-phoenix-xss,elixir-phoenix-ecto-injection,elixir-phoenix-file-upload"
+        default: ""
       - name: elixir_disabled_rules
         option: --elixir-disabled-rules
         description: "Comma-separated list of Elixir SAST rules to disable"

@@ -9,6 +9,12 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 ## [Unreleased]
 
 ### Upgrade notes
+- **`<language>_enabled_rules` now takes effect.** If you set it in a workflow,
+  on the command line or in the Socket Basics dashboard, scans for that language
+  now run only the listed rules, where they previously ran every bundled rule,
+  so expect fewer SAST findings. Clear the list or set
+  `all_rules_enabled: 'true'` to keep running every rule. The step log warns
+  about listed IDs that match no rule. See the Fixed entry below.
 - **The heavy image's Socket Python CLI changes its exit codes.** It moves from
   2.12.0 to 2.13.2, and 2.13.0 exits `2` for invalid flags (was `1`), `130` for
   Ctrl+C (was `2`), and applies `--disable-blocking` and
@@ -30,6 +36,29 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   Socket npm CLI 1.16.0 and Socket Python CLI 2.13.2 both pin it.
 - Socket Python SDK (`socketdev`) 3.6.2 -> 3.6.3, which Socket Python CLI
   2.13.2 pins exactly. Source installs now require `socketdev>=3.6.3`.
+
+### Fixed
+- `<language>_enabled_rules` now narrows the SAST scan. OpenGrep prefixes the
+  ID of every rule it loads from a rules file with the file's directories, so
+  the `--exclude-rule` flags built from bare rule IDs never matched and every
+  bundled rule ran. The scanner now passes OpenGrep a copy of the rules file
+  that holds only the enabled rules, written next to the original so findings
+  keep the same fingerprint as an unfiltered scan. Enabled IDs that match no
+  rule are logged as a warning; if none match, every rule for that language
+  runs (#135). C and C++ share one rules file, as do C# and .NET; when both
+  languages in a pair are enabled and either has an empty list, every rule in
+  the shared file runs.
+- **Behavior change:** the `<language>_enabled_rules` defaults are now empty in
+  both `action.yml` and `connectors.yaml`, so every bundled rule for an enabled
+  language runs. That is what scans already did, because the filter above never
+  applied, so default scan results do not change. The previous Action defaults
+  had drifted from the CLI defaults and named seven rule IDs that no longer
+  exist; with the filter working, they would have cut JavaScript scans from 59
+  rules to 6. To narrow a scan, set `<language>_enabled_rules` explicitly.
+- An all-languages SAST scan no longer loads `erlang.yml` or
+  `objective-c.yml`. OpenGrep supports neither language and reported an
+  `UnknownLanguageError` for each file.
+- Temporary files written for custom SAST rules are removed after the scan.
 
 ## [3.5.0] - 2026-11-13
 
