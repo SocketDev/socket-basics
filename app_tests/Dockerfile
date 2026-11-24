@@ -21,7 +21,7 @@ ARG TRIVY_IMAGE=ghcr.io/socketdev/trivy:0.76.1@sha256:883da3593a60e311b2ed87c3a5
 FROM ${TRIVY_IMAGE} AS trivy
 
 # ─── Stage: trufflehog ────────────────────────────────────────────────────────
-FROM trufflesecurity/trufflehog:3.99.8 AS trufflehog
+FROM trufflesecurity/trufflehog:3.99.9 AS trufflehog
 
 # ─── Stage: golang ────────────────────────────────────────────────────────────
 FROM golang:1.27.3 AS golang
