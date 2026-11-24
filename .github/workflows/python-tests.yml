@@ -16,6 +16,9 @@ on:
       - "scripts/check_release_docs.py"
       - "scripts/prep_release.py"
       - "scripts/sync_release_version.py"
+      - "Dockerfile*"
+      - "app_tests/Dockerfile"
+      - ".github/dependabot.yml"
       - ".github/workflows/python-tests.yml"
   pull_request:
     paths:
@@ -31,6 +34,9 @@ on:
       - "scripts/check_release_docs.py"
       - "scripts/prep_release.py"
       - "scripts/sync_release_version.py"
+      - "Dockerfile*"
+      - "app_tests/Dockerfile"
+      - ".github/dependabot.yml"
       - ".github/workflows/python-tests.yml"
   workflow_dispatch:
 

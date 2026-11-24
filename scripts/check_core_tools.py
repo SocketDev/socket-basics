@@ -55,6 +55,7 @@ import json
 import os
 import re
 import sys
+import time
 import urllib.request
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -500,6 +501,106 @@ def analyze_purls(purls: list[str], token: str) -> dict[str, dict[str, Any]]:
     return by_purl
 
 
+# Backoff before each retry, in addition to the SDK request timeouts.
+SCORING_RETRY_DELAYS_SEC = (15, 45)
+
+
+def _is_transient_api_error(exc: BaseException) -> bool:
+    """Whether socketdev classifies the failure as worth retrying.
+
+    socketdev's APIFailure.is_transient_error() is true for 408/502/503/504,
+    dropped connections, and client-side timeouts. Anything else, including
+    401/403, 429 quota errors, and an empty result, fails the same way again.
+    """
+    check = getattr(exc, "is_transient_error", None)
+    return bool(callable(check) and check())
+
+
+def describe_api_error(exc: BaseException) -> str:
+    """Name the exception, its HTTP status, and the error that caused it.
+
+    socketdev raises several exceptions with no message (APITimeout,
+    APIConnectionError, APIBadGateway, and the 403/404/429 variants) and logs
+    the detail instead, so str(exc) alone is often empty. The status code and
+    the underlying requests error carried on __context__ say what failed
+    without printing response headers into public CI logs.
+    """
+    parts = [type(exc).__name__]
+    status = getattr(exc, "status_code", None)
+    if status is not None:
+        parts.append(f"HTTP {status}")
+    if str(exc):
+        parts.append(str(exc))
+    cause = exc.__cause__ or exc.__context__
+    if cause is not None:
+        parts.append(f"caused by {type(cause).__name__}: {cause}")
+    return " | ".join(parts)
+
+
+def score_purls_with_retry(
+    purls: list[str],
+    token: str,
+    *,
+    required: frozenset[str] = frozenset(),
+    analyze: Callable[[list[str], str], dict[str, dict[str, Any]]] = analyze_purls,
+    sleep: Callable[[float], None] = time.sleep,
+    delays: tuple[float, ...] = SCORING_RETRY_DELAYS_SEC,
+) -> tuple[dict[str, dict[str, Any]], Exception | None]:
+    """Run analyze_purls, retrying transient failures and pending results.
+
+    Two kinds of attempt are retried:
+    - a failure socketdev marks transient (see _is_transient_api_error);
+    - a batch that answered, but with a coordinate in `required` still
+      pendingScan after the server-side poll. Only those coordinates are
+      scored again, and their new rows replace the pending ones.
+
+    Coordinates outside `required` (the discovered latest releases, which
+    only feed drift reporting) never trigger a retry, so a scheduled watch
+    doesn't wait on a release Socket is still ingesting.
+
+    Both requests behind analyze_purls (the org lookup and the batch purl
+    POST) only read, so repeating them is safe. Return the accumulated rows
+    with any terminal API error so the caller can report findings and fail
+    closed on incomplete scoring.
+    """
+    analyses: dict[str, dict[str, Any]] = {}
+    to_score = purls
+    pending: list[str] = []
+    for attempt, delay in enumerate((*delays, None), start=1):
+        try:
+            rows = analyze(to_score, token)
+        except Exception as exc:  # noqa: BLE001
+            if delay is None or not _is_transient_api_error(exc):
+                return analyses, exc
+            print(
+                f"  ! Socket scoring attempt {attempt} failed ({describe_api_error(exc)}); "
+                f"retrying in {delay:g}s",
+                file=sys.stderr,
+            )
+            sleep(delay)
+            continue
+        # Drop stale pending rows only after a rescore succeeds. A normalized
+        # response key may differ, and the fallback finds the first match.
+        for p in pending:
+            stale = _match_analysis(analyses, p)
+            for key in [k for k, v in analyses.items() if v is stale]:
+                del analyses[key]
+        analyses.update(rows)
+        pending = [
+            p for p in sorted(required) if _match_analysis(analyses, p).get("status") == "pending"
+        ]
+        if not pending or delay is None:
+            return analyses, None
+        print(
+            f"  ! Socket analysis still pending for {len(pending)} pinned coordinate(s) "
+            f"after attempt {attempt}; rescoring them in {delay:g}s",
+            file=sys.stderr,
+        )
+        sleep(delay)
+        to_score = pending
+    raise AssertionError("unreachable")
+
+
 def _match_analysis(analyses: dict[str, dict[str, Any]], purl: str) -> dict[str, Any]:
     if purl in analyses:
         return analyses[purl]
@@ -634,10 +735,11 @@ def main() -> int:
     scoring_error = False
     if token_present and purls:
         print(f"== Scoring {len(purls)} PURLs through Socket ==")
-        try:
-            analyses = analyze_purls(purls, token)
-        except Exception as exc:  # noqa: BLE001
-            print(f"! Socket analysis failed: {exc}", file=sys.stderr)
+        # Only pending rows for covered pins can fail the run.
+        required = frozenset(t.purl(v) for t in tools if t.socket_coverage for v in t.pinned)
+        analyses, error = score_purls_with_retry(purls, token, required=required)
+        if error is not None:
+            print(f"! Socket analysis failed: {describe_api_error(error)}", file=sys.stderr)
             scoring_error = True
     for t in tools:
         t.analyses = analyses

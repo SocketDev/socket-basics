@@ -15,6 +15,27 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   so expect fewer SAST findings. Clear the list or set
   `all_rules_enabled: 'true'` to keep running every rule. The step log warns
   about listed IDs that match no rule. See the Fixed entry below.
+- **The heavy image's Socket Python CLI changes its exit codes.** It moves from
+  2.12.0 to 2.13.2, and 2.13.0 exits `2` for invalid flags (was `1`), `130` for
+  Ctrl+C (was `2`), and applies `--disable-blocking` and
+  `--exit-code-on-api-error` to missing tokens and other setup failures.
+  `--strict-blocking` now also fails on existing blocking alerts. Check any
+  pipeline step that runs `socketcli` from the heavy image and matches on an
+  exit code; see the CLI's
+  [upgrade guidance](https://github.com/SocketDev/socket-python-cli#upgrading-to-2130).
+  Socket Basics does not run `socketcli` itself, so its own exit codes are
+  unchanged.
+
+### Changed
+- The images ship Node.js 24 (LTS, supported until April 2028) instead of
+  Node.js 22.
+- Bundled tools: Socket npm CLI 1.15.0 -> 1.16.0, Socket Python CLI 2.12.0 ->
+  2.13.2; TruffleHog 3.99.8 -> 3.99.9 in the socket-basics and heavy images
+  (#142).
+- Socket Tier 1 runs the Coana reachability engine 15.15.2 instead of 15.15.0.
+  Socket npm CLI 1.16.0 and Socket Python CLI 2.13.2 both pin it.
+- Socket Python SDK (`socketdev`) 3.6.2 -> 3.6.3, which Socket Python CLI
+  2.13.2 pins exactly. Source installs now require `socketdev>=3.6.3`.
 
 ### Fixed
 - `<language>_enabled_rules` now narrows the SAST scan. OpenGrep prefixes the

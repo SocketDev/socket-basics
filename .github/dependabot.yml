@@ -66,6 +66,13 @@ updates:
       - dependency-name: "python"
       - dependency-name: "ghcr.io/astral-sh/uv"
       - dependency-name: "trufflesecurity/trufflehog"
+    # Python minors move by hand. Each one (3.12 -> 3.13) is a new language
+    # release, and uv.lock has to carry wheels for it first: without them the
+    # build compiles from source and the slim image has no C toolchain. The
+    # floating python:<minor>-slim tag picks up patch releases on every build.
+    ignore:
+      - dependency-name: "python"
+        update-types: ["version-update:semver-minor"]
     groups:
       docker-main-minor-patch:
         patterns:
@@ -101,6 +108,17 @@ updates:
       - dependency-name: "node"
       - dependency-name: "ghcr.io/astral-sh/uv"
       - dependency-name: "trufflesecurity/trufflehog"
+    # Python minors move by hand; see the note on the root entry.
+    # Node majors move by hand: the Dockerfile and Dockerfile.heavy install
+    # Node through nodesource, which Dependabot can't see, so all three must
+    # change together. Dependabot also doesn't know Node's release schedule,
+    # and would propose odd-numbered majors, which never get LTS. The floating
+    # node:<major>-slim tag picks up minor and patch releases on every build.
+    ignore:
+      - dependency-name: "python"
+        update-types: ["version-update:semver-minor"]
+      - dependency-name: "node"
+        update-types: ["version-update:semver-major"]
     groups:
       docker-app-tests-minor-patch:
         patterns:

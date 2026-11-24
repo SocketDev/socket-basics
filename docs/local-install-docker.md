@@ -50,7 +50,7 @@ docker inspect ghcr.io/socketdev/socket-basics:3.5.0 \
   | jq '.[0].Config.Labels'
 # {
 #   "com.socket.trivy-version": "0.76.1",
-#   "com.socket.trufflehog-version": "3.99.8",
+#   "com.socket.trufflehog-version": "3.99.9",
 #   "com.socket.opengrep-version": "v1.33.1",
 #   "org.opencontainers.image.version": "3.5.0",
 #   ...
@@ -220,7 +220,7 @@ script or package manager are build args and can be overridden:
 ```bash
 docker build \
   --build-arg OPENGREP_VERSION=v1.33.1 \
-  --build-arg SOCKET_NPM_CLI_VERSION=1.15.0 \
+  --build-arg SOCKET_NPM_CLI_VERSION=1.16.0 \
   -t socket-basics:3.5.0 .
 ```
 
@@ -267,6 +267,9 @@ With `--app-tests` to also test the app_tests image (requires full build context
 ```bash
 ./scripts/smoke-test-docker.sh --app-tests
 ```
+
+Use `linux/amd64` or `linux/arm64` for app-tests builds. The Node.js 24 base
+image has no `linux/arm/v7` variant for 32-bit ARM.
 
 This builds the image(s) and verifies the currently bundled tools are installed and executable. A GitHub Action runs this on Dockerfile changes and daily.
 
@@ -784,13 +787,15 @@ security-scan:
 
 1. `Need at least one file to be uploaded` in the log: the facts file was
    written outside the workspace. Use a path under `/workspace` for `--output`.
-2. `No Socket organization configured` in the log: set `SOCKET_ORG`, or use an
-   API key with the `socket-basics` scope so the organization can be discovered.
+2. `No Socket organization configured` in the log: set `SOCKET_ORG`. The
+   organization is normally discovered from the key, but on an Enterprise
+   organization that also needs the `socket-basics:read` scope.
 3. `Socket API key not detected - running in free plan mode`: the key did not
    reach the container. Check the `.env` file or `-e` flags and the variable
    name (`SOCKET_SECURITY_API_KEY`).
-4. `Insufficient permissions`: the key is missing the `full-scans` scope (upload)
-   or the `socket-basics` scope (dashboard configuration).
+4. `Insufficient permissions`: the key is missing the `full-scans:create` scope
+   (upload) or the `socket-basics:read` scope (dashboard configuration). See
+   [API token scopes](parameters.md#api-token-scopes).
 
 ### PR Comment Not Posted
 

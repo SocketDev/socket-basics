@@ -14,7 +14,7 @@ BUILD_PROGRESS="${SMOKE_TEST_BUILD_PROGRESS:-}"
 
 MAIN_TOOLS=(
   "socket-basics -h"
-  "command -v socket"
+  "socket --version"
   "trivy --version"
   "trufflehog --version"
   "opengrep --version"
@@ -24,13 +24,13 @@ APP_TESTS_TOOLS=(
   "trivy --version"
   "trufflehog --version"
   "opengrep --version"
-  "command -v socket"
+  "socket --version"
 )
 
 HEAVY_TOOLS=(
   "socket-basics -h"
   "socketcli --help"
-  "command -v socket"
+  "socket --version"
   "trivy --version"
   "trufflehog --version"
   "opengrep --version"
