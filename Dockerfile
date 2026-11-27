@@ -30,7 +30,7 @@ ARG TRIVY_IMAGE=ghcr.io/socketdev/trivy:0.76.1@sha256:883da3593a60e311b2ed87c3a5
 FROM ${TRIVY_IMAGE} AS trivy
 
 # ─── Stage: trufflehog ────────────────────────────────────────────────────────
-FROM trufflesecurity/trufflehog:3.99.9 AS trufflehog
+FROM trufflesecurity/trufflehog:3.100.0 AS trufflehog
 
 # ─── Stage: uv ────────────────────────────────────────────────────────────────
 # Named stage required — COPY --from does not support ARG variable expansion.
